@@ -9,11 +9,18 @@ export type { Budget, HintLevel, KeyStep, ProblemPackage, Secret } from './types
 export {
   apply,
   createAttempt,
+  deserializeState,
+  helpPreview,
   pickSelfcheck,
   replay,
+  serializeState,
   step,
   type AttemptState,
   type Command,
   type Context,
   type EngineEvent,
+  type HelpPreview,
+  type Rejection,
+  type SerializedAttemptState,
+  type StepResult,
 } from './machine.ts';
