@@ -120,8 +120,10 @@ export async function ingestBatch(db: Db, actor: Actor, events: readonly unknown
     for (const c of fresh) {
       if (c.attemptId !== null) perAttempt.set(c.attemptId, (perAttempt.get(c.attemptId) ?? 0) + 1);
     }
+    // 按 id 排序后逐个加锁：两个并发批次以同一顺序锁作答行，避免互相等待（死锁）。
     const nextSeq = new Map<string, number>();
-    for (const [attemptId, n] of perAttempt) {
+    for (const attemptId of [...perAttempt.keys()].sort()) {
+      const n = perAttempt.get(attemptId) ?? 0;
       const reserved = await tx.query<{ last_event_seq: number | string }>(
         `update app.attempts set last_event_seq = last_event_seq + $2 where id = $1 returning last_event_seq`,
         [attemptId, n],
