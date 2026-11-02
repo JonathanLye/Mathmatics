@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { AppError } from '../errors.ts';
 
+import { attemptRoutes } from './attempts.ts';
 import { authRoutes, type AuthRouteOptions } from './auth.ts';
 import { consentRoutes } from './consents.ts';
 
@@ -22,4 +23,5 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions> = async (api, { db,
   // 不能整体转发 options：Fastify 会把 prefix 也带进插件选项，导致前缀重复。
   await api.register(authRoutes, { db, config, contract });
   await api.register(consentRoutes, { db, config, contract });
+  await api.register(attemptRoutes, { db, config, contract });
 };
