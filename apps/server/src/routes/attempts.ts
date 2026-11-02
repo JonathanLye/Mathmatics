@@ -7,6 +7,8 @@ import { requireAuth } from '../auth/session.ts';
 import { addLine, createAttemptService } from '../attempts/service.ts';
 import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
+import type { RouteInput } from '../help/intent.ts';
+import { createHelpService } from '../help/service.ts';
 
 import type { AuthRouteOptions } from './auth.ts';
 
@@ -33,6 +35,17 @@ interface LineSubmission {
 interface SummarySubmission {
   answers: string[];
   input: InputMeta;
+}
+
+interface HelpSubmission {
+  intent: 'stuck' | 'concept' | 'check_line' | 'free';
+  text?: string;
+  lineId?: string;
+}
+
+function helpInput(body: HelpSubmission): RouteInput {
+  if (body.intent === 'free') return { intent: 'free', text: body.text ?? '' };
+  return { intent: body.intent };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -69,8 +82,9 @@ function rejectUnconfirmedInput(input: InputMeta): void {
   }
 }
 
-export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, contract }) => {
+export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
   const svc = createAttemptService(db, contract);
+  const helpSvc = createHelpService({ db, attempts: svc, secret: config.sessionSecret });
   const writable = { preHandler: requireStudentConsent(db) };
   const param = (request: FastifyRequest, name: string): string => (request.params as Record<string, string>)[name] ?? '';
   const attemptId = (request: FastifyRequest): string => uuidParam(param(request, 'attemptId'));
@@ -256,5 +270,19 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
       build: () => ({ kind: 'layer.skip', reason: 'self' }),
     });
     return { state };
+  });
+
+  // 求助（06 §4.2）：按钮意图与自由提问共用一个入口，服务端判意图。
+  app.post('/attempts/:attemptId/help', writable, async (request) => {
+    const auth = await requireAuth(db, request);
+    const body = parseBody<HelpSubmission>(contract, '/attempts/{attemptId}/help', request);
+    return helpSvc.help(auth.userId, attemptId(request), helpInput(body));
+  });
+
+  // 领取 H2–H4 提示（06 §4.2）：必须带 /help 返回的 previewToken。
+  app.post('/attempts/:attemptId/hints/claim', writable, async (request) => {
+    const auth = await requireAuth(db, request);
+    const body = parseBody<{ previewToken: string }>(contract, '/attempts/{attemptId}/hints/claim', request);
+    return helpSvc.claim(auth.userId, attemptId(request), body.previewToken);
   });
 };
