@@ -1,3 +1,7 @@
+import { fileURLToPath } from 'node:url';
+
+import { loadModelRegistry, type ModelRegistry } from './ai/registry.ts';
+
 export type AppEnv = 'development' | 'test' | 'production';
 
 export interface AppConfig {
@@ -10,11 +14,14 @@ export interface AppConfig {
   studentNoPepper: string;
   databaseUrl?: string;
   pgliteDir: string;
+  // 含各 provider 的密钥（见 ai/registry.ts）：不得打印或序列化。
+  models: ModelRegistry;
 }
 
 const DEV_SESSION_SECRET = 'proof-gym-dev-session-secret-not-for-production';
 const DEV_PII_KEY = Buffer.from('proof-gym-dev-pii-key-0000000000', 'utf8');
 const DEV_STUDENT_NO_PEPPER = 'proof-gym-dev-student-no-pepper-not-for-production';
+const MODELS_PATH = fileURLToPath(new URL('../config/models.yaml', import.meta.url));
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const appEnv = (env.NODE_ENV ?? 'development') as AppEnv;
@@ -50,5 +57,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     studentNoPepper,
     databaseUrl: env.DATABASE_URL === undefined || env.DATABASE_URL === '' ? undefined : env.DATABASE_URL,
     pgliteDir: env.PGLITE_DIR ?? '.data/pglite',
+    models: loadModelRegistry(MODELS_PATH, env),
   };
 }

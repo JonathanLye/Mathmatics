@@ -1,0 +1,55 @@
+# 模型注册表（09 §2）。地址与密钥只从环境变量读取：字段里的 "${VAR}" 在加载时展开。
+# 某个 provider 引用的变量为空 → 它未配置：调用被跳过（skipped），/health 的 deps 显示 degraded；不阻止启动。
+providers:
+  typesafe:
+    baseUrl: "${JEV_BASE_URL}"
+    apiKey: "${JEV_API_KEY}"
+    region: overseas
+    timeoutMs: 1500
+  deepseek:
+    baseUrl: "https://api.deepseek.com"
+    apiKey: "${DEEPSEEK_API_KEY}"
+    region: cn
+    timeoutMs: 8000
+  dashscope:
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    apiKey: "${DASHSCOPE_API_KEY}"
+    region: cn
+    timeoutMs: 6000
+  simpletex:
+    baseUrl: "https://server.simpletex.cn"
+    appId: "${SIMPLETEX_APP_ID}"
+    appSecret: "${SIMPLETEX_APP_SECRET}"
+    region: cn
+    timeoutMs: 5000
+models:
+  decide:
+    provider: typesafe
+    model: jev-1.13
+  fast:
+    provider: deepseek
+    model: deepseek-flash
+    thinking: false
+  strong:
+    provider: deepseek
+    model: deepseek-v4-pro
+    thinking: true
+  cross:
+    provider: dashscope
+    model: qwen3.8-flash
+  ocr_line:
+    provider: simpletex
+    endpoint: /api/latex_ocr_turbo
+  ocr_line_std:
+    provider: simpletex
+    endpoint: /api/latex_ocr
+  ocr_page:
+    provider: simpletex
+    endpoint: /api/simpletex_ocr
+flags:
+  jev.shadowOnly: true
+  lessonGenerated: false
+  ocr.primary: simpletex
+  ocr.cross: true
+  photo.enabled: true
+  llm.fallbackClassify: false
