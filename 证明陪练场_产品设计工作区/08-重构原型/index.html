@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>证明陪练场 v3</title>
+<link rel="icon" href="data:,">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<style>
+/* 布局：左侧六层目录 · 中间学生的证明稿 · 右侧页边批注（像助教的红笔），手机上依次堆叠 */
+:root{
+  --paper:#f7f8fa; --sheet:#ffffff; --ink:#1d2430; --muted:#5d6878; --rule:#dfe3ea;
+  --accent:#2b4fa3; --accent-soft:#e8eefb; --margin:#9a3b4f; --margin-soft:#f7ecef;
+  --ok:#2f7a54; --warn:#9a6b12;
+  --f-display:"Noto Serif SC","Songti SC","SimSun",serif;
+  --f-body:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#12161d; --sheet:#1a1f28; --ink:#e4e8ef; --muted:#9aa5b5; --rule:#2c3442;
+  --accent:#8fb0ff; --accent-soft:#1f2b45; --margin:#e58aa0; --margin-soft:#33202a;
+  --ok:#6fcf9b; --warn:#e3b65a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#12161d; --sheet:#1a1f28; --ink:#e4e8ef; --muted:#9aa5b5; --rule:#2c3442;
+  --accent:#8fb0ff; --accent-soft:#1f2b45; --margin:#e58aa0; --margin-soft:#33202a;
+  --ok:#6fcf9b; --warn:#e3b65a; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:15px/1.65 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 40px}
+[hidden]{display:none!important}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header{display:flex;align-items:baseline;gap:20px;flex-wrap:wrap;padding-block:18px 14px;border-bottom:1px solid var(--rule);max-width:1280px;margin:0 auto}
+header h1{font:700 19px/1.2 var(--f-display);margin:0;letter-spacing:.02em}
+nav.tabs{display:flex;gap:4px;margin-left:auto}
+nav.tabs button{background:none;border:0;padding:6px 10px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--accent)}
+main{max-width:1280px;margin:0 auto}
+.grid{display:grid;grid-template-columns:210px minmax(0,1fr) 300px;gap:28px;padding-top:22px}
+@media (max-width:980px){.grid{grid-template-columns:minmax(0,1fr)}}
+/* 目录 */
+.outline{display:flex;flex-direction:column;gap:18px;min-width:0}
+.probsel{display:flex;flex-direction:column;gap:6px}
+.probsel label{font-size:12px;color:var(--muted);letter-spacing:.06em}
+select{background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:6px 8px;width:100%}
+ol.layers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;counter-reset:l}
+ol.layers li button{all:unset;display:grid;grid-template-columns:22px 1fr auto;gap:6px;align-items:baseline;width:100%;padding:6px 8px;border-radius:4px;cursor:pointer;box-sizing:border-box}
+ol.layers li button:focus-visible{outline:2px solid var(--accent)}
+ol.layers li button[disabled]{cursor:default;color:var(--muted);opacity:.6}
+ol.layers li button.cur{background:var(--accent-soft)}
+.ln{font:500 12px var(--f-mono);color:var(--muted)}
+.lt{font-size:14px}
+.ls{font:12px var(--f-mono);color:var(--muted)}
+.ls.done{color:var(--ok)}
+@media (max-width:980px){
+  ol.layers{flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:4px}
+  ol.layers li button{grid-template-columns:auto auto;white-space:nowrap}
+  ol.layers .ls{display:none}
+}
+.budget{font:12px/1.6 var(--f-mono);color:var(--muted);border-top:1px solid var(--rule);padding-top:12px}
+.budget b{color:var(--ink);font-weight:500}
+/* 正文 */
+.sheet{min-width:0;display:flex;flex-direction:column;gap:20px}
+.stem{font:500 17px/1.8 var(--f-display);padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.stem .src{display:block;font:12px var(--f-body);color:var(--muted);margin-top:4px}
+h2{font:700 16px/1.3 var(--f-display);margin:0;text-wrap:balance}
+.task{color:var(--muted);margin:4px 0 0;max-width:62ch}
+textarea{width:100%;min-height:72px;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px 12px;resize:vertical;line-height:1.6}
+textarea:focus{border-color:var(--accent)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{background:var(--accent);color:var(--sheet);border:0;border-radius:4px;padding:8px 16px;cursor:pointer;font-weight:500}
+.btn.ghost{background:none;color:var(--accent);border:1px solid var(--rule)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.link{background:none;border:0;color:var(--accent);padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-size:13px}
+.keys{display:flex;flex-wrap:wrap;gap:4px}
+.keys button{min-width:34px;padding:4px 8px;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;cursor:pointer;font:15px var(--f-mono)}
+.keys button:hover{border-color:var(--accent)}
+/* 证明行 */
+ol.proof{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+ol.proof li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:8px;padding:10px 0;border-bottom:1px solid var(--rule)}
+ol.proof .no{font:500 13px var(--f-mono);color:var(--muted);padding-top:2px}
+ol.proof .st{font-family:var(--f-display);overflow-wrap:anywhere}
+ol.proof .ju{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+ol.proof .ju::before{content:"依据　"}
+ol.proof li.flag .no{color:var(--margin);font-weight:700}
+.stepform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+@media (max-width:560px){.stepform{grid-template-columns:minmax(0,1fr)}}
+.fl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fl span{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.card{border:1px solid var(--rule);border-radius:6px;padding:14px 16px;background:var(--sheet);display:flex;flex-direction:column;gap:10px}
+.card dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}
+.card dt{color:var(--muted);font-size:13px}
+.card dd{margin:0}
+.distort{border-left:3px solid var(--warn);padding-left:10px}
+.choice{display:flex;gap:16px;flex-wrap:wrap}
+.qs{display:flex;flex-direction:column;gap:14px}
+/* 批注 */
+.marginal{min-width:0;display:flex;flex-direction:column;gap:14px}
+@media (min-width:981px){.marginal{position:sticky;top:16px;align-self:start}}
+.note{border-left:3px solid var(--margin);background:var(--margin-soft);padding:10px 12px;border-radius:0 4px 4px 0;display:flex;flex-direction:column;gap:4px}
+.note .who{font:12px var(--f-mono);color:var(--margin)}
+.note.sys{border-color:var(--accent);background:var(--accent-soft)}
+.note.sys .who{color:var(--accent)}
+.note.hint{border-color:var(--warn)}
+.note.hint .who{color:var(--warn)}
+.notes{display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow:auto}
+.ask{display:flex;gap:6px}
+.ask input{flex:1;min-width:0;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:7px 10px}
+.small{font-size:12px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{background:none;border:1px solid var(--rule);border-radius:12px;padding:2px 10px;font-size:12px;color:var(--muted);cursor:pointer}
+.chips button:hover{border-color:var(--accent);color:var(--accent)}
+.lean{border:1px solid var(--rule);border-radius:6px;padding:14px 16px;background:var(--sheet);display:flex;flex-direction:column;gap:10px}
+.lean code{font:12.5px var(--f-mono);background:var(--accent-soft);padding:1px 6px;border-radius:3px}
+.lean pre{font:12px/1.6 var(--f-mono);margin:0;padding:10px 12px;background:var(--paper);border:1px solid var(--rule);border-radius:4px;overflow:auto;max-height:280px}
+.badge{font:11px var(--f-mono);color:var(--ok);border:1px solid var(--ok);border-radius:10px;padding:0 8px;margin-left:8px;vertical-align:middle}
+a.ext{color:var(--accent);text-decoration:none;font-size:12px}
+.demo{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;padding:10px 12px;margin-top:12px;background:var(--accent-soft);border-radius:6px}
+.demo-tag{font:700 12px var(--f-mono);color:var(--accent);letter-spacing:.08em}
+.demo-sc{display:flex;gap:4px;flex-wrap:wrap}
+.demo-sc button{background:var(--sheet);border:1px solid var(--rule);border-radius:14px;padding:3px 12px;cursor:pointer;font-size:13px}
+.demo-sc button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:500}
+.demo-cap{flex:1 1 320px;min-width:0;font-size:13px;line-height:1.5}
+.demo-cap .look{display:block;color:var(--ok)}
+.demo-ctl{display:flex;gap:6px}
+.demo-ctl .btn{padding:5px 12px;font-size:13px}
+.demo-hot{outline:3px solid var(--warn)!important;outline-offset:3px;animation:demohot 1s ease-in-out infinite}
+@keyframes demohot{50%{outline-color:transparent}}
+/* 教师 / 事件 */
+.wide{padding-top:22px;display:flex;flex-direction:column;gap:16px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{font-weight:500;color:var(--muted);font-size:12px}
+td.mono{font-family:var(--f-mono)}
+tr.live td{background:var(--accent-soft)}
+pre.log{font:12px/1.6 var(--f-mono);background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:12px;overflow:auto;max-height:60vh;margin:0}
+.bar{display:inline-block;height:6px;border-radius:3px;background:var(--accent);vertical-align:middle}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>证明陪练场</h1>
+  <span class="small">数学分析 · 原型 v3 · Lean 4 · mathlib4</span>
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-s" aria-selected="true" data-view="s">练习</button>
+    <button role="tab" id="tab-t" aria-selected="false" data-view="t">教师</button>
+    <button role="tab" id="tab-e" aria-selected="false" data-view="e">事件</button>
+  </nav>
+</header>
+<div class="demo" id="demo">
+  <span class="demo-tag">演示</span>
+  <div class="demo-sc" id="demoSc"></div>
+  <div class="demo-cap" id="demoCap" aria-live="polite"></div>
+  <div class="demo-ctl">
+    <button class="btn" type="button" id="demoNext" disabled>下一步 ▶</button>
+    <button class="btn ghost" type="button" id="demoAuto" disabled>自动播放</button>
+    <button class="btn ghost" type="button" id="demoReset" disabled>重来</button>
+  </div>
+</div>
+<main>
+  <section id="view-s" class="grid">
+    <aside class="outline">
+      <div class="probsel">
+        <label for="prob">题目</label>
+        <select id="prob"></select>
+      </div>
+      <ol class="layers" id="layers"></ol>
+      <div class="budget" id="budget"></div>
+    </aside>
+    <article class="sheet" id="sheet"></article>
+    <aside class="marginal">
+      <div class="notes" id="notes" aria-live="polite"></div>
+      <div class="row">
+        <button class="btn ghost" id="hintBtn" type="button">要一条提示</button>
+        <span class="small" id="hintState"></span>
+      </div>
+      <form class="ask" id="askForm">
+        <input id="askInput" placeholder="问一句（关于当前这一行）" autocomplete="off">
+        <button class="btn ghost" type="submit">发送</button>
+      </form>
+      <div class="chips" id="chips"></div>
+    </aside>
+  </section>
+  <section id="view-t" class="wide" hidden></section>
+  <section id="view-e" class="wide" hidden></section>
+</main>
+
+<script src="vendor/katex/katex.min.js"></script>
+<script src="vendor/katex/contrib/auto-render.min.js"></script>
+<script>
+'use strict';
+/* ============ 题目包（教师审核；keys/leak/要点卡仅服务端可见，前端原型里用于闸门演示） ============ */
+const PKG = {
+  epsN: {
+    title: '数列极限 · ε-N',
+    stem: '用 $\\varepsilon$-$N$ 定义证明 $\\displaystyle\\lim_{n\\to\\infty}\\frac{3n+1}{n+2}=3$。',
+    src: '数学分析 · 第二章 · 必做',
+    def: {
+      task: '写出"数列 $\\{a_n\\}$ 以 $A$ 为极限"的定义，用量词。',
+      checks: [
+        [/(∀|任意|任给|对一切).{0,3}ε/, '缺少"对任意 ε>0"'],
+        [/(∃|存在).{0,4}N/, '缺少"存在 N"'],
+        [/n\s*[>＞]\s*N/, '缺少"当 n>N 时"'],
+        [/\|\s*a_?n\s*[-−]\s*A\s*\|\s*[<＜]\s*ε/, '缺少"|a_n − A| < ε"']
+      ],
+      order: [/(∀|任意|任给|对一切).{0,3}ε/, /(∃|存在).{0,4}N/],
+      card: {
+        plain: '不管划多窄的一条带子，数列从某一项起都待在带子里。',
+        map: [['带子的半宽', 'ε'], ['从某一项起', '∃N，∀n>N'], ['待在带子里', '|a_n − A| < ε']],
+        distort: '这里没有"越来越近"的意思。常数列 a_n = 3 每一项都等于 3，极限也是 3。"无限接近"的说法会让人误以为 a_n ≠ A。',
+        q: '常数列 $a_n=3$ 以 $3$ 为极限吗？',
+        opts: ['是', '不是'], ans: 0,
+        back: '是。对任意 ε>0，取 N=1，|a_n − 3| = 0 < ε。现在回到你的定义。'
+      }
+    },
+    frame: {
+      task: '写出这个证明的骨架：开头写什么、结尾要落到什么、中间要构造的是什么。不必写出构造本身。',
+      checks: [
+        [/(任取|任给|设|对任意|∀).{0,6}ε/, '开头：先固定任意的 ε>0'],
+        [/(取|存在|令|∃).{0,6}N/, '中间：要构造一个 N'],
+        [/n\s*[>＞]\s*N/, '对 n>N 的情形'],
+        [/[<＜]\s*ε/, '结尾：落到某个量 < ε']
+      ],
+      template: '要证 ∀ε>0 ∃N ∀n>N：P。骨架：任取 ε>0。取 N = ＿（待构造）。则当 n>N 时，… < ε。'
+    },
+    keys: [
+      { id: 'K1', pat: [/5\s*\/\s*\(\s*n\s*[+＋]\s*2\s*\)/], leak: ['5/(n+2)'],
+        H: ['你要让哪个量小于 ε？先把它写成最简的样子。',
+            '回到目标：|a_n − 3| < ε。先单独处理 |a_n − 3|。',
+            ['通分以后，|a_n − 3| 会变成一个只含 n 的分式。', .5],
+            ['分子是 3n+1 − 3(n+2)。把它算出来，再看分母。', 1],
+            ['|a_n − 3| = 5/(n+2)。下一行由你写：要让它 < ε，n 需要满足什么？', 1]] },
+      { id: 'K2', pat: [/n\s*[>＞]\s*5\s*\/\s*ε/, /5\s*\/\s*n(?![+＋\d])/, /5\s*\/\s*ε\s*[-−]\s*2/], leak: ['5/n', '5/ε'],
+        H: ['你现在要从 "某式 < ε" 推出关于 n 的条件。',
+            '你只需要 n 的一个充分条件，不必是充要条件。',
+            ['试着把上一行的分式放大成更简单、关于 n 单调的式子。', .5],
+            ['5/(n+2) < 5/n。', 1],
+            ['5/n < ε 当且仅当 n > 5/ε。下一行：N 取什么？你来写。', 1]] },
+      { id: 'K3', pat: [/N\s*[=≥]\s*[^,，。；;]*5\s*\/\s*ε/, /N\s*[=≥]\s*[^,，。；;]*⌈/], leak: ['⌈5/ε⌉', 'N=5/ε', 'N≥5/ε'],
+        H: ['N 可以依赖哪些量？',
+            '定义里 N 在 n 之前取定，所以 N 只能依赖 ε。',
+            ['把上一行关于 n 的条件，改写成"只要 N 取得够大"。', .5],
+            ['取 N 使得 N ≥ 5/ε。', 1],
+            ['N = ⌈5/ε⌉。下一行：对 n>N 写出结论。', 1]] },
+      { id: 'K4', pat: [/n\s*[>＞]\s*N[\s\S]*[<＜]\s*ε/], leak: [],
+        H: ['你最终要写下的那个不等式是什么？',
+            '收尾：对 n>N，把前面的不等式连起来，落到 < ε。',
+            ['把"化简"和"放大"两行接成一条链。', .5],
+            ['当 n>N 时，|a_n − 3| = … < … < ε。省略号由你补。', 1],
+            ['当 n>N 时，|a_n − 3| = 5/(n+2) < 5/n < ε。最后写一句结论。', 1]] }
+    ],
+    routes: [['K1', 'K2', 'K3', 'K4']],
+    errs: [
+      { pat: /N\s*=\s*[^,，。；;则时当]*\bn\b/, q: '你取的 N 里出现了 n。定义里 N 在 n 之前取定，N 能依赖 n 吗？' },
+      { pat: /\|\s*a_?n\s*[-−]\s*3\s*\|\s*=\s*(?!5)\d+\s*\/\s*\(\s*n\s*[+＋]\s*2\s*\)/, q: '这一行的分子，请你再算一次。' },
+      { pat: /[>＞]\s*ε\s*$/, q: '这一行的不等号方向，和你要证的方向一致吗？' }
+    ],
+    selfcheck: v => [
+      `第 ${v} 行是由哪几行、用什么推出的？`,
+      '你的证明里，N 起什么作用？它依赖哪些量？',
+      '如果把"n>N"换成"n≥1"，你的证明哪一行会断？'
+    ],
+    transfer: '用 $\\varepsilon$-$\\delta$ 定义证明 $\\displaystyle\\lim_{x\\to 1}(2x+1)=3$。',
+    points: [[/依赖|只与\s*ε|只能依赖/, '你的总结没有提到 N 和 ε 的依赖关系。它重要吗？'],
+             [/放大|放缩|充分/, '你的总结没有提到"放大到更简单的式子"这一步。它是本题的关键选择吗？']]
+  },
+  series: {
+    title: '交错级数 · 收敛性',
+    stem: '判断 $\\displaystyle\\sum_{n=1}^{\\infty}\\frac{(-1)^{n-1}}{\\sqrt n}$ 是发散、条件收敛还是绝对收敛，并证明你的结论。',
+    src: '数学分析 · 第十二章 · 必做',
+    def: {
+      task: '写出级数 $\\sum a_n$ "绝对收敛"和"条件收敛"的定义。',
+      checks: [
+        [/绝对收敛[^。；;]*(\|a_?n\||绝对值)[^。；;]*收敛/, '"绝对收敛"的定义不完整'],
+        [/条件收敛[^。；;]*收敛[^。；;]*(\|a_?n\||绝对值)[^。；;]*发散/, '"条件收敛"要同时说清两件事']
+      ],
+      order: [],
+      card: {
+        plain: '条件收敛：靠正负项互相抵消才收敛；全部取绝对值后就收不住了。',
+        map: [['靠抵消才收敛', '∑a_n 收敛'], ['取绝对值后收不住', '∑|a_n| 发散']],
+        distort: '"抵消"不等于"正负交替"。∑(−1)^n 正负交替，却发散，因为通项不趋于 0。',
+        q: '$\\sum(-1)^n$ 正负交替，它收敛吗？',
+        opts: ['收敛', '发散'], ans: 1,
+        back: '发散：部分和在 −1 与 0 之间来回跳。交替只是抵消的前提之一。现在回到你的定义。'
+      }
+    },
+    frame: {
+      task: '先写出你的判断，再写出要证明这个判断需要证哪几件事。不必写出怎么证。',
+      checks: [
+        [/(发散|条件收敛|绝对收敛)/, '先给出判断'],
+        [/(两|二|2|①|\(1\)|（1）)/, '这个判断需要拆成几件事？'],
+        [/(\|a_?n\||绝对值)/, '有一件事是关于 ∑|a_n| 的']
+      ],
+      template: '判断：＿。要证：(1) ∑a_n ＿；(2) ∑|a_n| ＿。'
+    },
+    keys: [
+      { id: 'K1', pat: [/(递减|单调减|单调下降|u_?\{?n\s*[+＋]\s*1\}?\s*[<≤]\s*u_?n|1\s*\/\s*√\s*\(?n\s*[+＋]\s*1\)?\s*[<≤]\s*1\s*\/\s*√\s*n)/], leak: ['单调递减', '1/√(n+1)<1/√n'],
+        H: ['通项的绝对值 1/√n，随 n 增大会怎样变化？你写过它的依据吗？',
+            '对交错级数，先把通项写成 (−1)^{n−1}u_n，单独研究 u_n。',
+            ['比较 u_{n+1} 和 u_n。', .5],
+            ['n+1 > n，所以 √(n+1) > √n。取倒数后呢？', 1],
+            ['1/√(n+1) < 1/√n，即 {u_n} 单调递减。下一行由你写。', 1]] },
+      { id: 'K2', pat: [/(→\s*0|趋于\s*0|极限[^。；;]{0,6}0|lim[^。；;]*=\s*0)/], leak: ['1/√n→0', '极限为0'],
+        H: ['u_n 的极限你写了吗？',
+            '收敛性判别通常要求通项趋于 0。你的证明里有这一条吗？',
+            ['1/√n 是 n 的几次幂？', .5],
+            ['由 √n → +∞ 得出 u_n 的极限。', 1],
+            ['lim 1/√n = 0。下一行：用前两行得出什么？', 1]] },
+      { id: 'K3', pat: [/(莱布尼茨|Leibniz|狄利克雷|Dirichlet)[^。；;]*收敛/i], leak: ['莱布尼茨', '狄利克雷', 'Leibniz', 'leibniz', 'Dirichlet', 'dirichlet'],
+        H: ['你已经有了关于 u_n 的两条性质。它们合起来能推出什么？',
+            '回到你的骨架：第 (1) 件事还没证完。',
+            ['交错级数有现成的判别法。它要求哪些条件？', .5],
+            ['由莱布尼茨判别法，∑a_n 收敛。请核对它的条件你都写过了。', 1],
+            ['由莱布尼茨判别法（u_n 单调递减且趋于 0），原级数收敛。下一行由你写。', 1]] },
+      { id: 'K4', pat: [/(p\s*=\s*1\s*\/\s*2|p\s*级数|p-级数|调和|1\s*\/\s*2\s*[<≤]\s*1)[^。]*发散|发散[^。]*(p\s*=\s*1\s*\/\s*2|p\s*级数|p-级数|1\s*\/\s*2)/], leak: ['p=1/2', 'p级数', 'p 级数'],
+        H: ['∑|a_n| 具体是哪个级数？',
+            '回到你的骨架：第 (2) 件事还没证。',
+            ['∑1/√n 属于哪一类有现成结论的级数？', .5],
+            ['∑1/√n 是 p 级数，p = ? 。它与 1 比较。', 1],
+            ['∑1/√n 是 p=1/2 的 p 级数，p ≤ 1，发散。下一行：结论。', 1]] },
+      { id: 'K5', pat: [/(故|所以|因此|综上|从而)[^。]*条件收敛/], leak: [],
+        H: ['你的最后一行回答了题目问的哪一个选项？',
+            '结论要同时引用 (1) 和 (2)。',
+            ['把 (1) 和 (2) 合成一句结论。', .5],
+            ['由 (1)(2)，原级数 ＿ 收敛。', 1],
+            ['由 (1)(2)，原级数条件收敛。', 1]] }
+    ],
+    routes: [['K1', 'K2', 'K3', 'K4', 'K5']],
+    errs: [
+      { pat: /(递增|单调增|1\s*\/\s*√\s*\(?n\s*[+＋]\s*1\)?\s*[>≥]\s*1\s*\/\s*√\s*n)/, q: '比较 √(n+1) 和 √n 的大小，再看取倒数后不等号的方向。' },
+      { pat: /(莱布尼茨|Leibniz)[^。，,；;]*(不适用|不满足|不能用|发散)/i, q: '你认为哪一个条件不满足？把条件逐条写出来核对。' },
+      { pat: /^(?![\s\S]*(不|非)[是为]?绝对收敛)(?![\s\S]*条件收敛)[\s\S]*绝对收敛/, q: '∑|a_n| 具体是哪个级数？它收敛吗？依据是什么？' }
+    ],
+    selfcheck: v => [
+      `第 ${v} 行是由哪几行、用什么推出的？`,
+      '你的证明里，"u_n 单调"这条性质用在了哪一行？',
+      '如果去掉 "u_n → 0"，你的证明哪一行会断？'
+    ],
+    transfer: '判断 $\\displaystyle\\sum_{n=1}^{\\infty}\\frac{(-1)^{n-1}}{n^2}$ 的收敛性，并说明是条件收敛还是绝对收敛。',
+    points: [[/两|二|2|拆/, '你的总结没有提到"这个判断要拆成两件事"。它是关键选择吗？'],
+             [/条件|核对/, '你的总结没有提到判别法的条件要逐条核对。下次会漏吗？']]
+  }
+};
+/* ============ mathlib4 对照（教师端可见；学生写完本题后才展示） ============
+   status：proved = 完整证明草稿；stated = 只形式化了命题。均需在 Lean 中编译确认，原型内未本地编译。 */
+PKG.epsN.ask = ['这一行在做什么？', '什么是充分条件？', 'ε 和 N 是什么关系？'];
+PKG.series.ask = ['这一行在做什么？', '交错级数是什么？', '条件收敛是什么意思？'];
+PKG.epsN.lean = {
+  status: 'proved',
+  map: [
+    ['K1', '化简 |a_n − 3|', '`field_simp`, `Real.dist_eq`'],
+    ['K2', '放大到更简单的式子', '`div_lt_iff₀`, `nlinarith`'],
+    ['K3', '取 N 只依赖 ε', '`exists_nat_gt`'],
+    ['K4', '串成链，落到 < ε', '`Metric.tendsto_atTop`']
+  ],
+  code: `import Mathlib
+open Filter Topology
+
+example : Tendsto (fun n : ℕ => ((3 * n + 1 : ℝ) / (n + 2))) atTop (𝓝 3) := by
+  rw [Metric.tendsto_atTop]
+  intro ε hε
+  obtain ⟨N, hN⟩ := exists_nat_gt (5 / ε)
+  refine ⟨N, fun n hn => ?_⟩
+  have hn' : (N : ℝ) ≤ n := by exact_mod_cast hn
+  have hpos : (0 : ℝ) < n + 2 := by positivity
+  have h5 : 5 < ε * N := by rwa [div_lt_iff₀ hε, mul_comm] at hN
+  have e : ((3 * n + 1 : ℝ) / (n + 2)) - 3 = -5 / (n + 2) := by field_simp; ring
+  rw [Real.dist_eq, e, abs_div, abs_of_pos hpos, div_lt_iff₀ hpos]
+  norm_num
+  nlinarith`
+};
+PKG.series.lean = {
+  status: 'proved',
+  map: [
+    ['K1', 'u_n = 1/√n 单调递减', '`Antitone`'],
+    ['K2', 'u_n → 0', '`Real.tendsto_sqrt_atTop`, `Tendsto.div_atTop`'],
+    ['K3', '交错级数判别法 ⇒ 收敛', '`Antitone.tendsto_alternating_series_of_tendsto_zero`'],
+    ['K4', '∑1/√n 发散（p=1/2）', '`Real.summable_one_div_nat_rpow`, `summable_nat_add_iff`'],
+    ['K5', '收敛 + 非绝对收敛 ⇒ 条件收敛', '`Summable`']
+  ],
+  code: `import Mathlib
+open Filter Topology
+
+example : (∃ l : ℝ, Tendsto (fun n => ∑ i ∈ Finset.range n, (-1 : ℝ) ^ i * (1 / Real.sqrt (i + 1))) atTop (𝓝 l))
+    ∧ ¬ Summable (fun i : ℕ => 1 / Real.sqrt (i + 1)) := by
+  constructor
+  · have hanti : Antitone (fun i : ℕ => 1 / Real.sqrt (i + 1)) := by
+      intro a b hab
+      have : (a : ℝ) + 1 ≤ b + 1 := by exact_mod_cast Nat.succ_le_succ hab
+      exact one_div_le_one_div_of_le (Real.sqrt_pos.mpr (by positivity)) (Real.sqrt_le_sqrt this)
+    have h0 : Tendsto (fun i : ℕ => 1 / Real.sqrt (i + 1)) atTop (𝓝 0) := by
+      have h1 : Tendsto (fun i : ℕ => ((i : ℝ) + 1)) atTop atTop :=
+        tendsto_atTop_add_const_right _ 1 tendsto_natCast_atTop_atTop
+      exact tendsto_const_nhds.div_atTop (Real.tendsto_sqrt_atTop.comp h1)
+    exact hanti.tendsto_alternating_series_of_tendsto_zero h0
+  · intro h
+    have h2 : Summable (fun n : ℕ => 1 / (n : ℝ) ^ (1 / 2 : ℝ)) := by
+      rw [← summable_nat_add_iff 1]
+      simpa [Real.sqrt_eq_rpow, Nat.cast_add, Nat.cast_one] using h
+    have := (Real.summable_one_div_nat_rpow (p := 1 / 2)).mp h2
+    norm_num at this`
+};
+const LEAN_STATUS = { proved: 'Lean 4 + mathlib 已编译通过', stated: '命题已形式化，证明待补' };
+
+/* ============ 「问一句」词条：每条 1–2 句，与题目包同样要过 gate() ============ */
+const GLOSS = [
+  [/充分/, '“A 是 B 的充分条件”：只要 A 成立，B 一定成立，反过来不必。本题只需要一个够用的范围，不必最精确。'],
+  [/放大|放缩/, '把一个式子换成更大、更简单的式子。若 $x<y$ 且 $y<\\varepsilon$，则 $x<\\varepsilon$。要注意不等号方向不能变。'],
+  [/ε.*N|N.*ε|N.*依赖|依赖.*N/, 'ε 是你先拿到的误差，N 是据此定下的“从第几项起”。ε 越小，N 通常越大，所以 N 只能用 ε 表示。'],
+  [/ε|epsilon|误差/i, 'ε 是任意给定的正数，表示容许的误差。定义要求：不管 ε 多小，后面总能做到误差小于它。'],
+  [/量词|∀|∃|顺序/, '$\\forall\\varepsilon\\,\\exists N$：先给 ε，再找 N，N 可以随 ε 变。倒过来写成 $\\exists N\\,\\forall\\varepsilon$ 就强得多，一般不成立。'],
+  [/极限/, '$a_n\\to A$：不管划多窄的带子，数列从某一项起都留在以 $A$ 为中心的带子里。'],
+  [/依据/, '依据回答“这一行为什么成立”：用了哪条定义、哪个已证结论，或哪一步运算。'],
+  [/绝对值|\|x\|/, '$|x|$ 是 $x$ 到 0 的距离。$|a-b|<\\varepsilon$ 表示 $a$、$b$ 之间的距离小于 ε。'],
+  [/交错/, '正负项依次交替的级数。它可能收敛，也可能发散，要看项的大小怎么变。'],
+  [/条件收敛/, '级数本身收敛，但各项取绝对值后的级数发散。收敛靠的是正负抵消。'],
+  [/绝对收敛/, '各项取绝对值后的级数仍然收敛。绝对收敛一定收敛。'],
+  [/单调/, '数列越往后越小叫单调递减，越往后越大叫单调递增。判断办法：比较 $u_{n+1}$ 和 $u_n$。'],
+  [/p\s*级数|p-级数/, '形如 $\\sum 1/n^p$ 的级数。有现成结论：以 $p$ 与 1 的大小关系为分界。'],
+  [/判别法/, '判别法是已被证明的定理，使用前要逐条核对它的条件是否都满足。'],
+  [/mathlib|lean|形式化/i, 'Lean 是能被机器检查的证明语言，mathlib4 是它的数学库。老师端用它核对参考证明；你写的过程中不会用到。']
+];
+const LAYERS = [
+  { n: 1, t: '定义核验', skip: true },
+  { n: 2, t: '证明骨架', skip: true },
+  { n: 3, t: '构造与推导' },
+  { n: 4, t: '自检', skip: true },
+  { n: 5, t: '迁移题', skip: true },
+  { n: 6, t: '总结' }
+];
+const BUDGET = 2, DWELL = 20, STUCK_MS = 180000;
+
+/* ============ 状态 ============ */
+const S = { view: 's', pid: 'epsN', st: {}, events: [], leanRes: {} };
+function fresh() {
+  return { layer: 1, status: {}, def: '', frame: '', steps: [], matched: new Set(), flags: new Set(),
+    hintLv: {}, keyCost: {}, viaHint: new Set(), reveal: 0, lastHintAt: 0, submitsSinceHint: 1, hintTimes: [], blockedUntil: 0,
+    noProgress: 0, lastProgressAt: Date.now(), cardOpen: false, cardDone: false, notes: [],
+    self: ['', '', ''], transfer: '', sum: ['', '', '', '', ''], firstHelpAt: null, start: Date.now() };
+}
+const cur = () => S.st[S.pid] || (S.st[S.pid] = fresh());
+const P = () => PKG[S.pid];
+
+/* ============ 工具 ============ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const compact = s => String(s).replace(/\s+/g, '');  // 不做大小写折叠：N 与 n 必须区分
+function math(el) { try { window.renderMathInElement && renderMathInElement(el, { delimiters: [{ left: '$', right: '$', display: false }], throwOnError: false }); } catch (e) {} }
+function log(type, data) { S.events.push({ ts: new Date().toISOString(), pid: S.pid, type, ...data }); if (S.view === 'e') renderEvents(); }
+
+/* ============ 闸门：所有外发文本都要经过 ============
+   规则：文本中不得出现任何关键步骤的 leak 片段，
+   除非该关键步骤已出现在学生自己的文本中，或本条是已计透露量的提示（allow 里列出） */
+function gate(text, allow = []) {
+  const c = compact(text);
+  const st = cur();
+  for (const k of P().keys) {
+    if (st.matched.has(k.id) || allow.includes(k.id)) continue;
+    for (const f of k.leak) {
+      if (c.includes(compact(f))) {
+        log('gate_block', { key: k.id, frag: f });
+        return '我先不说这一点。你现在写到哪一行了？这一行的依据是什么？';
+      }
+    }
+  }
+  return text;
+}
+function say(text, who = '批注', kind = '', allow = []) {
+  const t = gate(text, allow);
+  cur().notes.push({ who, kind, t });
+  renderNotes();
+  return t;
+}
+
+/* ============ 归类器（原型：规则匹配；正式版为 LLM 结构化输出 + 置信度） ============ */
+function classify(text) {
+  const p = P();
+  for (const e of p.errs) if (e.pat.test(text)) return { type: 'err', q: e.q };
+  const hits = p.keys.filter(k => k.pat.some(r => r.test(text))).map(k => k.id);
+  return hits.length ? { type: 'match', keys: hits } : { type: 'unknown' };
+}
+function nextKey() {
+  const st = cur();
+  for (const r of P().routes) for (const id of r) if (!st.matched.has(id)) return P().keys.find(k => k.id === id);
+  return null;
+}
+
+/* ============ 视图：练习 ============ */
+function renderLayers() {
+  const st = cur();
+  $('#layers').innerHTML = LAYERS.map(l => {
+    const s = st.status[l.n];
+    const reach = l.n <= st.layer || s;
+    const mark = s === 'done' ? '完成' : s === 'skip' ? '跳过' : (l.n === st.layer ? '进行中' : '');
+    return `<li><button type="button" data-l="${l.n}" class="${l.n === st.layer ? 'cur' : ''}" ${reach ? '' : 'disabled'}>
+      <span class="ln">${l.n}</span><span class="lt">${l.t}</span><span class="ls ${s === 'done' ? 'done' : ''}">${mark}</span></button></li>`;
+  }).join('');
+  $('#layers').querySelectorAll('button[data-l]').forEach(b => b.onclick = () => { st.layer = +b.dataset.l; renderSheet(); renderLayers(); });
+  const used = st.reveal;
+  $('#budget').innerHTML = `关键步骤透露 <b>${used}</b> / ${BUDGET}<br>已自己写出 <b>${[...st.matched].length}</b> / ${P().keys.length} 个关键步骤`;
+}
+function advance(n, how = 'done') {
+  const st = cur();
+  st.status[n] = how;
+  log(how === 'skip' ? 'layer_skip' : 'layer_done', { layer: n });
+  st.layer = Math.min(6, n + 1);
+  renderAll();
+}
+const KEYS = ['ε', 'δ', '∀', '∃', '∈', '≤', '≥', '≠', '→', '∞', '√', '∑', '|', '⌈', '⌉', 'ⁿ', '²', 'lim'];
+function keyboard(targetSel) {
+  return `<div class="keys" data-target="${targetSel}">${KEYS.map(k => `<button type="button" tabindex="-1">${k}</button>`).join('')}</div>`;
+}
+function wireKeys(root) {
+  root.querySelectorAll('.keys').forEach(box => {
+    box.querySelectorAll('button').forEach(b => b.onmousedown = e => {
+      e.preventDefault();
+      const ta = document.activeElement && document.activeElement.tagName === 'TEXTAREA' ? document.activeElement : root.querySelector(box.dataset.target);
+      if (!ta) return;
+      const s = ta.selectionStart ?? ta.value.length, en = ta.selectionEnd ?? s;
+      ta.value = ta.value.slice(0, s) + b.textContent + ta.value.slice(en);
+      ta.selectionStart = ta.selectionEnd = s + b.textContent.length; ta.focus();
+      ta.dispatchEvent(new Event('input'));
+    });
+  });
+}
+function renderSheet() {
+  const st = cur(), p = P(), el = $('#sheet');
+  const G = t => gate(t);  // 静态文本同样过闸门
+  let body = '';
+  const L = st.layer;
+  const skipLink = LAYERS[L - 1].skip ? `<button class="link" type="button" id="skip">已掌握，跳过</button>` : '';
+  if (L === 1) {
+    const c = p.def.card;
+    body = `<div><h2>定义核验</h2><p class="task">${G(p.def.task)}</p></div>
+      <textarea id="ta-def" aria-label="定义">${esc(st.def)}</textarea>${keyboard('#ta-def')}
+      <div class="row"><button class="btn" type="button" id="sub-def">核对</button>
+        <button class="link" type="button" id="open-card">看不懂</button>${skipLink}</div>
+      <div class="card" id="card" ${st.cardOpen ? '' : 'hidden'}>
+        <div>${esc(G(c.plain))}</div>
+        <dl>${c.map.map(([a, b]) => `<dt>${esc(G(a))}</dt><dd>${esc(G(b))}</dd>`).join('')}</dl>
+        <div class="distort small">${esc(G(c.distort))}</div>
+        <div>${G(c.q)}</div>
+        <div class="choice">${c.opts.map((o, i) => `<label><input type="radio" name="bq" id="bq${i}" value="${i}"> ${esc(o)}</label>`).join('')}</div>
+        <div class="row"><button class="btn ghost" type="button" id="card-ok">确定</button></div>
+      </div>`;
+  } else if (L === 2) {
+    body = `<div><h2>证明骨架</h2><p class="task">${G(p.frame.task)}</p></div>
+      <textarea id="ta-frame" aria-label="骨架">${esc(st.frame)}</textarea>${keyboard('#ta-frame')}
+      <div class="row"><button class="btn" type="button" id="sub-frame">核对</button>
+        <button class="link" type="button" id="frame-tpl">看通用骨架</button>${skipLink}</div>`;
+  } else if (L === 3) {
+    body = `<div><h2>构造与推导</h2><p class="task">每次写一行：这一行的结论，以及它的依据。顺序由你决定。</p></div>
+      <ol class="proof" id="proof">${st.steps.map((s, i) => `<li class="${s.flag ? 'flag' : ''}"><span class="no">${i + 1}</span>
+        <div><div class="st">${esc(s.s)}</div>${s.j ? `<div class="ju">${esc(s.j)}</div>` : ''}</div></li>`).join('') || ''}</ol>
+      <div class="stepform">
+        <label class="fl"><span>这一行</span><textarea id="ta-s" aria-label="这一行"></textarea></label>
+        <label class="fl"><span>依据</span><textarea id="ta-j" aria-label="依据"></textarea></label>
+      </div>${keyboard('#ta-s')}
+      <div class="row"><button class="btn" type="button" id="sub-step">加入证明</button>
+        <button class="btn ghost" type="button" id="finish" ${st.steps.length ? '' : 'disabled'}>写完了</button></div>`;
+  } else if (L === 4) {
+    const v = Math.max(2, st.steps.length);
+    const qs = p.selfcheck(v).map(G);
+    body = `<div><h2>自检</h2><p class="task">针对你自己写的证明回答。这里没有标准讲解。</p></div>
+      <ol class="proof">${st.steps.map((s, i) => `<li><span class="no">${i + 1}</span><div><div class="st">${esc(s.s)}</div></div></li>`).join('')}</ol>
+      <div class="qs">${qs.map((q, i) => `<label class="fl"><span>${esc(q)}</span><textarea id="ta-sc${i}">${esc(st.self[i])}</textarea></label>`).join('')}</div>
+      <div class="row"><button class="btn" type="button" id="sub-self">提交自检</button>${skipLink}</div>`;
+  } else if (L === 5) {
+    body = `<div><h2>迁移题</h2><p class="task">换一个对象，用同样的思路独立完成。正式版会走完整的第 3 层流程，透露额度减半。</p></div>
+      <div class="stem">${G(p.transfer)}</div>
+      <textarea id="ta-tr" aria-label="迁移题">${esc(st.transfer)}</textarea>${keyboard('#ta-tr')}
+      <div class="row"><button class="btn" type="button" id="sub-tr">提交</button>${skipLink}</div>`;
+  } else {
+    const qs = ['这个证明证了什么？一句话。', '你的证明分几块？块与块是什么关系？', '哪一个选择决定了成败？', '写到哪一步才算证完？', '哪个做法下次还能用？哪个只适用于本题？'];
+    body = `<div><h2>总结</h2><p class="task">用你自己的话，每问一句。</p></div>
+      <div class="qs">${qs.map((q, i) => `<label class="fl"><span>${esc(q)}</span><textarea id="ta-sm${i}">${esc(st.sum[i])}</textarea></label>`).join('')}</div>
+      <div class="row"><button class="btn" type="button" id="sub-sum">提交总结</button></div>
+      ${st.status[6] === 'done' ? leanCard(true) : ''}`;
+  }
+  el.innerHTML = `<div class="stem">${p.stem}<span class="src">${esc(p.src)}</span></div>${body}`;
+  math(el); wireKeys(el); wireSheet();
+}
+function wireSheet() {
+  const st = cur(), p = P();
+  const on = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = fn; };
+  on('skip', () => advance(st.layer, 'skip'));
+  on('open-card', () => { st.cardOpen = true; log('plain_card_open', {}); renderSheet(); });
+  on('card-ok', () => {
+    const v = document.querySelector('input[name="bq"]:checked');
+    if (!v) return say('先选一个。', '批注', 'sys');
+    const c = p.def.card;
+    log('plain_card_answer', { correct: +v.value === c.ans });
+    say(+v.value === c.ans ? c.back : '再想一下失真说明里的那个例子。', '批注', 'sys');
+    if (+v.value === c.ans) { st.cardOpen = false; st.cardDone = true; renderSheet(); }
+  });
+  on('sub-def', () => {
+    st.def = $('#ta-def').value;
+    const miss = p.def.checks.filter(([r]) => !r.test(st.def)).map(([, m]) => m);
+    let ord = true;
+    if (p.def.order.length === 2) { const a = st.def.search(p.def.order[0]), b = st.def.search(p.def.order[1]); ord = a >= 0 && b >= 0 && a < b; }
+    log('def_submit', { miss: miss.length, order: ord });
+    if (!miss.length && ord) { say('量词结构齐全，顺序正确。', '批注', 'sys'); advance(1); }
+    else if (!miss.length) say('量词都在。它们的先后顺序会改变含义，你的顺序是哪个在前？');
+    else say(miss[0] + '。');
+  });
+  on('frame-tpl', () => { log('frame_template', {}); say(p.frame.template, '通用骨架', 'sys'); });
+  on('sub-frame', () => {
+    st.frame = $('#ta-frame').value;
+    const miss = p.frame.checks.filter(([r]) => !r.test(st.frame)).map(([, m]) => m);
+    log('frame_submit', { miss: miss.length });
+    if (!miss.length) { say('骨架完整。接下来填中间那段。', '批注', 'sys'); advance(2); }
+    else say('骨架里还缺：' + miss[0] + '。');
+  });
+  on('sub-step', submitStep);
+  on('finish', () => {
+    const nk = nextKey();
+    log('finish_try', { complete: !nk });
+    if (!nk) { say('从起点到结论的链条都在你的文本里了。下面针对你自己的证明做自检。', '批注', 'sys'); advance(3); }
+    else say('你的证明里，还有一处需要的结论没有出现。回到骨架看看：从开头到结尾的链条哪里断了？');
+  });
+  on('sub-self', () => {
+    st.self = [0, 1, 2].map(i => document.getElementById('ta-sc' + i).value.trim());
+    const empty = st.self.findIndex(x => x.length < 4);
+    log('self_check', { answered: st.self.filter(x => x.length >= 4).length });
+    if (empty >= 0) return say(`第 ${empty + 1} 问还没写。写不出来的地方，往往是还没真正想清的地方。`);
+    const refs = (st.self[0].match(/\d+/g) || []).map(Number);
+    if (!refs.length) return say('第 1 问：指出具体是哪几行（写行号）。');
+    if (refs.some(r => r < 1 || r > st.steps.length)) return say('你引用的行号不在你的证明里。再核对一次。');
+    say('已记录。', '批注', 'sys'); advance(4);
+  });
+  on('sub-tr', () => { st.transfer = $('#ta-tr').value; log('transfer_submit', { len: st.transfer.length }); say('已记录。教师端会看到你在迁移题上的用时与求助情况。', '批注', 'sys'); advance(5); });
+  on('sub-sum', () => {
+    st.sum = [0, 1, 2, 3, 4].map(i => document.getElementById('ta-sm' + i).value.trim());
+    if (st.sum.some(x => x.length < 4)) return say('每一问都写一句。');
+    const all = st.sum.join(' ');
+    const miss = p.points.find(([r]) => !r.test(all));
+    log('summary_submit', { missingPoint: !!miss });
+    if (miss && !st.sumAsked) { st.sumAsked = true; return say(miss[1]); }
+    st.status[6] = 'done'; log('problem_done', { independence: indep(st) });
+    say('本题完成。下方是这道题在 mathlib4 中的对应定理。', '批注', 'sys'); renderLayers(); renderSheet();
+  });
+}
+function submitStep() {
+  const st = cur();
+  const s = $('#ta-s').value.trim(), j = $('#ta-j').value.trim();
+  if (s.length < 2) return say('先写这一行的结论。');
+  const r = classify(s + '　' + j);
+  const before = st.matched.size;
+  const step = { s, j, flag: false };
+  st.steps.push(step); st.submitsSinceHint++;
+  if (r.type === 'err') { step.flag = true; say(`第 ${st.steps.length} 行：${r.q}`); }
+  else if (r.type === 'match' && r.keys.some(k => st.viaHint.has(k) && !st.matched.has(k)) && j.length < 6) {
+    step.flag = true;
+    say(`第 ${st.steps.length} 行来自示范。先用你自己的话写出它为什么成立（填在"依据"里），这一步才算你的。`);
+  }
+  else if (r.type === 'match') {
+    r.keys.forEach(k => st.matched.add(k));
+    say(j ? `第 ${st.steps.length} 行和前面衔接上了。` : `第 ${st.steps.length} 行：依据没写。它由哪条定义或已证结论得到？`);
+  } else say(`第 ${st.steps.length} 行和要证的结论是什么关系？它的依据是哪条定义或定理？`);
+  log('step_submit', { n: st.steps.length, cls: r.type, keys: r.keys || [], hasJust: !!j });
+  if (st.matched.size > before) { st.noProgress = 0; st.lastProgressAt = Date.now(); }
+  else st.noProgress++;
+  if (st.noProgress >= 2 && Date.now() - st.lastProgressAt > STUCK_MS) { say('要一条提示吗？点右边的"要一条提示"。', '批注', 'sys'); log('proactive_offer', {}); }
+  renderSheet(); renderLayers();
+}
+function requestHint() {
+  const st = cur();
+  if (st.layer === 1) return say(P().def.card ? '点"看不懂"可以打开直观版说明。定义核验不涉及本题的解法。' : '先写出定义。', '提示', 'hint');
+  if (st.layer === 2) return say(P().frame.template, '通用骨架', 'hint');
+  if (st.layer !== 3) return say('这一层不提供提示，请用你自己的话回答。', '批注', 'sys');
+  const now = Date.now();
+  if (now < st.blockedUntil) return say(`请先读完上一条提示，${Math.ceil((st.blockedUntil - now) / 1000)} 秒后可以再要。`, '批注', 'sys');
+  st.hintTimes = st.hintTimes.filter(t => now - t < 30000); st.hintTimes.push(now);
+  if (st.hintTimes.length >= 3) { st.blockedUntil = now + 60000; log('rapid_hint', {}); return say('提示要得很快。先停一下，用自己的话写出你现在卡住的是哪一行。', '批注', 'sys'); }
+  const k = nextKey();
+  if (!k) return say('链条已经完整了。点"写完了"。', '批注', 'sys');
+  const lv = st.hintLv[k.id] ?? 0;
+  const h = k.H[Math.min(lv, 4)];
+  const [text, cost] = Array.isArray(h) ? h : [h, 0];
+  if (cost > 0) {
+    if (st.submitsSinceHint < 1) return say('先按上一条提示写一行，再要下一级。', '批注', 'sys');
+    if (now - st.lastHintAt < DWELL * 1000) return say(`上一条提示刚给出，${DWELL - Math.floor((now - st.lastHintAt) / 1000)} 秒后可以要下一级。`, '批注', 'sys');
+    const prev = st.keyCost[k.id] || 0, delta = Math.max(0, cost - prev);
+    if (st.reveal + delta > BUDGET) {
+      log('budget_exhausted', { key: k.id }); st.exhausted = true; renderHintState();
+      return say('本题的提示额度已用完。你可以：回到"定义核验"再看一遍定义；先做下一题之后再回来；或者点下面"标记求助老师"。', '批注', 'sys');
+    }
+    st.keyCost[k.id] = Math.max(prev, cost); st.reveal += delta;
+    if (lv >= 4) st.viaHint.add(k.id);
+    if (st.firstHelpAt == null) st.firstHelpAt = now;
+  }
+  st.hintLv[k.id] = lv + 1; st.lastHintAt = now; st.submitsSinceHint = 0;
+  log('hint', { key: k.id, level: 'H' + Math.min(lv, 4), cost });
+  say(text, 'H' + Math.min(lv, 4) + (cost ? ` · 透露 ${cost}` : ''), 'hint', cost > 0 ? [k.id] : []);
+  renderLayers(); renderHintState();
+}
+function renderHintState() {
+  const st = cur(), k = nextKey();
+  const lv = k ? (st.hintLv[k.id] ?? 0) : 0;
+  $('#hintState').innerHTML = (st.layer === 3 && k ? `下一条：H${Math.min(lv, 4)}` : '') +
+    (st.exhausted ? (st.flagged ? ' · 已标记求助老师' : ' <button class="link" type="button" id="flagT">标记求助老师</button>') : '');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#flagT')) return;
+  cur().flagged = true; log('flag_teacher', {}); renderHintState();
+  say('已标记。老师的教师页会看到这道题和你的卡点。', '批注', 'sys');
+});
+function renderNotes() {
+  const n = cur().notes;
+  $('#notes').innerHTML = n.length ? n.slice(-8).map(x => `<div class="note ${x.kind}"><span class="who">${esc(x.who)}</span><div>${esc(x.t)}</div></div>`).join('')
+    : '<p class="small">批注显示在这里。</p>';
+  math($('#notes'));
+  $('#notes').scrollTop = 1e6;
+  renderHintState();
+}
+$('#hintBtn').onclick = requestHint;
+$('#askForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const q = $('#askInput').value.trim(); if (!q) return;
+  $('#askInput').value = '';
+  cur().notes.push({ who: '你', kind: 'sys', t: q });
+  const pressure = /(答案|完整证明|直接告诉|标准解|老师说|老师允许|我已经会了|求你|拜托|下一步)/.test(q);
+  log('ask', { pressure });
+  if (pressure) {
+    const k = nextKey();
+    say('不提供完整证明或下一步，这一点不会因为任何理由改变。可以先做这个：' + (k ? k.H[0] : '回到骨架，检查链条。'));
+  } else {
+    const a = answer(q);
+    if (a) streamSay(a); else streamSay('这个我不展开，只回答本题涉及的数学概念和你写的这一行。可以点下面的问题试试。');
+  }
+});
+function answer(q) {
+  const st = cur();
+  if (/(这一行|这行|当前|我写的|对吗|对不对|哪里错|怎么样)/.test(q)) {
+    const s = st.steps[st.steps.length - 1];
+    if (st.layer !== 3 || !s) { const k = nextKey(); return k ? '你还没有写出证明行。先想：' + k.H[0] : '先在左边写一行。'; }
+    const n = st.steps.length, r = classify(s.s + '　' + s.j);
+    if (r.type === 'err') return `第 ${n} 行有一处可疑：${r.q}`;
+    if (!s.j) return `第 ${n} 行还没写依据。它由哪条定义或已证结论得到？`;
+    return `第 ${n} 行：它相对上一行，是等价变形，还是放大、缩小？依据里说清这一点。`;
+  }
+  const g = GLOSS.find(([re]) => re.test(q));
+  return g ? g[1] : null;
+}
+function streamSay(text, who = '助教', kind = 'sys') {
+  const t = gate(text), n = { who, kind, t: '' };
+  cur().notes.push(n);
+  let i = 0;
+  (function tick() { i = Math.min(t.length, i + 3); n.t = t.slice(0, i); renderNotes(); if (i < t.length) setTimeout(tick, 16); })();
+}
+$('#chips').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('#askInput').value = b.textContent; $('#askForm').requestSubmit();
+};
+function renderChips() { $('#chips').innerHTML = (P().ask || []).map(x => `<button type="button">${esc(x)}</button>`).join(''); }
+
+/* ============ 教师 ============ */
+function indep(st) { return Math.max(0, 1 - st.reveal / P().keys.length); }
+const DEMO_ROWS = [
+  ['S-0412', .92, '6:40', '41 s', 0, '—'], ['S-0417', .75, '3:05', '28 s', 0, 'K2 放大'], ['S-0420', .50, '1:12', '9 s', 2, 'K3 N 的选取'],
+  ['S-0431', 1.0, '—', '—', 0, '—'], ['S-0436', .62, '2:30', '33 s', 0, 'K1 化简'], ['S-0444', .58, '0:48', '6 s', 3, 'K3 N 的选取']
+];
+function renderTeacher() {
+  const st = cur();
+  const fh = st.firstHelpAt ? Math.round((st.firstHelpAt - st.start) / 1000) : null;
+  const live = ['本会话', indep(st), fh == null ? '—' : `${Math.floor(fh / 60)}:${String(fh % 60).padStart(2, '0')}`, '—', S.events.filter(e => e.type === 'rapid_hint').length,
+    (nextKey() ? nextKey().id : '—') + (st.flagged ? ' · 已求助老师' : '')];
+  const rows = [live, ...DEMO_ROWS];
+  $('#view-t').innerHTML = `<div><h2>${esc(P().title)} · 过程数据</h2>
+    <p class="task">独立度 = 1 − 透露量 / 关键步骤数。首行为当前会话，其余为示例。</p></div>
+    <div class="tablewrap"><table><thead><tr><th>匿名 ID</th><th>独立度</th><th></th><th>首次求助前</th><th>提示后停留（中位）</th><th>连点次数</th><th>当前卡点</th></tr></thead>
+    <tbody>${rows.map((r, i) => `<tr class="${i === 0 ? 'live' : ''}"><td class="mono">${r[0]}</td><td class="mono">${r[1].toFixed(2)}</td>
+      <td><span class="bar" style="width:${Math.round(r[1] * 80)}px"></span></td><td class="mono">${r[2]}</td><td class="mono">${r[3]}</td><td class="mono">${r[4]}</td><td>${esc(r[5])}</td></tr>`).join('')}</tbody></table></div>
+    <div><h2>题目包核对</h2><p class="task">每个关键步骤对应的 mathlib4 定理。题目包上线前，参考证明应能在 Lean 中编译通过。</p></div>
+    ${leanCard(true)}`;
+}
+function renderEvents() {
+  $('#view-e').innerHTML = `<div class="row"><h2>事件流</h2><span class="small">只追加 · ${S.events.length} 条</span>
+    <button class="btn ghost" type="button" id="copyCsv">复制为 CSV</button></div>
+    <pre class="log" id="evlog">${esc(S.events.slice(-200).map(e => JSON.stringify(e)).join('\n') || '还没有事件。去"练习"页操作一下。')}</pre>`;
+  $('#copyCsv').onclick = () => {
+    const cols = ['ts', 'pid', 'type'];
+    const csv = [cols.concat('data').join(',')].concat(S.events.map(e => { const { ts, pid, type, ...d } = e; return [ts, pid, type, JSON.stringify(d).replace(/,/g, ';')].join(','); })).join('\n');
+    const done = () => { $('#copyCsv').textContent = '已复制'; };
+    try { navigator.clipboard.writeText(csv).then(done, () => { $('#evlog').textContent = csv; }); } catch (e) { $('#evlog').textContent = csv; }
+  };
+}
+
+/* ============ 总渲染 ============ */
+function leanCard(showSteps) {
+  const L = P().lean, id = 'lc' + S.pid;
+  return `<div class="lean"><h2>Lean 4 · mathlib4 对照<span class="badge">${LEAN_STATUS[L.status]}</span></h2>
+    <table><thead><tr><th>步骤</th><th>内容</th><th>mathlib4</th></tr></thead><tbody>
+    ${L.map.map(([k, d, m]) => `<tr><td class="mono">${k}</td><td>${showSteps ? esc(d) : '—'}</td><td>${esc(m).replace(/`([^`]+)`/g, '<code>$1</code>')}</td></tr>`).join('')}</tbody></table>
+    <details><summary class="small">Lean 代码</summary><pre>${esc(L.code)}</pre></details>
+    <div class="row"><button class="btn" type="button" data-lean-check="${S.pid}">本机编译验证</button>
+    <span class="small lean-res" data-pid="${S.pid}">${leanResHtml(S.leanRes[S.pid])}</span></div>
+    <pre class="lean-out" data-pid="${S.pid}" ${S.leanRes[S.pid] && S.leanRes[S.pid].output ? '' : 'hidden'}>${esc((S.leanRes[S.pid] || {}).output || '')}</pre></div>`;
+}
+function leanResHtml(r) {
+  if (!r) return '';
+  if (r.pending) return '编译中，首次约 10–30 秒…';
+  if (r.error) return `<span style="color:var(--margin)">${esc(r.error)}</span>`;
+  const sec = (r.ms / 1000).toFixed(1);
+  return r.ok ? `<span style="color:var(--ok)">✓ 编译通过</span> · ${sec}s · ${esc(r.toolchain)}`
+    : `<span style="color:var(--margin)">${r.sorry ? '含 sorry，证明未完成' : '编译未通过'}</span> · ${sec}s`;
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-lean-check]'); if (!b) return;
+  const id = b.dataset.leanCheck, card = b.closest('.lean');
+  const paint = r => {
+    S.leanRes[id] = r;
+    card.querySelector('.lean-res').innerHTML = leanResHtml(r);
+    const o = card.querySelector('.lean-out'); o.textContent = r.output || ''; o.hidden = !r.output;
+    b.disabled = !!r.pending;
+  };
+  paint({ pending: true });
+  let r;
+  try {
+    const resp = await fetch('/api/lean/check?id=' + encodeURIComponent(id), { method: 'POST' });
+    if (!resp.ok && resp.status !== 500) throw new Error();
+    r = await resp.json();
+  } catch (_) { r = { error: '未连接本地编译服务。请在终端运行 node server.mjs，再用 http://127.0.0.1:8787 打开本页。' }; }
+  log('lean_check', { id, ok: !!r.ok, ms: r.ms || 0 });
+  paint(r);
+});
+function renderAll() { renderLayers(); renderSheet(); renderNotes(); renderChips(); }
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => {
+  S.view = b.dataset.view;
+  document.querySelectorAll('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  ['s', 't', 'e'].forEach(v => $('#view-' + v).hidden = v !== S.view);
+  if (S.view === 't') renderTeacher();
+  if (S.view === 'e') renderEvents();
+});
+$('#prob').innerHTML = Object.entries(PKG).map(([k, v]) => `<option value="${k}">${esc(v.title)}</option>`).join('');
+$('#prob').onchange = e => { S.pid = e.target.value; log('open_problem', {}); renderAll(); };
+/* ============ 演示脚本：三类学生，逐步自动填入并提交（走的是真实界面逻辑） ============ */
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function typeInto(sel, text) {
+  const el = $(sel); if (!el) throw new Error('missing ' + sel);
+  DEMO.typed = true; el.focus(); el.value = '';
+  for (const ch of text) { el.value += ch; el.dispatchEvent(new Event('input')); await wait(14); }
+}
+const clk = sel => { const e = $(sel); if (!e) throw new Error('missing ' + sel); e.click(); };
+const freeCooldown = () => { const st = cur(); st.lastHintAt = 0; st.blockedUntil = 0; st.hintTimes = []; };  // 演示时跳过 20 秒等待
+/* 手动模式：只高亮按钮，等你点；自动播放模式：停一下让大家看清，再代点 */
+async function arm(sel, o = {}) {
+  const el = $(sel); if (!el) throw new Error('missing ' + sel);
+  const n = o.n || 1;
+  if (DEMO.auto) {
+    await wait(o.delay ?? 1500);
+    if (o.pre) o.pre();
+    for (let i = 0; i < n; i++) { if (o.kind === 'submit') el.requestSubmit(); else el.click(); if (n > 1) await wait(400); }
+    return;
+  }
+  const hot = $(o.hot || sel); hot.classList.add('demo-hot'); hot.scrollIntoView({ block: 'nearest' });
+  DEMO.pending = { sel, kind: o.kind || 'click', n, pre: o.pre, hot: o.hot || sel, label: hot.textContent.trim() || '按钮', started: false, filled: !!DEMO.typed };
+}
+const fillClick = async (pairs, btn) => { for (const [sel, t] of pairs) if (t) await typeInto(sel, t); await arm(btn); };
+const line = (s, j) => () => fillClick([['#ta-s', s], ['#ta-j', j]], '#sub-step');
+const hintStep = () => arm('#hintBtn', { pre: freeCooldown });
+const askStep = q => async () => { await typeInto('#askInput', q); await arm('#askForm', { kind: 'submit', hot: '#askForm button' }); };
+const defStep = t => () => fillClick([['#ta-def', t]], '#sub-def');
+const frameStep = () => fillClick([['#ta-frame', '任取 ε>0。取 N=（待构造）。则当 n>N 时，… < ε。']], '#sub-frame');
+const DEF_OK = '∀ε>0，∃N，∀n>N，|a_n−A|<ε';
+const K1 = line('|a_n−3| = 5/(n+2)', '通分化简：3n+1−3(n+2)=−5');
+const K2 = line('5/(n+2) < 5/n', '分母变小，分数变大');
+const K3 = line('取 N=⌈5/ε⌉', 'N 只依赖 ε，先于 n 取定');
+const K4 = line('当 n>N 时，|a_n−3| = 5/(n+2) < 5/n < ε', '前三行连成一条链');
+const vague = () => fillClick([['#ta-s', '先把 N 取大一点吧'], ['#ta-j', '']], '#sub-step');
+const toTeacher = () => arm('#tab-t');
+const selfCheck = () => fillClick([['#ta-sc0', '第4行由第1、2、3行推出，用到化简、放大和 N 的取法'], ['#ta-sc1', 'N 决定从第几项起，只依赖 ε'], ['#ta-sc2', '换成 n≥1，第3行取 N 那一步就断了']], '#sub-self');
+const cardFlow = bad => async () => { DEMO.typed = true; $(bad ? '#bq1' : '#bq0').checked = true; await wait(500); await arm('#card-ok'); };
+
+const DEMO_SC = {
+  pro: { name: '独立完成', steps: [
+    { do: '写出定义，量词顺序正确', look: '右栏只确认，不讲解。左栏第 1 层变“完成”。', run: defStep(DEF_OK) },
+    { do: '写出证明骨架', look: '骨架属于形式部分，系统给明确反馈。', run: frameStep },
+    { do: '写第 1 行：化简，并写依据', look: '“和前面衔接上了”。左栏：已自己写出 1/4。', run: K1 },
+    { do: '写第 2 行：放大', look: '每行都带依据，这是系统训练的核心习惯。', run: K2 },
+    { do: '向右栏问一个概念：什么是充分条件', look: '短答，只讲概念，不涉及本题下一步。', run: askStep('什么是充分条件？') },
+    { do: '写第 3 行：取 N', look: 'N 只依赖 ε，学生自己想到了。', run: K3 },
+    { do: '写第 4 行：把前面连成一条链', look: '4 个关键步骤都由学生自己写出，提示用了 0 次。', run: K4 },
+    { do: '点“写完了”', look: '关键步骤齐全才放行，进入自检。', run: () => arm('#finish') },
+    { do: '自检：回答 3 个关于自己证明的问题', look: '系统只检查回答是否指向真实存在的行号。', run: selfCheck },
+    { do: '迁移题：换一个对象独立做', look: '同一思路，换成 ε-δ。', run: () => fillClick([['#ta-tr', '任取 ε>0，取 δ=ε/2。当 0<|x−1|<δ 时，|2x+1−3| = 2|x−1| < ε。']], '#sub-tr') },
+    { do: '总结：五问各答一句', look: '本题完成。下方出现这道题在 mathlib4 中的对应定理。', run: () => fillClick([['#ta-sm0', '证明了极限等于 3'], ['#ta-sm1', '分三块：化简、放大、取 N 收尾'], ['#ta-sm2', 'N 只依赖 ε，这个选择决定成败'], ['#ta-sm3', '链条落到 <ε 才算证完'], ['#ta-sm4', '放大到简单式子的做法下次还能用']], '#sub-sum') },
+    { do: '切到教师页', look: '独立度 1.00，没有求助。老师抽查即可。', run: toTeacher },
+    { do: '点“本机编译验证”', look: '本机 Lean + mathlib4 编译这道题的参考证明，约 10 秒。', run: () => arm('#view-t [data-lean-check]') }
+  ] },
+  mid: { name: '中档（有卡点）', steps: [
+    { do: '写定义，量词顺序写反', look: '量词都在。系统只追问顺序，不说错，也不给正确写法。', run: defStep('∃N，∀ε>0，∀n>N，|a_n−A|<ε') },
+    { do: '点“看不懂”', look: '直观卡：大白话、符号对照、失真提醒，最后一道判断题。', run: () => arm('#open-card') },
+    { do: '判断题答错', look: '只让他再想，不揭晓。', run: cardFlow(true) },
+    { do: '判断题答对', look: '答对后才能关闭卡片，回到定义。', run: cardFlow(false) },
+    { do: '重写定义，顺序改对', look: '通过。', run: defStep(DEF_OK) },
+    { do: '写证明骨架', look: '通过，进入第 3 层。', run: frameStep },
+    { do: '写第 1 行：化简', look: '正常衔接。', run: K1 },
+    { do: '写第 2 行：取 N=n+1（错误）', look: '这一行标红。系统问“N 能依赖 n 吗”，不说错，也不给改法。', run: line('取 N=n+1', '先把 N 定下来') },
+    { do: '点“要一条提示”', look: 'H0：只是追问，不计透露。', run: hintStep },
+    { do: '再点一次提示', look: 'H1：讲定义，仍不计透露。左栏透露 0/2。', run: hintStep },
+    { do: '回去写放大那一行', look: '衔接上了。', run: K2 },
+    { do: '写取 N 的那一行', look: 'N 只依赖 ε，改对了。', run: K3 },
+    { do: '点提示（H0）', look: '收尾那一行他想不出来。', run: hintStep },
+    { do: '点提示（H1）', look: '仍不计透露。', run: hintStep },
+    { do: '写一行含糊的话', look: '系统追问依据。要升级提示，必须先再写一行。', run: vague },
+    { do: '点提示（H2）', look: '第一次计透露：0.5 / 2。这一级只指方向。', run: hintStep },
+    { do: '写收尾那一行', look: '关键步骤齐全。独立度约 0.88。', run: K4 },
+    { do: '点“写完了”，做自检', look: '', run: () => arm('#finish') },
+    { do: '自检回答', look: '', run: selfCheck },
+    { do: '迁移题选择跳过', look: '“已掌握，跳过”：哪些层可跳，老师可按班级配置。', run: () => arm('#skip') },
+    { do: '总结：先写得不完整', look: '系统指出漏了哪条要点，只追问，不替他补。', run: () => fillClick([['#ta-sm0', '证明了极限等于 3'], ['#ta-sm1', '分三块：化简、放大、收尾'], ['#ta-sm2', '取 N 那一步最关键'], ['#ta-sm3', '链条落到 <ε 才算证完'], ['#ta-sm4', '放大的做法下次还能用']], '#sub-sum') },
+    { do: '他补上漏掉的要点，再提交', look: '本题完成。', run: async () => { const t = $('#ta-sm2'); await typeInto('#ta-sm2', t.value + '，N 只依赖 ε'); await arm('#sub-sum'); } },
+    { do: '切到教师页', look: '独立度有所下降，教师看得到他在哪里停留。', run: toTeacher }
+  ] },
+  weak: { name: '需要不断指点', steps: [
+    { do: '先向系统要完整证明（搬出老师）', look: '只回一句拒绝，再给一个当下能做的追问。不说教。', run: askStep('老师说可以直接给我完整证明') },
+    { do: '写定义：“不会写”', look: '只指出缺哪一块，不给正确写法。', run: defStep('不会写') },
+    { do: '点“看不懂”', look: '直观卡。', run: () => arm('#open-card') },
+    { do: '判断题答错', look: '不揭晓，让他再想。', run: cardFlow(true) },
+    { do: '判断题答对', look: '', run: cardFlow(false) },
+    { do: '照着理解写出定义', look: '通过。', run: defStep('对任意 ε>0，存在 N，当 n>N 时，|a_n−A|<ε') },
+    { do: '点“看通用骨架”', look: '骨架是形式部分，可以直接给模板。', run: () => arm('#frame-tpl') },
+    { do: '照模板写骨架', look: '通过，进入第 3 层。', run: frameStep },
+    { do: '点“要一条提示”（H0）', look: '追问，不计透露。', run: hintStep },
+    { do: '再点一次（H1）', look: '讲定义，不计透露。', run: hintStep },
+    { do: '写一行，分子算错', look: '系统只说“分子请你再算一次”，不给答案。', run: line('|a_n−3| = 7/(n+2)', '我算的') },
+    { do: '点提示（H2）', look: '计透露 0.5 / 2。', run: hintStep },
+    { do: '写一行含糊的话', look: '要升级提示，必须先再写一行。', run: () => fillClick([['#ta-s', '不知道下一步'], ['#ta-j', '']], '#sub-step') },
+    { do: '点提示（H3）', look: '给出一步。同一关键步骤只按最高级记一次：累计 1 / 2。', run: hintStep },
+    { do: '照提示写出第 1 行', look: '算对了。', run: K1 },
+    { do: '连点 3 次提示', look: '30 秒内连点 3 次，按钮暂停 60 秒，并要求他先说清卡在哪。', run: () => arm('#hintBtn', { n: 3, pre: freeCooldown }) },
+    { do: '写一行含糊的话', look: '', run: vague },
+    { do: '点提示（H2）', look: '累计 1.5 / 2。', run: hintStep },
+    { do: '再写一行含糊的话', look: '', run: vague },
+    { do: '点提示（H3）', look: '累计 2 / 2，额度用完。', run: hintStep },
+    { do: '照提示写出放大那一行', look: '', run: K2 },
+    { do: '点提示（H0）', look: '', run: hintStep },
+    { do: '点提示（H1）', look: '', run: hintStep },
+    { do: '再写一行含糊的话', look: '', run: vague },
+    { do: '再点提示（H2）', look: '额度已用完：不再透露。引导他回到定义，或标记求助老师。', run: hintStep },
+    { do: '点“标记求助老师”', look: '额度用完后的出口：学生主动求助，不是被晾着。', run: () => arm('#flagT') },
+    { do: '切到教师页', look: '独立度 0.50，连点 1 次，卡点 K3，已求助老师。', run: toTeacher }
+  ] }
+};
+const DEMO = { key: null, i: 0, busy: false, auto: false, look: '', pending: null, cur: null };
+function demoRender() {
+  const sc = DEMO_SC[DEMO.key], cap = $('#demoCap');
+  $('#demoSc').innerHTML = Object.entries(DEMO_SC).map(([k, v]) => `<button type="button" data-sc="${k}" aria-pressed="${k === DEMO.key}">${v.name}</button>`).join('');
+  const has = !!sc, end = has && DEMO.i >= sc.steps.length;
+  const pd = DEMO.pending;
+  $('#demoNext').disabled = !has || end || DEMO.busy; $('#demoReset').disabled = !has; $('#demoAuto').disabled = !has || end || !!pd;
+  $('#demoNext').textContent = pd ? '代点 ▶' : '下一步 ▶';
+  $('#demoAuto').textContent = DEMO.auto ? '暂停' : '自动播放'; if (DEMO.auto) $('#demoAuto').disabled = false;
+  cap.innerHTML = !has ? '选一个学生场景，然后点“下一步”。'
+    : (DEMO.look ? `<span class="look">看点：${esc(DEMO.look)}</span>` : '') +
+      (end ? '演示结束。可切换场景或点“重来”。' : pd ? `<b>${DEMO.i + 1}/${sc.steps.length}</b> ${pd.filled ? '已填入。' : ''}请点击高亮的「${esc(pd.label)}」` : `<b>${DEMO.i + 1}/${sc.steps.length}</b> 下一步：${esc(sc.steps[DEMO.i].do)}`);
+}
+function demoLoad(key) {
+  DEMO.auto = false; DEMO.key = key; DEMO.i = 0; DEMO.look = '';
+  DEMO.pending = null; DEMO.busy = false; document.querySelectorAll('.demo-hot').forEach(x => x.classList.remove('demo-hot'));
+  S.st = {}; S.events = []; S.pid = 'epsN'; $('#prob').value = 'epsN';
+  if (S.view !== 's') clk('#tab-s');
+  log('demo_start', { scenario: key }); renderAll(); demoRender();
+}
+async function demoStep() {
+  const sc = DEMO_SC[DEMO.key]; if (!sc || DEMO.busy || DEMO.i >= sc.steps.length) return;
+  if (DEMO.pending) return demoForce();
+  DEMO.busy = true; demoRender();
+  const s = sc.steps[DEMO.i]; DEMO.cur = s; DEMO.typed = false;
+  try {
+    if (S.view !== 's' && s.run !== toTeacher && !/教师/.test(s.do) && !/编译/.test(s.do)) clk('#tab-s');
+    await s.run(); await wait(300);
+  } catch (e) { console.error(e); DEMO.auto = false; DEMO.pending = null; }
+  if (DEMO.pending) { DEMO.busy = false; demoRender(); return; }   // 等你点按钮
+  DEMO.look = s.look; DEMO.i++; DEMO.busy = false; demoRender();
+}
+function demoForce() {   // 代点：替你点高亮的按钮
+  const p = DEMO.pending; if (!p) return;
+  const el = $(p.sel);
+  for (let i = 0; i < p.n; i++) { if (p.kind === 'submit') el.requestSubmit(); else el.click(); }
+}
+function demoFinish() {
+  document.querySelectorAll('.demo-hot').forEach(x => x.classList.remove('demo-hot'));
+  DEMO.pending = null; DEMO.look = DEMO.cur.look; DEMO.i++; DEMO.busy = false; demoRender();
+}
+document.addEventListener('click', e => {   // 捕获阶段：先于按钮自己的处理函数
+  const p = DEMO.pending; if (!p || p.kind !== 'click' || !e.target.closest(p.sel)) return;
+  if (!p.started) { p.started = true; if (p.pre) p.pre(); }
+  if (--p.n <= 0) demoFinish();
+}, true);
+document.addEventListener('submit', e => {
+  const p = DEMO.pending; if (p && p.kind === 'submit' && e.target.matches(p.sel)) demoFinish();
+}, true);
+async function demoAutoLoop() {
+  while (DEMO.auto && DEMO.i < DEMO_SC[DEMO.key].steps.length) { await demoStep(); await wait(1800); }
+  DEMO.auto = false; demoRender();
+}
+$('#demoSc').onclick = e => { const b = e.target.closest('button[data-sc]'); if (b) demoLoad(b.dataset.sc); };
+$('#demoNext').onclick = demoStep;
+$('#demoReset').onclick = () => demoLoad(DEMO.key);
+$('#demoAuto').onclick = () => { DEMO.auto = !DEMO.auto; demoRender(); if (DEMO.auto) demoAutoLoop(); };
+demoRender();
+window.__proto = { S, PKG, gate, classify, cur, nextKey, requestHint, submitStep };
+log('open_problem', {});
+renderAll();
+window.addEventListener('load', () => math(document.body));
+</script>
+</body>
+</html>

@@ -1,0 +1,2372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>证明陪练场 · 数学分析证明题分步引导（可点击原型 v1）</title>
+<style>
+:root{
+  --bg:#f4f6fb; --card:#ffffff; --ink:#1b2436; --muted:#65718a;
+  --line:#e4e8f1; --line-2:#eef1f7;
+  --primary:#4358e8; --primary-2:#eef1ff; --primary-3:#dfe5ff;
+  --green:#0e9f6e; --green-bg:#e8f8f1; --green-line:#bfeeda;
+  --amber:#b45309; --amber-bg:#fff8e8; --amber-line:#f2d49b;
+  --red:#d92d20; --red-bg:#fff1f0; --red-line:#ffd2cc;
+  --purple:#7c3aed;
+  --shadow:0 1px 2px rgba(23,32,64,.05), 0 10px 30px -24px rgba(23,32,64,.4);
+  --radius:16px;
+  --mono:"Cascadia Mono", Consolas, "Courier New", monospace;
+  --math:"Cambria Math", "Times New Roman", Georgia, serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.7}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+a{color:var(--primary);text-decoration:none}
+h1,h2,h3,h4{margin:0;line-height:1.35}
+h2{font-size:23px;letter-spacing:-.3px}
+h3{font-size:17px}
+h4{font-size:14.5px}
+p{margin:0}
+ul,ol{margin:0;padding-left:20px}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.mono{font-family:var(--mono)}
+.center{text-align:center}
+.hidden{display:none !important}
+.wrap{max-width:1200px;margin:0 auto;padding:24px 20px 90px}
+.eyebrow{font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);font-weight:700}
+.lead{color:var(--muted);font-size:14px;max-width:78ch}
+.divider{height:1px;background:var(--line);margin:16px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row-between{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.spread{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.stack{display:flex;flex-direction:column;gap:14px}
+.stack-sm{display:flex;flex-direction:column;gap:8px}
+
+/* ---------- 顶栏 ---------- */
+.topbar{position:sticky;top:0;z-index:60;background:rgba(255,255,255,.95);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.topbar-inner{max-width:1200px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#4f5cf0,#7c3aed);color:#fff;display:grid;place-items:center;font-weight:800;font-size:17px;box-shadow:0 4px 12px -4px rgba(79,92,240,.6);flex:none}
+.brand-title{font-weight:800;font-size:16px;letter-spacing:-.2px;line-height:1.2}
+.brand-sub{font-size:11px;color:var(--muted);line-height:1.2;margin-top:2px}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
+.tab-btn{padding:7px 13px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--muted);border:1px solid transparent;white-space:nowrap}
+.tab-btn:hover{background:var(--line-2);color:var(--ink)}
+.tab-btn.active{background:var(--primary);color:#fff;box-shadow:0 4px 12px -6px rgba(67,88,232,.7)}
+.explain-wrap{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);user-select:none;flex:none}
+.switch{position:relative;display:inline-block;width:40px;height:23px;flex:none}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
+.switch .slider{position:absolute;inset:0;background:#cbd5e1;border-radius:99px;transition:.18s}
+.switch .slider::before{content:"";position:absolute;width:17px;height:17px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.switch input:checked + .slider{background:var(--primary)}
+.switch input:checked + .slider::before{transform:translateX(17px)}
+.switch input:focus-visible + .slider{outline:2px solid var(--primary-3);outline-offset:2px}
+
+/* ---------- 面板/卡片 ---------- */
+.panel{display:none}
+.panel.active{display:block;animation:fadeUp .18s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.card-pad-sm{padding:16px}
+.card-title{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px}
+.card-title h3{font-size:16.5px}
+.card-title .spacer{margin-left:auto}
+.grid{display:grid;gap:14px}
+.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:26px 0 12px}
+.section-head h2{font-size:20px}
+.section-head p{color:var(--muted);font-size:13.5px}
+
+/* ---------- 按钮/标签 ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;border-radius:10px;padding:9px 16px;font-size:14px;font-weight:650;background:#edf0f6;color:var(--ink);transition:.14s;line-height:1.45;text-align:center}
+.btn:hover{filter:brightness(.975);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn-primary{background:var(--primary);color:#fff;box-shadow:0 6px 16px -8px rgba(67,88,232,.9)}
+.btn-soft{background:var(--primary-2);color:var(--primary)}
+.btn-ghost{background:transparent;border-color:var(--line);color:var(--muted)}
+.btn-ghost:hover{color:var(--ink);background:#f8fafc}
+.btn-green{background:var(--green-bg);color:var(--green);border-color:var(--green-line)}
+.btn-danger{background:var(--red-bg);color:var(--red);border-color:var(--red-line)}
+.btn-amber{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
+.btn-sm{padding:5px 10px;font-size:12.5px;border-radius:8px}
+.btn-block{width:100%}
+.btn[disabled]{opacity:.45;cursor:not-allowed;filter:none;transform:none}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;line-height:1.5;padding:2px 8px;border-radius:99px;background:#eef1f7;color:var(--muted);white-space:nowrap;font-weight:600}
+.tag-blue{background:#eef4ff;color:#2563eb}
+.tag-green{background:var(--green-bg);color:var(--green)}
+.tag-red{background:var(--red-bg);color:var(--red)}
+.tag-amber{background:var(--amber-bg);color:var(--amber)}
+.tag-purple{background:#f3eefe;color:var(--purple)}
+.tag-solid{background:#111827;color:#fff}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 10px;border-radius:99px;background:#f3f5fa;color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
+.dot.amber{background:#e69f00}
+.dot.red{background:var(--red)}
+.dot.blue{background:var(--primary)}
+
+/* ---------- 讲解模式标注 ---------- */
+.intent{display:none;margin-top:14px;border:1px dashed var(--amber-line);background:var(--amber-bg);border-radius:10px;padding:9px 12px;font-size:12.5px;line-height:1.65;color:#8a4b08}
+body.explain .intent{display:block}
+.intent::before{content:"🎯 设计意图";display:inline-block;font-weight:800;margin-right:7px;color:#92400e}
+.intent .ref{display:inline-block;margin-left:6px;padding:0 5px;border-radius:4px;background:#f6e3b8;color:#7c4807;font-size:11px;font-weight:600;white-space:nowrap}
+.explain-off-hint{display:none}
+body.explain .explain-off-hint{display:block}
+
+/* ---------- 演示控制条 ---------- */
+.demo-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:9px 14px;margin-bottom:18px;background:#141c2f;border-radius:12px;color:#e5e7eb;box-shadow:var(--shadow)}
+.demo-bar-l{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.demo-bar-l strong{font-size:13.5px}
+.demo-bar-l .muted{color:#9aa6bf;font-size:12px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.22);flex:none}
+.demo-bar-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.page-chips{display:flex;gap:4px;flex-wrap:wrap}
+.page-chips span{font-size:11px;padding:2px 7px;border-radius:6px;background:rgba(255,255,255,.08);color:#aeb9cf;white-space:nowrap}
+.page-chips span.active{background:var(--primary);color:#fff;font-weight:700}
+.page-chips span.done{color:#6ee7b7}
+.step-pill{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:99px;background:rgba(255,255,255,.1);color:#dbe3f3;white-space:nowrap}
+.demo-bar .btn-ghost{color:#cbd5e1;border-color:rgba(255,255,255,.18);background:transparent}
+.demo-bar .btn-ghost:hover{background:rgba(255,255,255,.08);color:#fff}
+
+/* ---------- 页面头 ---------- */
+.page{display:none}
+.page.active{display:block;animation:fadeUp .18s ease}
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin:8px 0 16px}
+.page-head h2{font-size:22px}
+.page-head p{color:var(--muted);font-size:13.5px;margin-top:4px}
+.breadcrumb{font-size:12.5px;color:var(--muted);margin-bottom:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.breadcrumb .sep{color:#b6c0d4}
+
+/* ---------- S0 ---------- */
+.s0-wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:18px;max-width:940px;margin:20px auto 0;align-items:start}
+.s0-card h2{margin:6px 0 8px}
+.field{display:flex;flex-direction:column;gap:6px;margin:16px 0}
+.field label{font-size:13px;font-weight:700}
+.field .hint{font-size:12px;color:var(--muted)}
+.input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;background:#fbfcff;transition:.15s}
+.input:focus{outline:2px solid rgba(67,88,232,.2);border-color:var(--primary);background:#fff}
+.field-error{background:var(--red-bg);border:1px solid var(--red-line);color:var(--red);border-radius:9px;padding:8px 12px;font-size:13px}
+.privacy{font-size:12px;color:var(--muted);background:#f8fafc;border-radius:9px;padding:9px 12px;margin-top:14px}
+.s0-side .mini-list{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.s0-side .mini-item{display:flex;gap:9px;font-size:13px;align-items:flex-start}
+.s0-side .mini-num{width:21px;height:21px;border-radius:7px;background:var(--primary-2);color:var(--primary);font-size:11px;font-weight:800;display:grid;place-items:center;flex:none;margin-top:2px}
+
+/* ---------- S1 ---------- */
+.hi-card{background:linear-gradient(120deg,#eef1ff,#f7f4ff);border:1px solid var(--primary-3)}
+.progress-track{height:9px;background:#e6eaf3;border-radius:99px;overflow:hidden;margin:10px 0 6px}
+.progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#5b6cf5,#7c3aed)}
+.task-line{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px 0;border-bottom:1px dashed var(--line)}
+.task-line:last-child{border-bottom:0}
+.task-idx{width:24px;height:24px;border-radius:8px;background:#f0f3fa;color:var(--muted);font-size:12px;font-weight:700;display:grid;place-items:center}
+.task-idx.done{background:var(--green-bg);color:var(--green)}
+.task-idx.now{background:var(--primary);color:#fff}
+.task-name{font-size:14px;font-weight:600}
+.task-meta{font-size:12px;color:var(--muted)}
+.mini-kpi{font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1.2}
+.mini-kpi small{font-size:12.5px;color:var(--muted);font-weight:500;letter-spacing:0}
+
+/* ---------- S2 ---------- */
+.filters{display:flex;flex-direction:column;gap:11px}
+.filter-line{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}
+.filter-line .flabel{font-size:12px;color:var(--muted);font-weight:600;padding-top:4px;min-width:58px}
+.fchip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:4px 12px;font-size:12.5px;color:var(--muted);transition:.15s}
+.fchip:hover{border-color:var(--primary-3);color:var(--primary)}
+.fchip.active{background:var(--primary-2);color:var(--primary);border-color:var(--primary-3);font-weight:700}
+.problem-card{display:flex;flex-direction:column;gap:10px}
+.problem-card .p-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.problem-card .p-title{font-weight:700;font-size:15px}
+.problem-card .p-stem{font-family:var(--math);font-size:15px;color:#334155;background:#fafbff;border:1px solid var(--line-2);border-radius:9px;padding:9px 12px;overflow-wrap:anywhere}
+.problem-card .p-foot{margin-top:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.preview{display:none;background:#f8fafc;border-left:3px solid var(--primary-3);padding:8px 12px;font-size:12.5px;color:var(--muted);border-radius:0 8px 8px 0}
+.preview.show{display:block}
+.result-count{font-size:12.5px;color:var(--muted)}
+
+/* ---------- S3 ---------- */
+.s3-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:14px;box-shadow:var(--shadow)}
+.s3-top-l{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.timer{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--primary);background:var(--primary-2);border-radius:8px;padding:3px 9px}
+.phase-track{display:flex;gap:5px;flex-wrap:wrap;flex:1 1 420px}
+.phase-step{flex:1 1 85px;min-width:74px;border:1px solid var(--line);border-radius:9px;padding:6px 8px;font-size:10.5px;color:var(--muted);background:#fafbfe;line-height:1.35}
+.phase-step b{display:block;font-size:11.5px;color:inherit;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.phase-step.done{background:var(--green-bg);border-color:var(--green-line);color:var(--green)}
+.phase-step.current{background:var(--primary-2);border-color:#c9d2ff;color:var(--primary);box-shadow:inset 0 0 0 1px #c9d2ff}
+.s3-grid{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);grid-template-areas:"problem side" "draft side";gap:14px;align-items:start}
+.area-problem{grid-area:problem}
+.area-side{grid-area:side;display:flex;flex-direction:column;gap:14px;min-width:0}
+.area-draft{grid-area:draft}
+.stem-box{font-family:var(--math);font-size:17.5px;line-height:2.05;background:#fbfcff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-wrap:anywhere}
+.stem-box .stem-note{display:block;font-family:system-ui,-apple-system,"Microsoft YaHei",sans-serif;font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.6}
+.problem-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.lesson-link{font-size:12.5px;color:var(--primary);font-weight:600;background:none;padding:0;text-decoration:underline;text-underline-offset:3px}
+.s3-side-card{padding:0;overflow:hidden}
+.chat-head{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfcff,#f8faff);flex-wrap:wrap}
+.chat-head .ai-ava{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#4f5cf0,#7c3aed);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:800;flex:none}
+.chat-head strong{font-size:13.5px}
+.chat-head .tag{margin-left:auto}
+.chat-log{padding:13px 13px 4px;max-height:440px;overflow-y:auto;display:flex;flex-direction:column;gap:11px;background:#fff}
+.msg{display:flex;gap:7px;align-items:flex-start;animation:pop .16s ease}
+@keyframes pop{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.msg .ava{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:10.5px;font-weight:800;flex:none;margin-top:2px}
+.msg.ai .ava{background:linear-gradient(135deg,#4f5cf0,#7c3aed);color:#fff}
+.bubble{background:#f6f8fd;border:1px solid var(--line);border-radius:3px 12px 12px 12px;padding:9px 12px;font-size:13px;line-height:1.68;min-width:0;overflow-wrap:anywhere}
+.msg.student{justify-content:flex-end}
+.msg.student .bubble{background:var(--primary);color:#fff;border:0;border-radius:12px 3px 12px 12px;max-width:88%}
+.msg-tag{font-size:10.5px;font-weight:700;color:var(--primary);background:var(--primary-2);border-radius:5px;padding:1px 7px;display:inline-block;margin-bottom:5px}
+.msg-tag.amber{color:var(--amber);background:var(--amber-bg)}
+.msg-tag.red{color:var(--red);background:var(--red-bg)}
+.msg-tag.green{color:var(--green);background:var(--green-bg)}
+.tri p{margin:2px 0}
+.seg-label{font-weight:800;font-size:11.5px}
+.seg-judge{color:#1d4ed8}
+.seg-hint{color:#7c3aed}
+.seg-ask{color:#b45309}
+.msg.system{align-self:center;max-width:96%}
+.msg.system span{display:inline-block;font-size:11px;color:var(--muted);background:#f4f6fa;border-radius:99px;padding:3px 10px;text-align:center}
+.mini-card{border:1px solid var(--amber-line);background:#fffdf4;border-radius:11px;padding:11px 12px;font-size:12.5px;line-height:1.65}
+.mini-card h5{margin:0 0 6px;font-size:12.5px;color:#92400e;display:flex;align-items:center;gap:5px}
+.mini-card ol{margin:0;padding-left:18px}
+.mini-card li{margin:3px 0}
+.mini-card .strict{color:#7c2d12;font-weight:600}
+.chat-compose{border-top:1px solid var(--line);padding:11px 13px 13px;background:#fbfcff}
+.compose-label{font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.compose-label .num{font-size:10.5px;background:#111827;color:#fff;border-radius:5px;padding:1px 6px;font-weight:700;flex:none}
+.ta{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:13.5px;line-height:1.65;background:#fff;resize:vertical;min-height:72px;transition:.15s;overflow-wrap:anywhere}
+.ta:focus{outline:2px solid rgba(67,88,232,.18);border-color:var(--primary)}
+.ta-lg{min-height:150px;font-size:14px}
+.compose-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.compose-actions .btn{flex:0 0 auto}
+.next-tip{font-size:11.5px;color:var(--muted);margin-top:8px;background:#fff;border:1px dashed var(--line);border-radius:8px;padding:6px 9px;line-height:1.55}
+.next-tip b{color:var(--primary)}
+.hint-card{padding:14px}
+.budget-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+.bchip{font-size:11px;padding:2px 8px;border-radius:99px;background:#f1f4f9;color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.bchip b{color:var(--ink)}
+.bchip.zero{opacity:.5;text-decoration:line-through}
+.quick-actions{display:flex;gap:8px;flex-wrap:wrap}
+.quick-actions .btn{flex:1 1 120px}
+.draft-wrap{padding:16px 18px}
+.draft-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.draft-head h3{font-size:15px}
+.draft-head .save{font-size:11px;color:var(--green);background:var(--green-bg);border-radius:99px;padding:2px 8px;font-weight:600;white-space:nowrap}
+.draft-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.draft-list li{border-left:3px solid var(--primary);background:#f7f8ff;border-radius:0 8px 8px 0;padding:8px 11px;font-size:13px;line-height:1.65;overflow-wrap:anywhere}
+.draft-list li .d-tag{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+.draft-empty{border:1px dashed var(--line);border-radius:9px;padding:18px 12px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.7}
+.redline-note{display:flex;gap:8px;align-items:flex-start;background:var(--red-bg);border:1px solid var(--red-line);color:#9b2c24;border-radius:10px;padding:8px 11px;font-size:11.5px;line-height:1.6;margin-top:10px}
+.redline-note b{white-space:nowrap}
+
+/* ---------- S4/S5 ---------- */
+.s4-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:14px;align-items:start}
+.coverage-table td:first-child{width:38px;text-align:center}
+.ok-mark{color:var(--green);font-weight:800}
+.review-q{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:10px 0;border-bottom:1px dashed var(--line)}
+.review-q:last-child{border-bottom:0}
+.review-q .qnum{width:22px;height:22px;border-radius:7px;background:var(--primary-2);color:var(--primary);font-size:11.5px;font-weight:800;display:grid;place-items:center;margin-top:3px}
+.review-q .qtext{font-size:13.5px;font-weight:600;margin-bottom:6px}
+.review-q .ta{min-height:58px}
+.feedback{border:1px solid var(--line);border-radius:11px;padding:11px 13px;background:#fbfcff;font-size:13px;line-height:1.65;margin-top:12px}
+.feedback .tri p{margin:3px 0}
+.feedback .ftag{font-size:10.5px;font-weight:700;color:var(--primary);margin-bottom:4px;display:inline-block}
+.state-done{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--green);font-weight:600;background:var(--green-bg);border:1px solid var(--green-line);border-radius:8px;padding:5px 10px}
+.mastery{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.ring{--p:78;width:118px;height:118px;border-radius:50%;background:conic-gradient(var(--primary) calc(var(--p) * 1%), #e8ecf5 0);display:grid;place-items:center;flex:none;position:relative}
+.ring::before{content:"";position:absolute;inset:9px;background:#fff;border-radius:50%}
+.ring-inner{position:relative;text-align:center;line-height:1.15}
+.ring-inner b{font-size:30px;font-weight:800;letter-spacing:-1px;display:block}
+.ring-inner span{font-size:10.5px;color:var(--muted)}
+.mastery-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;font-size:13px;flex:1 1 260px}
+.mastery-list .mk{color:var(--muted);font-size:12px;display:block}
+.mastery-list .mv{font-weight:700}
+.unlock-lock{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12.5px;background:#f8fafc;border:1px dashed var(--line);border-radius:9px;padding:9px 11px}
+.check-card{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px;line-height:1.9}
+.variant-stem{font-family:var(--math);font-size:16px;background:#fbfcff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;line-height:1.9;overflow-wrap:anywhere}
+.finish-banner{background:linear-gradient(120deg,#eef1ff,#eafaf2);border:1px solid var(--green-line);text-align:center;padding:26px 18px}
+.finish-banner h2{margin-bottom:6px}
+.retest{display:flex;gap:12px;flex-wrap:wrap}
+.retest-item{flex:1 1 200px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fbfcff;font-size:12.5px}
+.retest-item b{display:block;font-size:13.5px}
+
+/* ---------- 教师端 ---------- */
+.teacher-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.kpi .top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.kpi .num{font-size:27px;font-weight:800;letter-spacing:-.6px;line-height:1.25;margin-top:2px}
+.kpi .lbl{font-size:12px;color:var(--muted)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi .trend{font-size:11px;color:var(--green);background:var(--green-bg);border-radius:99px;padding:1px 7px;white-space:nowrap}
+/* 独立性三档堆叠条（C1 口径） */
+.stackbar{display:flex;height:11px;border-radius:99px;overflow:hidden;background:#eef1f7;margin:6px 0 7px}
+.stackbar i{display:block;height:100%}
+.stackbar .s1{background:#0e9f6e}
+.stackbar .s2{background:#e8a33d}
+.stackbar .s3{background:#d9605a}
+.indep-legend{display:flex;flex-direction:column;gap:2px;font-size:10.5px;color:var(--muted);line-height:1.5}
+.indep-legend b{color:var(--ink)}
+.indep-legend .lg{display:flex;align-items:center;gap:5px}
+.indep-legend .sw{width:7px;height:7px;border-radius:2px;flex:none}
+.indep-legend .sw.s1{background:#0e9f6e}
+.indep-legend .sw.s2{background:#e8a33d}
+.indep-legend .sw.s3{background:#d9605a}
+.bars{display:flex;flex-direction:column;gap:11px}
+.bar-row{display:grid;grid-template-columns:minmax(0,200px) minmax(0,1fr) 40px;gap:10px;align-items:center;font-size:12.5px}
+.bar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{height:10px;background:#eef1f7;border-radius:99px;overflow:hidden}
+.bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#5b6cf5,#7c3aed)}
+.bar-val{text-align:right;font-weight:700;font-size:12px;color:var(--muted)}
+.todo-list{display:flex;flex-direction:column;gap:7px}
+.todo-item{display:flex;gap:9px;align-items:flex-start;font-size:12.8px;background:#f8fafc;border:1px solid var(--line-2);border-radius:9px;padding:7px 10px}
+.todo-item .who{font-weight:700;white-space:nowrap}
+.student-table tr{cursor:pointer}
+.student-table tr:hover td{background:#f8faff}
+.student-table td{vertical-align:middle}
+.stu-name{font-weight:700}
+.stu-sub{font-size:11px;color:var(--muted)}
+.mini-progress{width:74px;height:7px;background:#e9edf5;border-radius:99px;overflow:hidden;display:inline-block;vertical-align:middle}
+.mini-progress i{display:block;height:100%;background:var(--primary);border-radius:99px}
+.queue-item{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+.queue-item:last-child{border-bottom:0}
+.queue-main{min-width:0;flex:1 1 220px}
+.queue-title{font-size:13.5px;font-weight:650}
+.queue-meta{font-size:11.5px;color:var(--muted)}
+.drawer-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.drawer-ava{width:44px;height:44px;border-radius:12px;background:var(--primary-2);color:var(--primary);display:grid;place-items:center;font-weight:800;font-size:17px}
+.timeline{list-style:none;padding:0;margin:8px 0 0;position:relative}
+.timeline li{position:relative;padding:0 0 12px 18px;font-size:12.5px;border-left:2px solid var(--line);margin-left:5px}
+.timeline li:last-child{border-left-color:transparent;padding-bottom:0}
+.timeline li::before{content:"";position:absolute;left:-6px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--primary);border:2px solid #fff}
+.timeline li.warn::before{background:#e69f00}
+.timeline b{font-weight:700}
+.table-wrap{overflow-x:auto;margin:0 -4px}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th,.table td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.table th{background:#f8fafc;color:var(--muted);font-size:11.5px;font-weight:700;white-space:nowrap}
+.table tr:last-child td{border-bottom:0}
+
+/* ---------- 流程总览 ---------- */
+.guide-card{background:linear-gradient(120deg,#141c2f,#26345a);color:#e8edf8;border:0}
+.guide-card h2{color:#fff}
+.guide-card p{color:#b8c4dc;font-size:13.5px}
+.guide-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+.guide-step{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:10px 12px;font-size:12.5px}
+.guide-step b{display:block;color:#fff;font-size:13.5px;margin-bottom:2px}
+.guide-step span{color:#aeb9cf}
+.guide-actions{display:flex;gap:8px;flex-wrap:wrap}
+.guide-card .btn-ghost{color:#dbe3f3;border-color:rgba(255,255,255,.25)}
+.guide-card .btn-primary{background:#5b6cf5}
+.lane{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;padding:13px 0;border-bottom:1px dashed var(--line);align-items:start}
+.lane:last-child{border-bottom:0}
+.lane-name{font-size:12px;font-weight:800;color:var(--primary);background:var(--primary-2);border-radius:8px;padding:6px 8px;text-align:center;line-height:1.4}
+.lane-name.teacher{color:#0f766e;background:#e7f7f3}
+.lane-name.ai{color:var(--purple);background:#f3eefe}
+.lane-steps{display:flex;gap:7px;flex-wrap:wrap}
+.lane-step{flex:1 1 150px;background:#f8fafc;border:1px solid var(--line-2);border-radius:9px;padding:7px 10px;font-size:12px;line-height:1.55;min-width:0}
+.lane-step b{display:block;font-size:12.5px}
+.lane-step span{color:var(--muted);font-size:11.5px}
+.flow-row{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin-top:12px}
+.flow-node{flex:1 1 112px;min-width:104px;background:#fbfcff;border:1px solid var(--line);border-radius:11px;padding:9px 10px;position:relative;display:flex;flex-direction:column;gap:2px}
+.flow-node .fn-id{font-size:10.5px;font-weight:800;color:var(--primary)}
+.flow-node .fn-name{font-size:12.5px;font-weight:700;line-height:1.4}
+.flow-node .fn-note{font-size:10.5px;color:var(--muted);line-height:1.4}
+.flow-node.hl{background:var(--primary-2);border-color:var(--primary-3)}
+.flow-node.teacher-node{background:#eefaf7;border-color:#c6efe4}
+.flow-node.teacher-node .fn-id{color:#0f766e}
+.flow-arrow{align-self:center;color:#a6b2c9;font-weight:800;font-size:15px;flex:none}
+.flow-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted)}
+.stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-top:12px}
+.stage-card{border:1px solid var(--line);border-top:3px solid var(--primary);border-radius:11px;padding:11px 13px;background:#fff}
+.stage-card .st-top{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:5px}
+.stage-card .st-id{font-size:11px;font-weight:800;color:var(--primary)}
+.stage-card h4{font-size:14px}
+.stage-card .st-meta{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:5px}
+.stage-card .st-meta b{color:var(--ink);font-weight:650}
+.red-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-top:12px}
+.red-card{background:var(--red-bg);border:1px solid var(--red-line);border-radius:11px;padding:13px 14px}
+.red-card .rc-id{font-size:10.5px;font-weight:800;color:var(--red);letter-spacing:.06em}
+.red-card h4{color:#9b2c24;margin:4px 0 5px;font-size:14px}
+.red-card p{font-size:12px;color:#7a2e28;line-height:1.65}
+.budget-table td:first-child{font-weight:800;color:var(--primary);white-space:nowrap}
+.formula{font-family:var(--math);font-size:1.06em;white-space:nowrap}
+.nowrap{white-space:nowrap}
+
+/* ---------- 设计边界 ---------- */
+.boundary-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+.ladder-row{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.ladder-row:last-child{border-bottom:0}
+.ladder-lv{font-weight:800;color:var(--primary);font-size:13.5px}
+.ladder-body{font-size:12.5px;line-height:1.65}
+.ladder-body b{font-size:13px}
+.d-table td:first-child{font-weight:800;white-space:nowrap;color:var(--primary)}
+.yes{color:var(--green);font-weight:700}
+.no{color:var(--red);font-weight:700}
+.review-tag{font-size:11px;border-radius:5px;padding:1px 6px;background:var(--amber-bg);color:var(--amber);font-weight:700;white-space:nowrap}
+
+/* ---------- 弹窗/Toast ---------- */
+#modal-root{position:fixed;inset:0;z-index:200}
+#modal-root[hidden]{display:none}
+.modal-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.55);display:grid;place-items:center;padding:20px;overflow-y:auto}
+.modal{position:relative;background:#fff;border-radius:18px;max-width:660px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 30px 80px -24px rgba(0,0,0,.6);animation:pop .18s ease}
+.modal.wide{max-width:780px}
+.modal h3{font-size:19px;margin:0 0 6px;padding-right:28px}
+.modal-x{position:absolute;top:11px;right:12px;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:17px;color:var(--muted);background:#f3f5fa}
+.modal-x:hover{background:#e8ecf4;color:var(--ink)}
+#toast-root{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:300;display:flex;flex-direction:column;gap:7px;align-items:center;pointer-events:none;width:max-content;max-width:92vw}
+.toast{background:#141c2f;color:#fff;font-size:13px;line-height:1.5;padding:9px 16px;border-radius:999px;box-shadow:0 10px 30px -10px rgba(0,0,0,.5);animation:toastIn .18s ease;display:flex;gap:7px;align-items:center;max-width:92vw}
+.toast::before{content:"";width:7px;height:7px;border-radius:50%;background:#34d399;flex:none}
+.toast.warn::before{background:#fbbf24}
+.toast.err::before{background:#f87171}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.hint-ladder{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:12px}
+.hint-line{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
+.hint-line:last-child{border-bottom:0}
+.hint-line.recommend{background:#f5f7ff}
+.hint-line .hl-lv{font-weight:800;color:var(--primary);font-size:13px}
+.hint-line .hl-body b{display:block;font-size:13px;margin-bottom:1px}
+.hint-line .hl-body span{color:var(--muted);font-size:11.5px;line-height:1.55;display:block}
+.hint-line.off{opacity:.72}
+.hint-line .hl-lock{display:block;font-size:11px;color:#b45309;margin-top:2px;line-height:1.5}
+.hint-line.off .hl-lv{color:#94a3b8}
+.refuse-steps{display:flex;flex-direction:column;gap:10px;margin:12px 0}
+.refuse-step{display:grid;grid-template-columns:80px minmax(0,1fr);gap:10px;align-items:start;font-size:13px;line-height:1.65}
+.refuse-step .rs-label{font-size:11px;font-weight:800;color:var(--red);background:var(--red-bg);border-radius:6px;padding:3px 7px;text-align:center;white-space:nowrap;margin-top:2px}
+.refuse-step .rs-label.ok{color:var(--green);background:var(--green-bg)}
+.alt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:6px}
+.alt-btn{text-align:left;background:#fbfcff;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:12.5px;line-height:1.55;transition:.15s}
+.alt-btn:hover{border-color:var(--primary-3);background:var(--primary-2)}
+.alt-btn b{display:block;font-size:13px;margin-bottom:1px}
+.alt-btn span{color:var(--muted);font-size:11.5px}
+.mini-explain{display:flex;flex-direction:column;gap:10px;margin:12px 0}
+.mini-explain .me{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;font-size:13px;line-height:1.7}
+.mini-explain .me .n{width:22px;height:22px;border-radius:50%;background:var(--amber-bg);color:var(--amber);font-size:11.5px;font-weight:800;display:grid;place-items:center;margin-top:2px}
+.mini-explain .me b{display:block;font-size:13px;color:#92400e}
+.mini-explain .me p{color:#4b5563}
+
+.grid > *, .stack > *{min-width:0}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:1020px){
+  .grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .s3-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"problem" "side" "draft"}
+  .s4-grid{grid-template-columns:minmax(0,1fr)}
+  .boundary-grid{grid-template-columns:minmax(0,1fr)}
+  .s0-wrap{grid-template-columns:minmax(0,1fr)}
+  .stage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .red-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .guide-steps{grid-template-columns:1fr}
+}
+@media (max-width:720px){
+  body{font-size:14.5px}
+  .wrap{padding:16px 12px 72px}
+  .topbar-inner{padding:8px 12px;gap:8px}
+  .brand-sub{display:none}
+  .tabs{order:3;width:100%;margin-left:0;flex-wrap:wrap;overflow:visible;padding-bottom:2px;gap:4px}
+  .tab-btn{padding:5px 8px;font-size:12px}
+  .explain-wrap{margin-left:auto;font-size:11.5px;gap:5px}
+  h2,.page-head h2{font-size:19px}
+  .card{padding:15px;border-radius:14px}
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+  .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .s0-wrap{margin-top:8px}
+  .demo-bar{padding:8px 10px;border-radius:10px}
+  .demo-bar-l .muted{display:none}
+  .demo-bar-r{gap:6px}
+  .page-chips span{font-size:10px;padding:2px 5px}
+  .step-pill{font-size:10.5px}
+  .s3-top{padding:9px 11px}
+  .phase-track{flex:1 1 100%}
+  .phase-step{flex:1 1 72px;min-width:66px;padding:5px 6px;font-size:10px}
+  .phase-step b{font-size:10.5px}
+  .chat-log{max-height:340px}
+  .bar-row{grid-template-columns:minmax(0,1fr) 36px;gap:4px 9px}
+  .bar-row .bar-track{grid-column:1 / -1;order:3}
+  .bar-val{text-align:right}
+  .mastery-list{grid-template-columns:1fr 1fr}
+  .ring{width:100px;height:100px}
+  .refuse-step{grid-template-columns:1fr;gap:4px}
+  .refuse-step .rs-label{justify-self:start}
+  .alt-grid{grid-template-columns:1fr}
+  .hint-line{grid-template-columns:44px minmax(0,1fr);gap:8px}
+  .hint-line .hl-use{grid-column:2}
+  .lane{grid-template-columns:1fr;gap:6px}
+  .lane-name{justify-self:start;padding:3px 10px}
+  .stage-grid{grid-template-columns:1fr}
+  .red-grid{grid-template-columns:1fr}
+  .flow-node{flex:1 1 46%;min-width:0}
+  .flow-arrow{display:none}
+  .table th,.table td{padding:7px 8px}
+  .hide-sm{display:none}
+  .mastery{gap:14px}
+  .modal{padding:17px;border-radius:15px;max-height:92vh}
+  .modal h3{font-size:17px}
+  .review-q{grid-template-columns:20px minmax(0,1fr)}
+  .toast{font-size:12px;padding:8px 13px}
+}
+@media (max-width:400px){
+  .wrap{padding:12px 10px 64px}
+  .s3-grid{gap:10px}
+  .card{padding:13px}
+  .stem-box{font-size:16px;padding:11px 12px}
+  .brand-title{font-size:14.5px}
+  .brand-mark{width:32px;height:32px}
+  .page-chips{display:none}
+}
+</style>
+</head>
+<body>
+<div id="v2-banner" style="position:sticky;top:0;z-index:9999;background:#111827;color:#fff;font:13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;padding:8px 14px;text-align:center">
+  本页是 <b>v1 离线流程原型</b>（不会调用后端）。六层引导优化版 → 打开 <b>06-前后端Demo/start-demo.cmd</b>，浏览器访问 <a href="http://127.0.0.1:8787/?demo=1" style="color:#93c5fd">http://127.0.0.1:8787/?demo=1</a>
+</div>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">证</div>
+      <div>
+        <div class="brand-title">证明陪练场</div>
+        <div class="brand-sub">数学分析证明题 · 分步引导原型 v1</div>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="原型页面切换">
+      <button class="tab-btn active" data-tab="flow">① 流程总览</button>
+      <button class="tab-btn" data-tab="student">② 学生端演示</button>
+      <button class="tab-btn" data-tab="teacher">③ 教师端看板</button>
+      <button class="tab-btn" data-tab="boundary">④ 设计边界与说明</button>
+    </nav>
+    <label class="explain-wrap" title="打开后，每个页面会显示设计意图与契约编号">
+      <span>讲解模式</span>
+      <span class="switch"><input type="checkbox" id="explain-toggle" aria-label="讲解模式"><span class="slider"></span></span>
+    </label>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ================= ① 流程总览 ================= -->
+  <section class="panel active" id="panel-flow">
+    <div class="card guide-card">
+      <div class="row-between" style="align-items:flex-start">
+        <div>
+          <div class="eyebrow" style="color:#8ea2ff">5 分钟看懂</div>
+          <h2>学生到底怎么用：卡住 → 被追问 → 自己写完</h2>
+          <p>AI 不写证明、不给最终答案、不写能直接抄的推导链；它只指出<b style="color:#fff">第一处可疑步骤</b>，按 L0–L4 给最小提示。教师看到的是过程数据，不是分数。</p>
+        </div>
+        <span class="tag tag-solid">原型 · 不接真实模型</span>
+      </div>
+      <div class="guide-steps">
+        <div class="guide-step"><b>1. 先走一遍学生端</b><span>点「② 学生端演示」→ 每一步点「填入示例作答」→ 提交，10 个节点约 3 分钟。</span></div>
+        <div class="guide-step"><b>2. 看两条红线怎么被守住</b><span>第 7 节点点「直接给我完整证明」，观察三段式拒绝；第 8 节点点「看不懂」看小白解释卡。</span></div>
+        <div class="guide-step"><b>3. 再看老师看到什么</b><span>「③ 教师端看板」：卡点 Top5、过程摘要、审核队列、导出 CSV（演示）。</span></div>
+      </div>
+      <div class="guide-actions">
+        <button class="btn btn-primary" data-goto-tab="student">进入学生端演示 →</button>
+        <button class="btn btn-ghost" data-goto-tab="teacher">看教师端看板</button>
+        <button class="btn btn-ghost" data-goto-tab="boundary">看设计边界</button>
+        <button class="btn btn-ghost" id="guide-explain-btn">打开讲解模式</button>
+      </div>
+      <div class="intent">给老师/甲方看的导航页，不进入学生真实界面。先看动线，再看学生端，最后看教师端与边界。<span class="ref">契约 §3 / §5</span></div>
+    </div>
+
+    <div class="section-head">
+      <div><h2>角色动线</h2><p>同一个班级里，学生、AI 陪练、教师各自只做自己那一段。</p></div>
+      <span class="chip">主流程 ≤16 轮 · ≤25 分钟</span>
+    </div>
+    <div class="card">
+      <div class="lane">
+        <div class="lane-name">学生</div>
+        <div class="lane-steps">
+          <div class="lane-step"><b>0 进班</b><span>邀请码 + 学号，30 秒</span></div>
+          <div class="lane-step"><b>1 看任务</b><span>本周必做 3 题、继续上次</span></div>
+          <div class="lane-step"><b>2 选题</b><span>章节 / 知识点 / 难度</span></div>
+          <div class="lane-step"><b>3 读题 + 核对定义</b><span>用自己的话说要证什么</span></div>
+          <div class="lane-step"><b>4 拆题</b><span>要证几件事、先攻哪件</span></div>
+          <div class="lane-step"><b>5 分步写证明</b><span>一步 + 一个依据，反复改写</span></div>
+          <div class="lane-step"><b>6 交终稿</b><span>看要点覆盖表（问句）</span></div>
+          <div class="lane-step"><b>7 复盘 + 迁移</b><span>五问复盘、3–5 条规律、变式题</span></div>
+        </div>
+      </div>
+      <div class="lane">
+        <div class="lane-name ai">AI 陪练</div>
+        <div class="lane-steps">
+          <div class="lane-step"><b>只核对定义</b><span>不讲课，最多 2 轮</span></div>
+          <div class="lane-step"><b>补漏、纠误解</b><span>不替学生解析题目</span></div>
+          <div class="lane-step"><b>只指第一个可疑点</b><span>追问依据，不判整题</span></div>
+          <div class="lane-step"><b>按 L0–L4 给最小提示</b><span>预算：L1 3 / L2 3 / L3 2 / L4 1</span></div>
+          <div class="lane-step"><b>拒绝完整证明</b><span>三段式拒绝 + 60 秒替代动作</span></div>
+          <div class="lane-step"><b>只核对覆盖</b><span>清单问句化，不给参考证明</span></div>
+          <div class="lane-step"><b>只校正表述</b><span>规律与自检卡由学生产出</span></div>
+        </div>
+      </div>
+      <div class="lane">
+        <div class="lane-name teacher">教师</div>
+        <div class="lane-steps">
+          <div class="lane-step"><b>建班发邀请码</b><span>本轮演示已预置班级</span></div>
+          <div class="lane-step"><b>审核题库</b><span>通过后学生可见</span></div>
+          <div class="lane-step"><b>看班级卡点</b><span>完成率、平均提示轮数、卡点 Top5</span></div>
+          <div class="lane-step"><b>抽看过程</b><span>提示消耗 / 拒绝 / 独立性</span></div>
+          <div class="lane-step"><b>导出数据</b><span>默认匿名 CSV</span></div>
+          <div class="lane-step"><b>组织前后测</b><span>D0 前测、D28–30 后测</span></div>
+        </div>
+      </div>
+      <div class="intent">三个角色各自的动作边界：AI 的每一步都被预算和红线限住，教师拿到的是过程数据而不是一个分数。<span class="ref">契约 §2 / §3 / §8</span></div>
+    </div>
+
+    <div class="section-head">
+      <div><h2>页面流转</h2><p>学生端 S0–S5 是一条直线；教师端 S6 独立；红色节点是两条被守住的边界。</p></div>
+    </div>
+    <div class="card">
+      <div class="flow-row">
+        <div class="flow-node hl"><span class="fn-id">S0</span><span class="fn-name">登录入班</span><span class="fn-note">邀请码 + 学号 · 演示模式</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node"><span class="fn-id">S1</span><span class="fn-name">今日任务</span><span class="fn-note">必做 3 题 · 继续上次 · 复测</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node"><span class="fn-id">S2</span><span class="fn-name">选题</span><span class="fn-note">章节 / 知识点 / 难度</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node hl"><span class="fn-id">S3</span><span class="fn-name">作答主界面</span><span class="fn-note">分步草稿 · 三段式对话 · 提示阶梯</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node"><span class="fn-id">S4</span><span class="fn-name">终稿核对</span><span class="fn-note">覆盖表（问句）+ 五问复盘</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node"><span class="fn-id">S5</span><span class="fn-name">完成页</span><span class="fn-note">掌握度 · 规律 · 自检卡 · 变式</span></div>
+      </div>
+      <div class="flow-sub">
+        <span class="tag tag-red">红线节点 1 · S3 拒绝完整证明</span>
+        <span class="tag tag-red">红线节点 2 · S4 不给参考证明</span>
+        <span class="tag tag-blue">S3 内含浮层：S3a 提示阶梯 / S3b 拒绝模板 / S3c 小白解释卡</span>
+      </div>
+      <div class="flow-row" style="margin-top:16px">
+        <div class="flow-node teacher-node"><span class="fn-id">S6</span><span class="fn-name">教师端看板</span><span class="fn-note">完成率 · 未完成名单 · 卡点 Top5 · 审核 · 导出</span></div>
+        <span class="flow-arrow">↔</span>
+        <div class="flow-node teacher-node"><span class="fn-id">S7</span><span class="fn-name">流程总览（本页）</span><span class="fn-note">给老师 / 甲方讲清楚用</span></div>
+        <span class="flow-arrow">·</span>
+        <div class="flow-node"><span class="fn-id">复测</span><span class="fn-name">一个月后提醒</span><span class="fn-note">7 天小复测 / 30 天大复测</span></div>
+      </div>
+      <div class="intent">页面流转与契约 §5 一一对应；原型里每条箭头都可点通（本页 → 学生端 → 教师端）。<span class="ref">契约 §5</span></div>
+    </div>
+
+    <div class="section-head">
+      <div><h2>六阶段状态机</h2><p>学生每进入一题，都在 P1–P6 这条链上走；每个阶段都有硬约束和退出条件。</p></div>
+      <span class="chip">主流程轮次硬顶 16 · 变式题独立预算 8</span>
+    </div>
+    <div class="card">
+      <div class="stage-grid">
+        <div class="stage-card"><div class="st-top"><span class="st-id">P1 知识激活</span><span class="tag">≤2 轮</span></div><h4>先核对定义，不讲课</h4><div class="st-meta"><b>进入：</b>进入题目<br><b>退出：</b>正确复述 1 条定义/定理，或带病前进<br><b>红线：</b>只核对，不讲知识</div></div>
+        <div class="stage-card"><div class="st-top"><span class="st-id">P2 学生拆题</span><span class="tag">≤2 轮</span></div><h4>学生自己说清要证什么</h4><div class="st-meta"><b>进入：</b>P1 退出<br><b>退出：</b>说出目标 + 至少 1 个约束<br><b>红线：</b>不列考点、不指方法</div></div>
+        <div class="stage-card"><div class="st-top"><span class="st-id">P3 分步推进</span><span class="tag">≤9 轮</span></div><h4>一步 + 一个依据，卡住才升提示</h4><div class="st-meta"><b>进入：</b>P2 退出<br><b>退出：</b>证明写完且每步有依据<br><b>红线：</b>每轮只推进一个认知动作</div></div>
+        <div class="stage-card"><div class="st-top"><span class="st-id">P4 终稿核对</span><span class="tag">1 轮</span></div><h4>覆盖表问句化，不给参考证明</h4><div class="st-meta"><b>进入：</b>P3 退出<br><b>退出：</b>覆盖 ≥80% + 能 3–5 句复述<br><b>红线：</b>清单必须都是问句</div></div>
+        <div class="stage-card"><div class="st-top"><span class="st-id">P5 五问复盘</span><span class="tag">1 轮</span></div><h4>把「写对」变成「说得出为什么对」</h4><div class="st-meta"><b>进入：</b>P4 退出<br><b>退出：</b>五问都有学生自己的答案<br><b>红线：</b>不代写、不复述参考证明</div></div>
+        <div class="stage-card"><div class="st-top"><span class="st-id">P6 迁移总结</span><span class="tag">≤2 轮</span></div><h4>规律、自检卡、变式题都由学生产出</h4><div class="st-meta"><b>进入：</b>P5 退出<br><b>退出：</b>规律 + 自检卡 + 变式提交<br><b>红线：</b>变式题只给题面</div></div>
+      </div>
+      <div class="flow-sub">
+        <span class="tag tag-amber">预算用尽后的 3 个出口</span>
+        <span class="chip">A 只做 L0 追问</span><span class="chip">B 保存草稿转教师工单</span><span class="chip">C 换同知识点更小题</span>
+        <span style="margin-left:auto"></span>
+        <span class="tag tag-blue">学生要答案 → 三段式拒绝，且必须给替代动作</span>
+      </div>
+      <div class="intent">状态机是开发与测试用的口径；原型里 S3 的进度条对应 P1–P6，学生走完全程大约 16 轮。<span class="ref">契约 §4</span></div>
+    </div>
+
+    <div class="section-head">
+      <div><h2>三条红线（原型里必须看得见）</h2><p>违反任意一条，这个产品就不成立。</p></div>
+    </div>
+    <div class="red-grid">
+      <div class="red-card"><div class="rc-id">RED LINE 01</div><h4>不给完整证明</h4><p>任何时候都不输出能连成证明的内容；AI 对话区只出现判断、提示、提问。</p></div>
+      <div class="red-card"><div class="rc-id">RED LINE 02</div><h4>不给最终答案</h4><p>不说「所以条件收敛」这类结论；学生要答案时走三段式拒绝。</p></div>
+      <div class="red-card"><div class="rc-id">RED LINE 03</div><h4>不写可抄的推导链</h4><p>一轮里不能有 ≥3 个可连成证明的逻辑步骤；禁止编号步骤、表格、证明骨架。</p></div>
+    </div>
+    <div class="intent">红线不是口号，原型里用三个可点击的位置演示：S3 的「我要答案」、S4 的覆盖表（问句）、AI 区永不出现完整证明。<span class="ref">契约 §1 / §6 / §7</span></div>
+  </section>
+
+
+  <!-- ================= ② 学生端演示 ================= -->
+  <section class="panel" id="panel-student">
+    <div class="demo-bar">
+      <div class="demo-bar-l">
+        <span class="live-dot"></span>
+        <strong>学生端演示</strong>
+        <span class="muted">AI 回复为预置脚本 · 不接真实模型 · 无外链</span>
+      </div>
+      <div class="demo-bar-r">
+        <div class="page-chips" id="page-chips" aria-hidden="true">
+          <span data-chip="S0">S0 登录</span><span data-chip="S1">S1 今日</span><span data-chip="S2">S2 选题</span><span data-chip="S3">S3 作答</span><span data-chip="S4">S4 终稿</span><span data-chip="S5">S5 完成</span>
+        </div>
+        <span class="step-pill" id="global-step-pill">节点 1 / 10</span>
+        <button class="btn btn-ghost btn-sm" id="reset-demo">重置演示</button>
+      </div>
+    </div>
+
+    <!-- ---------- S0 登录入班 ---------- -->
+    <div class="page active" id="page-S0">
+      <div class="s0-wrap">
+        <div class="card s0-card">
+          <div class="eyebrow">S0 · 登录入班</div>
+          <h2>30 秒进入你的班级</h2>
+          <p class="muted small">老师给你一个邀请码，用学号进班。做题过程会留下记录，用来让老师知道你在哪一步卡住——不排名、不公开。</p>
+          <div class="field">
+            <label for="invite">邀请码</label>
+            <input class="input" id="invite" value="MA2026-03" autocomplete="off" placeholder="例如 MA2026-03">
+            <span class="hint">示例班级：罗老师 · 数学分析 A 班</span>
+          </div>
+          <div class="field">
+            <label for="sid">学号</label>
+            <input class="input" id="sid" value="2026103107" autocomplete="off" placeholder="你的学号">
+            <span class="hint">学号只用于班级内对应，导出时默认匿名。</span>
+          </div>
+          <div class="field-error" id="s0-error" style="display:none">请先填写邀请码和学号；演示可以直接点下面的「演示模式」。</div>
+          <div class="row">
+            <button class="btn btn-primary" id="btn-enter-class">进入班级</button>
+            <button class="btn btn-soft" id="btn-demo-mode">演示模式：一键进入 →</button>
+          </div>
+          <p class="privacy">隐私说明：只记录做题过程数据（步骤、提示、时间），不采集与本课程无关的信息；教师导出默认匿名。</p>
+          <div class="intent">入班只花 30 秒；「演示模式」降低演示门槛，真实产品走邀请码 + 学号。<span class="ref">契约 §5 S0</span></div>
+        </div>
+        <div class="card s0-side">
+          <div class="eyebrow">这个产品是什么</div>
+          <h3 style="margin-top:4px">不替你写证明的陪练</h3>
+          <div class="mini-list">
+            <div class="mini-item"><span class="mini-num">1</span><div><b>你写一步，它只看一步</b><br><span class="muted small">AI 只指出第一处可疑的地方，不整题判分。</span></div></div>
+            <div class="mini-item"><span class="mini-num">2</span><div><b>卡住才给最小提示</b><br><span class="muted small">提示分 L0–L4 五级，次数有限，逐级释放。</span></div></div>
+            <div class="mini-item"><span class="mini-num">3</span><div><b>完整证明永远由你写</b><br><span class="muted small">终稿只出现在你的草稿区，AI 对话区不会出现。</span></div></div>
+          </div>
+          <div class="intent">三句话解释产品边界，避免老师/甲方误以为是「解题器」。<span class="ref">契约 §1 / §6</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- S1 今日任务 ---------- -->
+    <div class="page" id="page-S1">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">S1 · 今日任务</div>
+          <h2>王同学，今天从上次卡住的地方接着来</h2>
+          <p>10 月 31 日 周五 · 本周必做 3 题，已完成 1 题</p>
+          <p class="small muted" style="margin-top:2px">今晚写作业卡住 / 考前复习，都可以从这道题开始。</p>
+        </div>
+        <button class="btn btn-primary" id="s1-to-s2">进入选题 →</button>
+      </div>
+      <div class="grid grid-3" style="align-items:stretch">
+        <div class="card hi-card">
+          <div class="eyebrow">本周必做</div>
+          <div class="mini-kpi" style="margin-top:6px">1 <small>/ 3 题</small></div>
+          <div class="progress-track"><div class="progress-fill" style="width:33%"></div></div>
+          <p class="small muted">再完成 2 题就达成本周任务；截止周日 23:59。</p>
+        </div>
+        <div class="card">
+          <div class="row-between"><span class="eyebrow">继续上次</span><span class="tag tag-amber">进行中</span></div>
+          <h3 style="margin:6px 0 2px">第 2 题 · 判断级数收敛性</h3>
+          <p class="small muted">上次停在 P3 分步推进 · 18 分钟前 · 草稿已保存</p>
+          <div class="row" style="margin-top:10px"><button class="btn btn-primary btn-sm" id="s1-continue">继续作答 →</button><span class="tag">节点 1 / 10</span></div>
+        </div>
+        <div class="card">
+          <div class="row-between"><span class="eyebrow">复测提醒</span><span class="tag tag-blue">7 天后</span></div>
+          <h3 style="margin:6px 0 2px">p 级数判别规则</h3>
+          <p class="small muted">上次这条规则用错 1 次；7 天后做 1 道小复测。</p>
+          <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="s1-review-info">看复测安排</button></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="row-between"><h3>本周任务清单</h3><span class="chip">必做 3 题 · 选练 2 题</span></div>
+        <div style="margin-top:4px">
+          <div class="task-line"><span class="task-idx done">✓</span><div><div class="task-name">第 1 题 · 数列极限的 ε-N 证明</div><div class="task-meta">极限 · 基础 · 10 月 28 日完成 · 独立完成</div></div><span class="tag tag-green">已提交</span></div>
+          <div class="task-line"><span class="task-idx now">2</span><div><div class="task-name">第 2 题 · 交错级数与条件收敛（当前演示题）</div><div class="task-meta">级数 · 进阶 · 必做 · 进行中</div></div><button class="btn btn-soft btn-sm" id="s1-continue-2">继续</button></div>
+          <div class="task-line"><span class="task-idx">3</span><div><div class="task-name">第 3 题 · 一元函数连续性与一致连续</div><div class="task-meta">一元微分 · 进阶 · 必做 · 未开始</div></div><span class="tag">未开始</span></div>
+        </div>
+        <div class="intent">先给「今天做什么」，不先甩题库：必做 + 继续上次 + 复测提醒形成学习节奏。<span class="ref">契约 §3 步 1 / §5 S1</span></div>
+      </div>
+    </div>
+
+    <!-- ---------- S2 选题 ---------- -->
+    <div class="page" id="page-S2">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">S2 · 选题</div>
+          <h2>按章节、知识点、难度挑一道</h2>
+          <p>老师布置的必做题带「必做」标签；选练题不计入本周完成率。</p>
+        </div>
+        <button class="btn btn-ghost" id="s2-to-s1">← 返回今日任务</button>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="filters" id="filters">
+          <div class="filter-line" data-group="chapter"><span class="flabel">章节</span><button class="fchip active" data-filter="chapter" data-value="all">全部</button><button class="fchip" data-filter="chapter" data-value="series">级数</button><button class="fchip" data-filter="chapter" data-value="limit">极限</button><button class="fchip" data-filter="chapter" data-value="calculus">一元微分</button></div>
+          <div class="filter-line" data-group="kp"><span class="flabel">知识点</span><button class="fchip active" data-filter="kp" data-value="all">全部</button><button class="fchip" data-filter="kp" data-value="leibniz">莱布尼茨判别法</button><button class="fchip" data-filter="kp" data-value="cond">条件收敛</button><button class="fchip" data-filter="kp" data-value="p">p 级数</button></div>
+          <div class="filter-line" data-group="diff"><span class="flabel">难度</span><button class="fchip active" data-filter="diff" data-value="all">全部</button><button class="fchip" data-filter="diff" data-value="basic">基础</button><button class="fchip" data-filter="diff" data-value="mid">进阶</button><button class="fchip" data-filter="diff" data-value="hard">挑战</button></div>
+          <div class="filter-line" data-group="type"><span class="flabel">类型</span><button class="fchip active" data-filter="type" data-value="all">全部</button><button class="fchip" data-filter="type" data-value="required">必做</button><button class="fchip" data-filter="type" data-value="optional">选练</button></div>
+        </div>
+        <div class="row-between" style="margin-top:10px">
+          <span class="result-count" id="result-count">共 4 题 · 当前显示 4 题</span>
+          <button class="btn btn-ghost btn-sm" id="reset-filters">清空筛选</button>
+        </div>
+        <div class="intent">选题只做三件事：找到老师布置的题、按薄弱知识点筛、看难度；不在这里讲解法。<span class="ref">契约 §3 步 2 / §5 S2</span></div>
+      </div>
+      <div class="grid grid-2" id="problem-grid">
+        <div class="card problem-card" data-problem="demo" data-chapter="series" data-kp="leibniz cond p" data-diff="mid" data-type="required">
+          <div class="p-head"><div class="p-title">第 2 题 · 交错级数与条件收敛</div><div class="row"><span class="tag tag-red">必做</span><span class="tag tag-blue">进阶</span></div></div>
+          <div class="p-stem">判断级数 ∑<sub>n=1</sub><sup>∞</sup> (−1)<sup>n−1</sup>/√n 的收敛性；若收敛，是条件收敛还是绝对收敛？证明你的结论。</div>
+          <div class="row small muted"><span>级数</span><span>·</span><span>莱布尼茨判别法 / 条件收敛 / p 级数</span><span>·</span><span>预计 22 分钟</span></div>
+          <div class="p-foot"><button class="btn btn-primary btn-sm" data-start-demo>开始作答 →</button><button class="btn btn-ghost btn-sm" data-preview="demo">预览题面</button><span class="tag tag-green">演示完整开放</span></div>
+          <div class="preview" id="preview-demo">考点不展示给学生；题面与草稿区一一对应。进入后先核对「条件收敛」定义。</div>
+        </div>
+        <div class="card problem-card" data-problem="p3" data-chapter="limit" data-kp="p" data-diff="basic" data-type="required">
+          <div class="p-head"><div class="p-title">第 3 题 · 一元函数连续与一致连续</div><div class="row"><span class="tag tag-red">必做</span><span class="tag tag-blue">进阶</span></div></div>
+          <div class="p-stem">设 f(x)=1/x，判断它在 (0,1) 上是否一致连续，并证明你的结论。</div>
+          <div class="row small muted"><span>一元微分</span><span>·</span><span>一致连续 / ε-δ</span><span>·</span><span>预计 18 分钟</span></div>
+          <div class="p-foot"><button class="btn btn-ghost btn-sm" data-preview="p3">预览题面</button><span class="tag">演示版暂只开放第 2 题</span></div>
+          <div class="preview" id="preview-p3">演示版只完整开放第 2 题脚本；其他题用来展示选题结构。</div>
+        </div>
+        <div class="card problem-card" data-problem="p1" data-chapter="limit" data-kp="p" data-diff="basic" data-type="optional">
+          <div class="p-head"><div class="p-title">选练 A · 数列极限的 ε-N 证明</div><div class="row"><span class="tag">选练</span><span class="tag tag-blue">基础</span></div></div>
+          <div class="p-stem">用 ε-N 定义证明 lim<sub>n→∞</sub> (2n+1)/n = 2。</div>
+          <div class="row small muted"><span>极限</span><span>·</span><span>ε-N 定义</span><span>·</span><span>预计 12 分钟</span></div>
+          <div class="p-foot"><button class="btn btn-ghost btn-sm" data-preview="p1">预览题面</button><span class="tag">演示版暂只开放第 2 题</span></div>
+          <div class="preview" id="preview-p1">用定义证明极限：先写清「任意 ε>0」与「存在 N」的量词顺序。</div>
+        </div>
+        <div class="card problem-card" data-problem="p4" data-chapter="series" data-kp="p cond" data-diff="hard" data-type="optional">
+          <div class="p-head"><div class="p-title">选练 B · 绝对收敛与重排</div><div class="row"><span class="tag">选练</span><span class="tag tag-amber">挑战</span></div></div>
+          <div class="p-stem">判断级数 ∑<sub>n=1</sub><sup>∞</sup> (−1)<sup>n−1</sup>/n<sup>2</sup> 的收敛性，并说明是否绝对收敛。</div>
+          <div class="row small muted"><span>级数</span><span>·</span><span>p 级数 / 绝对收敛</span><span>·</span><span>预计 10 分钟</span></div>
+          <div class="p-foot"><button class="btn btn-ghost btn-sm" data-preview="p4">预览题面</button><span class="tag">演示版暂只开放第 2 题</span></div>
+          <div class="preview" id="preview-p4">题干与完成页变式题同一知识点，用来展示「同知识点、不同题面」。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- S3 作答主界面 ---------- -->
+    <div class="page" id="page-S3">
+      <div class="breadcrumb"><span>S2 选题</span><span class="sep">›</span><strong>S3 作答</strong><span class="sep">·</span><span>第 2 题（必做）</span><button class="lesson-link" id="back-to-s1">保存并返回今日任务</button></div>
+      <div class="s3-top">
+        <div class="s3-top-l">
+          <span class="step-pill" id="s3-step-pill">节点 1 / 10</span>
+          <span class="timer" id="s3-timer">00:00</span>
+          <span class="chip" id="s3-phase-chip">P1 知识激活</span>
+        </div>
+        <div class="phase-track" id="phase-track">
+          <div class="phase-step" data-phase="1"><b>P1 激活</b>核对定义</div>
+          <div class="phase-step" data-phase="2"><b>P2 拆题</b>说清目标</div>
+          <div class="phase-step" data-phase="3"><b>P3 分步</b>一步一依据</div>
+          <div class="phase-step" data-phase="4"><b>P4 核对</b>覆盖表</div>
+          <div class="phase-step" data-phase="5"><b>P5 复盘</b>五问</div>
+          <div class="phase-step" data-phase="6"><b>P6 迁移</b>规律+变式</div>
+        </div>
+      </div>
+      <div class="s3-grid">
+        <div class="area-problem card">
+          <div class="card-title" style="margin-bottom:8px"><span class="tag tag-red">必做</span><h3>第 2 题 · 判断级数的收敛性</h3><span class="tag tag-blue">级数</span></div>
+          <div class="stem-box">判断级数 <span class="formula">∑<sub>n=1</sub><sup>∞</sup> (−1)<sup>n−1</sup>/√n</span> 的收敛性；若收敛，是条件收敛还是绝对收敛？<span class="stem-note">证明你的结论。每一步都要写出依据。</span></div>
+          <div class="problem-meta"><span class="tag">级数</span><span class="tag">莱布尼茨判别法</span><span class="tag">条件收敛</span><span class="tag tag-amber">预计 22 分钟</span></div>
+          <button class="lesson-link" id="open-def" style="margin-top:10px">查看「条件收敛 / p 级数」定义原文（只核对，不讲课）</button>
+          <div class="intent" id="s3-current-intent">先核对定义，不讲课；AI 不替学生解析题目。<span class="ref">契约 §4 P1 / §7 节点 1</span></div>
+        </div>
+        <div class="area-side">
+          <div class="card s3-side-card">
+            <div class="chat-head">
+              <span class="ai-ava">AI</span><strong>AI 陪练</strong>
+              <span class="tag">不写证明 · 只给最小提示</span>
+            </div>
+            <div class="chat-log" id="chat-log"></div>
+            <div class="chat-compose" id="s3-compose"></div>
+          </div>
+          <div class="card hint-card">
+            <div class="row-between"><h3 style="font-size:15px">提示阶梯</h3><span class="tag" id="hint-left">信息型提示剩余 9 次</span></div>
+            <div class="budget-chips" id="budget-chips"></div>
+            <div class="row" style="margin-top:10px"><button class="btn btn-soft btn-sm" id="open-hints">打开提示阶梯 · 看 L0–L4 与剩余次数</button></div>
+            <div class="intent">提示逐级释放、可计数；升级只在同一错误点连续失败时发生，独立改对后回 L0。<span class="ref">契约 §6 / §7 节点 5</span></div>
+          </div>
+          <div class="card">
+            <div class="quick-actions"><button class="btn btn-danger" id="ask-answer">我要答案</button><button class="btn btn-amber" id="cant-understand">看不懂</button></div>
+            <div class="redline-note"><b>红线</b><span>AI 对话区永不出现完整证明/最终答案；你的终稿只出现在「我的草稿」区。</span></div>
+            <div class="intent">两个高风险入口都留在页面上，看 AI 怎么接住它们：拒绝 + 替代动作、小白解释 + 回严格表述。<span class="ref">契约 §6.1 / §6.2</span></div>
+          </div>
+        </div>
+        <div class="area-draft card draft-wrap">
+          <div class="draft-head"><h3>我的草稿 / 终稿</h3><span class="save">已自动保存</span><span class="tag tag-blue">只有你能看到</span></div>
+          <ul class="draft-list" id="draft-list"></ul>
+          <div class="redline-note" style="margin-top:12px"><b>说明</b><span>草稿由你自己逐步写；AI 只对单步提问，不会把整份证明写进对话区。</span></div>
+          <div class="intent">评分依据是这里的学生终稿；教师端看到的是草稿过程与提示消耗，不展示 AI 的「标准答案」。<span class="ref">契约 §1 / §7</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- S4 终稿核对 + 复盘卡 ---------- -->
+    <div class="page" id="page-S4">
+      <div class="breadcrumb"><span>S3 作答</span><span class="sep">›</span><strong>S4 终稿核对 + 复盘</strong></div>
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">S4 · 终稿核对 + 五问复盘</div>
+          <h2>交终稿：只核对覆盖，不给参考证明</h2>
+          <p>覆盖表全部是问句；AI 不补写、不展示标准证明。</p>
+        </div>
+        <span class="tag tag-blue" id="s4-step-pill" style="font-size:12px;padding:5px 11px">节点 9 / 10</span>
+      </div>
+      <div class="s4-grid">
+        <div class="card">
+          <div class="card-title"><h3>你的终稿（学生自己写）</h3><span class="tag tag-green">只有你能看到</span></div>
+          <p class="small muted" style="margin-bottom:10px">这是你前面几步拼起来的终稿，可以继续改；提交后 AI 只对照要点清单给覆盖反馈。</p>
+          <textarea id="final-draft" class="ta ta-lg" rows="8" placeholder="把你在 S3 写的几步整理成终稿……"></textarea>
+          <div class="compose-actions">
+            <button class="btn btn-soft" id="fill-final">填入示例终稿（演示：学生示例稿，非 AI 生成）</button>
+            <button class="btn btn-primary" id="submit-final">提交终稿，核对要点覆盖</button>
+          </div>
+          <div id="coverage-box" style="display:none">
+            <div class="divider"></div>
+            <div class="row-between"><h4>要点覆盖表（全部问句化）</h4><span class="tag tag-green">覆盖 5 / 5 ≥ 80%</span></div>
+            <div class="table-wrap" style="margin-top:8px">
+              <table class="table coverage-table">
+                <thead><tr><th>✓</th><th>AI 内部要点 → 给你的问句</th></tr></thead>
+                <tbody id="coverage-rows"></tbody>
+              </table>
+            </div>
+            <div class="feedback" id="s4-ai"></div>
+            <div class="redline-note"><b>红线</b><span>这里不会出现参考证明或「标准答案」；缺项只用问句补，由你自己改。</span></div>
+          </div>
+          <div class="intent">覆盖表必须问句化：内部要点是陈述句，学生只能看到问句，避免变成可抄的证明骨架。<span class="ref">契约 §7.2 / §7 节点 9</span></div>
+        </div>
+        <div class="card" id="recite-card" style="display:none">
+          <div class="card-title"><h3>用 3–5 句话说清你的证明主线</h3><span class="tag tag-amber">P4 退出条件</span></div>
+          <p class="small muted" style="margin-bottom:10px">不是重写证明，是说出「先做什么、再做什么、为什么」。</p>
+          <textarea id="recite-input" class="ta" rows="4" placeholder="例如：先证原级数收敛，再证绝对值级数发散……"></textarea>
+          <div class="compose-actions"><button class="btn btn-soft" id="fill-recite">填入示例复述</button><button class="btn btn-primary" id="submit-recite">提交复述</button></div>
+          <div id="recite-feedback"></div>
+          <div class="intent">能复述主线才算真的会；AI 只核对顺序与理由，不代写。<span class="ref">契约 §4 P4</span></div>
+        </div>
+      </div>
+      <div class="card" id="review-card" style="display:none;margin-top:14px">
+        <div class="card-title"><h3>五问复盘卡</h3><span class="tag tag-amber">唯一允许一次列多问的地方</span></div>
+        <p class="small muted">用你自己的证明回答，AI 只纠偏、不代写。答完这五问，这题才算真正收口。</p>
+        <div id="review-fields" style="margin-top:6px"></div>
+        <div class="compose-actions"><button class="btn btn-soft" id="fill-review">填入示例答案</button><button class="btn btn-primary" id="submit-review">提交复盘卡</button></div>
+        <div id="review-feedback"></div>
+        <div class="intent">复盘卡是「完整讲解」的替代物：问句列出，学生一次作答，不给任何参考证明。<span class="ref">契约 §7.3</span></div>
+      </div>
+      <div id="s4-done" class="card finish-banner" style="display:none;margin-top:14px">
+        <h2>P4 / P5 完成</h2>
+        <p class="muted" style="margin:6px 0 14px">覆盖 5/5 · 五问都有你自己的回答 · 下一步进入迁移总结与变式题。</p>
+        <button class="btn btn-primary" id="goto-s5">进入完成页 S5 →</button>
+      </div>
+    </div>
+
+    <!-- ---------- S5 完成页 ---------- -->
+    <div class="page" id="page-S5">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">S5 · 完成页</div>
+          <h2>这一题你走完了整条链</h2>
+          <p>掌握度、规律、自检卡、变式题都由你的过程数据生成或由你自己填写。</p>
+        </div>
+        <span class="tag tag-blue" id="s5-step-pill" style="font-size:12px;padding:5px 11px">节点 10 / 10</span>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <div class="mastery">
+            <div class="ring" id="mastery-ring"><div class="ring-inner"><b id="mastery-score">78</b><span>掌握度 / 100</span></div></div>
+            <div style="flex:1 1 280px;min-width:0">
+              <div class="row-between"><h3>半独立完成（使用 L1–L2 提示）</h3><span class="tag tag-amber">非完全独立</span></div>
+              <p class="small muted" style="margin:4px 0 10px">覆盖 5/5 · 用时 <span id="s5-time" class="mono">--:--</span> · 轮次 <span id="s5-rounds">--</span> / 16 · 下一步：3–5 条规律 + 自检卡 + 1 道变式题。</p>
+              <div class="mastery-list">
+                <div><span class="mk">要点覆盖</span><span class="mv">5 / 5</span></div>
+                <div><span class="mk">信息型提示</span><span class="mv" id="s5-hints">L2 × 1</span></div>
+                <div><span class="mk">小白解释</span><span class="mv" id="s5-xiaobai">× 1 / 2</span></div>
+                <div><span class="mk">拒绝完整证明</span><span class="mv" id="s5-refuse">1 次（已给替代动作）</span></div>
+                <div><span class="mk">独立性（C1 三档）</span><span class="mv">半独立 · L1–L2</span></div>
+                <div><span class="mk">复测安排</span><span class="mv">7 天 / 30 天</span></div>
+              </div>
+              <p class="small" style="margin:8px 0 0;color:#8a4b08;background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:8px;padding:6px 10px"><b>薄弱点：</b>极限为 0 的依据 / p 级数适用范围（来自本题卡点与提示记录）</p>
+            </div>
+          </div>
+          <div class="intent">掌握度不是考试分数：它同时看覆盖、独立性、提示消耗；教师端看到的也是这些过程字段。<span class="ref">契约 §8 指标</span></div>
+        </div>
+
+        <div class="grid grid-2" style="align-items:start">
+          <div class="card">
+            <div class="card-title"><h3>① 写 3–5 条可复用规律</h3><span class="tag tag-purple">由学生产出</span></div>
+            <p class="small muted" style="margin-bottom:8px">每条 ≤20 字，必须是「可执行动作」，不是名词。</p>
+            <textarea id="rules-input" class="ta" rows="5" placeholder="每行一条，例如：交错级数先逐条核对莱布尼茨三个条件"></textarea>
+            <div class="compose-actions"><button class="btn btn-soft" id="fill-rules">填入示例规律</button><button class="btn btn-primary" id="submit-rules">提交规律</button></div>
+            <div class="feedback" id="rules-feedback"></div>
+            <div class="intent">不让 AI 总结：规律必须由学生自己压缩出来，AI 只校正表述。<span class="ref">契约 §7.4</span></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><h3>② 做一张自检卡</h3><span class="tag tag-purple">≤6 行</span></div>
+            <p class="small muted" style="margin-bottom:8px">按做题顺序排列，下次遇到同类题先看这张卡。</p>
+            <textarea id="check-input" class="ta" rows="5" placeholder="先判断要证几件事 → 再选判别法 → 核条件 → 写结论"></textarea>
+            <div class="compose-actions"><button class="btn btn-soft" id="fill-check">填入示例自检卡</button><button class="btn btn-primary" id="submit-check">提交自检卡</button></div>
+            <div class="feedback" id="check-feedback"></div>
+            <div class="intent">自检卡是考试前的「可带走物」，不包含本题具体计算。<span class="ref">契约 §7.4</span></div>
+          </div>
+        </div>
+
+        <div class="card" id="variant-card">
+          <div class="card-title"><h3>③ 变式题（只给题面）</h3><span class="tag tag-amber">独立预算 ≤8 轮</span></div>
+          <div class="variant-stem">判断级数 ∑<sub>n=1</sub><sup>∞</sup> (−1)<sup>n−1</sup>/n<sup>2</sup> 的收敛性，并说明它是条件收敛还是绝对收敛。</div>
+          <div class="unlock-lock" id="variant-lock" style="margin-top:10px"><span class="dot amber"></span><span>先提交「规律」和「自检卡」，变式题才会解锁（顺序对应 P6 的收口条件）。</span></div>
+          <div id="variant-body" style="display:none;margin-top:10px">
+            <textarea id="variant-input" class="ta" rows="3" placeholder="写下你的答案和依据；AI 只给对错和一条追问。"></textarea>
+            <div class="compose-actions"><button class="btn btn-soft" id="fill-variant">填入示例作答</button><button class="btn btn-primary" id="submit-variant">提交变式题</button></div>
+            <div id="variant-feedback"></div>
+          </div>
+          <div class="intent">变式题只给题面、不给提示；用它检验「方法能不能带走」，而不是记住本题。<span class="ref">契约 §7.5 / §7 节点 10</span></div>
+        </div>
+
+        <div class="card" id="retest-card" style="display:none">
+          <div class="card-title"><h3>复测提醒已生成</h3><span class="tag tag-green">闭环</span></div>
+          <div class="retest">
+            <div class="retest-item"><b>7 天后 · 小复测</b><span class="muted">重做 p 级数判别 1 题；上次这条规则用错过 1 次。</span></div>
+            <div class="retest-item"><b>30 天后 · 大复测</b><span class="muted">条件收敛 + 绝对收敛混合 2 题，检验方法保留。</span></div>
+            <div class="retest-item"><b>提醒方式</b><span class="muted">下次登录首页提醒（演示为静态）；教师端可见复测完成率。</span></div>
+          </div>
+          <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="add-reminder">加入复习提醒</button><span class="small muted" id="reminder-state"></span></div>
+          <div class="intent">一个月后复测提醒把单次练习变成长期保留；具体间隔待罗老师确认（D7）。<span class="ref">契约 §10 D7</span></div>
+        </div>
+
+        <div class="card finish-banner" id="finish-card" style="display:none">
+          <h2>演示完成 · 10 / 10 节点</h2>
+          <p class="muted" style="margin:6px 0 14px">你刚刚走完了：读题 → 拆题 → 分步写 → 卡住求助 → 要答案被拒 → 绝对收敛 → 终稿 → 复盘 → 规律 → 变式。</p>
+          <div class="row" style="justify-content:center">
+            <button class="btn btn-primary" id="finish-reset">重置演示，再看一遍</button>
+            <button class="btn btn-soft" id="finish-teacher">看教师端数据 →</button>
+          </div>
+          <div class="intent">完成页不只是庆祝：掌握度、规律、自检卡、变式、复测五项都要落到可复习的物件上。<span class="ref">契约 §3 步 8 / §5 S5</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ③ 教师端看板 ================= -->
+  <section class="panel" id="panel-teacher">
+    <div class="teacher-head">
+      <div>
+        <div class="eyebrow">S6 · 教师端</div>
+        <h2>数学分析 A 班 · 本周过程数据</h2>
+        <p>罗老师 · 36 人 · 第 2 周 · 数据为演示用 mock</p>
+      </div>
+      <div class="row">
+        <div class="row" id="period-switch">
+          <button class="fchip active" data-period="week">本周</button>
+          <button class="fchip" data-period="month">本月</button>
+        </div>
+        <button class="btn btn-primary" id="export-csv">导出 CSV（演示）</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid grid-4">
+      <div class="kpi"><div class="top"><span class="lbl">本周完成率</span><span class="trend">+8%</span></div><div class="num" id="kpi-completion">72%</div><div class="lbl" id="kpi-completion-sub">26 / 36 人完成必做题</div></div>
+      <div class="kpi"><div class="top"><span class="lbl">未完成名单</span><span class="tag tag-red">需关注</span></div><div class="num" id="kpi-unfinished">10</div><div class="lbl">其中 3 人连续 2 周未动</div></div>
+      <div class="kpi" title="同题平均＝单道题内 L1–L4 提示消耗均值；跨题平均＝多题累计后按题统计；提示依赖＝是否使用 L3/L4 或出现粘贴标记。提示次数高不等于不认真，反映题目难度与卡点。"><div class="top"><span class="lbl">平均提示轮数</span><span class="tag tag-blue">每 16 轮</span></div><div class="num" id="kpi-hint">4.8</div><div class="lbl">同题平均 4.8 次（跨题 5.3 次）<br><span style="color:#94a3b8">提示依赖需结合独立性三档看</span></div></div>
+      <div class="kpi"><div class="top"><span class="lbl">独立性分布（C1 三档）</span><span class="tag tag-green">过程指标</span></div><div class="stackbar" id="indep-bar"><i class="s1" style="width:38%"></i><i class="s2" style="width:34%"></i><i class="s3" style="width:28%"></i></div><div class="indep-legend"><span class="lg"><i class="sw s1"></i><b id="indep-p1">38%</b> 独立 · 仅 L0 追问</span><span class="lg"><i class="sw s2"></i><b id="indep-p2">34%</b> 半独立 · L1–L2</span><span class="lg"><i class="sw s3"></i><b id="indep-p3">28%</b> 依赖 · L3–L4 或粘贴</span></div></div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:14px;align-items:start">
+      <div class="card">
+        <div class="card-title"><h3>卡住的知识点 Top 5</h3><span class="tag">按卡点人数占比</span></div>
+        <p class="small muted" style="margin-bottom:12px">统计口径：同一知识点连续 2 轮无进展，或触发 L2 及以上提示。</p>
+        <div class="bars" id="bars">
+          <div class="bar-row"><span class="bar-label">莱布尼茨的单调性条件</span><div class="bar-track"><div class="bar-fill" style="width:32%"></div></div><span class="bar-val">32%</span></div>
+          <div class="bar-row"><span class="bar-label">条件收敛的定义</span><div class="bar-track"><div class="bar-fill" style="width:27%"></div></div><span class="bar-val">27%</span></div>
+          <div class="bar-row"><span class="bar-label">p 级数适用范围</span><div class="bar-track"><div class="bar-fill" style="width:19%"></div></div><span class="bar-val">19%</span></div>
+          <div class="bar-row"><span class="bar-label">极限为 0 的依据</span><div class="bar-track"><div class="bar-fill" style="width:13%"></div></div><span class="bar-val">13%</span></div>
+          <div class="bar-row"><span class="bar-label">五问复盘第 3 问</span><div class="bar-track"><div class="bar-fill" style="width:9%"></div></div><span class="bar-val">9%</span></div>
+        </div>
+        <div class="intent">老师看到的不是分数，而是「卡在哪」：卡点 Top5 直接指向下周要补的知识点。<span class="ref">契约 §8 指标</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>未完成名单</h3><span class="tag tag-red" id="unfinished-count">10 人</span></div>
+        <p class="small muted" style="margin-bottom:10px">本周必做 3 题未交齐；点「查看全部」可看每人的最后活动时间。</p>
+        <div class="todo-list">
+          <div class="todo-item"><span class="dot red"></span><div><span class="who">赵一</span> · 0 / 3 题 · 最后活动 6 天前</div><span class="tag">未开始</span></div>
+          <div class="todo-item"><span class="dot amber"></span><div><span class="who">陈默</span> · 1 / 3 题 · 卡在「p 级数」</div><span class="tag tag-amber">卡点</span></div>
+          <div class="todo-item"><span class="dot amber"></span><div><span class="who">周然</span> · 1 / 3 题 · 提示轮数 11（偏高）</div><span class="tag tag-amber">高提示</span></div>
+          <div class="todo-item"><span class="dot"></span><div><span class="who">吴桐</span> · 2 / 3 题 · 最后活动昨天</div><span class="tag">进行中</span></div>
+          <div class="todo-item"><span class="dot"></span><div><span class="who">郑可</span> · 2 / 3 题 · 差最后 1 题</div><span class="tag">进行中</span></div>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="show-all-unfinished">查看全部 10 人</button><button class="btn btn-ghost btn-sm" id="remind-unfinished">一键提醒（演示）</button></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="row-between" style="margin-bottom:8px"><h3>学生列表</h3><span class="small muted">点击任意一行 / 「过程摘要」查看过程数据</span></div>
+      <div class="table-wrap">
+        <table class="table student-table">
+          <thead><tr><th>学生</th><th>本周必做</th><th class="hide-sm">提示消耗</th><th class="hide-sm">用时</th><th>独立性</th><th>状态</th><th></th></tr></thead>
+          <tbody>
+            <tr data-student="wang"><td><div class="stu-name">王砚</div><div class="stu-sub">学号 …3107</div></td><td>2 / 3</td><td class="hide-sm">L1×1 L2×1</td><td class="hide-sm">22 分钟</td><td><span class="tag tag-amber">半独立 L2</span></td><td><span class="tag tag-blue">进行中</span></td><td><button class="btn btn-ghost btn-sm" data-student-btn="wang">过程摘要</button></td></tr>
+            <tr data-student="lizi"><td><div class="stu-name">李梓</div><div class="stu-sub">学号 …2214</div></td><td>3 / 3</td><td class="hide-sm">L1×1</td><td class="hide-sm">18 分钟</td><td><span class="tag tag-green">独立 L0</span></td><td><span class="tag tag-green">已完成</span></td><td><button class="btn btn-ghost btn-sm" data-student-btn="lizi">过程摘要</button></td></tr>
+            <tr data-student="chen"><td><div class="stu-name">陈默</div><div class="stu-sub">学号 …0832</div></td><td>1 / 3</td><td class="hide-sm">L2×3 L3×2</td><td class="hide-sm">39 分钟</td><td><span class="tag tag-red">依赖 L2/L3</span></td><td><span class="tag tag-amber">卡点</span></td><td><button class="btn btn-ghost btn-sm" data-student-btn="chen">过程摘要</button></td></tr>
+            <tr data-student="zhour"><td><div class="stu-name">周然</div><div class="stu-sub">学号 …1520</div></td><td>1 / 3</td><td class="hide-sm">L1×3 L2×3 L3×1</td><td class="hide-sm">41 分钟</td><td><span class="tag tag-red">依赖 L2/L3</span></td><td><span class="tag tag-amber">卡点</span></td><td><button class="btn btn-ghost btn-sm" data-student-btn="zhour">过程摘要</button></td></tr>
+            <tr data-student="zhao"><td><div class="stu-name">赵一</div><div class="stu-sub">学号 …0044</div></td><td>0 / 3</td><td class="hide-sm">—</td><td class="hide-sm">—</td><td><span class="tag">未开始</span></td><td><span class="tag tag-red">未开始</span></td><td><button class="btn btn-ghost btn-sm" data-student-btn="zhao">过程摘要</button></td></tr>
+            <tr data-student="sun"><td><div class="stu-name">孙禾</div><div class="stu-sub">学号 …3971</div></td><td>3 / 3</td><td class="hide-sm">L1×2</td><td class="hide-sm">25 分钟</td><td><span class="tag tag-green">独立 L0</span></td><td><span class="tag tag-green">已完成</span></td><td><button class="btn btn-ghost btn-sm" data-student-btn="sun">过程摘要</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="intent">教师端核心不是排名，而是过程数据：卡点、提示消耗、拒绝次数、小白解释次数、是否独立完成。<span class="ref">契约 §8 / §3 教师侧闭环</span></div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:14px;align-items:start">
+      <div class="card">
+        <div class="card-title"><h3>题库审核队列</h3><span class="tag" id="queue-count">3 条待处理</span></div>
+        <p class="small muted" style="margin-bottom:8px">教师审核通过后学生可见；首发题库 50 题（D5 待确认）。</p>
+        <div id="queue-list">
+          <div class="queue-item" data-queue="j042"><div class="queue-main"><div class="queue-title">J-042 · p 级数判别法（基础）</div><div class="queue-meta">提交人：教研组 · 含 L1–L4 提示 + 变式题 · 待审核</div></div><div class="row"><button class="btn btn-green btn-sm" data-approve="j042">通过</button><button class="btn btn-ghost btn-sm" data-reject="j042">退回</button></div></div>
+          <div class="queue-item" data-queue="j043"><div class="queue-main"><div class="queue-title">J-043 · 绝对收敛与条件收敛辨析（进阶）</div><div class="queue-meta">提交人：罗老师 · 待复核：关键要点 ≤5 条</div></div><div class="row"><button class="btn btn-green btn-sm" data-approve="j043">通过</button><button class="btn btn-ghost btn-sm" data-reject="j043">退回</button></div></div>
+          <div class="queue-item" data-queue="j044"><div class="queue-main"><div class="queue-title">J-044 · 交错级数单调性反例（挑战）</div><div class="queue-meta">提交人：教研组 · 待复核：覆盖表是否为问句</div></div><div class="row"><button class="btn btn-green btn-sm" data-approve="j044">通过</button><button class="btn btn-ghost btn-sm" data-reject="j044">退回</button></div></div>
+        </div>
+        <div class="intent">审核流是「教师建班 → 审核题库 → 学生可见」的一环；双人复核可选（D6 待确认）。<span class="ref">契约 §10 D5/D6</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>数据导出与口径</h3><span class="tag tag-blue">默认匿名</span></div>
+        <p class="small muted">导出字段：题号、章节、轮次、阶段、提示等级、提示原文、诊断结论、学生输入、要点覆盖、预算消耗、拒绝次数、小白解释次数、粘贴标记、用时、是否独立完成。</p>
+        <div class="divider"></div>
+        <div class="row"><button class="btn btn-primary" id="export-csv-2">导出 CSV（演示）</button><button class="btn btn-ghost" id="export-note">查看字段说明</button></div>
+        <div class="row" style="margin-top:10px"><span class="chip">账号码—学号对照表</span><span class="small muted">由教师本地保存，不随 CSV 导出</span></div>
+        <div class="intent">导出默认匿名：CSV 只含账号码，不含姓名学号；对照表单独由教师保管。<span class="ref">契约 §8 匿名口径</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ④ 设计边界与说明 ================= -->
+  <section class="panel" id="panel-boundary">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">④ 设计边界与说明</div>
+        <h2>哪些是红线，哪些还没拍板</h2>
+        <p>这一页给老师 / 甲方核对口径；标「待确认」的项本轮按默认口径做，不阻塞原型。</p>
+      </div>
+      <span class="tag tag-amber">待确认项 D1–D11 见页面底部</span>
+    </div>
+
+    <div class="grid grid-3" style="align-items:start">
+      <div class="red-card"><div class="rc-id">RED LINE 01</div><h4>不给完整证明</h4><p>AI 对话区永远不出现连贯证明；终稿只能出现在学生的草稿区，由学生自己写。</p></div>
+      <div class="red-card"><div class="rc-id">RED LINE 02</div><h4>不给最终答案</h4><p>不说「所以条件收敛」这类结论；学生要答案时走三段式拒绝，且必须给 60 秒内可做的替代动作。</p></div>
+      <div class="red-card"><div class="rc-id">RED LINE 03</div><h4>不写可抄的推导链</h4><p>任何一轮不得出现可连成证明的 ≥3 步推导；禁止编号步骤、表格、证明骨架、禁用收尾词。</p></div>
+    </div>
+
+    <div class="boundary-grid" style="margin-top:14px">
+      <div class="card">
+        <div class="card-title"><h3>提示阶梯 L0–L4</h3><span class="tag">信息量逐级增加</span></div>
+        <div class="ladder-row"><div class="ladder-lv">L0</div><div class="ladder-body"><b>元认知追问 · 0 条新信息 · ≤30 字</b><br>只问依据，不暗示对错。例：「你这一步的依据是哪条定义？」</div></div>
+        <div class="ladder-row"><div class="ladder-lv">L1</div><div class="ladder-body"><b>概念提示 · 只点名定理/定义 · ≤60 字</b><br>例：「这题的关键是莱布尼茨判别法，它有三个条件，你逐条核对了吗？」</div></div>
+        <div class="ladder-row"><div class="ladder-lv">L2</div><div class="ladder-body"><b>方向提示 · 只给方法入口/结构 · ≤80 字</b><br>例：「要证不绝对收敛，得看 ∑|a_n|。先判断它是哪种级数。」</div></div>
+        <div class="ladder-row"><div class="ladder-lv">L3</div><div class="ladder-body"><b>局部步骤 · 只给一步，给完立即交还 · ≤120 字</b><br>例：「示范一步：由 lim n<sup>1/2</sup>=+∞ 得 lim 1/√n=0。下一句你补。」</div></div>
+        <div class="ladder-row"><div class="ladder-lv">L4</div><div class="ladder-body"><b>示范微步 · 1–2 行 + 交接句 + 复述要求 · ≤200 字</b><br>例：「先示范一行：1/√(n+1)&lt;1/√n。剩下两个条件由你补，并复述理由。」</div></div>
+        <div class="ladder-row"><div class="ladder-lv">L5</div><div class="ladder-body"><b>不存在。</b>学生要答案时走拒绝模板；任何情况下都不得输出完整证明。</div></div>
+        <p class="small" style="margin-top:10px;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px"><b>单轮正文合计 ≤130 字</b>（L4 示范可到 200 字）；【判断】≤25 字；【提问】恰好 1 个问句、≤40 字。</p>
+        <div class="intent">L0–L4 的核心不是「层层加码给答案」，而是「每升一级只多给一点点信息」，并且用完后必须交还学生。<span class="ref">契约 §6 / 说明 v1.0 §5.1</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>提示预算（默认口径，待罗老师确认）</h3><span class="tag tag-amber">D2</span></div>
+        <div class="table-wrap">
+          <table class="table budget-table">
+            <thead><tr><th>项目</th><th>上限</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>L1</td><td>≤3 次</td><td>分题计，换题重计</td></tr>
+              <tr><td>L2</td><td>≤3 次</td><td>同一错误点连续失败才升</td></tr>
+              <tr><td>L3</td><td>≤2 次</td><td>给一步就交还，必须复述</td></tr>
+              <tr><td>L4</td><td>≤1 次</td><td>示范 1–2 行，必须交接</td></tr>
+              <tr><td>信息型合计</td><td>≤9 次</td><td>用尽后只能 L0 追问或转教师</td></tr>
+              <tr><td>L0 追问</td><td>≤6 次</td><td>不计提示预算，计入轮次</td></tr>
+              <tr><td>小白解释</td><td>≤2 次</td><td>必须回严格表述并复述</td></tr>
+              <tr><td>单题轮次</td><td>≤16 轮</td><td>主流程，含 1 次拒绝轮</td></tr>
+              <tr><td>单题用时</td><td>≤25 分钟</td><td>超 1.5 倍提醒休息 / 转教师</td></tr>
+              <tr><td>变式题</td><td>≤8 轮</td><td>独立预算，不占主题预算</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="intent">预算让学生「自己先想」有时间价值：提示不是无限的，也不是免费的。<span class="ref">契约 §6 / 说明 v1.0 §5.2</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title"><h3>指标口径（教师端 / 后续导出）</h3><span class="tag tag-blue">过程数据，不是分数</span></div>
+      <div class="table-wrap">
+        <table class="table d-table">
+          <thead><tr><th>指标</th><th>口径</th><th>原型里在哪看</th></tr></thead>
+          <tbody>
+            <tr><td>完成率</td><td>本周必做 3 题全部提交的人数 / 班级人数</td><td>教师端 KPI ①</td></tr>
+            <tr><td>未完成名单</td><td>本周必做未交齐；标注最后活动时间与卡点</td><td>教师端 KPI ② + 名单</td></tr>
+            <tr><td>平均提示轮数</td><td>每题消耗的 L1–L4 次数均值；L0 与小白解释不计入</td><td>教师端 KPI ③</td></tr>
+            <tr><td>卡点知识点 Top5</td><td>同一知识点连续 2 轮无进展，或触发 L2 及以上提示的人数占比</td><td>教师端条形图</td></tr>
+            <tr><td>独立性（C1 三档）</td><td><b>独立</b>＝仅用 L0 追问；<b>半独立</b>＝使用过 L1–L2；<b>依赖</b>＝使用过 L3–L4 或出现粘贴标记。不合并成单一百分比。</td><td>教师端 KPI ④（堆叠条）/ 学生详情</td></tr>
+            <tr><td>覆盖度</td><td>终稿命中内部关键要点数 / 要点总数（≥80% 通过）</td><td>S4 覆盖表 / 教师端学生详情</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="intent">这套指标服务「看过程」：教师能回答「卡在哪、提示几次、是否独立」，而不是只有一个分数。<span class="ref">契约 §8</span></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title"><h3>待确认问题 D1–D11（不阻塞本轮）</h3><span class="tag tag-amber">本轮按默认口径做</span></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>编号</th><th>问题</th><th>本轮默认口径</th><th>找谁确认</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap"><b>D1</b></td><td>AI 能否明说「这一步对/错」？</td><td>只标第一处可疑 + 提问，不判整题正确性</td><td>罗老师</td></tr>
+            <tr><td><b>D2</b></td><td>L1/L2 是否限次？</td><td>按 v1.0：L1≤3、L2≤3</td><td>罗老师</td></tr>
+            <tr><td><b>D3</b></td><td>首版产品形态？</td><td>先 H5 快速原型，再微信小程序</td><td>甲方 / 罗老师</td></tr>
+            <tr><td><b>D4</b></td><td>是否做拍照问答？</td><td>本轮不做（v2.0 视为混淆变量）</td><td>罗老师 / 甲方</td></tr>
+            <tr><td><b>D5</b></td><td>题库章节范围与题量？</td><td>50 题，首批以极限 / 级数 / 一元微分为主</td><td>罗老师</td></tr>
+            <tr><td><b>D6</b></td><td>教师审题与发布流程？</td><td>教师审核后学生可见，双人复核可选</td><td>罗老师</td></tr>
+            <tr><td><b>D7</b></td><td>试点节奏与前后测？</td><td>每周 3 题 × 4 周；D0 前测、D28–30 后测</td><td>罗老师 / 项目组</td></tr>
+            <tr><td><b>D8</b></td><td>拍照上传/拍照识题做不做？</td><td>需求书内部冲突；本轮不做，只做证明分步练习</td><td>甲方 / 罗老师</td></tr>
+            <tr><td><b>D9</b></td><td>提示级别 L1–L3 还是 L0–L4？</td><td>按 v1.0：L0–L4（L4 仅示范 1–2 行）</td><td>罗老师</td></tr>
+            <tr><td><b>D10</b></td><td>提示次数「不限」还是限次？</td><td>原型显示预算，数值做成可配置</td><td>罗老师</td></tr>
+            <tr><td><b>D11</b></td><td>试点 4 周还是一学期？</td><td>产品按 4 周设计，实验排期另定</td><td>罗老师 / 项目组</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="intent">所有「待验证 / 待确认」都显式标出，不把产品假设包装成结论。<span class="ref">契约 §10</span></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title"><h3>本原型的边界</h3><span class="tag">v1 · 快速验证</span></div>
+      <div class="grid grid-2">
+        <div>
+          <h4 style="margin-bottom:6px">已经做了（可点击）</h4>
+          <ul class="small" style="line-height:1.9">
+            <li>S0–S5 学生端全链路，10 个预置演示节点</li>
+            <li>三段式 AI 回复、提示预算、三段式拒绝、小白解释卡</li>
+            <li>覆盖表问句化、五问复盘卡、规律 / 自检卡 / 变式题</li>
+            <li>教师端一屏：KPI、卡点 Top5、过程摘要、审核队列、CSV 导出</li>
+            <li>讲解模式：每屏显示设计意图与契约编号</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="margin-bottom:6px">明确没做（后续升级）</h4>
+          <ul class="small" style="line-height:1.9">
+            <li>真实 AI 调用（当前全部是预置脚本）</li>
+            <li>真实登录、数据库、账号体系</li>
+            <li>微信小程序打包、拍照识题、自动判分</li>
+            <li>完整题库后台、家长端 / 社交 / 排行榜</li>
+            <li>复测模块与前后测统计（只留字段与入口）</li>
+          </ul>
+        </div>
+      </div>
+      <div class="intent">原型只验证「流程与红线是否讲得通」，不验证模型效果；下一步接 DeepSeek API 时页面结构不用推倒重来。<span class="ref">契约 §9</span></div>
+    </div>
+  </section>
+</main>
+
+<div id="modal-root" hidden></div>
+<div id="toast-root" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ================= 小工具 ================= */
+var $ = function(sel, root){ return (root || document).querySelector(sel); };
+var $$ = function(sel, root){ return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+var NL = String.fromCharCode(10);
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function fmtTime(sec){
+  var m = Math.floor(sec / 60), s = sec % 60;
+  return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+function toast(msg, type){
+  var root = $('#toast-root');
+  if(!root) return;
+  if(root.children.length > 2) root.removeChild(root.firstChild);
+  var el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  root.appendChild(el);
+  setTimeout(function(){
+    el.style.transition = 'opacity .2s, transform .2s';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(6px)';
+    setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 220);
+  }, 2700);
+}
+
+/* ================= 弹窗 ================= */
+var modalClose = null;
+function openModal(html, opts){
+  opts = opts || {};
+  var root = $('#modal-root');
+  root.innerHTML = '<div class="modal-backdrop"><div class="modal' + (opts.wide ? ' wide' : '') + '" role="dialog" aria-modal="true">' +
+    '<button class="modal-x" data-close aria-label="关闭">×</button>' + html + '</div></div>';
+  root.hidden = false;
+  var backdrop = root.querySelector('.modal-backdrop');
+  var close = function(){ root.hidden = true; root.innerHTML = ''; modalClose = null; };
+  modalClose = close;
+  backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
+  $$('[data-close]', root).forEach(function(b){ b.addEventListener('click', close); });
+  if(opts.onOpen) opts.onOpen(root, close);
+  return close;
+}
+document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && modalClose) modalClose(); });
+
+/* ================= 顶栏 Tab / 讲解模式 ================= */
+function switchTab(name){
+  $$('.tab-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-tab') === name); });
+  $$('.panel').forEach(function(p){ p.classList.toggle('active', p.id === 'panel-' + name); });
+  window.scrollTo(0, 0);
+}
+$$('.tab-btn').forEach(function(b){ b.addEventListener('click', function(){ switchTab(b.getAttribute('data-tab')); }); });
+$$('[data-goto-tab]').forEach(function(b){ b.addEventListener('click', function(){ switchTab(b.getAttribute('data-goto-tab')); }); });
+var explainToggle = $('#explain-toggle');
+explainToggle.addEventListener('change', function(){
+  document.body.classList.toggle('explain', explainToggle.checked);
+  toast(explainToggle.checked ? '讲解模式已打开：每屏显示设计意图与契约编号' : '讲解模式已关闭');
+});
+$('#guide-explain-btn').addEventListener('click', function(){
+  explainToggle.checked = true;
+  document.body.classList.add('explain');
+  toast('讲解模式已打开：换到任意页面都能看到黄色设计意图标注');
+});
+
+/* ================= 演示状态 ================= */
+var PHASES = {
+  1:'P1 知识激活', 2:'P2 学生拆题', 3:'P3 分步推进',
+  4:'P4 终稿核对', 5:'P5 五问复盘', 6:'P6 迁移总结'
+};
+var PAGE_ORDER = ['S0','S1','S2','S3','S4','S5'];
+var FRESH = function(){
+  return {
+    page:'S0', step:1, roundIdx:0, phase:1,
+    timer:0, timerId:null, chat:[], draft:[], rounds:0, refusals:0,
+    rem:{L1:3, L2:3, L3:2, L4:1, xiaobai:2, L0:6},
+    used:{L1:0, L2:0, L3:0, L4:0, xiaobai:0, L0:0},
+    coverage:false, recite:false, review:false,
+    rules:false, check:false, variant:false,
+    nodeTries:0, usedLevels:{}, login:false
+  };
+};
+var S = FRESH();
+
+/* ================= 预置演示脚本（契约 §7 · 10 节点） ================= */
+var SCRIPT = [
+  {
+    no:1, title:'读题 · 说清要证什么', short:'读题', phase:1, phaseLabel:'P1 知识激活',
+    intent:'先核对「条件收敛」定义，不讲课；P1 最多 2 轮。', ref:'契约 §7 节点 1 / §4 P1',
+    rounds:[
+      {
+        label:'用自己的话说：这道题要你证什么？',
+        ph:'例如：要证……还要判断……',
+        sample:'要证这个级数收敛，还要判断它是条件收敛还是绝对收敛。',
+        ai:{tag:'L0 追问 · 不讲课', judge:'先别动笔，你提到的「条件收敛」是这道题的眼。', hint:'定义我不替你写。', ask:'「条件收敛」的完整定义是什么？它比「收敛」多要求什么？'},
+        next:'回答「条件收敛」的定义（用自己的话，不用背原文）。'
+      },
+      {
+        label:'回答：条件收敛的定义是什么？',
+        ph:'不用背原文，用你自己的话说。',
+        sample:'条件收敛就是级数本身收敛，但把每一项换成绝对值以后，新级数发散。',
+        ai:{tag:'L1 概念核对', judge:'「级数本身收敛、绝对值级数发散」，定义你抓准了。', hint:'现在回到题面。', ask:'按这个定义，这道题你要分别证明几件事？'},
+        next:'P1 通过。下一步：拆题，说清要证几件事。'
+      }
+    ],
+    phaseAfter:2
+  },
+  {
+    no:2, title:'拆题 · 要证几件事', short:'拆题', phase:2, phaseLabel:'P2 学生拆题',
+    intent:'学生自己拆题，AI 只补漏、不列考点和方法。', ref:'契约 §7 节点 2 / §4 P2',
+    rounds:[
+      {
+        label:'拆题：这道题你要分别证明几件事？',
+        ph:'先别写证明，只说结构。',
+        sample:'两件：先证原级数收敛；再证绝对值级数 ∑1/√n 发散。',
+        ai:{tag:'L0 追问 · 学生自己拆', judge:'「两件」点得准，方向对。', hint:'一次只攻一件。', ask:'你打算先攻哪一件？'},
+        next:'P2 通过。下一步：写第 1 步（先攻收敛这一半）。'
+      }
+    ],
+    phaseAfter:3
+  },
+  {
+    no:3, title:'写第 1 步 · 单调性', short:'第 1 步', phase:3, phaseLabel:'P3 分步推进',
+    intent:'只指出第一个可疑步骤：缺不等式；不替学生补。', ref:'契约 §7 节点 3',
+    rounds:[
+      {
+        label:'写第 1 步 + 依据（一句话）',
+        ph:'格式：结论 + 依据。',
+        sample:'先攻收敛。u_n=1/√n 随 n 增大而变小，因为分母越来越大。',
+        ai:{tag:'L0 追问 · 只指第一个可疑点', judge:'「分母越来越大」方向对，但还不算证明。', hint:'把 u_n 和 u_{n+1} 写成具体的不等式。', ask:'用 n 和 n+1 写一个不等式，证明 u_{n+1} < u_n。'},
+        next:'把不等式补进第 1 步（下一步就是补它）。'
+      }
+    ]
+  },
+  {
+    no:4, title:'补不等式 · 每步必须写依据', short:'第 1 步改写', phase:3, phaseLabel:'P3 分步推进',
+    intent:'每步必须写依据；通过后立刻追问下一步，不连着给结论。', ref:'契约 §7 节点 4',
+    rounds:[
+      {
+        label:'把不等式补进第 1 步 + 依据',
+        ph:'格式：不等式 + 为什么成立。',
+        sample:'1/√(n+1) < 1/√n，因为 n+1 > n。这是莱布尼茨判别法的单调条件。',
+        ai:{tag:'L0 · 计算核对', judge:'「1/√(n+1)<1/√n」成立，依据也写清楚了。', hint:'单调性过关；莱布尼茨还要「极限为 0」。', ask:'lim 1/√n 为什么是 0？给出依据，不要只写结果。'},
+        draftLine:{tag:'第 1 步 · 单调性（你写的）', text:'① 令 u_n = 1/√n。因为 n+1 > n，所以 1/√(n+1) < 1/√n，即 {u_n} 单调递减。'},
+        next:'写第 2 步：极限为 0 的依据。'
+      }
+    ]
+  },
+  {
+    no:5, title:'卡住 · 点提示看 L2', short:'卡住求助', phase:3, phaseLabel:'P3 分步推进',
+    type:'hint',
+    intent:'提示逐级释放：同一错误点连续失败才升级；L2 只给方向，不给表达式。', ref:'契约 §7 节点 5 / §6',
+    label:'卡住了？写下你卡在哪，然后打开提示阶梯看 L2。',
+    ph:'例如：我知道要证 lim 1/√n=0，但不知道怎么给依据。',
+    sample:'我卡在 lim 1/√n=0 的依据上，不知道怎么写。',
+    actionLabel:'提交卡点，打开提示阶梯',
+    recommend:'L2',
+    preTries:1,
+    next:'在浮层里点「使用 L2 · 剩 3」，L2 只给方向。'
+  },
+  {
+    no:6, title:'写第 3 步并收成结论', short:'第 3 步', phase:3, phaseLabel:'P3 分步推进',
+    intent:'给一步就交还：AI 只示范一句，学生自己补下一句。', ref:'契约 §7 节点 6',
+    rounds:[
+      {
+        label:'写第 3 步：把「极限为 0」的依据写出来',
+        ph:'用 n 的幂次说明。',
+        sample:'因为 lim n^{1/2}=+∞，所以 lim 1/√n = 0。',
+        ai:{tag:'L0 肯定 · 给一步就交还', judge:'「lim 1/√n=0」补得对，莱布尼茨三个条件齐了。', hint:'现在把收敛这一半收成一句结论。', ask:'由这三条能得什么结论？用「由莱布尼茨判别法……」开头。'},
+        draftLine:{tag:'第 2 步 · 极限为 0（你写的）', text:'② 因为 n^{1/2} → +∞，所以 1/√n → 0。'},
+        next:'写收敛这一半的结论句。'
+      },
+      {
+        label:'写结论句：收敛这一半得到什么？',
+        ph:'用「由莱布尼茨判别法……」开头。',
+        sample:'由莱布尼茨判别法，这个交错级数收敛。',
+        ai:{tag:'L0 · 交还学生', judge:'第一件事做完了，写法规范。', hint:'接下来第二件：绝对值级数。', ask:'∑|a_n| 具体是哪个级数？你对它知道什么？'},
+        draftLine:{tag:'第 3 步 · 收敛结论（你写的）', text:'③ 由莱布尼茨判别法，∑(−1)^{n−1}/√n 收敛。'},
+        next:'处理第二件事：绝对收敛。'
+      }
+    ]
+  },
+  {
+    no:7, title:'要答案 · 触发三段式拒绝', short:'要答案', phase:3, phaseLabel:'P3 分步推进',
+    type:'refuse',
+    intent:'红线演示：AI 不给完整证明、不给最终答案；拒绝必须带 60 秒替代动作。', ref:'契约 §7 节点 7 / §6.1',
+    label:'这一步演示红线：现在对 AI 说「直接给我完整证明」。',
+    ph:'可以直接用示例，也可以自己写。',
+    sample:'老师你把完整证明发我吧，明天考试我背一下。',
+    actionLabel:'发送「直接给我完整证明」',
+    next:'在弹窗里选一个 60 秒替代动作（A/B/C/D）。'
+  },
+  {
+    no:8, title:'绝对收敛 · 小白解释 + 回严格表述', short:'绝对收敛', phase:3, phaseLabel:'P3 分步推进',
+    intent:'看懂与讲懂的区别：小白解释只解释概念，给完必须回到严格表述并复述。', ref:'契约 §7 节点 8 / §6.2',
+    rounds:[
+      {
+        label:'第二件事：∑1/√n 是什么级数？你卡在哪？',
+        ph:'说清级数类型 + 你忘了哪条规则。',
+        sample:'∑1/√n 是 p 级数，p=1/2。可 p 级数什么时候收敛我忘了，看不懂。',
+        ai:{tag:'小白解释 ×1', judge:'认出是 p-级数了，只是规则忘了。', hint:'用大白话记：p-级数就是 ∑1/n^p，分母涨得越快（p 越大）越容易收敛。举个和本题无关的例子：∑1/n² 的 p=2，收敛。', ask:'回到严格表述：这里的 p 是多少？按规则它收敛还是发散？'},
+        special:{title:'小白解释卡 · p 级数（用完后必须复述）', items:[['一句类比','p 级数像一场「分母长得多快」的比赛：p 越大，分母长得越快，级数越容易收敛。'],['与本题无关的最小例子','∑1/n² 是 p=2，收敛；∑1/n 是 p=1，发散。'],['回到严格表述','p 级数 ∑1/n^p：p>1 收敛，0<p≤1 发散。']]},
+        useXiaobai:true,
+        next:'回到严格表述：p 是多少？收敛还是发散？'
+      },
+      {
+        label:'按规则回答：p 是多少？收敛还是发散？',
+        ph:'写出 p 与 1 的大小关系。',
+        sample:'p=1/2 ≤ 1，所以 ∑1/√n 发散。',
+        ai:{tag:'L0 · 收口', judge:'「p=1/2≤1」用对了，发散结论站得住。', hint:'两件事都齐了，可以写终稿。', ask:'两条结论合起来，这个级数该叫什么？'},
+        draftLine:{tag:'第 4 步 · 绝对发散（你写的）', text:'④ 而 ∑1/√n 是 p=1/2 的 p-级数，p≤1 故发散，所以原级数不绝对收敛。因此它是条件收敛。'},
+        next:'P3 完成。进入 S4 交终稿、核对覆盖。'
+      }
+    ],
+    phaseAfter:4
+  },
+  {
+    no:9, title:'终稿核对 + 五问复盘', short:'终稿核对', phase:4, phaseLabel:'P4 终稿核对', special:'s4',
+    intent:'覆盖表全部问句化；五问复盘不代写。', ref:'契约 §7 节点 9 / §7.2–7.3'
+  },
+  {
+    no:10, title:'迁移与总结', short:'迁移总结', phase:6, phaseLabel:'P6 迁移总结', special:'s5',
+    intent:'规律与自检卡由学生产出；变式题只给题面。', ref:'契约 §7 节点 10 / §7.4–7.5'
+  }
+];
+
+var COVERAGE = [
+  '你有没有用 n 和 n+1 写一个不等式，证明 u_{n+1} < u_n？',
+  'lim 1/√n = 0 的依据，你写的是结论还是推导？',
+  '你有没有明确写出「由莱布尼茨判别法」这句话？',
+  '∑1/√n 发散这一点，你引用了哪条现成结论？适用范围写清了吗？',
+  '结论里「条件收敛」四个字出现了吗？两半理由都在吗？'
+];
+var REVIEW = [
+  {id:'q1', q:'用一句话说清：这道题在证什么？', sample:'判定一个交错级数是条件收敛。'},
+  {id:'q2', q:'你的证明分几段？顺序是什么？', sample:'两段：先证原级数收敛，再证绝对值级数发散。'},
+  {id:'q3', q:'哪一步是这题的胜负手？为什么？', sample:'第一步就想到「条件收敛要证两件事」，否则会漏掉绝对发散。'},
+  {id:'q4', q:'写到什么程度算证完？', sample:'结论写明条件收敛，两段理由都有依据，判别法条件逐条核对。'},
+  {id:'q5', q:'哪些方法能带走？哪些细节只在本题有用？', sample:'带走：交错用莱布尼茨、条件收敛补证绝对发散、p 级数规则；带不走：1/√n 这个具体形式。'}
+];
+var FINAL_SAMPLE = [
+  '① 令 u_n = 1/√n。因为 n+1 > n，所以 1/√(n+1) < 1/√n，即 {u_n} 单调递减。',
+  '② 因为 n^{1/2} → +∞，所以 1/√n → 0。',
+  '③ 由莱布尼茨判别法，∑(−1)^{n−1}/√n 收敛。',
+  '④ 而 ∑1/√n 是 p=1/2 的 p-级数，p≤1 故发散，所以原级数不绝对收敛。因此它是条件收敛。'
+];
+var RULES_SAMPLE = [
+  '交错级数先逐条核对莱布尼茨三个条件',
+  '条件收敛要补证绝对值级数发散',
+  'p 级数先看 p 与 1 的大小'
+];
+var CHECK_SAMPLE = '先判断要证几件事 → 再选判别法 → 逐条核条件 → 写清结论（条件收敛 / 绝对收敛）';
+
+/* ================= 通用渲染 ================= */
+function currentStep(){ return SCRIPT[S.step - 1]; }
+
+function renderPageChips(){
+  var cur = PAGE_ORDER.indexOf(S.page);
+  $$('#page-chips span').forEach(function(sp){
+    var i = PAGE_ORDER.indexOf(sp.getAttribute('data-chip'));
+    sp.classList.toggle('active', i === cur);
+    sp.classList.toggle('done', i < cur);
+  });
+}
+function renderStepPill(){
+  var t = '节点 ' + S.step + ' / 10';
+  var g = $('#global-step-pill'); if(g) g.textContent = t;
+  var s3 = $('#s3-step-pill'); if(s3) s3.textContent = t;
+  var s4 = $('#s4-step-pill'); if(s4) s4.textContent = '节点 9 / 10';
+  var s5 = $('#s5-step-pill'); if(s5) s5.textContent = '节点 10 / 10';
+}
+function renderPhase(){
+  $$('#phase-track .phase-step').forEach(function(el){
+    var p = parseInt(el.getAttribute('data-phase'), 10);
+    el.classList.toggle('current', p === S.phase);
+    el.classList.toggle('done', p < S.phase);
+  });
+  var chip = $('#s3-phase-chip'); if(chip) chip.textContent = PHASES[S.phase];
+  var st = currentStep();
+  var intent = $('#s3-current-intent');
+  if(intent && st) intent.innerHTML = esc(st.intent) + '<span class="ref">' + esc(st.ref) + '</span>';
+}
+function renderTimer(){
+  var a = $('#s3-timer'); if(a) a.textContent = fmtTime(S.timer);
+  var b = $('#s5-time'); if(b) b.textContent = fmtTime(S.timer);
+}
+function startTimer(){
+  if(S.timerId) return;
+  S.timerId = setInterval(function(){
+    if(S.page === 'S3' || S.page === 'S4'){ S.timer++; renderTimer(); }
+  }, 1000);
+}
+function seg(cls, text){
+  var labels = {judge:'【判断】', hint:'【提示】', ask:'【提问】'};
+  return '<p><span class="seg-label seg-' + cls + '">' + labels[cls] + '</span>' + esc(text) + '</p>';
+}
+function specialHtml(sp){
+  if(!sp) return '';
+  return '<div class="mini-card"><h5>' + esc(sp.title) + '</h5><ol>' + sp.items.map(function(it){
+    var strict = it[0].indexOf('严格') >= 0;
+    return '<li><b>' + esc(it[0]) + '：</b><span' + (strict ? ' class="strict"' : '') + '>' + esc(it[1]) + '</span></li>';
+  }).join('') + '</ol></div>';
+}
+function renderChat(){
+  var log = $('#chat-log');
+  if(!log) return;
+  var html = '';
+  S.chat.forEach(function(m){
+    if(m.who === 'student'){
+      html += '<div class="msg student"><div class="bubble">' + esc(m.text) + '</div></div>';
+    } else if(m.who === 'system'){
+      html += '<div class="msg system"><span>' + esc(m.text) + '</span></div>';
+    } else if(m.who === 'special'){
+      html += '<div class="msg ai"><div class="ava">AI</div><div class="bubble">' + specialHtml(m.special) + '</div></div>';
+    } else if(m.who === 'ai'){
+      html += '<div class="msg ai"><div class="ava">AI</div><div class="bubble">' +
+        (m.tag ? '<span class="msg-tag ' + (m.tagCls || '') + '">' + esc(m.tag) + '</span>' : '') +
+        '<div class="tri">' + seg('judge', m.judge) + seg('hint', m.hint) + seg('ask', m.ask) + '</div></div></div>';
+    }
+  });
+  log.innerHTML = html;
+  log.scrollTop = log.scrollHeight;
+}
+function renderBudget(){
+  var rem = S.rem;
+  var total = rem.L1 + rem.L2 + rem.L3 + rem.L4;
+  var left = $('#hint-left');
+  if(left) left.textContent = '信息型提示剩余 ' + total + ' 次';
+  var items = [['L1','L1',3], ['L2','L2',3], ['L3','L3',2], ['L4','L4',1], ['小白解释','xiaobai',2], ['L0追问','L0',6]];
+  var html = items.map(function(x){
+    var r = rem[x[1]], full = x[2];
+    return '<span class="bchip' + (r <= 0 ? ' zero' : '') + '">' + x[0] + ' <b>' + r + '</b>/' + full + '</span>';
+  }).join('');
+  html += '<span class="bchip">轮次 <b>' + S.rounds + '</b>/16</span>';
+  var box = $('#budget-chips'); if(box) box.innerHTML = html;
+}
+function renderDraft(){
+  var el = $('#draft-list');
+  if(!el) return;
+  if(!S.draft.length){
+    el.innerHTML = '<li class="draft-empty" style="border-left:0;background:transparent">还没有内容。每通过一步，你写的那一步会出现在这里；AI 对话区不会代写。</li>';
+    return;
+  }
+  el.innerHTML = S.draft.map(function(d){
+    return '<li>' + esc(d.text) + '<span class="d-tag">' + esc(d.tag) + ' · 由学生写出</span></li>';
+  }).join('');
+}
+function feedbackHtml(obj, label){
+  return '<span class="ftag">' + esc(label) + '</span><div class="tri">' +
+    seg('judge', obj.judge) + seg('hint', obj.hint) + seg('ask', obj.ask) + '</div>';
+}
+function ensureS3Intro(){
+  if(!S.chat.length){
+    S.chat.push({who:'system', text:'已进入 S3 作答：AI 不写证明，只指出第一处可疑步骤。每一步请写「结论 + 依据」。'});
+  }
+}
+function renderCompose(){
+  var box = $('#s3-compose');
+  if(!box) return;
+  var st = currentStep();
+  if(!st || st.special) return;
+  if(st.type === 'hint' || st.type === 'refuse'){
+    box.innerHTML =
+      '<div class="compose-label"><span class="num">节点 ' + st.no + ' / 10</span>' + esc(st.label) + '</div>' +
+      '<textarea class="ta" id="student-input" placeholder="' + esc(st.ph) + '"></textarea>' +
+      '<div class="compose-actions"><button class="btn btn-soft btn-sm" id="fill-input">填入示例作答</button>' +
+      '<button class="btn btn-primary btn-sm" id="submit-input">' + esc(st.actionLabel) + '</button></div>' +
+      '<div class="next-tip"><b>下一步：</b>' + esc(st.next) + '</div>';
+  } else if(st.rounds){
+    var r = st.rounds[S.roundIdx];
+    var roundLabel = st.rounds.length > 1 ? ' · 第 ' + (S.roundIdx + 1) + ' / ' + st.rounds.length + ' 轮' : '';
+    box.innerHTML =
+      '<div class="compose-label"><span class="num">节点 ' + st.no + ' / 10</span>' + esc(r.label) + roundLabel + '</div>' +
+      '<textarea class="ta" id="student-input" placeholder="' + esc(r.ph) + '"></textarea>' +
+      '<div class="compose-actions"><button class="btn btn-soft btn-sm" id="fill-input">填入示例作答</button>' +
+      '<button class="btn btn-primary btn-sm" id="submit-input">提交这一步</button></div>' +
+      '<div class="next-tip"><b>下一步：</b>' + esc(r.next) + '</div>';
+  }
+  if(st.no === 1){
+    box.insertAdjacentHTML('beforeend', '<div class="row" style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="btn-completely-lost">我完全不会</button><span class="small muted">最小起步动作：仍 L0，不升级、不计预算</span></div>');
+    var lost = $('#btn-completely-lost');
+    if(lost) lost.addEventListener('click', function(){
+      S.chat.push({who:'student', text:'我完全不会，能不能给我一个最小的起点？'});
+      S.chat.push({who:'ai', tag:'L0 · 最小起步动作（不计预算）', tagCls:'amber',
+        judge:'完全不会很正常，先不碰整道证明。',
+        hint:'最小起步动作：只把题目里的级数写成 ∑a_n，并在纸上抄一遍「条件收敛」的定义。',
+        ask:'定义里「比收敛多要求」的那一句是什么？只写这一句。'});
+      S.rounds++;
+      renderChat(); renderBudget();
+      toast('已给最小起步动作（仍 L0，不升级、不计预算）');
+    });
+  }
+  var fill = $('#fill-input');
+  if(fill) fill.addEventListener('click', function(){
+    var ta = $('#student-input');
+    if(!ta) return;
+    var step = currentStep();
+    var sample = (step.type === 'hint' || step.type === 'refuse') ? step.sample : step.rounds[S.roundIdx].sample;
+    ta.value = sample;
+    ta.focus();
+    toast('已填入示例作答，可以直接改，再点提交');
+  });
+  var submit = $('#submit-input');
+  if(submit) submit.addEventListener('click', submitRound);
+}
+
+function goPage(page){
+  S.page = page;
+  $$('.page', $('#panel-student')).forEach(function(el){ el.classList.toggle('active', el.id === 'page-' + page); });
+  renderPageChips();
+  renderStepPill();
+  if(page === 'S3'){ var curSt = currentStep(); if(curSt && curSt.preTries && S.nodeTries < curSt.preTries) S.nodeTries = curSt.preTries; ensureS3Intro(); renderPhase(); renderChat(); renderBudget(); renderDraft(); renderCompose(); renderTimer(); startTimer(); }
+  if(page === 'S4'){ renderS4(); }
+  if(page === 'S5'){ renderS5(); }
+  window.scrollTo(0, 0);
+}
+
+/* ================= 提示阶梯（S3a） ================= */
+var HINTS = {
+  L0:{name:'L0 元认知追问', info:'0 条新数学信息 · ≤30 字 · 不计入信息型预算', sample:'你这一步的依据是哪条定义？写在这句话下面。',
+    msg:{tag:'L0 追问', judge:'卡住很正常，先把问题缩小。', hint:'不给你新信息：只问你能自己回答的东西。', ask:'这一步你引用了哪条定义或定理？用一句话写出来。'}},
+  L1:{name:'L1 概念提示', info:'只点名 1 个定义/定理 · ≤60 字', sample:'莱布尼茨判别法有三个条件，你逐条核对了吗？',
+    msg:{tag:'L1 概念提示', judge:'你想一次跨过单调性和极限两步。', hint:'莱布尼茨判别法：交错级数收敛要核对三个条件。', ask:'这三个条件里，你已经核对过哪几条？'}},
+  L2:{name:'L2 方向提示', info:'只给 1 个方向/结构 · ≤80 字', sample:'有限除以无穷大，结果趋向哪里？',
+    msg:{tag:'L2 方向提示', judge:'你其实已经说出关键：n^α 趋于无穷大。', hint:'有限除以无穷大，结果趋向哪里？', ask:'把「n^{1/2} 趋于无穷」和「1/√n = 1/n^{1/2}」连起来，你能得到什么？'}},
+  L3:{name:'L3 局部步骤', info:'只给 1 个具体操作 · ≤120 字 · 给完立即交还', sample:'示范一步：由 lim n^{1/2}=+∞ 得 lim 1/√n=0，下一句你补。',
+    msg:{tag:'L3 局部步骤 · 给一步就交还', judge:'可以，这是标准写法。', hint:'示范一步：由 lim n^{1/2}=+∞ 得 lim 1/√n=0。下一句你补。', ask:'用这一句把「极限为 0」补进证明，再告诉我你打算怎么写下一句。'}},
+  L4:{name:'L4 示范微步', info:'1–2 行示范 + 交接句 + 复述要求 · ≤200 字', sample:'先示范一行：1/√(n+1)<1/√n。剩下两个条件由你补，并复述理由。',
+    msg:{tag:'L4 示范微步 · 必须交接', judge:'这一步我来示范半行，剩下由你完成。', hint:'先示范一行：1/√(n+1) < 1/√n（因为 n+1 > n）。剩下由你完成。', ask:'补完后，用一句话复述这一步的理由。'}}
+};
+var HINT_MAX = {L0:6, L1:3, L2:3, L3:2, L4:1};
+
+/* 最低解锁条件：不能跳级。L0 随时；L1 提交≥1；L2 用 L1 或连续 2 次；L3 用 L2 或 3 次；L4 用 L3 或 4 次 */
+function hintUnlocked(lv){
+  if(lv === 'L0') return S.rem.L0 > 0;
+  if(lv === 'L1') return S.nodeTries >= 1;
+  if(lv === 'L2') return !!S.usedLevels.L1 || S.nodeTries >= 2;
+  if(lv === 'L3') return !!S.usedLevels.L2 || S.nodeTries >= 3;
+  if(lv === 'L4') return !!S.usedLevels.L3 || S.nodeTries >= 4;
+  return false;
+}
+function hintLockReason(lv){
+  if(lv === 'L1') return '先自己提交一次这一步';
+  if(lv === 'L2') return '先用 L1，或再提交一次（连续 2 次）';
+  if(lv === 'L3') return '先用 L2，或再提交一次（连续 3 次）';
+  if(lv === 'L4') return '先用 L3，或再提交一次（连续 4 次）';
+  return '先试试上一级，或再提交一次';
+}
+function openHintModal(fromStep){
+  var st = currentStep();
+  var recommend = (fromStep && st && st.recommend) ? st.recommend : '';
+  var total = S.rem.L1 + S.rem.L2 + S.rem.L3 + S.rem.L4;
+  var exhausted = total <= 0;
+  var rows = ['L0','L1','L2','L3','L4'].map(function(lv){
+    var rem = S.rem[lv];
+    var usedUp = rem <= 0;
+    var unlocked = hintUnlocked(lv);
+    var cls = (lv === recommend ? ' recommend' : '');
+    if(usedUp || !unlocked) cls += ' off';
+    var lockHtml = (!unlocked && !usedUp) ? '<span class="hl-lock">未解锁：' + esc(hintLockReason(lv)) + '</span>' : '';
+    var btn;
+    if(usedUp){
+      btn = '<button class="btn btn-ghost btn-sm" disabled>已用完</button>';
+    } else if(!unlocked){
+      btn = '<button class="btn btn-ghost btn-sm" data-hint-locked="' + lv + '" title="' + esc(hintLockReason(lv)) + '">未解锁 · ' + lv + '</button>';
+    } else {
+      btn = '<button class="btn btn-soft btn-sm" data-hint="' + lv + '">使用 ' + lv + ' · 剩 ' + rem + '</button>';
+    }
+    return '<div class="hint-line' + cls + '"><div class="hl-lv">' + lv + '</div>' +
+      '<div class="hl-body"><b>' + HINTS[lv].name + ' · ' + HINTS[lv].info + '</b><span>例：' + esc(HINTS[lv].sample) + '</span>' + lockHtml + '</div>' +
+      '<div class="hl-use">' + btn + '</div></div>';
+  }).join('');
+  var meta = '<p class="small muted">信息型提示已用 <b>' + (9 - total) + ' / 9</b>；L0 追问 <b>' + (6 - S.rem.L0) + ' / 6</b>；小白解释 <b>' + (2 - S.rem.xiaobai) + ' / 2</b>；单题轮次 <b>' + S.rounds + ' / 16</b>。当前节点已提交 <b>' + S.nodeTries + '</b> 次。</p>';
+  var unlockLine = '<p class="small muted" style="margin-top:8px;background:#f8fafc;border-radius:8px;padding:7px 9px"><b>最低解锁条件：</b>L0 随时可用；L1 提交 ≥1 次；L2 用 L1 或连续失败 2 次；L3 用 L2 或连续失败 3 次；L4 用 L3 或连续失败 4 次。不能跳级。</p>';
+  var html = '<h3>提示阶梯 · 只给最小帮助</h3>' + meta;
+  if(exhausted){
+    html += '<div class="feedback" style="border-color:var(--amber-line);background:var(--amber-bg);margin-top:10px"><b>信息型提示预算已用尽</b><p class="small">不再升级、不给答案。现在可以：只做 L0 追问（不耗信息型预算）、看定义原文、换一道同知识点的小题，或转教师。</p></div>' +
+      '<div class="row" style="margin-top:10px"><button class="btn btn-amber btn-sm" id="exit-l0">只做 L0 追问</button>' +
+      '<button class="btn btn-soft btn-sm" id="exit-def">看定义卡（只给定义原文）</button>' +
+      '<button class="btn btn-soft btn-sm" id="exit-easier">换同知识点更小题</button>' +
+      '<button class="btn btn-ghost btn-sm" id="hint-to-teacher">转教师工单</button></div>';
+  } else {
+    html += '<div class="hint-ladder">' + rows + '</div>' + unlockLine +
+      '<p class="small muted" style="margin-top:8px">升级规则：只在同一错误点连续失败时升一级；学生独立改对后回到 L0；L3/L4 用完必须复述；同一等级不重复同一句话。</p>' +
+      '<div class="row" style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="hint-to-teacher">预算不够？转教师工单</button>' +
+      '<button class="btn btn-ghost btn-sm" id="hint-def">看定义卡</button>' +
+      '<button class="btn btn-ghost btn-sm" id="hint-easier">换同知识点更小题</button></div>';
+  }
+  openModal(html, {wide:true, onOpen:function(root, closeFn){
+    $$('[data-hint]', root).forEach(function(btn){
+      btn.addEventListener('click', function(){ var lv = btn.getAttribute('data-hint'); closeFn(); useHint(lv); });
+    });
+    $$('[data-hint-locked]', root).forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var lv = btn.getAttribute('data-hint-locked');
+        toast('先试试上一级，或再提交一次：' + hintLockReason(lv), 'warn');
+      });
+    });
+    var toTeacher = $('#hint-to-teacher', root);
+    if(toTeacher) toTeacher.addEventListener('click', function(){ closeFn(); toast('已生成教师工单（演示）：上下文与卡点已保存','warn'); });
+    var toDef = $('#hint-def', root) || $('#exit-def', root);
+    if(toDef) toDef.addEventListener('click', function(){ closeFn(); openDefModal(); });
+    var toEasier = $('#hint-easier', root) || $('#exit-easier', root);
+    if(toEasier) toEasier.addEventListener('click', function(){ closeFn(); openEasierProblem(); });
+    var exitL0 = $('#exit-l0', root);
+    if(exitL0) exitL0.addEventListener('click', function(){
+      closeFn();
+      if(S.rem.L0 > 0){ useHint('L0'); } else { toast('L0 追问也已用满，建议转教师工单','warn'); }
+    });
+  }});
+}
+function useHint(lv){
+  if(!hintUnlocked(lv)){ toast('先试试上一级，或再提交一次：' + hintLockReason(lv), 'warn'); return; }
+  if(lv === 'L0'){
+    if(S.rem.L0 <= 0){ toast('L0 追问已用满 6 次，建议转教师','warn'); return; }
+    S.rem.L0--; S.used.L0++;
+  } else {
+    if(S.rem[lv] <= 0){ toast(lv + ' 预算已用尽，可转教师或只做 L0 追问','warn'); return; }
+    S.rem[lv]--; S.used[lv]++;
+    S.usedLevels[lv] = true;
+  }
+  var h = HINTS[lv];
+  S.chat.push({who:'ai', tag:h.msg.tag, tagCls:'amber', judge:h.msg.judge, hint:h.msg.hint, ask:h.msg.ask});
+  S.rounds++;
+  renderChat(); renderBudget();
+  toast(h.name + ' 已使用' + (lv === 'L0' ? '（不计入信息型预算）' : '（剩 ' + S.rem[lv] + ' 次）'), 'warn');
+  if(lv === 'L3' || lv === 'L4'){
+    S.chat.push({who:'system', text:'复述承诺：请先用一句话说出这一步的理由，再继续。'});
+    renderChat();
+  }
+  var st = currentStep();
+  if(st && st.type === 'hint' && S.page === 'S3'){
+    if(lv === 'L0'){
+      toast('L0 不提供新信息，仍在卡点；可以再用 L2，或转教师','warn');
+    } else {
+      finishStep(st);
+    }
+  }
+}
+function openEasierProblem(){
+  openModal('<h3>换一道同知识点更小题（只给题面）</h3><p class="small muted">不占原题的提示预算；换题 / 变式都只给题面，不给解法。</p>' +
+    '<div class="variant-stem" style="margin:10px 0">判断级数 ∑<sub>n=1</sub><sup>∞</sup> (−1)<sup>n−1</sup>/n 的收敛性；若收敛，是条件收敛还是绝对收敛？</div>' +
+    '<p class="small muted">比原题小一档：分母是 n 而不是 √n，仍练「莱布尼茨 + 绝对发散」两段式。演示版只展示出口，不切换当前题。</p>' +
+    '<div class="row" style="margin-top:12px"><button class="btn btn-primary" data-close>返回原题</button></div>');
+}
+
+/* ================= 三段式拒绝（S3b） ================= */
+function openRefusalModal(fromStep){
+  var html = '<h3>这个请求我不能满足，但不会让你卡死</h3>' +
+    '<p class="small muted">三段式拒绝：先接住需求 → 一次说清规则 → 给一个 60 秒内能做的替代动作。</p>' +
+    '<div class="refuse-steps">' +
+    '<div class="refuse-step"><span class="rs-label">① 接住</span><div>理解，明天就考，你肯定想快点看到完整过程。</div></div>' +
+    '<div class="refuse-step"><span class="rs-label">② 说清规则</span><div>但给了你整份证明，你今天会了，考场上换个级数还是卡——我的作用是帮你写会，不是替你写。</div></div>' +
+    '<div class="refuse-step"><span class="rs-label ok">③ 替代动作（四选一）</span><div><div class="alt-grid">' +
+    '<button class="alt-btn" data-alt="A"><b>A · 看定义 / 定理原文</b><span>条件收敛、莱布尼茨判别法、p 级数的原文</span></button>' +
+    '<button class="alt-btn" data-alt="B"><b>B · 二选一入口</b><span>先看怎么开头，还是先看你卡在哪一步</span></button>' +
+    '<button class="alt-btn" data-alt="C"><b>C · 只点评一步</b><span>只把你下一步发我，我只点评这一步</span></button>' +
+    '<button class="alt-btn" data-alt="D"><b>D · 转教师工单</b><span>保存草稿，把上下文和卡点交给老师</span></button>' +
+    '</div></div></div></div>' +
+    '<div class="redline-note"><b>红线</b><span>任何情况下都不给完整证明 / 最终答案 / 可抄推导链，也不因「明天考试」破例。</span></div>';
+  openModal(html, {wide:true, onOpen:function(root, closeFn){
+    $$('[data-alt]', root).forEach(function(b){
+      b.addEventListener('click', function(){ closeFn(); chooseAlt(b.getAttribute('data-alt'), fromStep); });
+    });
+  }});
+}
+function chooseAlt(alt, fromStep){
+  S.refusals++;
+  var aiMsg = {who:'ai', tag:'三段式拒绝 · 替代动作 ' + alt, tagCls:'red',
+    judge:'理解，明天就考，你想快点看到完整过程。',
+    hint:'但整份证明给了你，考场上换个级数还是卡——我的作用是帮你写会。',
+    ask:'现在只差两步。要我先只点评你的结论句吗？'};
+  S.chat.push(aiMsg);
+  var follow = {
+    A:'那先看定义原文吧。',
+    B:'那我先看自己卡在哪一步。',
+    C:'那你只看我下一步，我自己写。',
+    D:'好吧，帮我生成教师工单。'
+  }[alt] || '那我自己写。';
+  S.chat.push({who:'student', text:follow});
+  S.rounds++;
+  renderChat(); renderBudget();
+  toast('已拒绝完整证明 · 已给替代动作 ' + alt + '（拒绝次数 +1）', 'warn');
+  if(alt === 'D') toast('教师工单已生成（演示）：含上下文与卡点','warn');
+  var st = currentStep();
+  if(st && st.type === 'refuse' && S.page === 'S3') finishStep(st);
+}
+
+/* ================= 小白解释卡（S3c） ================= */
+function openXiaobaiModal(){
+  var rem = S.rem.xiaobai;
+  if(rem <= 0){
+    openModal('<h3>小白解释已用满 2 次</h3><p class="small muted">本题的小白解释预算已用完。现在只能回到严格表述，或把卡点转给教师。</p>' +
+      '<div class="row" style="margin-top:12px"><button class="btn btn-ghost" data-close>知道了</button><button class="btn btn-primary" id="x-to-teacher">转教师工单</button></div>',
+      {onOpen:function(root, closeFn){ $('#x-to-teacher', root).addEventListener('click', function(){ closeFn(); toast('已生成教师工单（演示）','warn'); }); }});
+    return;
+  }
+  var html = '<h3>小白解释卡 · 条件收敛 / p 级数</h3>' +
+    '<p class="small muted">只解释概念，不解释本题做法；给完必须回到严格表述并复述。</p>' +
+    '<div class="mini-explain">' +
+    '<div class="me"><span class="n">1</span><div><b>一句日常类比</b><p>条件收敛像「两个人一正一负互相抵消才站得住」：原级数靠正负抵消收敛，把符号全变成正的（绝对值）就撑不住了。</p></div></div>' +
+    '<div class="me"><span class="n">2</span><div><b>一个与本题无关的最小例子</b><p>∑(−1)^n/n 收敛，但 ∑1/n（调和级数）发散，所以它是条件收敛。这里不用 1/√n，避免直接替你算本题。</p></div></div>' +
+    '<div class="me"><span class="n">3</span><div><b>回到严格表述</b><p>若 ∑a_n 收敛且 ∑|a_n| 发散，就称 ∑a_n 条件收敛。p 级数 ∑1/n^p：p &gt; 1 收敛，0 &lt; p ≤ 1 发散。</p></div></div>' +
+    '</div>' +
+    '<p class="small muted">已用 ' + (2 - rem) + ' / 2 次。用完后请用一句话复述上面的严格表述，再回到原题。</p>' +
+    '<textarea class="ta" id="xiaobai-recite" rows="2" placeholder="用自己的话说一遍：p 级数在什么情况下收敛？"></textarea>' +
+    '<div class="row" style="margin-top:10px"><button class="btn btn-ghost" data-close>先不用了</button><button class="btn btn-primary" id="use-xiaobai">记下了，我复述一遍</button></div>';
+  openModal(html, {onOpen:function(root, closeFn){
+    $('#use-xiaobai', root).addEventListener('click', function(){
+      var t = $('#xiaobai-recite', root).value.trim();
+      closeFn();
+      applyXiaobai(t || '（我复述：p 级数 p>1 收敛，p≤1 发散。）');
+    });
+  }});
+}
+function applyXiaobai(recite){
+  if(S.rem.xiaobai <= 0) return;
+  S.rem.xiaobai--; S.used.xiaobai++;
+  S.chat.push({who:'student', text:recite});
+  S.chat.push({who:'ai', tag:'小白解释 ×' + (2 - S.rem.xiaobai), tagCls:'amber',
+    judge:'你抓到关键区别了。',
+    hint:'小白解释只在概念层：p 级数看分母指数 p，p>1 收敛、p≤1 发散。',
+    ask:'回到严格表述：这道题里你引用的现成结论叫什么？适用范围写了吗？'});
+  S.rounds++;
+  renderChat(); renderBudget();
+  toast('小白解释已用 1 次 · 剩 ' + S.rem.xiaobai + ' 次；必须回到严格表述', 'warn');
+}
+
+/* ================= 定义原文（知识可以给，做法不给） ================= */
+function openDefModal(){
+  openModal('<h3>定义原文 · 只核对，不讲课</h3><p class="small muted">这些是知识，可以直接看；本题怎么做、下一步写什么，不在这个卡片里。</p>' +
+    '<div class="stack-sm" style="margin-top:10px">' +
+    '<div class="feedback"><b>条件收敛</b><p class="small">若级数 ∑a_n 收敛，而绝对值级数 ∑|a_n| 发散，则称 ∑a_n 条件收敛。</p></div>' +
+    '<div class="feedback"><b>莱布尼茨判别法</b><p class="small">交错级数 ∑(−1)^{n−1}u_n（u_n ≥ 0）若满足：① u_n 单调递减；② lim u_n = 0，则级数收敛。</p></div>' +
+    '<div class="feedback"><b>p 级数</b><p class="small">∑1/n^p：当 p &gt; 1 时收敛，当 0 &lt; p ≤ 1 时发散。</p></div>' +
+    '</div><div class="row" style="margin-top:12px"><button class="btn btn-primary" data-close>知道了，回到题目</button></div>');
+}
+
+/* ================= S3 提交与节点推进 ================= */
+function submitRound(){
+  var st = currentStep();
+  if(!st || st.special || S.page !== 'S3') return;
+  var ta = $('#student-input');
+  var text = ta ? (ta.value || '').trim() : '';
+  if(!text){ toast('先写一句再提交；也可以点「填入示例作答」','warn'); if(ta) ta.focus(); return; }
+  S.chat.push({who:'student', text:text});
+  S.rounds++;
+  S.nodeTries++;
+  renderChat(); renderBudget();
+  if(st.type === 'hint'){ openHintModal(true); return; }
+  if(st.type === 'refuse'){ openRefusalModal(true); return; }
+  var r = st.rounds[S.roundIdx];
+  var ai = r.ai;
+  S.chat.push({who:'ai', tag:ai.tag, tagCls:ai.tagCls || '', judge:ai.judge, hint:ai.hint, ask:ai.ask});
+  if(r.special) S.chat.push({who:'special', special:r.special});
+  if(r.useXiaobai){
+    if(S.rem.xiaobai > 0){ S.rem.xiaobai--; S.used.xiaobai++; }
+    toast('小白解释已用 1 次（本题共 ≤2 次），用完后必须回到严格表述','warn');
+  }
+  if(r.draftLine) S.draft.push(r.draftLine);
+  renderChat(); renderDraft(); renderBudget();
+  if(S.roundIdx + 1 < st.rounds.length){
+    S.roundIdx++;
+    renderCompose();
+    toast('AI 已回复 · 继续第 ' + (S.roundIdx + 1) + ' 轮');
+  } else {
+    finishStep(st);
+  }
+}
+function finishStep(st){
+  if(st.phaseAfter) S.phase = st.phaseAfter;
+  S.roundIdx = 0;
+  S.nodeTries = 0; S.usedLevels = {};
+  if(st.no === 8){
+    S.step = 9; S.phase = 4;
+    renderStepPill(); renderPhase(); renderTimer();
+    goPage('S4');
+    toast('节点 8 完成 · 进入 S4 终稿核对');
+    return;
+  }
+  if(st.no >= 9) return;
+  S.step = Math.min(10, st.no + 1);
+  var nextSt = SCRIPT[S.step - 1];
+  if(nextSt && nextSt.preTries) S.nodeTries = nextSt.preTries;
+  renderStepPill(); renderPhase();
+  renderCompose();
+  var nx = SCRIPT[S.step - 1];
+  toast('节点 ' + st.no + ' 完成 · 下一节点：' + (nx ? nx.title : ''));
+}
+
+/* ================= S4 终稿核对 + 五问复盘 ================= */
+function prefillFinal(){
+  var el = $('#final-draft');
+  if(!el) return;
+  el.value = S.draft.length ? S.draft.map(function(d){ return d.text; }).join(NL) : FINAL_SAMPLE.join(NL);
+}
+function renderCoverage(){
+  var rows = $('#coverage-rows');
+  if(rows && !rows.children.length){
+    rows.innerHTML = COVERAGE.map(function(q){
+      return '<tr><td><span class="ok-mark">✓</span></td><td>' + esc(q) + '</td></tr>';
+    }).join('');
+  }
+}
+function renderReviewFields(){
+  var box = $('#review-fields');
+  if(!box || box.children.length) return;
+  box.innerHTML = REVIEW.map(function(q){
+    return '<div class="review-q"><span class="qnum">' + q.id.slice(1) + '</span><div><div class="qtext">' + esc(q.q) + '</div><textarea class="ta" id="review-' + q.id + '"></textarea></div></div>';
+  }).join('');
+}
+function renderS4(){
+  renderStepPill();
+  var fd = $('#final-draft');
+  if(fd && !fd.value) prefillFinal();
+  renderCoverage();
+  if(S.coverage){
+    $('#coverage-box').style.display = 'block';
+    $('#s4-ai').innerHTML = feedbackHtml({judge:'终稿四行都在，结论句由你自己写出。', hint:'五个要点你覆盖了 5/5（≥80% 通过）；AI 不展示参考证明。', ask:'核对最后一条：④里「p=1/2≤1」的适用范围写清楚了吗？'}, '覆盖核对 · 只给问句');
+    $('#recite-card').style.display = 'block';
+  }
+  if(S.recite){
+    renderReviewFields();
+    $('#review-card').style.display = 'block';
+    $('#recite-feedback').innerHTML = feedbackHtml({judge:'「先证收敛、再证绝对发散」的顺序说对了。', hint:'主线清楚；接下来用五问把「为什么」说完整。', ask:'你觉得哪一步是这道题的胜负手？'}, 'P4 复述 · 通过');
+  }
+  if(S.review){
+    $('#s4-done').style.display = 'block';
+    $('#review-feedback').innerHTML = feedbackHtml({judge:'五问都有你自己的答案，第 3 问答得最准。', hint:'不代写、不复述参考证明；你的终稿与五问已保存。', ask:'准备好进入 P6 迁移总结了吗？'}, 'P5 复盘 · 通过');
+  }
+}
+
+/* ================= S5 完成页 ================= */
+function updateVariantLock(){
+  var unlocked = S.rules && S.check;
+  var lock = $('#variant-lock'); if(lock) lock.style.display = unlocked ? 'none' : 'flex';
+  var body = $('#variant-body'); if(body) body.style.display = unlocked ? 'block' : 'none';
+}
+function renderS5(){
+  renderStepPill(); renderTimer();
+  var r = $('#s5-rounds'); if(r) r.textContent = S.rounds;
+  var parts = [];
+  ['L1','L2','L3','L4'].forEach(function(lv){ if(S.used[lv]) parts.push(lv + ' × ' + S.used[lv]); });
+  var h = $('#s5-hints'); if(h) h.textContent = parts.length ? parts.join('、') : '未使用 L1–L4';
+  var x = $('#s5-xiaobai'); if(x) x.textContent = '× ' + S.used.xiaobai + ' / 2';
+  var rf = $('#s5-refuse'); if(rf) rf.textContent = S.refusals + ' 次（已给替代动作）';
+  if(S.rules){
+    $('#rules-feedback').innerHTML = feedbackHtml({judge:'3 条规律都写成了可执行动作。', hint:'第 2 条可以再补一句「先判断绝对值级数」。', ask:'考试前你只看这 3 条，能做到吗？'}, '规律 · 已提交 3 条（≥3 通过）');
+  }
+  if(S.check){
+    $('#check-feedback').innerHTML = feedbackHtml({judge:'自检卡按做题顺序排，4 步都覆盖了。', hint:'建议把「写清结论」放在最后一行。', ask:'下次遇到交错级数，你先看卡片哪一行？'}, '自检卡 · 已提交（≤6 行通过）');
+  }
+  updateVariantLock();
+  if(S.variant){
+    $('#retest-card').style.display = 'block';
+    $('#finish-card').style.display = 'block';
+    $('#variant-feedback').innerHTML = feedbackHtml({judge:'结论对，而且你自己发现了关键差别。', hint:'你的自检卡补一条：先看绝对值级数，收敛就直接是绝对收敛。', ask:'把这条加到卡片第一行，明天考前只看这张卡。'}, '变式题 · 独立完成（4 分钟）');
+  }
+}
+
+/* ================= 学生端导航 ================= */
+function resumeProof(){
+  if(S.step >= 10){ goPage('S5'); }
+  else if(S.step === 9){ goPage('S4'); }
+  else { goPage('S3'); }
+  toast('已恢复上次进度：' + (SCRIPT[S.step - 1] ? SCRIPT[S.step - 1].title : ''));
+}
+function bindStudentNav(){
+  $('#btn-enter-class').addEventListener('click', function(){
+    var inv = $('#invite').value.trim();
+    var sid = $('#sid').value.trim();
+    var err = $('#s0-error');
+    if(!inv || !sid){
+      err.style.display = 'block';
+      toast('先填写邀请码和学号；演示可以点「演示模式」','warn');
+      return;
+    }
+    err.style.display = 'none';
+    S.login = true;
+    goPage('S1');
+    toast('已进入数学分析 A 班 · 本周必做 3 题');
+  });
+  $('#btn-demo-mode').addEventListener('click', function(){
+    S.login = true;
+    goPage('S1');
+    toast('演示模式：已进入班级（所有数据为预置）');
+  });
+  $('#s1-to-s2').addEventListener('click', function(){ goPage('S2'); });
+  $('#s2-to-s1').addEventListener('click', function(){ goPage('S1'); });
+  ['s1-continue','s1-continue-2'].forEach(function(id){
+    var b = $('#' + id); if(b) b.addEventListener('click', resumeProof);
+  });
+  $('#s1-review-info').addEventListener('click', function(){
+    openModal('<h3>复测安排</h3><p class="small muted">复测用来检验「方法有没有留下来」，不是再考一次。</p>' +
+      '<div class="retest" style="margin-top:12px"><div class="retest-item"><b>7 天后 · 小复测</b><span class="muted">重做 p 级数判别 1 题；你上次这条规则用错过 1 次。</span></div>' +
+      '<div class="retest-item"><b>30 天后 · 大复测</b><span class="muted">条件收敛 + 绝对收敛混合 2 题，检验方法是否保留。</span></div></div>' +
+      '<p class="small muted" style="margin-top:10px">试点节奏：每周 3 题 × 4 周；D0 前测、D28–30 后测（D7 待罗老师确认）。</p>' +
+      '<div class="row" style="margin-top:12px"><button class="btn btn-primary" data-close>知道了</button></div>');
+  });
+  $$('[data-start-demo]').forEach(function(b){ b.addEventListener('click', resumeProof); });
+  $('#back-to-s1').addEventListener('click', function(){
+    goPage('S1');
+    toast('草稿已保存（演示）· 可点「继续上次」回到本题');
+  });
+  $('#open-def').addEventListener('click', openDefModal);
+  $('#open-hints').addEventListener('click', function(){ openHintModal(currentStep().type === 'hint'); });
+  $('#ask-answer').addEventListener('click', function(){ openRefusalModal(false); });
+  $('#cant-understand').addEventListener('click', openXiaobaiModal);
+  $('#reset-demo').addEventListener('click', resetDemo);
+  $$('[data-preview]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id = btn.getAttribute('data-preview');
+      var box = $('#preview-' + id);
+      if(!box) return;
+      var show = !box.classList.contains('show');
+      box.classList.toggle('show', show);
+      btn.textContent = show ? '收起题面' : '预览题面';
+    });
+  });
+}
+
+/* ================= S2 筛选 ================= */
+var filterState = {chapter:'all', kp:'all', diff:'all', type:'all'};
+function applyFilters(){
+  var cards = $$('#problem-grid .problem-card');
+  var shown = 0;
+  cards.forEach(function(card){
+    var ok = true;
+    if(filterState.chapter !== 'all' && card.getAttribute('data-chapter') !== filterState.chapter) ok = false;
+    if(filterState.kp !== 'all' && (card.getAttribute('data-kp') || '').split(' ').indexOf(filterState.kp) < 0) ok = false;
+    if(filterState.diff !== 'all' && card.getAttribute('data-diff') !== filterState.diff) ok = false;
+    if(filterState.type !== 'all' && card.getAttribute('data-type') !== filterState.type) ok = false;
+    card.style.display = ok ? '' : 'none';
+    if(ok) shown++;
+  });
+  var el = $('#result-count');
+  if(el) el.textContent = '共 ' + cards.length + ' 题 · 当前显示 ' + shown + ' 题';
+}
+function bindFilters(){
+  $$('#filters .fchip').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var group = btn.getAttribute('data-filter');
+      filterState[group] = btn.getAttribute('data-value');
+      $$('#filters .fchip[data-filter="' + group + '"]').forEach(function(b){ b.classList.toggle('active', b === btn); });
+      applyFilters();
+    });
+  });
+  $('#reset-filters').addEventListener('click', function(){
+    filterState = {chapter:'all', kp:'all', diff:'all', type:'all'};
+    $$('#filters .fchip').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-value') === 'all'); });
+    applyFilters();
+    toast('筛选已清空');
+  });
+  applyFilters();
+}
+
+/* ================= S4 事件 ================= */
+function bindS4(){
+  $('#fill-final').addEventListener('click', function(){
+    $('#final-draft').value = FINAL_SAMPLE.join(NL);
+    toast('已填入学生示例终稿（演示用，非 AI 生成），可以继续修改');
+  });
+  $('#submit-final').addEventListener('click', function(){
+    var v = $('#final-draft').value.trim();
+    if(!v){ toast('终稿还没写；可点「填入示例终稿」再提交','warn'); $('#final-draft').focus(); return; }
+    S.coverage = true;
+    S.phase = 5;
+    renderS4();
+    toast('覆盖 5/5（≥80% 通过）· 下一步：用 3–5 句复述主线');
+  });
+  $('#fill-recite').addEventListener('click', function(){
+    $('#recite-input').value = '先证原级数收敛（莱布尼茨的三个条件逐条核对），再证绝对值级数 ∑1/√n 发散，所以这个级数是条件收敛。';
+    toast('已填入示例复述');
+  });
+  $('#submit-recite').addEventListener('click', function(){
+    var v = $('#recite-input').value.trim();
+    if(!v){ toast('先用 3–5 句写下你的证明主线','warn'); $('#recite-input').focus(); return; }
+    S.recite = true;
+    renderS4();
+    toast('复述通过 · 五问复盘卡已解锁');
+  });
+  $('#fill-review').addEventListener('click', function(){
+    REVIEW.forEach(function(q){
+      var ta = $('#review-' + q.id);
+      if(ta) ta.value = q.sample;
+    });
+    toast('已填入五问示例答案，可修改');
+  });
+  $('#submit-review').addEventListener('click', function(){
+    var empty = 0;
+    REVIEW.forEach(function(q){ var ta = $('#review-' + q.id); if(!ta || !ta.value.trim()) empty++; });
+    if(empty){ toast('还有 ' + empty + ' 问没答；可点「填入示例答案」','warn'); return; }
+    S.review = true;
+    S.phase = 6;
+    renderS4();
+    toast('复盘卡提交 · P4 / P5 完成');
+  });
+  $('#goto-s5').addEventListener('click', function(){
+    S.step = 10;
+    S.phase = 6;
+    goPage('S5');
+    toast('进入 S5 完成页 · 最后一步：规律 + 自检卡 + 变式题');
+  });
+}
+
+/* ================= S5 事件 ================= */
+function bindS5(){
+  $('#fill-rules').addEventListener('click', function(){
+    $('#rules-input').value = RULES_SAMPLE.join(NL);
+    toast('已填入 3 条示例规律，可修改');
+  });
+  $('#submit-rules').addEventListener('click', function(){
+    var lines = $('#rules-input').value.split(NL).map(function(s){ return s.trim(); }).filter(Boolean);
+    if(lines.length < 3){ toast('至少写 3 条规律（每条一行，每条 ≤20 字）','warn'); return; }
+    S.rules = true;
+    renderS5();
+    toast('规律已提交 ' + lines.length + ' 条 · 再提交自检卡就解锁变式题');
+  });
+  $('#fill-check').addEventListener('click', function(){
+    $('#check-input').value = CHECK_SAMPLE;
+    toast('已填入示例自检卡（4 步）');
+  });
+  $('#submit-check').addEventListener('click', function(){
+    var v = $('#check-input').value.trim();
+    if(!v){ toast('先按做题顺序写一张自检卡（≤6 行）','warn'); return; }
+    S.check = true;
+    renderS5();
+    if(S.rules) toast('自检卡已提交 · 变式题已解锁');
+    else toast('自检卡已提交 · 再提交规律就解锁变式题');
+  });
+  $('#fill-variant').addEventListener('click', function(){
+    $('#variant-input').value = '∑1/n² 是 p=2 的 p 级数，p>1 所以收敛，因此原级数绝对收敛。';
+    toast('已填入示例作答');
+  });
+  $('#submit-variant').addEventListener('click', function(){
+    var v = $('#variant-input').value.trim();
+    if(!v){ toast('先写下你的答案和依据','warn'); return; }
+    if(!(S.rules && S.check)){ toast('先提交规律和自检卡，变式题才解锁','warn'); return; }
+    S.variant = true;
+    renderS5();
+    toast('变式题已提交 · 演示完成 10 / 10 节点');
+  });
+  $('#add-reminder').addEventListener('click', function(){
+    $('#reminder-state').textContent = '已加入复习提醒（演示）';
+    toast('已加入 7 天 / 30 天复测提醒（演示）');
+  });
+  $('#finish-reset').addEventListener('click', resetDemo);
+  $('#finish-teacher').addEventListener('click', function(){ switchTab('teacher'); });
+}
+
+/* ================= 教师端 ================= */
+var STUDENTS = {
+  wang:{name:'王砚', sid:'…3107', status:'进行中', prog:'2 / 3', time:'22 分钟', indep:'半独立（仅 L1–L2，无粘贴）', hints:'L1 × 1、L2 × 1', refuse:'1 次（已给替代动作）', xiaobai:'1 次', coverage:'5 / 5', point:'条件收敛定义、莱布尼茨单调性',
+    timeline:[['00:00','进入 P1，先核对「条件收敛」定义'],['02:10','P2 拆题：说出「要证两件事」'],['05:40','P3 第 1 步缺不等式，AI 只指第一处可疑'],['09:15','卡住，使用 L2 方向提示 1 次'],['13:30','要求完整证明，被三段式拒绝，选「只点评一步」'],['18:20','p 级数规则忘了，小白解释 1 次后复述'],['22:00','终稿覆盖 5/5，五问复盘完成']]},
+  lizi:{name:'李梓', sid:'…2214', status:'已完成', prog:'3 / 3', time:'18 分钟', indep:'独立（仅 L0 追问）', hints:'L1 × 1', refuse:'0 次', xiaobai:'0 次', coverage:'5 / 5', point:'无（本周无卡点）',
+    timeline:[['00:00','进入 P1，定义复述一次通过'],['03:20','P2 拆题：说出两件事与顺序'],['09:40','P3 独立完成单调性与极限两步'],['14:10','终稿覆盖 5/5'],['18:00','五问 + 变式独立完成']]},
+  chen:{name:'陈默', sid:'…0832', status:'卡点', prog:'1 / 3', time:'39 分钟', indep:'依赖（L3 提示 + 小白解释，非独立）', hints:'L2 × 3、L3 × 2', refuse:'0 次', xiaobai:'2 次', coverage:'3 / 5', point:'p 级数适用范围、绝对值级数',
+    timeline:[['00:00','进入 P1，条件收敛定义答错 2 次'],['06:30','P2 拆题只说出「证收敛」，漏第二件事'],['15:20','P3 卡在 p 级数，L2 用 2 次'],['27:40','L3 示范一步后仍未复述'],['39:00','小白解释已用满 2 次，建议转教师']]},
+  zhour:{name:'周然', sid:'…1520', status:'卡点', prog:'1 / 3', time:'41 分钟', indep:'依赖（L3 提示，非独立）', hints:'L1 × 3、L2 × 3、L3 × 1', refuse:'0 次', xiaobai:'0 次', coverage:'2 / 5', point:'莱布尼茨单调性条件',
+    timeline:[['00:00','进入 P1 正常'],['05:10','P2 拆题通过'],['12:30','P3 第 1 步反复缺不等式，L1 用 3 次'],['26:00','升 L2 后仍卡，提示预算接近上限'],['41:00','保存草稿离开，未到终稿']]},
+  zhao:{name:'赵一', sid:'…0044', status:'未开始', prog:'0 / 3', time:'—', indep:'未开始', hints:'—', refuse:'—', xiaobai:'—', coverage:'—', point:'—',
+    timeline:[['—','本周尚未进入任何题目；最后活动 6 天前'],['—','已进入未完成名单，可一键提醒（演示）']]},
+  sun:{name:'孙禾', sid:'…3971', status:'已完成', prog:'3 / 3', time:'25 分钟', indep:'独立（仅 L0 追问）', hints:'L1 × 2', refuse:'0 次', xiaobai:'0 次', coverage:'4 / 5', point:'极限为 0 的依据',
+    timeline:[['00:00','进入 P1'],['04:00','P2 拆题通过'],['13:20','P3 卡在「极限为 0」依据，L1 用 2 次'],['20:00','终稿覆盖 4/5，补问句后改对'],['25:00','五问 + 变式完成']]}
+};
+function openStudentModal(id){
+  var d = STUDENTS[id];
+  if(!d) return;
+  var html = '<h3>过程摘要 · ' + esc(d.name) + '</h3>' +
+    '<div class="drawer-head"><div class="drawer-ava">' + esc(d.name.slice(0, 1)) + '</div><div><div class="stu-name">' + esc(d.name) + ' <span class="tag">' + esc(d.sid) + '</span></div><div class="small muted">本周 ' + esc(d.prog) + ' · 用时 ' + esc(d.time) + '</div></div><span class="tag tag-blue">' + esc(d.status) + '</span></div>' +
+    '<div class="grid grid-2" style="gap:8px">' +
+    '<div class="feedback"><b class="small">独立性</b><p>' + esc(d.indep) + '</p></div>' +
+    '<div class="feedback"><b class="small">要点覆盖</b><p>' + esc(d.coverage) + '</p></div>' +
+    '<div class="feedback"><b class="small">提示消耗</b><p>' + esc(d.hints) + '</p></div>' +
+    '<div class="feedback"><b class="small">拒绝 / 小白解释</b><p>' + esc(d.refuse) + ' · ' + esc(d.xiaobai) + '</p></div>' +
+    '</div>' +
+    '<div class="feedback" style="margin-top:10px"><b class="small">卡点知识点</b><p>' + esc(d.point) + '</p></div>' +
+    '<h4 style="margin-top:14px">过程时间线</h4><ul class="timeline">' +
+    d.timeline.map(function(t){ return '<li' + (t[0] === '—' ? ' class="warn"' : '') + '><b>' + esc(t[0]) + '</b> ' + esc(t[1]) + '</li>'; }).join('') +
+    '</ul>' +
+    '<div class="redline-note"><b>说明</b><span>教师看过程：卡点、提示次数、拒绝、小白解释、是否独立；不展示 AI 参考证明。</span></div>';
+  openModal(html, {wide:true});
+}
+function updateQueueCount(){
+  var n = $$('#queue-list .queue-item .btn-green').length;
+  var el = $('#queue-count'); if(el) el.textContent = n + ' 条待处理';
+}
+function exportCSV(){
+  var head = ['账号码','本周完成','提示轮数','L1','L2','L3','L4','拒绝次数','小白解释','用时(分)','独立性','卡点知识点'];
+  var rows = [
+    head,
+    ['S-3107','2/3',5,1,1,0,0,1,1,22,'提示辅助','条件收敛定义'],
+    ['S-2214','3/3',1,1,0,0,0,0,0,18,'独立','无'],
+    ['S-0832','1/3',8,0,3,2,0,0,2,39,'高提示','p 级数适用范围'],
+    ['S-1520','1/3',7,3,3,1,0,0,0,41,'高提示','莱布尼茨单调性'],
+    ['S-0044','0/3',0,0,0,0,0,0,0,0,'未开始','—'],
+    ['S-3971','3/3',2,2,0,0,0,0,0,25,'独立','极限为 0 的依据']
+  ];
+  var csv = String.fromCharCode(65279) + rows.map(function(r){
+    return r.map(function(v){ return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+  }).join(String.fromCharCode(13, 10));
+  try{
+    var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '证明陪练场_班级过程数据_演示.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); if(a.parentNode) a.parentNode.removeChild(a); }, 1200);
+  }catch(e){}
+  toast('已生成 CSV（演示）· 默认匿名，不含姓名学号');
+}
+function bindTeacher(){
+  var PERIOD = {
+    week:{completion:'72%', csub:'26 / 36 人完成必做题', unfinished:'10', hint:'4.8', indep:[38,34,28]},
+    month:{completion:'64%', csub:'23 / 36 人完成本周 + 上周', unfinished:'13', hint:'5.2', indep:[34,33,33]}
+  };
+  $$('#period-switch .fchip').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      $$('#period-switch .fchip').forEach(function(b){ b.classList.toggle('active', b === btn); });
+      var p = PERIOD[btn.getAttribute('data-period')];
+      if(!p) return;
+      $('#kpi-completion').textContent = p.completion;
+      $('#kpi-completion-sub').textContent = p.csub;
+      $('#kpi-unfinished').textContent = p.unfinished;
+      $('#kpi-hint').textContent = p.hint;
+      var fills = $('#indep-bar i');
+      for(var i = 0; i < fills.length; i++){ fills[i].style.width = p.indep[i] + '%'; }
+      for(var j = 0; j < 3; j++){ var pe = $('#indep-p' + (j + 1)); if(pe) pe.textContent = p.indep[j] + '%'; }
+      toast(btn.getAttribute('data-period') === 'week' ? '已切换到本周数据' : '已切换到本月数据（演示）');
+    });
+  });
+  $$('#panel-teacher .student-table tbody tr').forEach(function(tr){
+    tr.addEventListener('click', function(){ openStudentModal(tr.getAttribute('data-student')); });
+  });
+  $$('#queue-list button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var item = btn.closest('.queue-item');
+      var ok = btn.hasAttribute('data-approve');
+      var actions = item.querySelector('.row');
+      actions.innerHTML = '<span class="tag ' + (ok ? 'tag-green' : 'tag-red') + '">' + (ok ? '已发布' : '已退回，待修改') + '</span>';
+      toast((ok ? '已通过并发布：' : '已退回教研组：') + item.querySelector('.queue-title').textContent + '（演示）');
+      updateQueueCount();
+    });
+  });
+  var unfinishedNames = ['赵一 · 0/3 · 未开始','陈默 · 1/3 · 卡在 p 级数','周然 · 1/3 · 提示轮数 11','吴桐 · 2/3 · 最后活动昨天','郑可 · 2/3 · 差最后 1 题','冯宁 · 1/3 · 卡在莱布尼茨条件','蒋川 · 2/3 · 未交终稿','许一 · 0/3 · 一周未登录','何佳 · 2/3 · 差五问复盘','陆原 · 1/3 · 小白解释已用满'];
+  $('#show-all-unfinished').addEventListener('click', function(){
+    openModal('<h3>未完成名单（10 人）</h3><p class="small muted">本周必做 3 题未交齐；点击学生行可看过程摘要。</p>' +
+      '<div class="todo-list" style="margin-top:10px">' + unfinishedNames.map(function(n){
+        return '<div class="todo-item"><span class="dot amber"></span><span>' + esc(n) + '</span></div>';
+      }).join('') + '</div>' +
+      '<div class="row" style="margin-top:12px"><button class="btn btn-ghost" data-close>关闭</button><button class="btn btn-primary" id="remind-in-modal">一键提醒（演示）</button></div>',
+      {onOpen:function(root, closeFn){ $('#remind-in-modal', root).addEventListener('click', function(){ closeFn(); toast('已向 10 名未完成学生发送提醒（演示）'); }); }});
+  });
+  $('#remind-unfinished').addEventListener('click', function(){ toast('已向 10 名未完成学生发送提醒（演示）'); });
+  $('#export-csv').addEventListener('click', exportCSV);
+  $('#export-csv-2').addEventListener('click', exportCSV);
+  $('#export-note').addEventListener('click', function(){
+    openModal('<h3>导出字段说明</h3><p class="small muted">每题每轮记录：题号、章节、轮次、阶段、提示等级、提示原文、诊断结论、学生输入、要点覆盖、预算消耗、拒绝次数、小白解释次数、粘贴标记、用时、是否独立完成。</p>' +
+      '<div class="redline-note" style="margin-top:10px"><b>匿名</b><span>CSV 默认只含账号码，不含姓名学号；账号码—学号对照表由教师本地保存。</span></div>' +
+      '<div class="row" style="margin-top:12px"><button class="btn btn-primary" data-close>知道了</button></div>');
+  });
+  updateQueueCount();
+}
+
+/* ================= 重置 ================= */
+function resetDemo(){
+  if(S.timerId) clearInterval(S.timerId);
+  S = FRESH();
+  var chat = $('#chat-log'); if(chat) chat.innerHTML = '';
+  var draft = $('#draft-list'); if(draft) draft.innerHTML = '';
+  ['final-draft','recite-input'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  ['s4-ai','recite-feedback','review-feedback','rules-feedback','check-feedback','variant-feedback'].forEach(function(id){ var el = document.getElementById(id); if(el) el.innerHTML = ''; });
+  ['coverage-box','recite-card','review-card','s4-done','retest-card','finish-card'].forEach(function(id){ var el = document.getElementById(id); if(el) el.style.display = 'none'; });
+  var rf = $('#review-fields'); if(rf) rf.innerHTML = '';
+  ['rules-input','check-input','variant-input'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  var rs = $('#reminder-state'); if(rs) rs.textContent = '';
+  var err = $('#s0-error'); if(err) err.style.display = 'none';
+  goPage('S0');
+  renderChat(); renderDraft(); renderBudget(); renderCompose();
+  renderStepPill(); renderPhase(); renderTimer(); updateVariantLock();
+  toast('演示已重置：回到 S0 登录');
+}
+
+/* ================= 初始化 ================= */
+bindStudentNav();
+bindFilters();
+bindS4();
+bindS5();
+bindTeacher();
+goPage('S0');
+renderBudget();
+renderDraft();
+renderCompose();
+renderStepPill();
+renderPhase();
+renderChat();
+renderTimer();
+updateVariantLock();
+
+/* 仅供截图/自动走查使用，不影响界面 */
+window.__demo = {
+  state: function(){ return S; },
+  reset: resetDemo,
+  go: function(page, step){
+    if(step){ S.step = step; S.roundIdx = 0; S.phase = SCRIPT[step - 1].phase; }
+    if(page === 'S3') ensureS3Intro();
+    goPage(page);
+  },
+  openHint: openHintModal,
+  openRefusal: openRefusalModal,
+  openXiaobai: openXiaobaiModal
+};
+})();
+</script>
+
+
+
+</body>
+</html>

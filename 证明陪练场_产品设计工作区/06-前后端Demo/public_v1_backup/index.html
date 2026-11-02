@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>证明陪练场 · 全栈 Demo</title>
+<link rel="stylesheet" href="styles.css?v=20261031b">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">证</div>
+      <div>
+        <div class="brand-title">证明陪练场</div>
+        <div class="brand-sub">全栈 Demo · 前端真实调 API</div>
+      </div>
+    </div>
+    <nav class="tabs" id="main-nav" aria-label="页面切换">
+      <button class="tab-btn active" data-tab="student">① 学生端</button>
+      <button class="tab-btn" data-tab="teacher">② 教师端</button>
+      <button class="tab-btn" data-tab="backend">③ 后端与数据</button>
+      <button class="tab-btn" data-tab="about">④ 说明</button>
+    </nav>
+    <div class="top-right">
+      <span class="backend-pill" id="backend-pill" title="后端连接状态"><span class="dot"></span><span id="backend-pill-text">连接中…</span></span>
+      <span class="user-chip" id="user-chip" hidden></span>
+      <button class="btn btn-ghost btn-sm" id="btn-logout" hidden>退出</button>
+    </div>
+  </div>
+</header>
+
+<div id="banner-root"></div>
+
+<main class="wrap">
+  <!-- ============ ① 学生端 ============ -->
+  <section class="tab-panel active" id="tab-student">
+    <div id="student-root">
+      <div class="card loading-card"><span class="spinner"></span>正在连接后端并加载学生端…</div>
+    </div>
+  </section>
+
+  <!-- ============ ② 教师端 ============ -->
+  <section class="tab-panel" id="tab-teacher">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">S6 · 教师端</div>
+        <h2>班级过程数据</h2>
+        <p id="teacher-subtitle">从 /api/teacher/dashboard 读取 · 不写死数字</p>
+      </div>
+      <div class="row">
+        <div class="segmented" id="period-switch">
+          <button class="seg-btn active" data-period="week">本周</button>
+          <button class="seg-btn" data-period="month">本月</button>
+        </div>
+        <button class="btn btn-primary" data-action="export-csv">导出 CSV</button>
+      </div>
+    </div>
+    <div id="teacher-root">
+      <div class="card loading-card"><span class="spinner"></span>正在加载教师端数据…</div>
+    </div>
+  </section>
+
+  <!-- ============ ③ 后端与数据 ============ -->
+  <section class="tab-panel" id="tab-backend">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">③ 后端与数据</div>
+        <h2>每次点击，都真的打到了后端</h2>
+        <p>health / routes / 请求日志 / 事件流 / guard 拦截统计 / reset，全部来自真实 API。</p>
+      </div>
+      <div class="row">
+        <button class="btn btn-soft btn-sm" data-action="refresh-backend">刷新全部</button>
+        <button class="btn btn-danger btn-sm" data-action="open-reset">重置数据</button>
+      </div>
+    </div>
+    <div class="grid grid-2">
+      <div class="card" id="health-card"><div class="loading-card"><span class="spinner"></span>读取 /api/health…</div></div>
+      <div class="card" id="guard-card"><div class="loading-card"><span class="spinner"></span>读取 /api/admin/stats guard…</div></div>
+    </div>
+    <div class="grid grid-2" style="margin-top:14px;align-items:start">
+      <div class="card">
+        <div class="card-title"><h3>API 端点</h3><span class="tag">GET /api/admin/routes</span></div>
+        <div id="routes-table"><div class="loading-card"><span class="spinner"></span>加载端点…</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>请求日志（前端 fetch 拦截）</h3><span class="tag tag-blue" id="reqlog-count">0 条</span></div>
+        <p class="small muted">每次点击按钮都会记录 method / path / status / 耗时；网络失败也会记录。</p>
+        <div class="row" style="margin:8px 0">
+          <button class="btn btn-ghost btn-sm" data-action="clear-log">清空日志</button>
+          <label class="check-label"><input type="checkbox" id="log-only-errors"> 只看失败</label>
+        </div>
+        <div id="reqlog-table" class="log-wrap"></div>
+      </div>
+    </div>
+    <div class="grid grid-2" style="margin-top:14px;align-items:start">
+      <div class="card">
+        <div class="card-title"><h3>事件流</h3><span class="tag" id="events-count">—</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" data-action="refresh-events">刷新事件</button></div>
+        <p class="small muted">每次提交 / 提示 / 拒绝 / 小白解释 / 登录都会写事件；这里直接读 /api/events。</p>
+        <div id="events-list" class="event-wrap"><div class="loading-card"><span class="spinner"></span>加载事件…</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>演示提示</h3><span class="tag tag-amber">讲解用</span></div>
+        <div class="stack-sm small" id="backend-tips">
+          <p><b>1. 看请求：</b>切到「学生端」点一次提交，再回「后端与数据」看请求日志，能看到 <code>POST /api/attempts/:id/step</code>、状态码与耗时。</p>
+          <p><b>2. 看红线：</b>故意点未解锁的 L4、或在终稿里粘贴含「证毕/综上」的文本，观察 guard 拦截与 4xx。</p>
+          <p><b>3. 看数据：</b>点「事件流」刷新，能看到本轮提交、提示、拒绝都被记录；点「重置数据」会重新 seed 回 36 人班级。</p>
+          <p><b>4. 看预算：</b>提示次数、独立性三档、卡点 Top5 都由后端聚合，前端不写死。</p>
+        </div>
+        <div class="intent show">这里不是 mock 面板：每个卡片都对应契约中的一个 API；后端未启动时会显示「等待后端启动」而不是崩溃。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ④ 说明 ============ -->
+  <section class="tab-panel" id="tab-about">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">④ 说明</div>
+        <h2>这个全栈 Demo 是怎么跑起来的</h2>
+        <p>零依赖：原生 HTML/CSS/JS + Node.js 内置模块；默认 mock AI，可选 DeepSeek。</p>
+      </div>
+      <span class="tag tag-blue">v1.0 · API_CONTRACT v1.0</span>
+    </div>
+
+    <div class="grid grid-2" style="align-items:start">
+      <div class="card">
+        <div class="card-title"><h3>架构</h3><span class="tag">浏览器 ↔ Node ↔ JSON</span></div>
+        <div class="arch">
+          <div class="arch-box browser">
+            <b>浏览器（public/）</b>
+            <span>index.html + app.js + styles.css</span>
+            <span>学生端 / 教师端 / 后端与数据 / 说明</span>
+          </div>
+          <div class="arch-arrow">fetch HTTP ↓ ↑ JSON</div>
+          <div class="arch-box server">
+            <b>Node server（server.mjs）</b>
+            <span>静态文件 + 路由 + token 校验 + 错误码</span>
+          </div>
+          <div class="arch-arrow">服务端内部调用</div>
+          <div class="arch-grid">
+            <div class="arch-mini"><b>ai.mjs</b><span>mock 状态机 / 可选 DeepSeek</span></div>
+            <div class="arch-mini"><b>guard.mjs</b><span>红线闸门：预算/解锁/泄题</span></div>
+            <div class="arch-mini"><b>store.mjs</b><span>db.json 持久化 + seed</span></div>
+            <div class="arch-mini"><b>metrics.mjs</b><span>教师看板聚合</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>一次点击的数据流</h3><span class="tag tag-green">真实请求</span></div>
+        <ol class="flow-list">
+          <li>学生在 S3 写一步 → 点「提交这一步」</li>
+          <li>前端 <code>api('POST','/api/attempts/:id/step',{text})</code>，携带 Bearer token</li>
+          <li>后端校验 token / 预算 / 解锁 / guard 红线</li>
+          <li>ai.mjs 按脚本节点返回三段式；guard 拦截则返回安全兜底</li>
+          <li>store 把这轮写入 attempt + events；返回 state / draft / guard</li>
+          <li>前端渲染 AI 气泡与草稿；「后端与数据」记录 method/path/status/耗时</li>
+        </ol>
+        <div class="intent show">评审重点：前端不自己算预算、不自己判断解锁、不存完整证明；这些都是服务端返回值。</div>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:14px;align-items:start">
+      <div class="card">
+        <div class="card-title"><h3>红线在后端哪一层</h3><span class="tag tag-red">服务端执行</span></div>
+        <div class="stack-sm small">
+          <p><b>不给完整证明：</b>guard.mjs 禁用词 / 编号步骤 / 关键要点泄漏 / 与 referenceProof 重合度；命中返回 L0 兜底句。</p>
+          <p><b>提示预算与解锁：</b>/hint 由服务端返回 409 HINT_LOCKED 或 429 BUDGET_EXHAUSTED + softLanding。</p>
+          <p><b>不下发答案：</b>GET /api/problems/:id 字段白名单，不含 keySteps / hints / referenceProof。</p>
+          <p><b>教师数据：</b>CSV 默认匿名账号码；独立性按 C1 三档（仅 L0 / L1–L2 / L3–L4 或粘贴）聚合，不合成单一百分比。</p>
+          <p><b>完整 8 条 guard 规则：</b>禁用词、编号骨架、长度、关键步骤泄漏、referenceProof 重合、连读检测、每轮三段式、问句唯一——均以 server/guard.mjs 为准。</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>启动方式</h3><span class="tag">零依赖</span></div>
+        <pre class="code-block"># Windows：双击项目根目录 start-demo.cmd
+# 或手动：
+cd 06-前后端Demo
+node server/server.mjs
+# 浏览器打开：
+http://127.0.0.1:8787/
+http://127.0.0.1:8787/?demo=1
+
+# 可选环境变量
+PORT=8787          # 端口
+DB_PATH=data/db.json  # 数据文件
+DEEPSEEK_API_KEY=sk-...  # 可选：真实模型（默认 mock）</pre>
+        <p class="small muted">默认模式 mock：所有 AI 回复按脚本 + 规则生成；未设置 DEEPSEEK_API_KEY 时不会调用外网。</p>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:14px;align-items:start">
+      <div class="card">
+        <div class="card-title"><h3>学生端 10 节点 ↔ API</h3><span class="tag">真实状态机</span></div>
+        <div class="table-wrap"><table class="table compact">
+          <thead><tr><th>节点</th><th>学生动作</th><th>调用</th></tr></thead>
+          <tbody>
+            <tr><td>1–2 读题 / 拆题</td><td>说清要证什么 + 拆成几件事</td><td>POST /step</td></tr>
+            <tr><td>3–4 第 1 步</td><td>单调性 + 补不等式</td><td>POST /step</td></tr>
+            <tr><td>5 卡住</td><td>打开提示阶梯，用后端返回的提示</td><td>POST /hint</td></tr>
+            <tr><td>6 第 3 步</td><td>极限为 0 + 收敛结论</td><td>POST /step</td></tr>
+            <tr><td>7 要答案</td><td>「直接给我完整证明」</td><td>POST /answer-request</td></tr>
+            <tr><td>8 绝对收敛</td><td>p 级数规则 / 小白解释</td><td>POST /step、/xiaobai</td></tr>
+            <tr><td>9 终稿 + 五问</td><td>覆盖表 + 复盘卡</td><td>POST /final、/review</td></tr>
+            <tr><td>10 迁移</td><td>规律 / 自检卡 / 变式题</td><td>POST /variant</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>已知限制（如实说明）</h3><span class="tag tag-amber">待补</span></div>
+        <div class="stack-sm small">
+          <p><b>题库审核队列：</b>契约只定义了 dashboard.reviewQueue 读接口，还没有审核动作端点；前端按钮目前只做本地标记 + toast，不落库。</p>
+          <p><b>规律 / 自检卡：</b>契约未定义落库端点，S5 两步保存在浏览器 localStorage，并标注「Demo 未落库」。</p>
+          <p><b>教师工单 / 换小题：</b>属于软着陆出口，当前展示出口与文案，未接真实工单系统。</p>
+          <p><b>真实模型：</b>默认 mock；设置 DEEPSEEK_API_KEY 才会调用，超时 8 秒回退 mock。</p>
+          <p><b>本轮范围外：</b>微信小程序、拍照识题、自动判分、家长端 / 排行榜。</p>
+        </div>
+      </div>
+    </div>
+    <p class="small muted" style="margin-top:16px">单一事实源：<code>06-前后端Demo/docs/API_CONTRACT.md</code>。前端只写 public/，不改 server / tests / docs / 05-演示原型。</p>
+  </section>
+</main>
+
+<div id="modal-root" hidden></div>
+<div id="toast-root" aria-live="polite"></div>
+<script src="app.js?v=20261031b"></script>
+</body>
+</html>

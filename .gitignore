@@ -1,0 +1,11 @@
+# 浏览器/LibreOffice 渲染用的临时 profile(含 Cookies、Login Data 等,不上传)
+chrome-profile*/
+lo-profile/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 系统/编辑器杂项
+.DS_Store
+Thumbs.db
