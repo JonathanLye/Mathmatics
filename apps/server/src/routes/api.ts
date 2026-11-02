@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { AppError } from '../errors.ts';
 
 import { authRoutes, type AuthRouteOptions } from './auth.ts';
+import { consentRoutes } from './consents.ts';
 
 // 06 §1 / 05 §7：写接口必须带 X-Requested-With: proof-gym。跨站表单无法加自定义头，
 // 与 SameSite=Lax 一起挡住 CSRF；登录接口同样要求，防止登录 CSRF。
@@ -20,4 +21,5 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions> = async (api, { db,
 
   // 不能整体转发 options：Fastify 会把 prefix 也带进插件选项，导致前缀重复。
   await api.register(authRoutes, { db, config, contract });
+  await api.register(consentRoutes, { db, config, contract });
 };
