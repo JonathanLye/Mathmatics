@@ -47,7 +47,7 @@ Mathmatics/
 |---|---|---|
 | A | `XuJinSheng1111111` | 学生端、`packages/ui-math` |
 | B（兼 Lead） | `JonathanLye` | 服务端、引擎、worker、契约、部署 |
-| C | `lzjzj-creator` | 教师端、导入 |
+| C | `lzjzj-creator` | 教师端（页面 + `/teacher/*` 接口）、导入 |
 
 - 任务用 GitHub Issue 跟踪（一个可交付 = 一个 issue，含 DoD）；里程碑 `Day0`–`Day3`、`P1`。
 - `main` 不可直接 push；分支命名、PR 模板、评审规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。

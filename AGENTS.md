@@ -15,7 +15,7 @@
 ```text
 apps/student   A；packages/ui-math A
 apps/server    B；packages/engine B；apps/worker B
-apps/teacher   C
+apps/teacher   C；apps/server/src/routes/teacher、apps/server/src/services/teacher（/teacher/* 接口）C，B 审
 10-开发文档/contracts  B 维护，所有人生效
 ```
 

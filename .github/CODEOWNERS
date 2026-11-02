@@ -1,36 +1,38 @@
 # .github/CODEOWNERS
 # 语法：路径模式 + GitHub 用户名；后写的匹配行覆盖先写的（所以具体路径放后面）。
 # main 规则集开启了 "Require review from Code Owners"：改到下列路径时，必须由该行任一 owner 批准。
-# 作者自己的批准不算，所以每行至少 2 人，否则 owner 自己开 PR 时没人能批。
+# 冲刺期设置：每行都列三人（该区 owner 写在最前），作者以外任一人批准即可，避免单人卡住所有 PR。
 # 未列出的路径：任意 1 名协作者批准即可。
 #
 # A = @XuJinSheng1111111（学生端）
 # B = @JonathanLye（服务端 / 引擎 / 契约 / 部署，兼 Lead）
 # C = @lzjzj-creator（教师端 / 导入）
 
-# 开发文档：三人任一审
+# 开发文档
 /证明陪练场_产品设计工作区/10-开发文档/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
 
-# 仓库规则与 CI（Lead 维护，A 兜底）
-/.github/ @JonathanLye @XuJinSheng1111111
-/tools/ @JonathanLye @XuJinSheng1111111
-/AGENTS.md @JonathanLye @XuJinSheng1111111
-/CONTRIBUTING.md @JonathanLye @XuJinSheng1111111
+# 仓库规则与 CI（Lead）
+/.github/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
+/tools/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
+/AGENTS.md @JonathanLye @XuJinSheng1111111 @lzjzj-creator
+/CONTRIBUTING.md @JonathanLye @XuJinSheng1111111 @lzjzj-creator
 
-# 学生端（A，B 兜底）
-/apps/student/ @XuJinSheng1111111 @JonathanLye
-/packages/ui-math/ @XuJinSheng1111111 @JonathanLye
+# 学生端（A）
+/apps/student/ @XuJinSheng1111111 @JonathanLye @lzjzj-creator
+/packages/ui-math/ @XuJinSheng1111111 @JonathanLye @lzjzj-creator
 
-# 服务端 / 引擎 / worker / 部署（B，A 兜底）
-/apps/server/ @JonathanLye @XuJinSheng1111111
-/apps/worker/ @JonathanLye @XuJinSheng1111111
-/packages/engine/ @JonathanLye @XuJinSheng1111111
-/infra/ @JonathanLye @XuJinSheng1111111
+# 服务端 / 引擎 / worker / 部署（B）
+/apps/server/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
+/apps/worker/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
+/packages/engine/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
+/infra/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
 
-# 教师端 / 导入（C，B 兜底）
-/apps/teacher/ @lzjzj-creator @JonathanLye
-/apps/import/ @lzjzj-creator @JonathanLye
-/tools/import/ @lzjzj-creator @JonathanLye
+# 教师端 / 导入（C）
+/apps/teacher/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
+/apps/server/src/routes/teacher/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
+/apps/server/src/services/teacher/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
+/apps/import/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
+/tools/import/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
 
 # 契约（B 维护，A、C 审）：放最后，覆盖上面的开发文档行
 /证明陪练场_产品设计工作区/10-开发文档/contracts/ @JonathanLye @XuJinSheng1111111 @lzjzj-creator
