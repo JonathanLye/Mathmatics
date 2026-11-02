@@ -11,7 +11,7 @@
 | C | `lzjzj-creator` | `apps/teacher/`、`apps/import/`（或 `tools/import/`）、题库审核/导出 | 教师端、审核屏、导入界面、运营/管理页 |
 | PO/Lead | `JonathanLye`（兼 B） | `10-开发文档/`、`.github/`、`CONTRIBUTING.md`、`AGENTS.md` | 需求与验收、老师/学校对接、issue 优先级、合并裁决 |
 
-`.github/CODEOWNERS` 按上表自动请求评审；每个路径至少 2 个 owner（作者自己的批准不算）。
+`.github/CODEOWNERS` 按上表自动请求评审。冲刺期每个路径都列三人（该区 owner 在前），作者以外任一人批准即可；作者自己的批准不算。
 
 **契约变更**：`10-开发文档/contracts/` 只由 B 修改；PR 必须 B + A/C 至少一人评审；同时更新 `10-开发文档` 对应章节与生成物，并在 PR 附 `npm run check` 结果。字段只增不删（见 `contracts/README.md`）。
 
