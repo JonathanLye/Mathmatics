@@ -29,6 +29,7 @@ export function gateRule(
 }
 
 // 提示的允许清单：只有透露量为 1（H3/H4）的本步骤片段可以出现。H2 只指方向（09 §7.2，比 v3 原型更严）。
+// H4 带 handsBack（把下一行交还学生）同样是 cost=1，因此同样放行本步骤片段。
 export function hintAllow(keyId: string, cost: number): string[] {
   return cost === 1 ? [keyId] : [];
 }

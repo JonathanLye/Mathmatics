@@ -103,7 +103,8 @@ export function selectHint(
   const delivered: HintState = {
     ...after,
     hintLv: { ...state.hintLv, [key.id]: lv + 1 },
-    keyCost: { ...state.keyCost, [key.id]: Math.max(prevCost, hint.cost) },
+    // 只有收费级别才记入 keyCost（与 v3 一致）：免费的 H0/H1 不占位。
+    keyCost: hint.cost > 0 ? { ...state.keyCost, [key.id]: Math.max(prevCost, hint.cost) } : state.keyCost,
     reveal: revealAfter,
     lastHintAt: now,
     submitsSinceHint: 0,

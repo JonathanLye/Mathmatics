@@ -14,7 +14,8 @@ export interface LeakFailure {
   message: string;
 }
 
-// 与 check-seeds 的 walkStrings 跳过的字段名一致（它们是模式、片段或标识，不是学生可见文本）。
+// 与 contracts/tools/check-seeds.mjs 的 walkStrings 跳过的字段名一致（它们是模式、片段或标识，不是学生可见文本）。
+// 两处是手抄的：改动时必须同步，见 contracts/tools/check-seeds.mjs 第 60 行。
 const SKIP_FIELDS = new Set(['patterns', 'leak', 'triggers', 'expr', 'jev', 'label', 'code', 'map', 'file', 'id']);
 
 function walkStrings(value: unknown, where: string, visit: (where: string, text: string) => void): void {

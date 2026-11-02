@@ -13,6 +13,8 @@
   "devDependencies": {
     "@proof-gym/contracts": "workspace:*",
     "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
