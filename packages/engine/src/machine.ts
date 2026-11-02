@@ -93,6 +93,32 @@ export function createAttempt(ctx: Context, start: number): AttemptState {
   };
 }
 
+// 驱动引擎状态的事件类型，与下面 apply 的 case 一一对应。重放只取这些类型：
+// 服务端的其它事件（attempt.start/park/lock/unlock、integ.*）和客户端观察事件不驱动状态。
+// 白名单而不是黑名单：新增服务端事件时，默认不会被当成引擎事件而让重放抛错。
+export const ENGINE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'def.submit',
+  'lesson.open',
+  'lesson.check',
+  'frame.template',
+  'frame.submit',
+  'line.submit',
+  'selfcheck.assign',
+  'selfcheck.submit',
+  'finish.try',
+  'hint.deliver',
+  'hint.deny',
+  'hint.rapid_lock',
+  'budget.exhausted',
+  'gate.block',
+  'layer.done',
+  'layer.skip',
+  'help.flag_teacher',
+  'summary.submit',
+  'attempt.complete',
+  'proactive.offer',
+]);
+
 // 事件 → 状态。只做状态变化，不做判断；判断都在 decide 里完成后写进事件。
 export function apply(state: AttemptState, event: EngineEvent): AttemptState {
   const p = event.payload;

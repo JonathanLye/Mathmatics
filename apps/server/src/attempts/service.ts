@@ -100,6 +100,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
   }
 
   function guardWritable(snap: Snapshot, ifMatch: number | undefined): void {
+    if (snap.row.status === 'locked') throw new AppError('ATTEMPT_LOCKED', 409, '本题已锁定，请联系老师');
     if (snap.row.status !== 'active') throw new AppError('ATTEMPT_LOCKED', 409, '这次作答已搁置或已结束');
     if (ifMatch !== undefined && ifMatch !== snap.row.state_version) {
       throw new AppError('STATE_STALE', 409, '作答已在别处更新，请以最新状态为准', { state: dto(snap) });

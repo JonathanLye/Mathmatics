@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   createAttempt,
   deserializeState,
+  ENGINE_EVENT_TYPES,
   gateRule,
   replay,
   type Secret,
@@ -15,7 +16,6 @@ import { loadProblem } from '../src/attempts/problem.ts';
 import { loadContract } from '../src/contract.ts';
 import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
-import { CLIENT_EVENT_TYPES } from '../src/events/client-schema.ts';
 
 import {
   buildTestApp,
@@ -170,8 +170,8 @@ async function startedAttempt(): Promise<{ cookie: string; id: string; state: Re
 }
 
 // 重放 ev.events 里的引擎事件，结果须与 app.attempts.state 一致。
-// attempt.start / attempt.park 是服务端事件；客户端观察事件（integ.*、paste 等，带 attemptId 时与作答共用 seq）只记录，
-// 不驱动引擎状态，而且引擎的 apply 遇到未知类型会抛错，所以这里都不取。
+// 只取 ENGINE_EVENT_TYPES（白名单）：attempt.start/park/lock/unlock、integ.* 与客户端观察事件只记录，不驱动引擎状态。
+// 引擎的 apply 遇到未知类型会抛错，所以不能用黑名单。
 async function expectReplayMatches(id: string): Promise<void> {
   const events = await db.query<{ type: string; ts: Date; payload: Record<string, unknown> }>(
     `select type, ts_server as ts, payload from ev.events where attempt_id = $1 order by seq`,
@@ -185,7 +185,7 @@ async function expectReplayMatches(id: string): Promise<void> {
   ).rows[0];
   const problem = await loadProblem(db, 'epsN', row?.problem_version ?? 1);
   const engineEvents = events.rows
-    .filter((e) => e.type !== 'attempt.start' && e.type !== 'attempt.park' && !CLIENT_EVENT_TYPES.has(e.type))
+    .filter((e) => ENGINE_EVENT_TYPES.has(e.type))
     .map((e) => ({ type: e.type, at: new Date(e.ts).getTime(), payload: e.payload }));
   const startAt = new Date(events.rows[0]?.ts as Date).getTime();
 
