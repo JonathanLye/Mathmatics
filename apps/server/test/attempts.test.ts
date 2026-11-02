@@ -55,9 +55,27 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await app.close();
-  await fx.close();
+  try {
+    await scanResponses();
+  } finally {
+    seen = [];
+    await app.close();
+    await fx.close();
+  }
 });
+
+// DoD：学生接口的每个响应，逐字符串 canon 后检查，未透露关键步骤的泄题片段必须为 0 命中。
+// 这里 matched 取空集：不豁免任何关键步骤，比 DoD 的豁免（已写出 / H3-H4 已透露）更严格。
+async function scanResponses(): Promise<void> {
+  const secret = (
+    await db.query<{ secret: Secret }>(`select secret from vault.problem_secrets where problem_id = 'epsN'`)
+  ).rows[0]?.secret as Secret;
+  for (const res of seen) {
+    for (const text of strings(JSON.parse(res.body))) {
+      expect(gateRule(secret, text, new Set(), []).ok, `泄露：${text}`).toBe(true);
+    }
+  }
+}
 
 async function openAssignment(classId: string, problemId: string): Promise<string> {
   const version = (
@@ -94,10 +112,20 @@ async function signConsent(cookie: string): Promise<void> {
   });
 }
 
-const post = (cookie: string, path: string, payload?: object, headers: Record<string, string> = {}) =>
-  app.inject({ method: 'POST', url: `/api/v1${path}`, headers: { cookie, ...WRITE_HEADERS, ...headers }, payload });
+// 每个学生接口的响应都记下来，测试结束时逐条做泄露扫描（issue #19 的 DoD）。
+let seen: { body: string }[] = [];
 
-const get = (cookie: string, path: string) => app.inject({ method: 'GET', url: `/api/v1${path}`, headers: { cookie } });
+const post = async (cookie: string, path: string, payload?: object, headers: Record<string, string> = {}) => {
+  const res = await app.inject({ method: 'POST', url: `/api/v1${path}`, headers: { cookie, ...WRITE_HEADERS, ...headers }, payload });
+  seen.push(res);
+  return res;
+};
+
+const get = async (cookie: string, path: string) => {
+  const res = await app.inject({ method: 'GET', url: `/api/v1${path}`, headers: { cookie } });
+  seen.push(res);
+  return res;
+};
 
 const input = { provenance: 'keyboard', draftId: DRAFT_ID };
 const lineBody = (statement: string, justification?: string) => ({ statement, justification, input });
