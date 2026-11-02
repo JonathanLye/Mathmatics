@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   createAttempt,
   deserializeState,
@@ -13,6 +15,7 @@ import { loadProblem } from '../src/attempts/problem.ts';
 import { loadContract } from '../src/contract.ts';
 import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
+import { CLIENT_EVENT_TYPES } from '../src/events/client-schema.ts';
 
 import {
   buildTestApp,
@@ -126,6 +129,31 @@ async function startedAttempt(): Promise<{ cookie: string; id: string; state: Re
   expect(res.statusCode, res.body).toBe(200);
   const state = res.json().state as Record<string, unknown>;
   return { cookie, id: state.attemptId as string, state };
+}
+
+// 重放 ev.events 里的引擎事件，结果须与 app.attempts.state 一致。
+// attempt.start / attempt.park 是服务端事件；客户端观察事件（integ.*、paste 等，带 attemptId 时与作答共用 seq）只记录，
+// 不驱动引擎状态，而且引擎的 apply 遇到未知类型会抛错，所以这里都不取。
+async function expectReplayMatches(id: string): Promise<void> {
+  const events = await db.query<{ type: string; ts: Date; payload: Record<string, unknown> }>(
+    `select type, ts_server as ts, payload from ev.events where attempt_id = $1 order by seq`,
+    [id],
+  );
+  const row = (
+    await db.query<{ problem_version: number; state: SerializedAttemptState }>(
+      `select problem_version, state from app.attempts where id = $1`,
+      [id],
+    )
+  ).rows[0];
+  const problem = await loadProblem(db, 'epsN', row?.problem_version ?? 1);
+  const engineEvents = events.rows
+    .filter((e) => e.type !== 'attempt.start' && e.type !== 'attempt.park' && !CLIENT_EVENT_TYPES.has(e.type))
+    .map((e) => ({ type: e.type, at: new Date(e.ts).getTime(), payload: e.payload }));
+  const startAt = new Date(events.rows[0]?.ts as Date).getTime();
+
+  expect(replay(createAttempt(problem.ctx, startAt), engineEvents)).toEqual(
+    deserializeState(row?.state as SerializedAttemptState),
+  );
 }
 
 function validState(body: { state: unknown }): void {
@@ -437,26 +465,37 @@ describe('作答接口（#19）', () => {
     await post(cookie, `/attempts/${id}/layers/L2/skip`);
     await post(cookie, `/attempts/${id}/lines`, lineBody(STUDENT_MARKER, '由题设'));
 
-    const events = await db.query<{ type: string; ts: Date; payload: Record<string, unknown> }>(
-      `select type, ts_server as ts, payload from ev.events where attempt_id = $1 order by seq`,
-      [id],
-    );
-    const row = (
-      await db.query<{ problem_version: number; state: SerializedAttemptState }>(
-        `select problem_version, state from app.attempts where id = $1`,
-        [id],
-      )
-    ).rows[0];
-    const problem = await loadProblem(db, 'epsN', row?.problem_version ?? 1);
-    // attempt.start 与 attempt.park 是服务端事件，不驱动引擎状态。
-    const engineEvents = events.rows
-      .filter((e) => e.type !== 'attempt.start' && e.type !== 'attempt.park')
-      .map((e) => ({ type: e.type, at: new Date(e.ts).getTime(), payload: e.payload }));
-    const startAt = new Date(events.rows[0]?.ts as Date).getTime();
+    await expectReplayMatches(id);
+  });
 
-    expect(replay(createAttempt(problem.ctx, startAt), engineEvents)).toEqual(
-      deserializeState(row?.state as SerializedAttemptState),
-    );
+  it('重放：作答中的客户端观察事件（带 attemptId，与引擎事件共用 seq）不影响重放结果', async () => {
+    const { cookie, id } = await startedAttempt();
+    await post(cookie, `/attempts/${id}/layers/L1/skip`);
+    const ingest = await app.inject({
+      method: 'POST',
+      url: '/api/v1/events/batch',
+      headers: { cookie, ...WRITE_HEADERS },
+      payload: {
+        events: [
+          {
+            id: randomUUID(),
+            type: 'integ.blur',
+            tsClient: '2026-11-03T04:00:00.000Z',
+            sessionId: randomUUID(),
+            deviceId: randomUUID(),
+            clientSeq: 1,
+            attemptId: id,
+            layer: 'L1',
+            payload: { awayMs: 1200 },
+          },
+        ],
+      },
+    });
+    expect(ingest.statusCode, ingest.body).toBe(200);
+    expect(ingest.json().accepted).toBe(1);
+    await post(cookie, `/attempts/${id}/layers/L2/skip`);
+
+    await expectReplayMatches(id);
   });
 
   it('泄露扫描：学生接口的响应不含未透露关键步骤的泄题片段；负面对照能报出', async () => {
