@@ -97,6 +97,14 @@ describe('教师密码登录', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it('学生账号即使误挂在教师账号表里，也不能用教师登录（角色限定为 teacher/admin）', async () => {
+    await db.query(`update app.users set role = 'student' where id in (select user_id from app.teacher_accounts)`);
+
+    const res = await login({ username: USERNAME, password: PASSWORD });
+
+    expect(res.statusCode).toBe(401);
+  });
+
   it('开启了 TOTP 的账号：拒绝登录（第二因素未实现，不能忽略）', async () => {
     await db.query(`update app.teacher_accounts set totp_secret_enc = $1`, [Buffer.from('placeholder')]);
 

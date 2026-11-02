@@ -1,7 +1,5 @@
 import { rm } from 'node:fs/promises';
 
-import { createTeacherAccount } from '../auth/teacher-login.ts';
-
 import { applySchema, openDb, seedContent } from './index.ts';
 
 const [command, ...rest] = process.argv.slice(2);
@@ -45,6 +43,8 @@ async function main(): Promise<void> {
       if (username === '' || password === '') {
         throw new Error('用法：TEACHER_PASSWORD=… node apps/server/src/db/cli.ts create-teacher <用户名>');
       }
+      // 动态导入：只有 create-teacher 需要 argon2 原生模块，其它 db:* 命令不加载它。
+      const { createTeacherAccount } = await import('../auth/teacher-login.ts');
       await createTeacherAccount(db, { username, password });
       console.log(`已创建教师账号：${username}`);
     }

@@ -70,7 +70,8 @@ export async function teacherLogin(db: Db, input: TeacherLoginInput): Promise<Te
     `select ta.user_id, u.role, ta.password_hash, ta.totp_secret_enc, u.status
        from app.teacher_accounts ta
        join app.users u on u.id = ta.user_id
-      where ta.username = $1`,
+      where ta.username = $1
+        and u.role in ('teacher', 'admin')`,
     [input.username.trim()],
   );
   const row = result.rows[0];
