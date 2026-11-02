@@ -1,0 +1,17 @@
+import { buildApp } from './app.ts';
+import { loadConfig } from './config.ts';
+
+const config = loadConfig();
+const app = await buildApp({ config });
+
+const address = await app.listen({ host: config.host, port: config.port });
+if (process.env.SMOKE === '1') {
+  console.log(`LISTENING ${address}`);
+}
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    app.log.info({ signal }, 'shutting down');
+    void app.close().finally(() => process.exit(0));
+  });
+}

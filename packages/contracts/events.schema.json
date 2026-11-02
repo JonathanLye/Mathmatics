@@ -1,0 +1,4279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof-gym.local/contracts/events.schema.json",
+  "title": "事件 StoredEvent v1（只追加）",
+  "description": "服务端入库后的事件。前端上报用 $defs/ClientEvent；服务端补全其余字段。由 tools/events-catalog.mjs 生成，请勿手改。",
+  "type": "object",
+  "required": [
+    "id",
+    "seq",
+    "type",
+    "source",
+    "tsServer",
+    "userAnon",
+    "role",
+    "payload"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "事件 ID（客户端生成 uuid v7；重试时不变，用于幂等去重）"
+    },
+    "type": {
+      "enum": [
+        "app.open",
+        "session.login",
+        "session.logout",
+        "consent.submit",
+        "nav.page",
+        "attempt.start",
+        "attempt.park",
+        "attempt.complete",
+        "attempt.abandon",
+        "attempt.lock",
+        "attempt.unlock",
+        "layer.enter",
+        "layer.done",
+        "layer.skip",
+        "stem.toggle",
+        "input.mode",
+        "ink.session",
+        "kbd.session",
+        "paste",
+        "photo.capture",
+        "recog.request",
+        "recog.result",
+        "recog.confirm",
+        "recog.discard",
+        "def.submit",
+        "lesson.open",
+        "lesson.step",
+        "lesson.check",
+        "lesson.visual",
+        "lesson.close",
+        "lesson.generated",
+        "frame.submit",
+        "frame.template",
+        "line.submit",
+        "line.edit",
+        "line.delete",
+        "finish.try",
+        "selfcheck.assign",
+        "selfcheck.submit",
+        "transfer.start",
+        "summary.submit",
+        "help.open",
+        "help.request",
+        "hint.preview",
+        "hint.deliver",
+        "hint.deny",
+        "hint.rapid_lock",
+        "budget.exhausted",
+        "concept.answer",
+        "annotation",
+        "pressure",
+        "proactive.offer",
+        "help.flag_teacher",
+        "gate.block",
+        "gate.pass_generated",
+        "integ.visibility",
+        "integ.blur",
+        "integ.fullscreen",
+        "integ.copy",
+        "integ.cut",
+        "integ.contextmenu",
+        "integ.shortcut",
+        "integ.devtools",
+        "integ.multitab",
+        "integ.network",
+        "integ.capture",
+        "integ.warn",
+        "integ.flag",
+        "t.view",
+        "t.mirror",
+        "t.nudge",
+        "t.resolve_flag",
+        "t.assign",
+        "t.publish_review",
+        "t.export",
+        "t.review_package",
+        "sys.fallback",
+        "sys.error"
+      ]
+    },
+    "tsClient": {
+      "type": "string",
+      "format": "date-time",
+      "description": "客户端时间（仅参考，排序以服务端 seq 为准）"
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "前端会话 ID（每次打开应用新建）"
+    },
+    "deviceId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "设备 ID（首次打开时生成并持久化）"
+    },
+    "clientSeq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "同一前端会话内的递增序号，用于发现丢包"
+    },
+    "attemptId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "layer": {
+      "enum": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        null
+      ]
+    },
+    "payload": {
+      "type": "object"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "服务端分配：同一作答内严格递增；无作答的事件按用户递增"
+    },
+    "source": {
+      "enum": [
+        "student",
+        "server",
+        "teacher"
+      ]
+    },
+    "tsServer": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "userAnon": {
+      "type": "string",
+      "description": "匿名码，如 S-7K2Q9M（学生）、T-3F（教师）"
+    },
+    "role": {
+      "enum": [
+        "student",
+        "teacher",
+        "admin",
+        "system"
+      ]
+    },
+    "classId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "assignmentId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "problemId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "problemVersion": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "practice",
+        "test",
+        null
+      ]
+    },
+    "arm": {
+      "enum": [
+        "A",
+        "B",
+        null
+      ],
+      "description": "实验分组（未参与实验为 null）"
+    },
+    "appVersion": {
+      "type": "string"
+    },
+    "platform": {
+      "enum": [
+        "h5-ios",
+        "h5-android",
+        "h5-desktop",
+        "h5-wechat-ios",
+        "h5-wechat-android",
+        "mp-weixin",
+        "teacher-web",
+        "server"
+      ]
+    },
+    "promptVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "modelVersions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "app.open"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_app_open"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "session.login"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_session_login"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "session.logout"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_session_logout"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "consent.submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_consent_submit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "nav.page"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_nav_page"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "attempt.start"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_attempt_start"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "attempt.park"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_attempt_park"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "attempt.complete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_attempt_complete"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "attempt.abandon"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_attempt_abandon"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "attempt.lock"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_attempt_lock"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "attempt.unlock"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_attempt_unlock"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "layer.enter"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_layer_enter"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "layer.done"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_layer_done"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "layer.skip"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_layer_skip"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "stem.toggle"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_stem_toggle"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "input.mode"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_input_mode"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ink.session"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_ink_session"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "kbd.session"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_kbd_session"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "paste"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_paste"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "photo.capture"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_photo_capture"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "recog.request"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_recog_request"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "recog.result"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_recog_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "recog.confirm"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_recog_confirm"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "recog.discard"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_recog_discard"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "def.submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_def_submit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "lesson.open"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_lesson_open"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "lesson.step"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_lesson_step"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "lesson.check"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_lesson_check"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "lesson.visual"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_lesson_visual"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "lesson.close"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_lesson_close"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "lesson.generated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_lesson_generated"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "frame.submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_frame_submit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "frame.template"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_frame_template"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "line.submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_line_submit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "line.edit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_line_edit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "line.delete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_line_delete"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "finish.try"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_finish_try"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "selfcheck.assign"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_selfcheck_assign"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "selfcheck.submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_selfcheck_submit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "transfer.start"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_transfer_start"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "summary.submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_summary_submit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "help.open"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_help_open"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "help.request"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_help_request"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "hint.preview"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_hint_preview"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "hint.deliver"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_hint_deliver"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "hint.deny"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_hint_deny"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "hint.rapid_lock"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_hint_rapid_lock"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "budget.exhausted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_budget_exhausted"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "concept.answer"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_concept_answer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "annotation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_annotation"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "pressure"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_pressure"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "proactive.offer"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_proactive_offer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "help.flag_teacher"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_help_flag_teacher"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "gate.block"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_gate_block"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "gate.pass_generated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_gate_pass_generated"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.visibility"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_visibility"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.blur"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_blur"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.fullscreen"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_fullscreen"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.copy"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_copy"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.cut"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_cut"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.contextmenu"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_contextmenu"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.shortcut"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_shortcut"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.devtools"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_devtools"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.multitab"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_multitab"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.network"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_network"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.capture"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_capture"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.warn"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_warn"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integ.flag"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_integ_flag"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.view"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_view"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.mirror"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_mirror"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.nudge"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_nudge"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.resolve_flag"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_resolve_flag"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.assign"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_assign"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.publish_review"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_publish_review"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.export"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_export"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "t.review_package"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_t_review_package"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "sys.fallback"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_sys_fallback"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "sys.error"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_sys_error"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "ClientEvent": {
+      "type": "object",
+      "description": "前端 POST /api/v1/events:batch 的单条事件（只能上报 source=student/teacher 的类型）",
+      "required": [
+        "id",
+        "type",
+        "tsClient",
+        "sessionId",
+        "deviceId",
+        "clientSeq",
+        "payload"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "事件 ID（客户端生成 uuid v7；重试时不变，用于幂等去重）"
+        },
+        "type": {
+          "enum": [
+            "app.open",
+            "nav.page",
+            "stem.toggle",
+            "input.mode",
+            "ink.session",
+            "kbd.session",
+            "paste",
+            "photo.capture",
+            "recog.discard",
+            "lesson.visual",
+            "help.open",
+            "integ.visibility",
+            "integ.blur",
+            "integ.fullscreen",
+            "integ.copy",
+            "integ.cut",
+            "integ.contextmenu",
+            "integ.shortcut",
+            "integ.devtools",
+            "integ.multitab",
+            "integ.network",
+            "integ.capture",
+            "t.view",
+            "t.mirror",
+            "sys.error"
+          ]
+        },
+        "tsClient": {
+          "type": "string",
+          "format": "date-time",
+          "description": "客户端时间（仅参考，排序以服务端 seq 为准）"
+        },
+        "sessionId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "前端会话 ID（每次打开应用新建）"
+        },
+        "deviceId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "设备 ID（首次打开时生成并持久化）"
+        },
+        "clientSeq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "同一前端会话内的递增序号，用于发现丢包"
+        },
+        "attemptId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "layer": {
+          "enum": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6",
+            null
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "app.open"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_app_open"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "nav.page"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_nav_page"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stem.toggle"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_stem_toggle"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "input.mode"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_input_mode"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ink.session"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_ink_session"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "kbd.session"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_kbd_session"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "paste"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_paste"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "photo.capture"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_photo_capture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "recog.discard"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_recog_discard"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "lesson.visual"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_lesson_visual"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "help.open"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_help_open"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.visibility"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_visibility"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.blur"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_blur"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.fullscreen"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_fullscreen"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.copy"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_copy"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.cut"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_cut"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.contextmenu"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_contextmenu"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.shortcut"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_shortcut"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.devtools"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_devtools"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.multitab"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_multitab"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.network"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_network"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integ.capture"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_integ_capture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "t.view"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_t_view"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "t.mirror"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_t_mirror"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sys.error"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/p_sys_error"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "p_app_open": {
+      "type": "object",
+      "description": "打开应用（冷启动或从后台回来）",
+      "properties": {
+        "entry": {
+          "type": "string",
+          "description": "入口：direct/wechat/qr/notice"
+        },
+        "inWeChat": {
+          "type": "boolean",
+          "description": "是否在微信内置浏览器"
+        },
+        "standalone": {
+          "type": "boolean",
+          "description": "是否以 PWA 方式打开"
+        },
+        "viewport": {
+          "type": "object",
+          "properties": {
+            "w": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "宽"
+            },
+            "h": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "高"
+            },
+            "dpr": {
+              "type": "number",
+              "description": "像素比"
+            }
+          }
+        }
+      },
+      "required": [
+        "entry"
+      ],
+      "additionalProperties": true
+    },
+    "p_session_login": {
+      "type": "object",
+      "description": "登录成功",
+      "properties": {
+        "method": {
+          "enum": [
+            "invite",
+            "wechat",
+            "password"
+          ],
+          "description": "方式"
+        },
+        "newDevice": {
+          "type": "boolean",
+          "description": "是否新设备"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "additionalProperties": true
+    },
+    "p_session_logout": {
+      "type": "object",
+      "description": "退出登录",
+      "properties": {},
+      "required": [],
+      "additionalProperties": true
+    },
+    "p_consent_submit": {
+      "type": "object",
+      "description": "提交知情同意",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "同意书版本"
+        },
+        "items": {
+          "type": "object",
+          "properties": {
+            "service": {
+              "type": "boolean",
+              "description": "服务所需处理（必选）"
+            },
+            "crossBorderHosting": {
+              "type": "boolean",
+              "description": "数据存储于中国香港服务器（P0 必选）"
+            },
+            "crossBorderModel": {
+              "type": "boolean",
+              "description": "去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev）"
+            },
+            "monitoring": {
+              "type": "boolean",
+              "description": "作答过程监测与切屏记录（必选）"
+            },
+            "research": {
+              "type": "boolean",
+              "description": "匿名数据用于教研（可选）"
+            }
+          }
+        }
+      },
+      "required": [
+        "version",
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "p_nav_page": {
+      "type": "object",
+      "description": "页面切换",
+      "properties": {
+        "page": {
+          "type": "string",
+          "description": "页面 ID"
+        },
+        "from": {
+          "type": "string",
+          "description": "来源页面"
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "p_attempt_start": {
+      "type": "object",
+      "description": "开始或恢复一次作答",
+      "properties": {
+        "resumed": {
+          "type": "boolean",
+          "description": "是否恢复"
+        },
+        "kind": {
+          "enum": [
+            "main",
+            "transfer"
+          ],
+          "description": "主题或迁移题"
+        },
+        "parentAttemptId": {
+          "type": "string",
+          "description": "迁移题的父作答",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "resumed",
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "p_attempt_park": {
+      "type": "object",
+      "description": "学生搁置本题",
+      "properties": {
+        "layer": {
+          "enum": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6"
+          ],
+          "description": "层"
+        }
+      },
+      "required": [
+        "layer"
+      ],
+      "additionalProperties": true
+    },
+    "p_attempt_complete": {
+      "type": "object",
+      "description": "本题完成",
+      "properties": {
+        "reveal": {
+          "type": "number",
+          "description": "累计透露量"
+        },
+        "independence": {
+          "type": "number",
+          "description": "独立度 0–1"
+        },
+        "keysOwn": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "自己写出的关键步骤数"
+        },
+        "keysTotal": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "关键步骤总数"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "开始到完成（毫秒）"
+        },
+        "activeMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "前台有效时长（毫秒）"
+        },
+        "teacherOverrides": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "经教师授权补发的 H4 关键步骤"
+        }
+      },
+      "required": [
+        "reveal",
+        "independence",
+        "keysOwn",
+        "keysTotal",
+        "durationMs"
+      ],
+      "additionalProperties": true
+    },
+    "p_attempt_abandon": {
+      "type": "object",
+      "description": "布置关闭时仍未完成",
+      "properties": {
+        "reason": {
+          "enum": [
+            "closed",
+            "teacher",
+            "timeout"
+          ],
+          "description": "原因"
+        },
+        "layer": {
+          "enum": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6"
+          ],
+          "description": "层"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "additionalProperties": true
+    },
+    "p_attempt_lock": {
+      "type": "object",
+      "description": "作答被锁（测验模式切出过多等）",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "原因"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "触发次数"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "additionalProperties": true
+    },
+    "p_attempt_unlock": {
+      "type": "object",
+      "description": "作答解锁",
+      "properties": {
+        "by": {
+          "type": "string",
+          "description": "解锁人匿名 ID"
+        },
+        "grantH4": {
+          "type": "string",
+          "description": "解锁时补发 H4 的关键步骤 ID（可选）"
+        }
+      },
+      "required": [
+        "by"
+      ],
+      "additionalProperties": true
+    },
+    "p_layer_enter": {
+      "type": "object",
+      "description": "进入某层",
+      "properties": {
+        "from": {
+          "enum": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6",
+            null
+          ],
+          "description": "来自哪层"
+        },
+        "via": {
+          "enum": [
+            "advance",
+            "nav",
+            "resume",
+            "skip"
+          ],
+          "description": "方式"
+        }
+      },
+      "required": [
+        "via"
+      ],
+      "additionalProperties": true
+    },
+    "p_layer_done": {
+      "type": "object",
+      "description": "完成某层",
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "本层提交次数"
+        }
+      },
+      "required": [],
+      "additionalProperties": true
+    },
+    "p_layer_skip": {
+      "type": "object",
+      "description": "跳过某层",
+      "properties": {
+        "reason": {
+          "enum": [
+            "self",
+            "pretest",
+            "history",
+            "teacher_config"
+          ],
+          "description": "跳过依据"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "additionalProperties": true
+    },
+    "p_stem_toggle": {
+      "type": "object",
+      "description": "展开/收起题面",
+      "properties": {
+        "expanded": {
+          "type": "boolean",
+          "description": "展开"
+        }
+      },
+      "required": [
+        "expanded"
+      ],
+      "additionalProperties": true
+    },
+    "p_input_mode": {
+      "type": "object",
+      "description": "切换输入方式",
+      "properties": {
+        "mode": {
+          "enum": [
+            "ink",
+            "keyboard",
+            "photo"
+          ],
+          "description": "方式"
+        },
+        "target": {
+          "enum": [
+            "def",
+            "frame",
+            "line_statement",
+            "line_justification",
+            "selfcheck",
+            "summary",
+            "help_text"
+          ],
+          "description": "输入落点"
+        }
+      },
+      "required": [
+        "mode",
+        "target"
+      ],
+      "additionalProperties": true
+    },
+    "p_ink_session": {
+      "type": "object",
+      "description": "一次手写会话结束（点\"识别\"或取消）",
+      "properties": {
+        "draftId": {
+          "type": "string",
+          "description": "草稿 ID",
+          "format": "uuid"
+        },
+        "target": {
+          "enum": [
+            "def",
+            "frame",
+            "line_statement",
+            "line_justification",
+            "selfcheck",
+            "summary",
+            "help_text"
+          ],
+          "description": "输入落点"
+        },
+        "inkId": {
+          "type": "string",
+          "description": "笔迹 ID（上传后由服务端返回）"
+        },
+        "strokes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "笔画数"
+        },
+        "points": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "采样点数"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "首笔到末笔（毫秒）"
+        },
+        "erases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "橡皮次数"
+        },
+        "undos": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "撤销次数"
+        },
+        "scratchOuts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "划掉删除次数"
+        },
+        "fullscreen": {
+          "type": "boolean",
+          "description": "是否全屏手写"
+        },
+        "orientation": {
+          "enum": [
+            "portrait",
+            "landscape"
+          ],
+          "description": "方向"
+        },
+        "pointerTypes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "pen",
+              "touch",
+              "mouse"
+            ],
+            "description": ""
+          },
+          "description": "输入设备"
+        }
+      },
+      "required": [
+        "draftId",
+        "target",
+        "strokes",
+        "durationMs"
+      ],
+      "additionalProperties": true
+    },
+    "p_kbd_session": {
+      "type": "object",
+      "description": "一次键盘输入会话结束",
+      "properties": {
+        "draftId": {
+          "type": "string",
+          "description": "草稿 ID",
+          "format": "uuid"
+        },
+        "target": {
+          "enum": [
+            "def",
+            "frame",
+            "line_statement",
+            "line_justification",
+            "selfcheck",
+            "summary",
+            "help_text"
+          ],
+          "description": "输入落点"
+        },
+        "keys": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "按键总数"
+        },
+        "mathKeys": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "数学键次数"
+        },
+        "templates": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "结构模板插入次数"
+        },
+        "deletes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "删除次数"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "时长（毫秒）"
+        },
+        "systemKeyboard": {
+          "type": "boolean",
+          "description": "是否用了系统键盘"
+        }
+      },
+      "required": [
+        "draftId",
+        "target",
+        "keys",
+        "durationMs"
+      ],
+      "additionalProperties": true
+    },
+    "p_paste": {
+      "type": "object",
+      "description": "在输入框粘贴",
+      "properties": {
+        "target": {
+          "enum": [
+            "def",
+            "frame",
+            "line_statement",
+            "line_justification",
+            "selfcheck",
+            "summary",
+            "help_text"
+          ],
+          "description": "输入落点"
+        },
+        "chars": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "粘贴字符数"
+        },
+        "blocked": {
+          "type": "boolean",
+          "description": "是否被拦下（测验模式）"
+        }
+      },
+      "required": [
+        "target",
+        "chars"
+      ],
+      "additionalProperties": true
+    },
+    "p_photo_capture": {
+      "type": "object",
+      "description": "拍照或从相册选图",
+      "properties": {
+        "photoId": {
+          "type": "string",
+          "description": "照片 ID"
+        },
+        "source": {
+          "enum": [
+            "camera",
+            "album"
+          ],
+          "description": "来源"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "字节"
+        },
+        "w": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "宽"
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "高"
+        }
+      },
+      "required": [
+        "photoId",
+        "source"
+      ],
+      "additionalProperties": true
+    },
+    "p_recog_request": {
+      "type": "object",
+      "description": "发起识别",
+      "properties": {
+        "recogId": {
+          "type": "string",
+          "description": "识别 ID",
+          "format": "uuid"
+        },
+        "kind": {
+          "enum": [
+            "ink",
+            "photo"
+          ],
+          "description": "类型"
+        },
+        "provider": {
+          "type": "string",
+          "description": "主识别服务"
+        },
+        "queueMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "排队（毫秒）"
+        }
+      },
+      "required": [
+        "recogId",
+        "kind",
+        "provider"
+      ],
+      "additionalProperties": true
+    },
+    "p_recog_result": {
+      "type": "object",
+      "description": "识别返回",
+      "properties": {
+        "recogId": {
+          "type": "string",
+          "description": "识别 ID",
+          "format": "uuid"
+        },
+        "provider": {
+          "type": "string",
+          "description": "服务"
+        },
+        "confidence": {
+          "type": "number",
+          "description": "置信度"
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "耗时（毫秒）"
+        },
+        "crossProvider": {
+          "type": "string",
+          "description": "交叉比对服务"
+        },
+        "agree": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "两路结果 canon 后是否一致"
+        },
+        "lines": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "切出的行数（拍照）"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "timeout",
+            "empty"
+          ],
+          "description": "状态"
+        }
+      },
+      "required": [
+        "recogId",
+        "provider",
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "p_recog_confirm": {
+      "type": "object",
+      "description": "学生确认识别结果（才会提交）",
+      "properties": {
+        "recogId": {
+          "type": "string",
+          "description": "识别 ID",
+          "format": "uuid"
+        },
+        "edited": {
+          "type": "boolean",
+          "description": "是否改过"
+        },
+        "editDistance": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "改动的字符编辑距离"
+        }
+      },
+      "required": [
+        "recogId",
+        "edited"
+      ],
+      "additionalProperties": true
+    },
+    "p_recog_discard": {
+      "type": "object",
+      "description": "丢弃识别结果重写",
+      "properties": {
+        "recogId": {
+          "type": "string",
+          "description": "识别 ID"
+        },
+        "reason": {
+          "enum": [
+            "rewrite",
+            "cancel",
+            "switch_keyboard"
+          ],
+          "description": "原因"
+        }
+      },
+      "required": [
+        "recogId",
+        "reason"
+      ],
+      "additionalProperties": true
+    },
+    "p_def_submit": {
+      "type": "object",
+      "description": "第 1 层提交定义",
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "description": "行 ID",
+          "format": "uuid"
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "第几次提交"
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "各成分是否具备"
+        },
+        "orderOk": {
+          "type": "boolean",
+          "description": "量词顺序"
+        },
+        "pass": {
+          "type": "boolean",
+          "description": "是否通过"
+        },
+        "path": {
+          "enum": [
+            "rule",
+            "jev",
+            "rule+jev",
+            "rule+llm"
+          ],
+          "description": "判定来源"
+        },
+        "jevShadow": {
+          "type": "object",
+          "description": "Jev 影子判定（P0 不影响学生）"
+        }
+      },
+      "required": [
+        "lineId",
+        "n",
+        "pass",
+        "path"
+      ],
+      "additionalProperties": true
+    },
+    "p_lesson_open": {
+      "type": "object",
+      "description": "打开微课",
+      "properties": {
+        "conceptId": {
+          "type": "string",
+          "description": "概念"
+        },
+        "trigger": {
+          "enum": [
+            "button",
+            "auto_after_fail",
+            "help",
+            "card"
+          ],
+          "description": "触发方式"
+        }
+      },
+      "required": [
+        "conceptId",
+        "trigger"
+      ],
+      "additionalProperties": true
+    },
+    "p_lesson_step": {
+      "type": "object",
+      "description": "微课进入某步",
+      "properties": {
+        "conceptId": {
+          "type": "string",
+          "description": "概念"
+        },
+        "stepId": {
+          "type": "string",
+          "description": "步骤"
+        },
+        "kind": {
+          "type": "string",
+          "description": "步骤类型"
+        }
+      },
+      "required": [
+        "conceptId",
+        "stepId"
+      ],
+      "additionalProperties": true
+    },
+    "p_lesson_check": {
+      "type": "object",
+      "description": "微课小核验作答",
+      "properties": {
+        "conceptId": {
+          "type": "string",
+          "description": "概念"
+        },
+        "stepId": {
+          "type": "string",
+          "description": "步骤"
+        },
+        "choice": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "所选项"
+        },
+        "correct": {
+          "type": "boolean",
+          "description": "是否正确"
+        },
+        "tries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "第几次"
+        }
+      },
+      "required": [
+        "conceptId",
+        "stepId",
+        "correct"
+      ],
+      "additionalProperties": true
+    },
+    "p_lesson_visual": {
+      "type": "object",
+      "description": "图解交互汇总（离开该步时上报）",
+      "properties": {
+        "conceptId": {
+          "type": "string",
+          "description": "概念"
+        },
+        "stepId": {
+          "type": "string",
+          "description": "步骤"
+        },
+        "visual": {
+          "type": "string",
+          "description": "图解类型"
+        },
+        "interactions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "拖动次数"
+        },
+        "lastValue": {
+          "type": "number",
+          "description": "最后的参数值"
+        },
+        "dwellMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "停留（毫秒）"
+        }
+      },
+      "required": [
+        "conceptId",
+        "stepId",
+        "visual",
+        "interactions"
+      ],
+      "additionalProperties": true
+    },
+    "p_lesson_close": {
+      "type": "object",
+      "description": "关闭微课",
+      "properties": {
+        "conceptId": {
+          "type": "string",
+          "description": "概念"
+        },
+        "completedSteps": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "完成步数"
+        },
+        "totalSteps": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "总步数"
+        }
+      },
+      "required": [
+        "conceptId",
+        "completedSteps",
+        "totalSteps"
+      ],
+      "additionalProperties": true
+    },
+    "p_lesson_generated": {
+      "type": "object",
+      "description": "第 1–2 层按学生原话生成的补充讲解（已过闸门）",
+      "properties": {
+        "conceptId": {
+          "type": "string",
+          "description": "概念"
+        },
+        "misconception": {
+          "type": "string",
+          "description": "归类出的误解类型"
+        },
+        "model": {
+          "type": "string",
+          "description": "生成模型"
+        },
+        "reviewers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "复核方"
+        },
+        "cached": {
+          "type": "boolean",
+          "description": "是否命中缓存"
+        }
+      },
+      "required": [
+        "conceptId",
+        "model"
+      ],
+      "additionalProperties": true
+    },
+    "p_frame_submit": {
+      "type": "object",
+      "description": "第 2 层提交骨架",
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "description": "行 ID",
+          "format": "uuid"
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "第几次"
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "缺失的检查项 ID"
+        },
+        "pass": {
+          "type": "boolean",
+          "description": "通过"
+        },
+        "path": {
+          "enum": [
+            "rule",
+            "jev",
+            "rule+jev",
+            "rule+llm"
+          ],
+          "description": "判定来源"
+        },
+        "jevShadow": {
+          "type": "object",
+          "description": "Jev 影子判定（P0 不影响学生）"
+        }
+      },
+      "required": [
+        "lineId",
+        "n",
+        "pass",
+        "path"
+      ],
+      "additionalProperties": true
+    },
+    "p_frame_template": {
+      "type": "object",
+      "description": "查看通用骨架模板",
+      "properties": {},
+      "required": [],
+      "additionalProperties": true
+    },
+    "p_line_submit": {
+      "type": "object",
+      "description": "第 3 层（或迁移题）提交一行",
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "description": "行 ID",
+          "format": "uuid"
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "行号"
+        },
+        "provenance": {
+          "enum": [
+            "ink",
+            "keyboard",
+            "photo",
+            "mixed",
+            "paste"
+          ],
+          "description": "来源"
+        },
+        "recogId": {
+          "type": "string",
+          "description": "识别 ID"
+        },
+        "hasJust": {
+          "type": "boolean",
+          "description": "是否写了依据"
+        },
+        "cls": {
+          "enum": [
+            "match",
+            "error",
+            "unknown",
+            "lowconf",
+            "demo_needs_reason"
+          ],
+          "description": "归类"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "命中的关键步骤"
+        },
+        "newKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "本行新增的关键步骤"
+        },
+        "errorId": {
+          "type": "string",
+          "description": "错误类型 ID"
+        },
+        "conf": {
+          "type": "number",
+          "description": "置信度"
+        },
+        "path": {
+          "enum": [
+            "rule",
+            "jev",
+            "llm",
+            "rule+jev"
+          ],
+          "description": "归类来源"
+        },
+        "jevShadow": {
+          "type": "object",
+          "description": "Jev 影子判定"
+        }
+      },
+      "required": [
+        "lineId",
+        "n",
+        "provenance",
+        "cls",
+        "path"
+      ],
+      "additionalProperties": true
+    },
+    "p_line_edit": {
+      "type": "object",
+      "description": "修改已提交的行（重新归类；apply 据此更新该行的关键步骤）",
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "description": "行 ID",
+          "format": "uuid"
+        },
+        "field": {
+          "enum": [
+            "statement",
+            "justification",
+            "both"
+          ],
+          "description": "改了哪部分"
+        },
+        "provenance": {
+          "enum": [
+            "ink",
+            "keyboard",
+            "photo",
+            "mixed",
+            "paste"
+          ],
+          "description": "新内容来源"
+        },
+        "recogId": {
+          "type": "string",
+          "description": "识别 ID"
+        },
+        "hasJust": {
+          "type": "boolean",
+          "description": "是否写了依据"
+        },
+        "cls": {
+          "enum": [
+            "match",
+            "error",
+            "unknown",
+            "lowconf",
+            "demo_needs_reason"
+          ],
+          "description": "重新归类结果"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "该行现在命中的关键步骤"
+        },
+        "newKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "因本次修改新获得的关键步骤"
+        },
+        "lostKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "因本次修改失去的关键步骤（其他未删除行也没有它）"
+        },
+        "errorId": {
+          "type": "string",
+          "description": "错误类型 ID"
+        },
+        "conf": {
+          "type": "number",
+          "description": "置信度"
+        },
+        "path": {
+          "enum": [
+            "rule",
+            "jev",
+            "llm",
+            "rule+jev"
+          ],
+          "description": "归类来源"
+        },
+        "jevShadow": {
+          "type": "object",
+          "description": "Jev 影子判定"
+        }
+      },
+      "required": [
+        "lineId",
+        "field",
+        "cls",
+        "keys",
+        "newKeys",
+        "lostKeys",
+        "path"
+      ],
+      "additionalProperties": true
+    },
+    "p_line_delete": {
+      "type": "object",
+      "description": "删除一行（软删除）",
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "description": "行 ID",
+          "format": "uuid"
+        },
+        "lostKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "因删除失去的关键步骤（其他未删除行也没有它）"
+        }
+      },
+      "required": [
+        "lineId",
+        "lostKeys"
+      ],
+      "additionalProperties": true
+    },
+    "p_finish_try": {
+      "type": "object",
+      "description": "点\"写完了\"",
+      "properties": {
+        "complete": {
+          "type": "boolean",
+          "description": "链条是否闭合"
+        },
+        "route": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "闭合的路线序号"
+        }
+      },
+      "required": [
+        "complete"
+      ],
+      "additionalProperties": true
+    },
+    "p_selfcheck_assign": {
+      "type": "object",
+      "description": "分配自检题",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "题 ID"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "引用学生的第几行"
+              }
+            }
+          },
+          "description": "本次的 3 道题"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "p_selfcheck_submit": {
+      "type": "object",
+      "description": "提交一道自检题",
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "description": "题 ID"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "description": ""
+          },
+          "description": "引用的行号"
+        },
+        "valid": {
+          "type": "boolean",
+          "description": "引用是否有效"
+        },
+        "path": {
+          "enum": [
+            "rule",
+            "jev",
+            "rule+jev",
+            "rule+llm"
+          ],
+          "description": "判定来源"
+        },
+        "followup": {
+          "type": "boolean",
+          "description": "是否追问了一句"
+        }
+      },
+      "required": [
+        "itemId",
+        "valid"
+      ],
+      "additionalProperties": true
+    },
+    "p_transfer_start": {
+      "type": "object",
+      "description": "开始迁移题",
+      "properties": {
+        "childAttemptId": {
+          "type": "string",
+          "description": "迁移题作答 ID",
+          "format": "uuid"
+        },
+        "problemId": {
+          "type": "string",
+          "description": "迁移题 ID"
+        }
+      },
+      "required": [
+        "childAttemptId",
+        "problemId"
+      ],
+      "additionalProperties": true
+    },
+    "p_summary_submit": {
+      "type": "object",
+      "description": "提交总结",
+      "properties": {
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "缺失的要点 ID"
+        },
+        "followupAsked": {
+          "type": "boolean",
+          "description": "是否追问"
+        },
+        "pass": {
+          "type": "boolean",
+          "description": "是否完成"
+        }
+      },
+      "required": [
+        "pass"
+      ],
+      "additionalProperties": true
+    },
+    "p_help_open": {
+      "type": "object",
+      "description": "打开求助抽屉",
+      "properties": {
+        "from": {
+          "enum": [
+            "dock",
+            "line",
+            "stuck_offer",
+            "budget_panel"
+          ],
+          "description": "入口"
+        }
+      },
+      "required": [
+        "from"
+      ],
+      "additionalProperties": true
+    },
+    "p_help_request": {
+      "type": "object",
+      "description": "一次求助请求",
+      "properties": {
+        "helpId": {
+          "type": "string",
+          "description": "求助 ID",
+          "format": "uuid"
+        },
+        "intent": {
+          "enum": [
+            "stuck",
+            "concept",
+            "check_line",
+            "free"
+          ],
+          "description": "学生选的意图"
+        },
+        "routed": {
+          "enum": [
+            "stuck",
+            "concept",
+            "check_line",
+            "pressure",
+            "off_topic"
+          ],
+          "description": "最终路由"
+        },
+        "routedBy": {
+          "enum": [
+            "chip",
+            "rule",
+            "jev",
+            "llm"
+          ],
+          "description": "路由依据"
+        },
+        "conf": {
+          "type": "number",
+          "description": "路由置信度"
+        },
+        "textChars": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "自由输入字数"
+        }
+      },
+      "required": [
+        "helpId",
+        "intent",
+        "routed",
+        "routedBy"
+      ],
+      "additionalProperties": true
+    },
+    "p_hint_preview": {
+      "type": "object",
+      "description": "展示下一条提示的代价（花之前）",
+      "properties": {
+        "helpId": {
+          "type": "string",
+          "description": "求助 ID"
+        },
+        "key": {
+          "type": "string",
+          "description": "关键步骤"
+        },
+        "level": {
+          "enum": [
+            "H0",
+            "H1",
+            "H2",
+            "H3",
+            "H4"
+          ],
+          "description": "级别"
+        },
+        "cost": {
+          "type": "number",
+          "description": "将计入的透露量增量"
+        },
+        "revealBefore": {
+          "type": "number",
+          "description": "当前透露量"
+        },
+        "allowed": {
+          "type": "boolean",
+          "description": "现在能否领取"
+        },
+        "reason": {
+          "type": "string",
+          "description": "不能领取的原因"
+        }
+      },
+      "required": [
+        "key",
+        "level",
+        "cost",
+        "allowed"
+      ],
+      "additionalProperties": true
+    },
+    "p_hint_deliver": {
+      "type": "object",
+      "description": "下发一条提示",
+      "properties": {
+        "helpId": {
+          "type": "string",
+          "description": "求助 ID"
+        },
+        "hintId": {
+          "type": "string",
+          "description": "题目包内的提示 ID（key.level）"
+        },
+        "key": {
+          "type": "string",
+          "description": "关键步骤"
+        },
+        "level": {
+          "enum": [
+            "H0",
+            "H1",
+            "H2",
+            "H3",
+            "H4"
+          ],
+          "description": "级别"
+        },
+        "cost": {
+          "type": "number",
+          "description": "该级透露量"
+        },
+        "revealDelta": {
+          "type": "number",
+          "description": "本次实际增量"
+        },
+        "revealAfter": {
+          "type": "number",
+          "description": "之后的累计透露量"
+        },
+        "override": {
+          "type": "boolean",
+          "description": "教师补发 H4 / 额度超限授权"
+        }
+      },
+      "required": [
+        "hintId",
+        "key",
+        "level",
+        "revealDelta",
+        "revealAfter"
+      ],
+      "additionalProperties": true
+    },
+    "p_hint_deny": {
+      "type": "object",
+      "description": "拒绝升级提示",
+      "properties": {
+        "helpId": {
+          "type": "string",
+          "description": "求助 ID"
+        },
+        "reason": {
+          "enum": [
+            "need_attempt",
+            "dwell",
+            "rapid_lock",
+            "budget",
+            "layer",
+            "test_mode",
+            "complete"
+          ],
+          "description": "原因"
+        },
+        "waitSec": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "还需等待秒数"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "additionalProperties": true
+    },
+    "p_hint_rapid_lock": {
+      "type": "object",
+      "description": "连点锁定",
+      "properties": {
+        "until": {
+          "type": "string",
+          "description": "解锁时间",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "until"
+      ],
+      "additionalProperties": true
+    },
+    "p_budget_exhausted": {
+      "type": "object",
+      "description": "透露额度用尽",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "当时卡住的关键步骤"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": true
+    },
+    "p_concept_answer": {
+      "type": "object",
+      "description": "回答概念问题",
+      "properties": {
+        "helpId": {
+          "type": "string",
+          "description": "求助 ID"
+        },
+        "source": {
+          "enum": [
+            "glossary",
+            "lesson",
+            "generated",
+            "none"
+          ],
+          "description": "来源"
+        },
+        "conceptId": {
+          "type": "string",
+          "description": "概念"
+        },
+        "glossId": {
+          "type": "string",
+          "description": "词条"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "additionalProperties": true
+    },
+    "p_annotation": {
+      "type": "object",
+      "description": "系统批注（锚定在某一行）",
+      "properties": {
+        "annId": {
+          "type": "string",
+          "description": "批注 ID",
+          "format": "uuid"
+        },
+        "lineId": {
+          "type": "string",
+          "description": "行 ID"
+        },
+        "kind": {
+          "enum": [
+            "question",
+            "link",
+            "justify",
+            "from_demo",
+            "order",
+            "missing"
+          ],
+          "description": "类型"
+        },
+        "source": {
+          "enum": [
+            "rule",
+            "error",
+            "jev",
+            "llm",
+            "template"
+          ],
+          "description": "来源"
+        },
+        "errorId": {
+          "type": "string",
+          "description": "错误类型"
+        }
+      },
+      "required": [
+        "annId",
+        "kind",
+        "source"
+      ],
+      "additionalProperties": true
+    },
+    "p_pressure": {
+      "type": "object",
+      "description": "索要答案/施压",
+      "properties": {
+        "helpId": {
+          "type": "string",
+          "description": "求助 ID"
+        },
+        "kind": {
+          "enum": [
+            "answer_demand",
+            "authority",
+            "emotion",
+            "next_step",
+            "jailbreak"
+          ],
+          "description": "类型"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "p_proactive_offer": {
+      "type": "object",
+      "description": "连续卡住时主动询问是否要提示",
+      "properties": {
+        "stuckMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "卡住时长（毫秒）"
+        },
+        "noProgress": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "无进展提交次数"
+        }
+      },
+      "required": [
+        "stuckMs"
+      ],
+      "additionalProperties": true
+    },
+    "p_help_flag_teacher": {
+      "type": "object",
+      "description": "学生标记求助老师",
+      "properties": {
+        "flagId": {
+          "type": "string",
+          "description": "标记 ID",
+          "format": "uuid"
+        },
+        "layer": {
+          "enum": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6"
+          ],
+          "description": "层"
+        }
+      },
+      "required": [
+        "flagId"
+      ],
+      "additionalProperties": true
+    },
+    "p_gate_block": {
+      "type": "object",
+      "description": "外发文本被闸门拦截",
+      "properties": {
+        "channel": {
+          "enum": [
+            "hint",
+            "annotation",
+            "concept",
+            "lesson",
+            "task",
+            "refusal",
+            "nudge",
+            "generated",
+            "selfcheck",
+            "summary"
+          ],
+          "description": "通道"
+        },
+        "stage": {
+          "enum": [
+            "rule",
+            "format",
+            "jev",
+            "cross",
+            "timeout"
+          ],
+          "description": "拦截环节"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "涉及关键步骤"
+        },
+        "fragHash": {
+          "type": "string",
+          "description": "命中片段哈希"
+        },
+        "fallback": {
+          "enum": [
+            "prewritten",
+            "generic"
+          ],
+          "description": "回退"
+        }
+      },
+      "required": [
+        "channel",
+        "stage",
+        "fallback"
+      ],
+      "additionalProperties": true
+    },
+    "p_gate_pass_generated": {
+      "type": "object",
+      "description": "生成文本通过复核",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "通道"
+        },
+        "reviewers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": ""
+          },
+          "description": "复核方"
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "复核耗时（毫秒）"
+        }
+      },
+      "required": [
+        "channel"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_visibility": {
+      "type": "object",
+      "description": "页面隐藏/恢复（切出、锁屏、切应用）",
+      "properties": {
+        "state": {
+          "enum": [
+            "hidden",
+            "visible"
+          ],
+          "description": "状态"
+        },
+        "awayMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "离开时长（visible 时）（毫秒）"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_blur": {
+      "type": "object",
+      "description": "窗口失焦（仅桌面端）",
+      "properties": {
+        "awayMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "失焦时长（毫秒）"
+        }
+      },
+      "required": [
+        "awayMs"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_fullscreen": {
+      "type": "object",
+      "description": "全屏状态变化",
+      "properties": {
+        "state": {
+          "enum": [
+            "enter",
+            "exit",
+            "denied",
+            "unsupported"
+          ],
+          "description": "状态"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_copy": {
+      "type": "object",
+      "description": "复制",
+      "properties": {
+        "chars": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "字符数"
+        }
+      },
+      "required": [
+        "chars"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_cut": {
+      "type": "object",
+      "description": "剪切",
+      "properties": {
+        "chars": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "字符数"
+        }
+      },
+      "required": [
+        "chars"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_contextmenu": {
+      "type": "object",
+      "description": "右键/长按菜单",
+      "properties": {},
+      "required": [],
+      "additionalProperties": true
+    },
+    "p_integ_shortcut": {
+      "type": "object",
+      "description": "敏感快捷键",
+      "properties": {
+        "combo": {
+          "type": "string",
+          "description": "组合键"
+        }
+      },
+      "required": [
+        "combo"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_devtools": {
+      "type": "object",
+      "description": "疑似打开开发者工具（启发式，仅桌面）",
+      "properties": {
+        "signal": {
+          "type": "string",
+          "description": "信号"
+        }
+      },
+      "required": [
+        "signal"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_multitab": {
+      "type": "object",
+      "description": "同一作答在多个标签页打开",
+      "properties": {
+        "tabs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "标签数"
+        }
+      },
+      "required": [
+        "tabs"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_network": {
+      "type": "object",
+      "description": "网络状态",
+      "properties": {
+        "online": {
+          "type": "boolean",
+          "description": "在线"
+        }
+      },
+      "required": [
+        "online"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_capture": {
+      "type": "object",
+      "description": "截屏/录屏（仅小程序）",
+      "properties": {
+        "kind": {
+          "enum": [
+            "screenshot",
+            "record_start",
+            "record_stop"
+          ],
+          "description": "类型"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_warn": {
+      "type": "object",
+      "description": "向学生发出诚信提醒",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "触发类型"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "累计次数"
+        },
+        "mode": {
+          "enum": [
+            "practice",
+            "test"
+          ],
+          "description": "模式"
+        }
+      },
+      "required": [
+        "kind",
+        "count",
+        "mode"
+      ],
+      "additionalProperties": true
+    },
+    "p_integ_flag": {
+      "type": "object",
+      "description": "服务端诚信信号",
+      "properties": {
+        "signal": {
+          "enum": [
+            "no_provenance",
+            "paste_burst",
+            "timing",
+            "similarity",
+            "ai_style",
+            "multi_device",
+            "away_long",
+            "capture"
+          ],
+          "description": "信号"
+        },
+        "score": {
+          "type": "number",
+          "description": "0–1"
+        },
+        "evidence": {
+          "type": "object",
+          "description": "证据（行 ID、时间、相似对象匿名 ID 等）"
+        }
+      },
+      "required": [
+        "signal",
+        "score"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_view": {
+      "type": "object",
+      "description": "教师查看页面",
+      "properties": {
+        "page": {
+          "type": "string",
+          "description": "页面"
+        },
+        "attemptId": {
+          "type": "string",
+          "description": "作答 ID"
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_mirror": {
+      "type": "object",
+      "description": "打开/关闭镜像预览",
+      "properties": {
+        "attemptId": {
+          "type": "string",
+          "description": "作答 ID"
+        },
+        "action": {
+          "enum": [
+            "open",
+            "close"
+          ],
+          "description": "动作"
+        }
+      },
+      "required": [
+        "attemptId",
+        "action"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_nudge": {
+      "type": "object",
+      "description": "教师给学生发一句话（过闸门）",
+      "properties": {
+        "gated": {
+          "type": "boolean",
+          "description": "是否被闸门改写"
+        }
+      },
+      "required": [
+        "gated"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_resolve_flag": {
+      "type": "object",
+      "description": "处理求助标记",
+      "properties": {
+        "flagId": {
+          "type": "string",
+          "description": "标记 ID"
+        }
+      },
+      "required": [
+        "flagId"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_assign": {
+      "type": "object",
+      "description": "布置练习/测验",
+      "properties": {
+        "assignmentId": {
+          "type": "string",
+          "description": "布置 ID"
+        },
+        "mode": {
+          "enum": [
+            "practice",
+            "test"
+          ],
+          "description": "模式"
+        },
+        "problemId": {
+          "type": "string",
+          "description": "题"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "版本"
+        }
+      },
+      "required": [
+        "assignmentId",
+        "mode"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_publish_review": {
+      "type": "object",
+      "description": "题目关闭后发布参考证明与讲评",
+      "properties": {
+        "assignmentId": {
+          "type": "string",
+          "description": "布置 ID"
+        }
+      },
+      "required": [
+        "assignmentId"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_export": {
+      "type": "object",
+      "description": "导出数据",
+      "properties": {
+        "exportId": {
+          "type": "string",
+          "description": "导出 ID"
+        },
+        "scope": {
+          "type": "string",
+          "description": "范围"
+        },
+        "anonymized": {
+          "type": "boolean",
+          "description": "是否匿名"
+        }
+      },
+      "required": [
+        "exportId",
+        "anonymized"
+      ],
+      "additionalProperties": true
+    },
+    "p_t_review_package": {
+      "type": "object",
+      "description": "审核题目包",
+      "properties": {
+        "problemId": {
+          "type": "string",
+          "description": "题"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "版本"
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "return",
+            "edit"
+          ],
+          "description": "结论"
+        },
+        "minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "用时分钟"
+        }
+      },
+      "required": [
+        "problemId",
+        "version",
+        "decision"
+      ],
+      "additionalProperties": true
+    },
+    "p_sys_fallback": {
+      "type": "object",
+      "description": "组件降级",
+      "properties": {
+        "component": {
+          "enum": [
+            "jev",
+            "llm",
+            "ocr",
+            "ocr_cross",
+            "cross_review",
+            "lean"
+          ],
+          "description": "组件"
+        },
+        "reason": {
+          "enum": [
+            "timeout",
+            "error",
+            "quota",
+            "disabled"
+          ],
+          "description": "原因"
+        }
+      },
+      "required": [
+        "component",
+        "reason"
+      ],
+      "additionalProperties": true
+    },
+    "p_sys_error": {
+      "type": "object",
+      "description": "前端错误",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "错误码"
+        },
+        "where": {
+          "type": "string",
+          "description": "位置"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

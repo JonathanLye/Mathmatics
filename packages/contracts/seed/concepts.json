@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "1.0",
+  "concepts": [
+    {
+      "id": "seq-limit",
+      "kind": "definition",
+      "title": "数列极限（ε-N）",
+      "definition": "$\\lim_{n\\to\\infty}a_n=A\\iff\\forall\\varepsilon>0,\\ \\exists N,\\ \\forall n>N:\\ |a_n-A|<\\varepsilon$",
+      "card": {
+        "plain": "不管划多窄的一条带子，数列从某一项起都待在带子里。",
+        "map": [["带子的半宽", "$\\varepsilon$"], ["从某一项起", "$\\exists N,\\ \\forall n>N$"], ["待在带子里", "$|a_n-A|<\\varepsilon$"]],
+        "distortion": "这里没有\"越来越近\"的意思。常数列 $a_n=2$ 每一项都等于 2，极限也是 2。\"无限接近\"的说法会让人误以为 $a_n\\ne A$。",
+        "boundary": {
+          "q": "常数列 $a_n=2$ 以 $2$ 为极限吗？",
+          "options": ["是", "不是"],
+          "answer": 0,
+          "right": "是。对任意 $\\varepsilon>0$，取 $N=1$，$|a_n-2|=0<\\varepsilon$。现在回到你的定义。",
+          "wrong": "再想一下失真说明里的那个例子：每一项都等于 2，它离 2 有多远？"
+        }
+      },
+      "lesson": {
+        "steps": [
+          {
+            "id": "s1", "kind": "intuition",
+            "text": "先看一个例子：$a_n=1+\\frac{(-1)^n}{n}$。拖动下面的滑块改变带子半宽 $\\varepsilon$，看看从第几项起，点都落在带子里。",
+            "visual": {
+              "type": "seq-band", "title": "ε 带",
+              "params": { "expr": "1+(-1)^n/n", "exprLatex": "$a_n=1+\\frac{(-1)^n}{n}$", "limit": 1, "epsilon": { "min": 0.02, "max": 0.6, "init": 0.3, "step": 0.01 }, "nMax": 60, "showN": true }
+            },
+            "check": { "q": "把 $\\varepsilon$ 调小，需要的 $N$ 会怎样？", "options": ["变大或不变", "变小"], "answer": 0, "right": "对。带子越窄，要等得越久，所以 $N$ 跟着 $\\varepsilon$ 变。", "wrong": "再拖一次滑块，看看图上标出的 $N$ 往哪边走。" }
+          },
+          {
+            "id": "s2", "kind": "map",
+            "text": "把刚才看到的三件事翻译成符号：带子半宽是 $\\varepsilon$；\"从某一项起\"是 $\\exists N,\\ \\forall n>N$；\"在带子里\"是 $|a_n-A|<\\varepsilon$。",
+            "check": { "q": "\"在带子里\"对应哪个式子？", "options": ["$|a_n-A|<\\varepsilon$", "$a_n<\\varepsilon$", "$|a_n-A|>\\varepsilon$"], "answer": 0, "right": "对。带子以 $A$ 为中心，所以量的是 $a_n$ 到 $A$ 的距离。", "wrong": "带子的中心在哪里？距离要从中心量起。" }
+          },
+          {
+            "id": "s3", "kind": "distortion",
+            "text": "顺序不能换：先给 $\\varepsilon$，再找 $N$，$N$ 可以随 $\\varepsilon$ 变。写成 \"$\\exists N,\\ \\forall\\varepsilon$\" 就变成一个 $N$ 对所有带子都管用，这强得多，一般不成立。",
+            "check": { "q": "下面哪种写法的量词顺序是对的？", "options": ["$\\forall\\varepsilon>0,\\ \\exists N$", "$\\exists N,\\ \\forall\\varepsilon>0$"], "answer": 0, "right": "对。$N$ 是在拿到 $\\varepsilon$ 之后才定的。", "wrong": "想一想：带子越窄 $N$ 要越大，那 $N$ 能在 $\\varepsilon$ 之前定死吗？" }
+          },
+          {
+            "id": "s4", "kind": "boundary",
+            "text": "边界情况：常数列也有极限。\"越来越近\"不是定义的一部分。",
+            "check": { "q": "常数列 $a_n=2$ 以 $2$ 为极限吗？", "options": ["是", "不是"], "answer": 0, "right": "是。任取 $\\varepsilon>0$，取 $N=1$ 就行。", "wrong": "每一项到 2 的距离是 0，0 比任何正数都小。" }
+          },
+          { "id": "s5", "kind": "return", "text": "现在回到题目，用你自己的话或符号，把\"数列 $\\{a_n\\}$ 以 $A$ 为极限\"重新写一遍。" }
+        ]
+      },
+      "review": { "status": "published", "reviewer": "v3 原型移植（待罗老师复核）" }
+    },
+    {
+      "id": "series-conv",
+      "kind": "definition",
+      "title": "绝对收敛与条件收敛",
+      "definition": "$\\sum a_n$ 绝对收敛 $\\iff\\sum|a_n|$ 收敛；$\\sum a_n$ 条件收敛 $\\iff\\sum a_n$ 收敛而 $\\sum|a_n|$ 发散。",
+      "card": {
+        "plain": "条件收敛：靠正负项互相抵消才收敛；全部取绝对值后就收不住了。",
+        "map": [["靠抵消才收敛", "$\\sum a_n$ 收敛"], ["取绝对值后收不住", "$\\sum|a_n|$ 发散"]],
+        "distortion": "\"抵消\"不等于\"正负交替\"。$\\sum(-1)^n$ 正负交替，却发散。",
+        "boundary": {
+          "q": "$\\sum(-1)^n$ 正负交替，它收敛吗？",
+          "options": ["收敛", "发散"],
+          "answer": 1,
+          "right": "发散：部分和在 $-1$ 与 $0$ 之间来回跳。交替只是抵消的前提之一。现在回到你的定义。",
+          "wrong": "把前几项的部分和算出来：$-1,0,-1,0,\\dots$ 它停在一个数上了吗？"
+        }
+      },
+      "lesson": {
+        "steps": [
+          {
+            "id": "s1", "kind": "intuition",
+            "text": "看两条级数的部分和 $S_n$ 怎么走：一条是 $\\sum\\left(-\\frac12\\right)^n$，一条是 $\\sum(-1)^n$。",
+            "visual": {
+              "type": "partial-sums", "title": "部分和",
+              "params": { "series": [ { "expr": "(-1/2)^n", "label": "$\\sum\\left(-\\frac12\\right)^n$" }, { "expr": "(-1)^n", "label": "$\\sum(-1)^n$" } ], "nMax": 30 }
+            },
+            "check": { "q": "哪一条的部分和停在了一个数附近？", "options": ["$\\sum\\left(-\\frac12\\right)^n$", "$\\sum(-1)^n$"], "answer": 0, "right": "对。另一条一直在两个值之间跳。", "wrong": "看图里哪条折线最后变平了。" }
+          },
+          {
+            "id": "s2", "kind": "map",
+            "text": "\"收敛\"说的是部分和有极限。\"绝对收敛\"再加一句：各项取绝对值后的级数也收敛。",
+            "check": { "q": "$\\sum\\left(-\\frac12\\right)^n$ 各项取绝对值后是 $\\sum\\frac{1}{2^n}$，它收敛吗？", "options": ["收敛", "发散"], "answer": 0, "right": "收敛（公比 $\\frac12$ 的等比级数）。所以 $\\sum\\left(-\\frac12\\right)^n$ 是绝对收敛。", "wrong": "这是公比为 $\\frac12$ 的等比级数。" }
+          },
+          {
+            "id": "s3", "kind": "distortion",
+            "text": "条件收敛要同时说清两件事：原级数收敛，并且取绝对值后的级数发散。只说一件不够。",
+            "check": { "q": "\"$\\sum a_n$ 收敛\"能推出\"条件收敛\"吗？", "options": ["能", "不能"], "answer": 1, "right": "不能。还要知道 $\\sum|a_n|$ 发散；否则可能是绝对收敛。", "wrong": "绝对收敛的级数本身也收敛。只知道收敛，分不出是哪一种。" }
+          },
+          { "id": "s4", "kind": "return", "text": "现在回到题目，写出\"绝对收敛\"和\"条件收敛\"的定义，两件事都要写。" }
+        ]
+      },
+      "review": { "status": "published", "reviewer": "v3 原型移植（待罗老师复核）" }
+    },
+    {
+      "id": "func-limit",
+      "kind": "definition",
+      "title": "函数极限（ε-δ）",
+      "definition": "$\\lim_{x\\to x_0}f(x)=A\\iff\\forall\\varepsilon>0,\\ \\exists\\delta>0,\\ \\forall x:\\ 0<|x-x_0|<\\delta\\Rightarrow|f(x)-A|<\\varepsilon$",
+      "card": {
+        "plain": "不管纵向划多窄的带子，只要 $x$ 离 $x_0$ 足够近（但不等于 $x_0$），$f(x)$ 就落在带子里。",
+        "map": [["纵向带子半宽", "$\\varepsilon$"], ["足够近", "$\\exists\\delta>0,\\ 0<|x-x_0|<\\delta$"], ["落在带子里", "$|f(x)-A|<\\varepsilon$"]],
+        "distortion": "$x=x_0$ 这一点不算在内：$f$ 在 $x_0$ 处甚至可以没有定义。",
+        "boundary": {
+          "q": "$f(x)=\\frac{x^2-4}{x-2}$ 在 $x=2$ 无定义，$\\lim_{x\\to2}f(x)$ 存在吗？",
+          "options": ["存在", "不存在"],
+          "answer": 0,
+          "right": "存在，等于 4。极限只看 $x_0$ 附近，不看 $x_0$ 本身。",
+          "wrong": "定义里写的是 $0<|x-x_0|$，$x_0$ 这一点被排除了。"
+        }
+      },
+      "lesson": {
+        "steps": [
+          {
+            "id": "s1", "kind": "intuition",
+            "text": "看 $f(x)=x^2$ 在 $x_0=1$ 附近：拖动 $\\varepsilon$，看看横向要收窄到多少，图像才完全落进纵向带子。",
+            "visual": { "type": "func-band", "title": "ε-δ", "params": { "expr": "x^2", "exprLatex": "$f(x)=x^2$", "at": 1, "limit": 1, "epsilon": { "min": 0.05, "max": 0.8, "init": 0.4, "step": 0.01 }, "xRange": [0, 2], "yRange": [0, 3] } },
+            "check": { "q": "$\\varepsilon$ 变小时，合适的 $\\delta$ 会怎样？", "options": ["变小或不变", "变大"], "answer": 0, "right": "对。$\\delta$ 依赖 $\\varepsilon$。", "wrong": "再拖一次，看横向的绿色区间。" }
+          },
+          { "id": "s2", "kind": "return", "text": "回到题目，把 $\\varepsilon$-$\\delta$ 的量词结构写出来。" }
+        ]
+      },
+      "review": { "status": "published", "reviewer": "新增（待罗老师复核）" }
+    },
+    {
+      "id": "frame-forall-exists",
+      "kind": "frame",
+      "title": "\"任意—存在\"型命题的证明骨架",
+      "definition": "要证 $\\forall\\varepsilon>0\\ \\exists N\\ \\forall n>N:\\ P(n)$：开头任取 $\\varepsilon$，中间构造 $N$，结尾对 $n>N$ 推出 $P(n)$。",
+      "card": {
+        "plain": "像一场对话：对方先出一个 $\\varepsilon$，你再回一个 $N$，最后证明你的 $N$ 管用。",
+        "map": [["对方先出", "任取 $\\varepsilon>0$"], ["你再回", "取 $N=$（待构造）"], ["证明管用", "当 $n>N$ 时，$\\cdots<\\varepsilon$"]],
+        "distortion": "骨架不是证明本身：中间\"取 $N=$\"后面填什么，要靠你自己算出来。",
+        "boundary": { "q": "骨架的第一句应该是？", "options": ["任取 $\\varepsilon>0$", "取 $N=1$"], "answer": 0, "right": "对。$\\varepsilon$ 是对方给的，你不能挑。", "wrong": "如果先定 $N$，就变成\"一个 $N$ 对所有 $\\varepsilon$\"，顺序反了。" }
+      },
+      "lesson": {
+        "steps": [
+          { "id": "s1", "kind": "build", "text": "第一句：任取 $\\varepsilon>0$。这句话固定了对方给的误差。" },
+          { "id": "s2", "kind": "build", "text": "第二句：取 $N=$ ＿。这里先空着，标明\"待构造\"，后面再算。" },
+          { "id": "s3", "kind": "build", "text": "第三句：当 $n>N$ 时，……$<\\varepsilon$。最后一行必须落到这个不等式。" },
+          { "id": "s4", "kind": "return", "text": "现在用这三句的结构，写出本题的骨架，再补一句：真正要解决的是什么。" }
+        ]
+      },
+      "review": { "status": "published", "reviewer": "v3 原型移植（待罗老师复核）" }
+    },
+    {
+      "id": "frame-classify-series",
+      "kind": "frame",
+      "title": "\"判断收敛类型\"型题目的骨架",
+      "definition": "先下判断，再按定义把判断拆成要证的几件事，逐件证明，最后合成结论。",
+      "card": {
+        "plain": "判断题也要证明：你选了哪个答案，就要把这个答案的定义里的每一件事都证出来。",
+        "map": [["下判断", "判断：＿"], ["拆成几件事", "要证：(1) ＿；(2) ＿"], ["合成结论", "由 (1)(2)，＿"]],
+        "distortion": "只证\"收敛\"还不够回答\"哪一种收敛\"。",
+        "boundary": { "q": "要证\"绝对收敛\"，需要证几件事？", "options": ["一件：$\\sum|a_n|$ 收敛", "两件：$\\sum a_n$ 收敛且 $\\sum|a_n|$ 发散"], "answer": 0, "right": "对。绝对收敛只需 $\\sum|a_n|$ 收敛。", "wrong": "回到定义卡，看\"绝对收敛\"那一行。" }
+      },
+      "lesson": {
+        "steps": [
+          { "id": "s1", "kind": "build", "text": "第一句写判断：发散、条件收敛、还是绝对收敛。" },
+          { "id": "s2", "kind": "build", "text": "按你选的那个定义，列出要证的事，编号 (1)(2)。" },
+          { "id": "s3", "kind": "return", "text": "现在写出本题的骨架：判断 + 要证的几件事。不必写怎么证。" }
+        ]
+      },
+      "review": { "status": "published", "reviewer": "新增（待罗老师复核）" }
+    }
+  ],
+  "glossary": [
+    { "id": "g-sufficient", "triggers": ["充分"], "answer": "\"A 是 B 的充分条件\"：只要 A 成立，B 一定成立，反过来不必。本题只需要一个够用的范围，不必最精确。" },
+    { "id": "g-bound", "triggers": ["放大|放缩"], "answer": "把一个式子换成更大、更简单的式子。若 $x<y$ 且 $y<\\varepsilon$，则 $x<\\varepsilon$。要注意不等号方向不能变。" },
+    { "id": "g-epsN", "triggers": ["ε.*N|N.*ε|N.*依赖|依赖.*N"], "answer": "$\\varepsilon$ 是你先拿到的误差，$N$ 是据此定下的\"从第几项起\"。$\\varepsilon$ 越小，$N$ 通常越大，所以 $N$ 只能用 $\\varepsilon$ 表示。" },
+    { "id": "g-eps", "triggers": ["ε|epsilon|误差"], "answer": "$\\varepsilon$ 是任意给定的正数，表示容许的误差。定义要求：不管 $\\varepsilon$ 多小，后面总能做到误差小于它。" },
+    { "id": "g-quant", "triggers": ["量词|∀|∃|顺序"], "answer": "$\\forall\\varepsilon\\,\\exists N$：先给 $\\varepsilon$，再找 $N$，$N$ 可以随 $\\varepsilon$ 变。倒过来写成 $\\exists N\\,\\forall\\varepsilon$ 就强得多，一般不成立。" },
+    { "id": "g-limit", "triggers": ["极限"], "answer": "$a_n\\to A$：不管划多窄的带子，数列从某一项起都留在以 $A$ 为中心的带子里。" },
+    { "id": "g-just", "triggers": ["依据"], "answer": "依据回答\"这一行为什么成立\"：用了哪条定义、哪个已证结论，或哪一步运算。" },
+    { "id": "g-abs", "triggers": ["绝对值|\\|x\\|"], "answer": "$|x|$ 是 $x$ 到 0 的距离。$|a-b|<\\varepsilon$ 表示 $a$、$b$ 之间的距离小于 $\\varepsilon$。" },
+    { "id": "g-alt", "triggers": ["交错"], "answer": "正负项依次交替的级数。它可能收敛，也可能发散，要看项的大小怎么变。" },
+    { "id": "g-cond", "triggers": ["条件收敛"], "answer": "级数本身收敛，但各项取绝对值后的级数发散。收敛靠的是正负抵消。" },
+    { "id": "g-absconv", "triggers": ["绝对收敛"], "answer": "各项取绝对值后的级数仍然收敛。绝对收敛一定收敛。" },
+    { "id": "g-mono", "triggers": ["单调"], "answer": "越往后越小（不增）叫单调减，越往后越大叫单调增。判断办法：比较相邻两项 $u_{k+1}$ 和 $u_k$。" },
+    { "id": "g-pseries", "triggers": ["p级数|p-级数"], "answer": "形如 $\\sum\\frac{1}{n^p}$ 的级数。有现成结论：以 $p$ 与 1 的大小关系为分界。" },
+    { "id": "g-test", "triggers": ["判别法"], "answer": "判别法是已被证明的定理，使用前要逐条核对它的条件是否都满足。" },
+    { "id": "g-delta", "triggers": ["δ|delta"], "answer": "$\\delta$ 描述\"$x$ 离 $x_0$ 有多近\"。定义里 $\\delta$ 在 $\\varepsilon$ 之后取定，可以依赖 $\\varepsilon$，不能依赖 $x$。" },
+    { "id": "g-lean", "triggers": ["mathlib|lean|形式化"], "answer": "Lean 是能被机器检查的证明语言，mathlib4 是它的数学库。老师端用它核对参考证明；你写的过程中不会用到。" }
+  ]
+}

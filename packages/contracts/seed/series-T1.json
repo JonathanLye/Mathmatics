@@ -1,0 +1,246 @@
+{
+  "schemaVersion": "1.0",
+  "id": "series-T1",
+  "version": 1,
+  "kind": "transfer",
+  "public": {
+    "title": "交错级数 · 收敛类型（迁移）",
+    "stem": "判断 $\\displaystyle\\sum_{n=1}^{\\infty}\\frac{(-1)^{n-1}}{n^2}$ 的收敛性，并说明是条件收敛还是绝对收敛。",
+    "source": {
+      "book": "v3 原型自编",
+      "itemType": "authored"
+    },
+    "chapter": "第十二章 数项级数",
+    "tags": [
+      "绝对收敛",
+      "迁移"
+    ],
+    "difficulty": 1,
+    "role": "optional",
+    "concepts": [
+      "series-conv"
+    ],
+    "layers": {
+      "L1": {
+        "enabled": false
+      },
+      "L2": {
+        "enabled": false
+      },
+      "L3": {
+        "enabled": true,
+        "skippable": false,
+        "skipRule": "none"
+      },
+      "L4": {
+        "enabled": false
+      },
+      "L5": {
+        "enabled": false
+      },
+      "L6": {
+        "enabled": false
+      }
+    },
+    "selfcheckCount": 0,
+    "askChips": [
+      "绝对收敛是什么意思？",
+      "这一行在做什么？"
+    ],
+    "keyCount": 3,
+    "budget": {
+      "reveal": 1,
+      "dwellSec": 20,
+      "rapidWindowSec": 30,
+      "rapidCount": 3,
+      "rapidLockSec": 60,
+      "stuckMs": 180000
+    }
+  },
+  "secret": {
+    "keys": [
+      {
+        "id": "K1",
+        "kind": "core",
+        "label": "写出 ∑|a_n| = ∑1/n²",
+        "deps": [],
+        "patterns": [
+          "\\|a_?n\\|=1/n\\^2",
+          "∑\\|a_?n\\|=∑1/n\\^2",
+          "∑1/n\\^2"
+        ],
+        "examples": [
+          "$\\sum|a_n|=\\sum\\frac{1}{n^2}$"
+        ],
+        "leak": [
+          "∑1/n^2",
+          "|a_n|=1/n^2"
+        ],
+        "jev": "写出各项取绝对值后的级数",
+        "hints": [
+          {
+            "level": "H0",
+            "text": "要判断是哪一种收敛，先看哪个级数？",
+            "cost": 0
+          },
+          {
+            "level": "H1",
+            "text": "回到定义：绝对收敛看的是 $\\sum|a_n|$。",
+            "cost": 0
+          },
+          {
+            "level": "H2",
+            "text": "把通项取绝对值，写出 $\\sum|a_n|$。",
+            "cost": 0.5
+          },
+          {
+            "level": "H3",
+            "text": "$|a_n|=\\left|\\frac{(-1)^{n-1}}{n^2}\\right|$，化简它。",
+            "cost": 1
+          },
+          {
+            "level": "H4",
+            "text": "$\\sum|a_n|=\\sum\\frac{1}{n^2}$。下一行由你写：它收敛吗？依据是什么？",
+            "cost": 1,
+            "handsBack": true
+          }
+        ]
+      },
+      {
+        "id": "K2",
+        "kind": "core",
+        "label": "p=2>1 收敛",
+        "deps": [
+          "K1"
+        ],
+        "patterns": [
+          "(p=2|p级数|p-级数)[^.]*收敛",
+          "收敛[^.]*(p=2|p>1)"
+        ],
+        "examples": [
+          "$\\sum\\frac{1}{n^2}$ 是 $p=2>1$ 的 $p$ 级数，收敛"
+        ],
+        "leak": [
+          "p=2"
+        ],
+        "jev": "说明 ∑1/n² 收敛并给出依据",
+        "hints": [
+          {
+            "level": "H0",
+            "text": "$\\sum|a_n|$ 属于哪一类有现成结论的级数？",
+            "cost": 0
+          },
+          {
+            "level": "H1",
+            "text": "回到骨架：先判断 $\\sum|a_n|$ 的收敛性。",
+            "cost": 0
+          },
+          {
+            "level": "H2",
+            "text": "看指数和 1 的大小关系。",
+            "cost": 0.5
+          },
+          {
+            "level": "H3",
+            "text": "这是 $p$ 级数，$p=?$。",
+            "cost": 1
+          },
+          {
+            "level": "H4",
+            "text": "$\\sum\\frac{1}{n^2}$ 是 $p=2>1$ 的 $p$ 级数，收敛。下一行：结论。",
+            "cost": 1,
+            "handsBack": true
+          }
+        ]
+      },
+      {
+        "id": "K3",
+        "kind": "core",
+        "label": "结论：绝对收敛",
+        "deps": [
+          "K2"
+        ],
+        "patterns": [
+          "(故|所以|因此|综上|从而)[^.]*绝对收敛"
+        ],
+        "examples": [
+          "所以原级数绝对收敛"
+        ],
+        "leak": [],
+        "jev": "得出绝对收敛的结论",
+        "hints": [
+          {
+            "level": "H0",
+            "text": "你的最后一行回答了题目问的哪一个选项？",
+            "cost": 0
+          },
+          {
+            "level": "H1",
+            "text": "回到定义，看上一行的结论对应哪一种收敛。",
+            "cost": 0
+          },
+          {
+            "level": "H2",
+            "text": "把上一行和定义合成一句结论。",
+            "cost": 0.5
+          },
+          {
+            "level": "H3",
+            "text": "由上一行，原级数 ＿ 收敛。",
+            "cost": 1
+          },
+          {
+            "level": "H4",
+            "text": "由上一行，原级数绝对收敛。",
+            "cost": 1
+          }
+        ]
+      }
+    ],
+    "routes": [
+      [
+        "K1",
+        "K2",
+        "K3"
+      ]
+    ],
+    "errors": [
+      {
+        "id": "E1",
+        "label": "误判条件收敛",
+        "patterns": [
+          "条件收敛"
+        ],
+        "question": "$\\sum|a_n|$ 收敛还是发散？这决定是哪一种收敛。"
+      }
+    ],
+    "allowedTheorems": [
+      "p 级数收敛性"
+    ],
+    "forbiddenTheorems": [],
+    "selfcheckBank": [],
+    "summaryPoints": [],
+    "referenceProofs": [
+      {
+        "id": "R1",
+        "route": 0,
+        "publishable": true,
+        "text": "$\\sum|a_n|=\\sum\\frac{1}{n^2}$ 是 $p=2>1$ 的 $p$ 级数，收敛。故原级数绝对收敛。"
+      }
+    ]
+  },
+  "review": {
+    "status": "published",
+    "reviewer": "新增（待罗老师复核）",
+    "autoChecks": {
+      "schema": true,
+      "katex": true,
+      "leakExhaustive": true,
+      "patternSelfTest": true,
+      "lean": "skipped"
+    }
+  },
+  "provenance": {
+    "portedFrom": "08-重构原型/index.html PKG.series.transfer（补全为完整题目包）"
+  }
+}
