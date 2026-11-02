@@ -53,6 +53,13 @@ docs/<slug> / chore/<slug>
 **GitHub 侧强制（`main` 规则集 `main-protection`）**：必须 PR；1 个 approval；CODEOWNERS 路径需对应 owner 批准；`ci-gate` 必过；对话必须解决；只允许 squash；线性历史；禁止 force push 与删除分支。
 
 **紧急绕过**：只有 Lead（admin）能在 PR 页勾选 “bypass rules” 直接合并，仍然必须开 PR，不能直推 main；只用于阻断上线的紧急修复，事后在 PR 里补一句原因（GitHub 会记审计日志）。
+
+**B 线 admin squash 例外（决策 U13，2026-11-03）**：B 的 PR 可由 Lead 用 `gh pr merge --admin --squash` 合并，须同时满足：
+- `ci-gate` 绿，且所有对话已 resolve；
+- 以下二选一：(a) 已有 A 或 C 的批准；(b) 评审等待超过 30 分钟无 A/C 批准，且 advisor 审查通过、其意见已逐条核对处理，结论以 PR 评论记录。30 分钟是为 AI 评审留出时间。
+- 契约变更（`10-开发文档/contracts`）不适用 (b)，仍须 A 或 C 批准，遵守上文"契约变更"规则；
+- 不适用于直推 main，也不适用于 A/C 目录的改动（那些只写进 PR，不由 B 代改）。
+
 - 契约 PR 额外：三端影响、兼容性、回滚方式、`npm run check` 输出。
 
 ## 5. 评审 SLA 与节奏
