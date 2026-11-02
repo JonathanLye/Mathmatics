@@ -135,6 +135,28 @@ describe('测验模式锁定（11 §5.2）', () => {
     expect(write.json().error.message).toBe('本题已锁定，请联系老师');
   });
 
+  it('锁定后再次开始、搁置都不能把作答改回可写：开始返回原作答且仍为 locked，搁置返回 ATTEMPT_LOCKED', async () => {
+    const cookie = await studentCookie();
+    await signConsent(cookie);
+    const id = await startAttempt(cookie);
+    await postBatch(cookie, [away(id), away(id), away(id)]);
+    expect((await attemptRow(id))?.status).toBe('locked');
+
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/v1/student/assignments/${assignmentId}/attempt`,
+      headers: { cookie, ...WRITE_HEADERS },
+    });
+    expect(again.statusCode, again.body).toBe(200);
+    expect(again.json().state.attemptId).toBe(id);
+    expect(await attemptRow(id)).toMatchObject({ status: 'locked' });
+
+    const park = await app.inject({ method: 'POST', url: `/api/v1/attempts/${id}/park`, headers: { cookie, ...WRITE_HEADERS } });
+    expect(park.statusCode).toBe(409);
+    expect(park.json().error.code).toBe('ATTEMPT_LOCKED');
+    expect(await attemptRow(id)).toMatchObject({ status: 'locked' });
+  });
+
   it('练习模式不锁定，离开次数再多也不锁', async () => {
     await db.query(`update app.assignments set mode = 'practice' where id = $1`, [assignmentId]);
     const cookie = await studentCookie();
