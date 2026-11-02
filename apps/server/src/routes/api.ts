@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { AppError } from '../errors.ts';
 
 import { attemptRoutes } from './attempts.ts';
+import { eventRoutes } from './events.ts';
 import { authRoutes, type AuthRouteOptions } from './auth.ts';
 import { consentRoutes } from './consents.ts';
 
@@ -24,4 +25,5 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions> = async (api, { db,
   await api.register(authRoutes, { db, config, contract });
   await api.register(consentRoutes, { db, config, contract });
   await api.register(attemptRoutes, { db, config, contract });
+  await api.register(eventRoutes, { db, config, contract });
 };
