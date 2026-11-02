@@ -1,0 +1,13 @@
+{$PUBLIC_ORIGIN:localhost} {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy server:3000
+	}
+
+	handle /health {
+		reverse_proxy server:3000
+	}
+
+	respond "proof-gym" 200
+}

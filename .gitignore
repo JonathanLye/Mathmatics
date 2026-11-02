@@ -26,3 +26,7 @@ dist/
 
 # 本机 pnpm/lock 运行目录
 work/runtime/
+
+# 部署本地状态
+infra/.env
+infra/backups/

@@ -20,7 +20,8 @@ const FILES = [
   'tools/canon.mjs',
 ];
 const DIRS = ['seed'];
-const KEEP = new Set(['package.json', 'README.md']);
+const KEEP = new Set(['package.json', 'README.md', 'tsconfig.json']);
+const KEEP_DIRS = new Set(['gen', 'node_modules']);
 
 const check = process.argv.includes('--check');
 
@@ -52,6 +53,7 @@ function listCopied() {
   const out = [];
   const walkDst = (rel) => {
     for (const entry of fs.readdirSync(path.join(DST, rel), { withFileTypes: true })) {
+      if (rel === '.' && entry.isDirectory() && KEEP_DIRS.has(entry.name)) continue;
       const next = path.posix.join(rel, entry.name);
       if (entry.isDirectory()) walkDst(next);
       else out.push(next);

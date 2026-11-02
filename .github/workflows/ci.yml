@@ -77,6 +77,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Contracts copy in sync
         run: node tools/sync-contracts.mjs --check
+      - name: Contract types in sync
+        run: pnpm gen:types --check
       - name: Typecheck
         run: pnpm typecheck
       - name: Test

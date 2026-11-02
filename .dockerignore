@@ -1,0 +1,10 @@
+.git
+node_modules
+work
+.data
+coverage
+dist
+infra/backups
+证明陪练场_产品设计工作区
+research_notes
+智能体回答思路设计
