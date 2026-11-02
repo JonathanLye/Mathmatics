@@ -10,6 +10,7 @@ import { AppError } from '../errors.ts';
 // 库里即使泄露 id 也无法伪造 Cookie。
 export const SESSION_COOKIE = 'pg_sid';
 export const STUDENT_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
+export const TEACHER_SESSION_MS = 12 * 60 * 60 * 1000;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -23,7 +24,8 @@ export interface AuthContext {
 
 export interface CreateSessionInput {
   userId: string;
-  deviceId: string;
+  // 教师登录不带设备 id（契约里只有学生登录有 deviceId），此时为 null。
+  deviceId: string | null;
   ip: string | null;
   ttlMs: number;
 }
