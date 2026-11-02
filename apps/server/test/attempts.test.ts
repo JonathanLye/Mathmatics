@@ -101,6 +101,22 @@ const get = (cookie: string, path: string) => app.inject({ method: 'GET', url: `
 
 const input = { provenance: 'keyboard', draftId: DRAFT_ID };
 const lineBody = (statement: string, justification?: string) => ({ statement, justification, input });
+const textBody = (text: string) => ({ text, input });
+
+// 白盒：把作答的引擎状态与 current_layer 一起改到指定层，只用于测试该层的写接口（前面各层不走真实路径）。
+async function patchState(
+  id: string,
+  currentLayer: string,
+  patch: (state: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+  const stored = (await db.query<{ state: object }>(`select state from app.attempts where id = $1`, [id])).rows[0]
+    ?.state as Record<string, unknown>;
+  await db.query(`update app.attempts set state = $2::jsonb, current_layer = $3 where id = $1`, [
+    id,
+    JSON.stringify(patch(stored)),
+    currentLayer,
+  ]);
+}
 
 // 登录、签署同意书、开始作答：返回 cookie 与作答 ID。
 async function startedAttempt(): Promise<{ cookie: string; id: string; state: Record<string, unknown> }> {
@@ -290,6 +306,129 @@ describe('作答接口（#19）', () => {
 
     const parent = await get(cookie, `/attempts/${id}`);
     expect(parent.json().state.currentLayer).toBe('L5');
+  });
+
+  it('第 1 层定义与第 2 层骨架：提交与模板都返回 200 并通过契约，写入 def / frame 行', async () => {
+    const { cookie, id } = await startedAttempt();
+    const def = await post(cookie, `/attempts/${id}/definition`, textBody('设数列有极限'));
+    expect(def.statusCode).toBe(200);
+    validState(def.json());
+    expect(def.json().state).toMatchObject({ currentLayer: 'L1' });
+    expect(def.json().state.def.submissions).toBe(1);
+
+    await post(cookie, `/attempts/${id}/layers/L1/skip`);
+    const frame = await post(cookie, `/attempts/${id}/framework`, textBody('取 ε 为任意正数'));
+    expect(frame.statusCode).toBe(200);
+    validState(frame.json());
+    expect(frame.json().state).toMatchObject({ currentLayer: 'L2' });
+
+    const template = await post(cookie, `/attempts/${id}/framework/template`);
+    expect(template.statusCode).toBe(200);
+    validState(template.json());
+
+    const rows = await db.query<{ role: string; layer: string; statement: string }>(
+      `select role, layer, statement from app.attempt_lines where attempt_id = $1 order by role`,
+      [id],
+    );
+    expect(rows.rows).toEqual([
+      { role: 'def', layer: 'L1', statement: '设数列有极限' },
+      { role: 'frame', layer: 'L2', statement: '取 ε 为任意正数' },
+    ]);
+  });
+
+  it('第 3 层写完：finish 返回 200，链条未闭合时事件记 complete=false，仍停在第 3 层', async () => {
+    const { cookie, id } = await startedAttempt();
+    await post(cookie, `/attempts/${id}/layers/L1/skip`);
+    await post(cookie, `/attempts/${id}/layers/L2/skip`);
+    const res = await post(cookie, `/attempts/${id}/finish`);
+    expect(res.statusCode).toBe(200);
+    validState(res.json());
+    expect(res.json().state).toMatchObject({ currentLayer: 'L3', status: 'active' });
+
+    const ev = await db.query<{ payload: { complete: boolean } }>(
+      `select payload from ev.events where attempt_id = $1 and type = 'finish.try'`,
+      [id],
+    );
+    expect(ev.rows.map((e) => e.payload.complete)).toEqual([false]);
+  });
+
+  it('第 4 层自检：逐题作答，有效与无效都写 selfcheck 行；三题通过则进入第 5 层；DTO 带每题状态', async () => {
+    const { cookie, id } = await startedAttempt();
+    await patchState(id, 'L4', (s) => ({
+      ...s,
+      layer: 4,
+      status: { 1: 'skip', 2: 'skip', 3: 'done' },
+      lines: 3,
+      keyLine: { K1: 1, K2: 2, K3: 3 },
+      selfcheck: { items: ['SC1', 'SC2', 'SC3'], passed: {} },
+    }));
+
+    const sc1 = await post(cookie, `/attempts/${id}/selfcheck/SC1`, textBody('第1行和第2行'));
+    expect(sc1.statusCode).toBe(200);
+    validState(sc1.json());
+    expect(sc1.json().state.selfcheck.items[0]).toMatchObject({ itemId: 'SC1', status: 'accepted' });
+    expect(sc1.json().state.currentLayer).toBe('L4');
+
+    const sc2Bad = await post(cookie, `/attempts/${id}/selfcheck/SC2`, textBody('没有提到那个字母'));
+    expect(sc2Bad.statusCode).toBe(200);
+    validState(sc2Bad.json());
+    expect(sc2Bad.json().state.selfcheck.items[1]).toMatchObject({ itemId: 'SC2', status: 'followup' });
+
+    const sc2 = await post(cookie, `/attempts/${id}/selfcheck/SC2`, textBody('N 只依赖于 ε'));
+    expect(sc2.json().state.selfcheck.items[1]).toMatchObject({ status: 'accepted' });
+
+    const sc3 = await post(cookie, `/attempts/${id}/selfcheck/SC3`, textBody('第3行'));
+    expect(sc3.statusCode).toBe(200);
+    validState(sc3.json());
+    expect(sc3.json().state).toMatchObject({ currentLayer: 'L5' });
+
+    const rows = await db.query<{ slot: string; cls: string }>(
+      `select slot, cls from app.attempt_lines where attempt_id = $1 and role = 'selfcheck'`,
+      [id],
+    );
+    expect(rows.rows.map((r) => [r.slot, r.cls]).sort()).toEqual([
+      ['SC1', 'pass'],
+      ['SC2', 'fail'],
+      ['SC2', 'pass'],
+      ['SC3', 'pass'],
+    ]);
+  });
+
+  it('第 6 层总结：五问写入 summary 行，通过即完成：status=completed、completed_at 有值、completion 存在', async () => {
+    const { cookie, id } = await startedAttempt();
+    await patchState(id, 'L6', (s) => ({
+      ...s,
+      layer: 6,
+      status: { 1: 'skip', 2: 'skip', 3: 'done', 4: 'done', 5: 'skip' },
+      summary: { asked: true },
+    }));
+
+    const res = await post(cookie, `/attempts/${id}/summary`, {
+      answers: ['这是第一问的答案', '这是第二问的答案', '这是第三问的答案', '这是第四问的答案', '这是第五问的答案'],
+      input,
+    });
+    expect(res.statusCode).toBe(200);
+    validState(res.json());
+    expect(res.json().state).toMatchObject({ status: 'completed', completion: { done: true, reviewAvailable: false } });
+
+    const attempt = await db.query<{ status: string; completed_at: Date | null }>(
+      `select status, completed_at from app.attempts where id = $1`,
+      [id],
+    );
+    expect(attempt.rows[0]?.status).toBe('completed');
+    expect(attempt.rows[0]?.completed_at).not.toBeNull();
+
+    const rows = await db.query<{ slot: string; idx: number }>(
+      `select slot, idx from app.attempt_lines where attempt_id = $1 and role = 'summary' order by idx`,
+      [id],
+    );
+    expect(rows.rows.map((r) => [r.slot, r.idx])).toEqual([
+      ['1', 1],
+      ['2', 2],
+      ['3', 3],
+      ['4', 4],
+      ['5', 5],
+    ]);
   });
 
   it('重放：ev.events 按 seq 重放得到的引擎状态，与 app.attempts.state 一致', async () => {
