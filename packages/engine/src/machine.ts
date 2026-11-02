@@ -3,22 +3,25 @@ import { classifyLine, nextKey } from './classify.ts';
 import { gateRule, hintAllow } from './gate.ts';
 import { type HintState, initialHintState, selectHint } from './hint.ts';
 import type { ConceptsFile } from './leak.ts';
-import type { ProblemPackage, Secret } from './types.ts';
+import type { HintLevel, ProblemPackage, Secret } from './types.ts';
 
 // 作答状态机（09 §6、05 §4）。
 // - 命令（学生输入）经 step 产生事件；事件是事实，只带 at（毫秒，由调用方的时钟给出）和 payload。
 // - 状态只由 apply 改变。实时运行与 replay 走同一条路径，所以 replay(events) 必须等于实时终态。
 // - payload 不含学生原文：只有行号、归类、关键步骤 ID、计数与布尔值。原文只在命令里，不进事件。
+// - 层的路径由题目包的 public.layers 决定：禁用的层直接跳过（迁移题只启用第 3 层）。
 
 export interface Context {
   pkg: ProblemPackage;
   concepts: ConceptsFile;
 }
 
+export type LayerNumber = 1 | 2 | 3 | 4 | 5 | 6;
+
 export interface AttemptState {
   start: number;
   layer: number;
-  status: Record<number, 'done' | 'skip'>;
+  status: Record<number, 'done' | 'skip' | 'disabled'>;
   lines: number;
   keyLine: Readonly<Record<string, number>>;
   viaHint: readonly string[];
@@ -26,7 +29,7 @@ export interface AttemptState {
   frame: { attempts: number; passed: boolean };
   noProgress: number;
   lastProgressAt: number;
-  selfcheck: { items: readonly string[]; answered: readonly string[] };
+  selfcheck: { items: readonly string[]; passed: Readonly<Record<string, boolean>> };
   summary: { asked: boolean };
   flagged: boolean;
   done: boolean;
@@ -40,6 +43,8 @@ export interface EngineEvent {
   payload: Record<string, unknown>;
 }
 
+export type Rejection = 'wrong_layer' | 'invalid' | 'not_allowed' | 'unknown_item';
+
 export type Command =
   | { kind: 'def.submit'; lineId: string; text: string }
   | { kind: 'card.open' }
@@ -49,17 +54,29 @@ export type Command =
   | { kind: 'line.submit'; lineId: string; s: string; j: string; provenance: 'ink' | 'keyboard' | 'photo' | 'mixed' | 'paste' }
   | { kind: 'hint.request' }
   | { kind: 'finish.try' }
+  | { kind: 'selfcheck.item'; itemId: string; answer: string }
   | { kind: 'selfcheck.submit'; answers: readonly string[] }
   | { kind: 'transfer.complete' }
   | { kind: 'summary.submit'; answers: readonly string[] }
   | { kind: 'layer.skip'; reason: 'self' | 'pretest' | 'history' | 'teacher_config' }
   | { kind: 'flag.teacher'; flagId: string };
 
+const enabledLayer = (ctx: Context, n: number): boolean => ctx.pkg.public.layers[`L${n}` as 'L1'].enabled;
+
+// 下一个启用的层；没有了则为 null（此时作答完成）。
+function nextEnabled(ctx: Context, from: number): number | null {
+  for (let n = from + 1; n <= 6; n += 1) if (enabledLayer(ctx, n)) return n;
+  return null;
+}
+
 export function createAttempt(ctx: Context, start: number): AttemptState {
+  const status: Record<number, 'disabled'> = {};
+  for (let n = 1; n <= 6; n += 1) if (!enabledLayer(ctx, n)) status[n] = 'disabled';
+  const first = [1, 2, 3, 4, 5, 6].find((n) => enabledLayer(ctx, n)) ?? 3;
   return {
     start,
-    layer: 1,
-    status: {},
+    layer: first,
+    status,
     lines: 0,
     keyLine: {},
     viaHint: [],
@@ -67,7 +84,7 @@ export function createAttempt(ctx: Context, start: number): AttemptState {
     frame: { attempts: 0, passed: false },
     noProgress: 0,
     lastProgressAt: start,
-    selfcheck: { items: [], answered: [] },
+    selfcheck: { items: [], passed: {} },
     summary: { asked: false },
     flagged: false,
     done: false,
@@ -108,11 +125,11 @@ export function apply(state: AttemptState, event: EngineEvent): AttemptState {
       };
     }
     case 'selfcheck.assign':
-      return { ...state, selfcheck: { items: (p.items as { id: string }[]).map((x) => x.id), answered: [] } };
+      return { ...state, selfcheck: { items: (p.items as { id: string }[]).map((x) => x.id), passed: {} } };
     case 'selfcheck.submit':
       return {
         ...state,
-        selfcheck: { ...state.selfcheck, answered: [...state.selfcheck.answered, p.itemId as string] },
+        selfcheck: { ...state.selfcheck, passed: { ...state.selfcheck.passed, [p.itemId as string]: p.valid === true } },
       };
     case 'finish.try':
       return state;
@@ -150,10 +167,11 @@ export function apply(state: AttemptState, event: EngineEvent): AttemptState {
     case 'layer.done':
     case 'layer.skip': {
       const n = Number((p.layer as string).slice(1));
+      const next = p.next as number | null;
       return {
         ...state,
         status: { ...state.status, [n]: event.type === 'layer.skip' ? 'skip' : 'done' },
-        layer: Math.min(6, n + 1),
+        layer: next ?? state.layer,
       };
     }
     case 'help.flag_teacher':
@@ -161,7 +179,7 @@ export function apply(state: AttemptState, event: EngineEvent): AttemptState {
     case 'summary.submit':
       return { ...state, summary: { asked: state.summary.asked || p.followupAsked === true } };
     case 'attempt.complete':
-      return { ...state, done: true, status: { ...state.status, 6: 'done' } };
+      return { ...state, done: true, status: state.layer === 6 ? { ...state.status, 6: 'done' } : state.status };
     case 'proactive.offer':
       return state;
     default:
@@ -182,29 +200,37 @@ export function replay(initial: AttemptState, events: readonly EngineEvent[]): A
 export interface StepResult {
   state: AttemptState;
   events: EngineEvent[];
+  // 命令被拒绝（层不对、内容不合法、条件不满足）时给出原因；此时 events 为空。
+  rejected?: Rejection;
 }
 
-// 执行一条命令，返回新事件与新状态。命令不合法（层不对、条件不满足）时不产生事件。
+// 执行一条命令，返回新事件与新状态。
 export function step(ctx: Context, state: AttemptState, cmd: Command, at: number): StepResult {
   const events: EngineEvent[] = [];
   let current = state;
+  let rejected: Rejection | undefined;
   const emit = (type: string, payload: Record<string, unknown>) => {
     const event = { type, at, payload };
     events.push(event);
     current = apply(current, event);
   };
-  decide(ctx, cmd, at, () => current, emit);
-  return { state: current, events };
+  const reject = (reason: Rejection) => {
+    rejected ??= reason;
+  };
+  decide(ctx, cmd, at, () => current, emit, reject);
+  return rejected ? { state: current, events, rejected } : { state: current, events };
 }
 
 type Emit = (type: string, payload: Record<string, unknown>) => void;
+type Reject = (reason: Rejection) => void;
 
-function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState, emit: Emit): void {
+function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState, emit: Emit, reject: Reject): void {
   const secret = ctx.pkg.secret;
   const st = cur();
   switch (cmd.kind) {
     case 'def.submit': {
-      if (st.layer !== 1 || !secret.def) return;
+      if (st.layer !== 1) return reject('wrong_layer');
+      if (!secret.def) return reject('not_allowed');
       const c = canon(cmd.text);
       const components = Object.fromEntries(
         secret.def.components.map((x) => [x.id, matchesAny(x.patterns, cmd.text)]),
@@ -214,35 +240,38 @@ function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState,
       const orderOk = positions.every((pos, i) => pos >= 0 && (i === 0 || positions[i - 1] < pos));
       const pass = Object.values(components).every(Boolean) && orderOk;
       emit('def.submit', { lineId: cmd.lineId, n: st.def.attempts + 1, components, orderOk, pass, path: 'rule' });
-      if (pass) emit('layer.done', { layer: 'L1' });
+      if (pass) layerDone(ctx, 1, at, cur, emit);
       return;
     }
     case 'card.open': {
-      if (st.layer !== 1 || !secret.def) return;
+      if (st.layer !== 1) return reject('wrong_layer');
+      if (!secret.def) return reject('not_allowed');
       emit('lesson.open', { conceptId: ctx.pkg.public.def?.conceptId ?? '', trigger: 'card' });
       return;
     }
     case 'card.answer': {
-      if (!st.def.cardOpen) return;
+      if (!st.def.cardOpen) return reject('not_allowed');
       const conceptId = ctx.pkg.public.def?.conceptId ?? '';
       const answer = boundaryAnswer(ctx, conceptId);
       emit('lesson.check', { conceptId, stepId: 'boundary', choice: cmd.choice, correct: cmd.choice === answer });
       return;
     }
     case 'frame.template':
-      if (st.layer !== 2) return;
+      if (st.layer !== 2) return reject('wrong_layer');
       emit('frame.template', {});
       return;
     case 'frame.submit': {
-      if (st.layer !== 2 || !secret.frame) return;
+      if (st.layer !== 2) return reject('wrong_layer');
+      if (!secret.frame) return reject('not_allowed');
       const missing = secret.frame.checks.filter((x) => !matchesAny(x.patterns, cmd.text)).map((x) => x.id);
       const pass = missing.length === 0;
       emit('frame.submit', { lineId: cmd.lineId, n: st.frame.attempts + 1, missing, pass, path: 'rule' });
-      if (pass) emit('layer.done', { layer: 'L2' });
+      if (pass) layerDone(ctx, 2, at, cur, emit);
       return;
     }
     case 'line.submit': {
-      if (st.layer !== 3 || cmd.s.trim().length < 2) return;
+      if (st.layer !== 3) return reject('wrong_layer');
+      if (cmd.s.trim().length < 2) return reject('invalid');
       const hasJust = cmd.j.trim() !== '';
       const r = classifyLine(secret, `${cmd.s}　${cmd.j}`);
       const n = st.lines + 1;
@@ -279,73 +308,102 @@ function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState,
       requestHint(ctx, at, st, emit);
       return;
     case 'finish.try': {
-      if (st.layer !== 3) return;
+      if (st.layer !== 3) return reject('wrong_layer');
       const complete = nextKey(secret, st.hint.matched) === null;
       emit('finish.try', { complete });
       if (!complete) return;
-      emit('layer.done', { layer: 'L3' });
-      const items = pickSelfcheck(secret).map((id) => {
-        const bank = secret.selfcheckBank.find((q) => q.id === id);
-        const ref = /\{line:(K\d+)\}/.exec(bank?.template ?? '');
-        const line = ref ? cur().keyLine[ref[1]] : undefined;
-        return line === undefined ? { id } : { id, line };
-      });
-      emit('selfcheck.assign', { items });
+      layerDone(ctx, 3, at, cur, emit);
+      if (cur().layer === 4 && cur().selfcheck.items.length === 0) {
+        const items = pickSelfcheck(secret).map((id) => {
+          const bank = secret.selfcheckBank.find((q) => q.id === id);
+          const ref = /\{line:(K\d+)\}/.exec(bank?.template ?? '');
+          const line = ref ? cur().keyLine[ref[1]] : undefined;
+          return line === undefined ? { id } : { id, line };
+        });
+        emit('selfcheck.assign', { items });
+      }
+      return;
+    }
+    case 'selfcheck.item': {
+      if (st.layer !== 4) return reject('wrong_layer');
+      if (!st.selfcheck.items.includes(cmd.itemId)) return reject('unknown_item');
+      if (cmd.answer.trim().length < selfcheckMinChars(secret, cmd.itemId)) return reject('invalid');
+      answerSelfcheck(ctx, cmd.itemId, cmd.answer, at, cur, emit);
       return;
     }
     case 'selfcheck.submit': {
-      if (st.layer !== 4) return;
-      // 三题都写满（每题至少 4 个字）且全部通过，才完成第 4 层；未写满的题只记录已写的那几题。
-      let complete = true;
-      for (const [i, id] of st.selfcheck.items.entries()) {
-        const answer = (cmd.answers[i] ?? '').trim();
-        if (answer.length < 4) {
-          complete = false;
-          continue;
-        }
-        const item = secret.selfcheckBank.find((q) => q.id === id);
-        if (!item) throw new Error(`自检题 ${id} 不在题目包中`);
-        const { valid, refs } = checkSelfcheck(item, answer, st.lines);
-        complete = complete && valid;
-        emit('selfcheck.submit', { itemId: id, refs, valid, path: 'rule' });
-      }
-      if (complete) emit('layer.done', { layer: 'L4' });
+      if (st.layer !== 4) return reject('wrong_layer');
+      // 批量提交是原子的：任一题过短则整批拒绝，不写入部分题。
+      const answers = st.selfcheck.items.map((id, i) => ({ id, answer: (cmd.answers[i] ?? '').trim() }));
+      if (answers.some(({ id, answer }) => answer.length < selfcheckMinChars(secret, id))) return reject('invalid');
+      for (const { id, answer } of answers) answerSelfcheck(ctx, id, answer, at, cur, emit);
       return;
     }
     case 'transfer.complete':
-      if (st.layer !== 5) return;
-      emit('layer.done', { layer: 'L5' });
+      if (st.layer !== 5) return reject('wrong_layer');
+      layerDone(ctx, 5, at, cur, emit);
       return;
     case 'summary.submit': {
-      if (st.layer !== 6 || cmd.answers.some((a) => a.trim().length < 4)) return;
+      if (st.layer !== 6) return reject('wrong_layer');
+      if (cmd.answers.some((a) => a.trim().length < 4)) return reject('invalid');
       const text = cmd.answers.join(' ');
       const missing = secret.summaryPoints.filter((p) => !matchesAny(p.patterns, text)).map((p) => p.id);
       const followupAsked = missing.length > 0 && !st.summary.asked;
       const pass = !followupAsked;
       emit('summary.submit', { missing, followupAsked, pass });
-      if (!pass) return;
-      const keysTotal = secret.keys.length;
-      const reveal = st.hint.reveal;
-      emit('attempt.complete', {
-        reveal,
-        independence: Math.max(0, 1 - reveal / keysTotal),
-        keysOwn: st.hint.matched.size,
-        keysTotal,
-        durationMs: at - st.start,
-      });
+      if (pass) completeAttempt(ctx, at, cur, emit);
       return;
     }
     case 'layer.skip': {
-      const cfg = ctx.pkg.public.layers[`L${st.layer}` as 'L1'];
-      if (!cfg?.skippable || st.status[st.layer]) return;
-      emit('layer.skip', { layer: `L${st.layer}`, reason: cmd.reason });
+      const skippable = ctx.pkg.public.layers[`L${st.layer}` as 'L1']?.skippable === true;
+      if (!skippable || st.status[st.layer]) return reject('not_allowed');
+      const next = nextEnabled(ctx, st.layer);
+      emit('layer.skip', { layer: `L${st.layer}`, reason: cmd.reason, next });
+      if (next === null) completeAttempt(ctx, at, cur, emit);
       return;
     }
     case 'flag.teacher':
-      if (!st.hint.exhausted || st.flagged) return;
+      if (!st.hint.exhausted || st.flagged) return reject('not_allowed');
       emit('help.flag_teacher', { flagId: cmd.flagId, layer: `L${st.layer}` });
       return;
   }
+}
+
+// 第 n 层完成：下一层为启用的下一层；没有下一层则作答完成。
+function layerDone(ctx: Context, n: number, at: number, cur: () => AttemptState, emit: Emit): void {
+  const next = nextEnabled(ctx, n);
+  emit('layer.done', { layer: `L${n}`, next });
+  if (next === null) completeAttempt(ctx, at, cur, emit);
+}
+
+function completeAttempt(ctx: Context, at: number, cur: () => AttemptState, emit: Emit): void {
+  const st = cur();
+  const keysTotal = ctx.pkg.secret.keys.length;
+  const reveal = st.hint.reveal;
+  emit('attempt.complete', {
+    reveal,
+    independence: Math.max(0, 1 - reveal / keysTotal),
+    keysOwn: st.hint.matched.size,
+    keysTotal,
+    durationMs: at - st.start,
+  });
+}
+
+// 按题作答自检题：写满的题计入（valid 由规则层判定）；三题全部通过则第 4 层完成。
+function answerSelfcheck(ctx: Context, itemId: string, answer: string, at: number, cur: () => AttemptState, emit: Emit): void {
+  const item = ctx.pkg.secret.selfcheckBank.find((q) => q.id === itemId);
+  if (!item) throw new Error(`自检题 ${itemId} 不在题目包中`);
+  const { valid, refs } = checkSelfcheck(item, answer, cur().lines);
+  emit('selfcheck.submit', { itemId, refs, valid, path: 'rule' });
+  const st = cur();
+  if (st.layer === 4 && st.selfcheck.items.every((id) => st.selfcheck.passed[id] === true)) {
+    layerDone(ctx, 4, at, cur, emit);
+  }
+}
+
+// 自检题的最少字数：题库给出（check.minChars），缺省 4。
+function selfcheckMinChars(secret: Secret, itemId: string): number {
+  return secret.selfcheckBank.find((q) => q.id === itemId)?.check.minChars ?? 4;
 }
 
 function requestHint(ctx: Context, at: number, st: AttemptState, emit: Emit): void {
@@ -393,6 +451,59 @@ function requestHint(ctx: Context, at: number, st: AttemptState, emit: Emit): vo
   }
 }
 
+// 只读的提示预览（GET 用）：读状态与时间，不计入快速窗口，不改状态。
+export interface HelpPreview {
+  hintAvailable: boolean;
+  nextLevel: HintLevel | null;
+  nextCost: number | null;
+  waitSec: number | null;
+  needAttempt: boolean;
+  rapidLockUntil: number | null;
+  exhausted: boolean;
+  flagged: boolean;
+  stuckOffer: boolean;
+}
+
+export function helpPreview(ctx: Context, state: AttemptState, now: number): HelpPreview {
+  const policy = ctx.pkg.public.budget;
+  const dwellMs = (policy.dwellSec ?? 20) * 1000;
+  const stuckMs = policy.stuckMs ?? 180000;
+  const key = state.layer === 3 ? nextKey(ctx.pkg.secret, state.hint.matched) : null;
+  const lv = key ? (state.hint.hintLv[key.id] ?? 0) : 0;
+  const hint = key ? key.hints[Math.min(lv, 4)] : null;
+  const locked = state.hint.blockedUntil !== null && now < state.hint.blockedUntil;
+  let waitSec: number | null = null;
+  if (locked && state.hint.blockedUntil !== null) {
+    waitSec = Math.ceil((state.hint.blockedUntil - now) / 1000);
+  } else if (hint && hint.cost > 0 && state.hint.lastHintAt !== null && now - state.hint.lastHintAt < dwellMs) {
+    waitSec = Math.ceil((dwellMs - (now - state.hint.lastHintAt)) / 1000);
+  }
+  return {
+    hintAvailable: state.layer === 3,
+    nextLevel: hint ? hint.level : null,
+    nextCost: hint ? Math.max(0, hint.cost - (state.hint.keyCost[key?.id ?? ''] ?? 0)) : null,
+    waitSec,
+    needAttempt: hint !== null && hint.cost > 0 && state.hint.submitsSinceHint < 1,
+    rapidLockUntil: locked ? state.hint.blockedUntil : null,
+    exhausted: state.hint.exhausted,
+    flagged: state.flagged,
+    stuckOffer: state.noProgress >= 2 && now - state.lastProgressAt > stuckMs,
+  };
+}
+
+// 状态的 JSON 形式：hint.matched 的 Set 变成数组。服务端把它存进 app.attempts.state。
+export interface SerializedAttemptState extends Omit<AttemptState, 'hint'> {
+  hint: Omit<HintState, 'matched'> & { matched: string[] };
+}
+
+export function serializeState(state: AttemptState): SerializedAttemptState {
+  return { ...state, hint: { ...state.hint, matched: [...state.hint.matched] } };
+}
+
+export function deserializeState(json: SerializedAttemptState): AttemptState {
+  return { ...json, hint: { ...json.hint, matched: new Set(json.hint.matched) } };
+}
+
 // 自检题的抽取（01-产品总规格 L4）：依据、作用、逻辑地位或条件各一题；题库顺序中取第一题。确定性，便于回放。
 export function pickSelfcheck(secret: Secret): string[] {
   const first = (dimensions: string[]) => secret.selfcheckBank.find((q) => dimensions.includes(q.dimension))?.id;
@@ -431,3 +542,4 @@ function boundaryAnswer(ctx: Context, conceptId: string): number | null {
     | undefined;
   return concept?.card?.boundary?.answer ?? null;
 }
+
