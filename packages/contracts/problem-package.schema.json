@@ -1,0 +1,866 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof-gym.local/contracts/problem-package.schema.json",
+  "title": "题目包 ProblemPackage v1",
+  "description": "一道证明题的完整题目包。public 部分可以出现在学生接口里；secret 部分只在服务端引擎内使用，任何学生接口都不得返回（DTO 白名单 + 泄露扫描双重保证）。所有 MathText 字段为中文 + $…$ 行内 LaTeX；所有 pattern / leak 字段写的是 canon() 之后的形式（见 03-手写键盘与识别.md §5、contracts/tools/canon.mjs）。",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "version",
+    "public",
+    "secret",
+    "review"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "id": {
+      "$ref": "#/$defs/Slug",
+      "description": "题目 ID，跨版本不变，如 epsN"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "题目包版本；作答固定在开题时的版本上"
+    },
+    "kind": {
+      "enum": [
+        "main",
+        "transfer"
+      ],
+      "default": "main",
+      "description": "transfer = 第 5 层迁移题，自身也是一个完整题目包"
+    },
+    "public": {
+      "$ref": "#/$defs/PublicPart"
+    },
+    "secret": {
+      "$ref": "#/$defs/SecretPart"
+    },
+    "review": {
+      "$ref": "#/$defs/Review"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    }
+  },
+  "$defs": {
+    "Slug": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{1,63}$"
+    },
+    "MathText": {
+      "type": "string",
+      "maxLength": 4000,
+      "description": "中文 + $…$ 行内 LaTeX；字面 $ 写作 \\$"
+    },
+    "CanonPattern": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400,
+      "description": "作用在 canon(text) 上的 JS 正则（u 标志）"
+    },
+    "CanonFragment": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 120,
+      "description": "canon 形式的泄题片段：外发文本 canon 后包含它即拦截"
+    },
+    "PublicPart": {
+      "type": "object",
+      "required": [
+        "title",
+        "stem",
+        "chapter",
+        "difficulty",
+        "role",
+        "layers",
+        "keyCount",
+        "budget"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "stem": {
+          "$ref": "#/$defs/MathText"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "book": {
+              "type": "string"
+            },
+            "volume": {
+              "enum": [
+                "上",
+                "下"
+              ]
+            },
+            "chapter": {
+              "type": "integer"
+            },
+            "section": {
+              "type": "string"
+            },
+            "itemType": {
+              "enum": [
+                "example",
+                "exam",
+                "exercise",
+                "authored"
+              ]
+            },
+            "itemNo": {
+              "type": "string"
+            },
+            "pages": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "examSource": {
+              "type": "string",
+              "description": "考研真题出处，如 北京大学 2003"
+            }
+          }
+        },
+        "chapter": {
+          "type": "string",
+          "description": "显示用，如 第二章 数列极限"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 12
+        },
+        "difficulty": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "role": {
+          "enum": [
+            "required",
+            "optional",
+            "test",
+            "spare"
+          ],
+          "description": "必做 / 选练 / 测试卷 / 备用"
+        },
+        "concepts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Slug"
+          },
+          "description": "第 1 层引用的概念 ID（见 concept.schema.json）"
+        },
+        "layers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6"
+          ],
+          "properties": {
+            "L1": {
+              "$ref": "#/$defs/LayerCfg"
+            },
+            "L2": {
+              "$ref": "#/$defs/LayerCfg"
+            },
+            "L3": {
+              "$ref": "#/$defs/LayerCfg"
+            },
+            "L4": {
+              "$ref": "#/$defs/LayerCfg"
+            },
+            "L5": {
+              "$ref": "#/$defs/LayerCfg"
+            },
+            "L6": {
+              "$ref": "#/$defs/LayerCfg"
+            }
+          }
+        },
+        "def": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "task",
+            "conceptId"
+          ],
+          "properties": {
+            "task": {
+              "$ref": "#/$defs/MathText"
+            },
+            "conceptId": {
+              "$ref": "#/$defs/Slug"
+            }
+          },
+          "description": "第 1 层配置；L1 启用时必填（引擎加载时校验）"
+        },
+        "frame": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "task",
+            "template"
+          ],
+          "properties": {
+            "task": {
+              "$ref": "#/$defs/MathText"
+            },
+            "template": {
+              "$ref": "#/$defs/MathText",
+              "description": "通用骨架模板，属于形式部分，不计透露量"
+            },
+            "lessonId": {
+              "$ref": "#/$defs/Slug",
+              "description": "证明骨架微课（概念库里的 frame-* 条目）"
+            }
+          },
+          "description": "第 2 层配置；L2 启用时必填（引擎加载时校验）"
+        },
+        "selfcheckCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "default": 3
+        },
+        "transferProblemId": {
+          "$ref": "#/$defs/Slug"
+        },
+        "askChips": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 30
+          },
+          "maxItems": 6
+        },
+        "keyCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "description": "关键步骤数，学生可见（进度显示 已自己写出 x / keyCount）"
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reveal"
+          ],
+          "properties": {
+            "reveal": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5,
+              "description": "每题透露量上限，默认 2；迁移题默认 1"
+            },
+            "dwellSec": {
+              "type": "integer",
+              "default": 20
+            },
+            "rapidWindowSec": {
+              "type": "integer",
+              "default": 30
+            },
+            "rapidCount": {
+              "type": "integer",
+              "default": 3
+            },
+            "rapidLockSec": {
+              "type": "integer",
+              "default": 60
+            },
+            "stuckMs": {
+              "type": "integer",
+              "default": 180000
+            }
+          }
+        }
+      }
+    },
+    "LayerCfg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "skippable": {
+          "type": "boolean",
+          "default": false
+        },
+        "skipRule": {
+          "enum": [
+            "none",
+            "self",
+            "pretest",
+            "history"
+          ],
+          "default": "self",
+          "description": "self=学生自选跳过；pretest=前测通过才可跳；history=本学期同类已通过 2 次"
+        }
+      }
+    },
+    "SecretPart": {
+      "type": "object",
+      "required": [
+        "keys",
+        "routes",
+        "errors",
+        "summaryPoints",
+        "selfcheckBank",
+        "referenceProofs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "def": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "components"
+          ],
+          "properties": {
+            "components": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/DefComponent"
+              }
+            },
+            "order": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "必须按此先后出现的成分 ID（量词顺序）"
+            },
+            "orderQuestion": {
+              "$ref": "#/$defs/MathText"
+            }
+          }
+        },
+        "frame": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "checks"
+          ],
+          "properties": {
+            "checks": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/FrameCheck"
+              }
+            }
+          }
+        },
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/KeyStep"
+          }
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "允许的证明路线（每条是关键步骤 ID 序列，顺序只用于选下一条提示；学生书写顺序不限）。任一路线全部匹配即链条闭合"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ErrorPattern"
+          }
+        },
+        "allowedTheorems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbiddenTheorems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selfcheckBank": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SelfcheckItem"
+          }
+        },
+        "summaryPoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SummaryPoint"
+          }
+        },
+        "referenceProofs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ReferenceProof"
+          }
+        },
+        "lean": {
+          "$ref": "#/$defs/LeanInfo"
+        }
+      }
+    },
+    "DefComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "patterns",
+        "missing"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string",
+          "description": "教师看的成分名，如 对任意 ε>0"
+        },
+        "patterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/CanonPattern"
+          }
+        },
+        "missing": {
+          "$ref": "#/$defs/MathText",
+          "description": "缺这一成分时的批注（不给出正确写法，只指出缺了什么）"
+        },
+        "jev": {
+          "type": "string",
+          "description": "Jev noul 问题：学生的自然语言描述是否表达了这一成分（第 1 层允许语义判定）"
+        }
+      }
+    },
+    "FrameCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "patterns",
+        "missing"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "patterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/CanonPattern"
+          }
+        },
+        "missing": {
+          "$ref": "#/$defs/MathText"
+        },
+        "jev": {
+          "type": "string"
+        }
+      }
+    },
+    "KeyStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "patterns",
+        "leak",
+        "hints"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^K[0-9]{1,2}$"
+        },
+        "kind": {
+          "enum": [
+            "formal",
+            "core"
+          ],
+          "description": "形式部分 / 解题核心（Selden）"
+        },
+        "label": {
+          "type": "string",
+          "description": "教师端显示的步骤名，如 化简 |a_n−3|；学生端永不显示"
+        },
+        "deps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "patterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/CanonPattern"
+          }
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MathText"
+          },
+          "description": "可被判为本步骤的学生写法样例，用于归类器少样本与回归测试"
+        },
+        "leak": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanonFragment"
+          },
+          "description": "可以直接照写的片段；本步骤未被学生写出且未计透露量时，任何外发文本出现即拦截"
+        },
+        "jev": {
+          "type": "string",
+          "description": "Jev choice 选项说明：这一步在数学上确立了什么（不含可照写的式子）"
+        },
+        "hints": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/Hint"
+          },
+          "description": "H0–H4 各一条，按级别排序"
+        }
+      }
+    },
+    "Hint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "text",
+        "cost"
+      ],
+      "properties": {
+        "level": {
+          "enum": [
+            "H0",
+            "H1",
+            "H2",
+            "H3",
+            "H4"
+          ]
+        },
+        "text": {
+          "$ref": "#/$defs/MathText"
+        },
+        "cost": {
+          "enum": [
+            0,
+            0.5,
+            1
+          ],
+          "description": "透露量：H0/H1=0，H2=0.5（点名决定性定理也按 0.5），H3/H4=1"
+        },
+        "handsBack": {
+          "type": "boolean",
+          "description": "H4 必须把下一行交还学生（文本以'下一行由你写'类句式结尾）"
+        }
+      }
+    },
+    "ErrorPattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "patterns",
+        "question"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^E[0-9]{1,2}$"
+        },
+        "label": {
+          "type": "string"
+        },
+        "patterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/CanonPattern"
+          }
+        },
+        "question": {
+          "$ref": "#/$defs/MathText",
+          "description": "对应的 H0 式追问，只问不判"
+        },
+        "jev": {
+          "type": "string"
+        }
+      }
+    },
+    "SelfcheckItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "dimension",
+        "template",
+        "check"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "dimension": {
+          "enum": [
+            "justification",
+            "meaning",
+            "logical_status",
+            "condition",
+            "modular",
+            "transfer"
+          ],
+          "description": "Mejia-Ramos 局部/整体维度"
+        },
+        "template": {
+          "$ref": "#/$defs/MathText",
+          "description": "可含 {line:K2} 占位，运行时替换为学生自己写出 K2 的那一行行号"
+        },
+        "check": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "lineRefs",
+                "mentions",
+                "jev",
+                "free"
+              ]
+            },
+            "mustRefKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "patterns": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/CanonPattern"
+              }
+            },
+            "jev": {
+              "type": "string"
+            },
+            "minChars": {
+              "type": "integer",
+              "default": 4
+            }
+          }
+        }
+      }
+    },
+    "SummaryPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "patterns",
+        "question"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "patterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/CanonPattern"
+          }
+        },
+        "question": {
+          "$ref": "#/$defs/MathText"
+        },
+        "jev": {
+          "type": "string"
+        }
+      }
+    },
+    "ReferenceProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "route": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "$ref": "#/$defs/MathText"
+        },
+        "publishable": {
+          "type": "boolean",
+          "default": true,
+          "description": "题目关闭后教师可选择发布"
+        }
+      }
+    },
+    "LeanInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "proved",
+            "stated",
+            "none"
+          ]
+        },
+        "map": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "code": {
+          "type": "string"
+        }
+      }
+    },
+    "Review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "draft",
+            "pending",
+            "returned",
+            "published",
+            "retired"
+          ]
+        },
+        "reviewer": {
+          "type": "string"
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "comments": {
+          "type": "string"
+        },
+        "autoChecks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "schema": {
+              "type": "boolean"
+            },
+            "katex": {
+              "type": "boolean"
+            },
+            "leakExhaustive": {
+              "type": "boolean"
+            },
+            "patternSelfTest": {
+              "type": "boolean"
+            },
+            "lean": {
+              "enum": [
+                "ok",
+                "sorry",
+                "fail",
+                "skipped"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "Provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "importJobId": {
+          "type": "string"
+        },
+        "draftedBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "起草模型 ID 列表"
+        },
+        "arbiter": {
+          "type": "string"
+        },
+        "promptVersion": {
+          "type": "string"
+        },
+        "portedFrom": {
+          "type": "string",
+          "description": "如 08-重构原型/index.html PKG.epsN"
+        }
+      }
+    }
+  }
+}

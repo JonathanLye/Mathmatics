@@ -1,0 +1,5 @@
+[
+  {"id":"0192f0a0-0000-7000-8000-0000000000a1","type":"ink.session","tsClient":"2026-11-05T12:01:10.000Z","sessionId":"0192f0a0-4444-7000-8000-000000000001","deviceId":"0192f0a0-5555-7000-8000-000000000001","clientSeq":7,"attemptId":"0192f0a0-3333-7000-8000-000000000001","layer":"L1","payload":{"draftId":"0192f0a0-6666-7000-8000-000000000001","target":"def","strokes":38,"points":1460,"durationMs":51000,"erases":2,"undos":1,"scratchOuts":0,"fullscreen":true,"orientation":"landscape","pointerTypes":["touch"]}},
+  {"id":"0192f0a0-0000-7000-8000-0000000000a2","type":"integ.visibility","tsClient":"2026-11-05T12:10:35.000Z","sessionId":"0192f0a0-4444-7000-8000-000000000001","deviceId":"0192f0a0-5555-7000-8000-000000000001","clientSeq":30,"attemptId":"0192f0a0-3333-7000-8000-000000000001","layer":"L3","payload":{"state":"hidden"}},
+  {"id":"0192f0a0-0000-7000-8000-0000000000a3","type":"help.open","tsClient":"2026-11-05T12:08:58.000Z","sessionId":"0192f0a0-4444-7000-8000-000000000001","deviceId":"0192f0a0-5555-7000-8000-000000000001","clientSeq":25,"attemptId":"0192f0a0-3333-7000-8000-000000000001","layer":"L3","payload":{"from":"dock"}}
+]

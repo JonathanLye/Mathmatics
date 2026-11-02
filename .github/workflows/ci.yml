@@ -57,11 +57,38 @@ jobs:
       - name: Docs structure
         run: node tools/check-docs.mjs
 
+  workspace:
+    name: workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Setup pnpm and Node
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          runtime: node@24
+          cache: true
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Contracts copy in sync
+        run: node tools/sync-contracts.mjs --check
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+      - name: Smoke
+        run: pnpm build
+
   # 唯一 required status check：子 job 跳过也算过，真实失败才红。
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [contracts, docs]
+    needs: [contracts, docs, workspace]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -70,9 +97,10 @@ jobs:
         env:
           CONTRACTS: ${{ needs.contracts.result }}
           DOCS: ${{ needs.docs.result }}
+          WORKSPACE: ${{ needs.workspace.result }}
         run: |
-          echo "contracts=$CONTRACTS docs=$DOCS"
-          if [ "$CONTRACTS" = "failure" ] || [ "$CONTRACTS" = "cancelled" ] || [ "$DOCS" = "failure" ] || [ "$DOCS" = "cancelled" ]; then
+          echo "contracts=$CONTRACTS docs=$DOCS workspace=$WORKSPACE"
+          if [ "$CONTRACTS" = "failure" ] || [ "$CONTRACTS" = "cancelled" ] || [ "$DOCS" = "failure" ] || [ "$DOCS" = "cancelled" ] || [ "$WORKSPACE" = "failure" ] || [ "$WORKSPACE" = "cancelled" ]; then
             echo "::error::One or more required jobs failed or were cancelled"
             exit 1
           fi

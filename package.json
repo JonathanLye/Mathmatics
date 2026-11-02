@@ -1,0 +1,28 @@
+{
+  "name": "proof-gym",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=24.12"
+  },
+  "scripts": {
+    "dev": "node --watch apps/server/src/server.ts",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm -r --if-present run test",
+    "build": "node tools/smoke.mjs",
+    "check:contracts": "node tools/check-contracts.mjs",
+    "gen:types": "node tools/gen-types.mjs",
+    "db:reset": "node tools/db.ts reset",
+    "db:seed": "node tools/db.ts seed",
+    "db:query": "node tools/db.ts query"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "json-schema-to-typescript": "catalog:",
+    "openapi-typescript": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

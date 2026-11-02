@@ -1,0 +1,15 @@
+{
+  "name": "@proof-gym/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "10-开发文档/contracts 的只读同步副本；唯一源在 10-开发文档/contracts，禁止手改本目录",
+  "exports": {
+    "./*.yaml": "./*.yaml",
+    "./*.json": "./*.json",
+    "./*.sql": "./*.sql",
+    "./seed/*": "./seed/*",
+    "./tools/*": "./tools/*",
+    "./gen/*": "./gen/*"
+  }
+}

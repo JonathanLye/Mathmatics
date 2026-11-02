@@ -1,0 +1,197 @@
+{
+  "schemaVersion": "1.0",
+  "description": "证明键盘布局（学生端自研组件读取；H5 与小程序共用）。说明见 03-手写键盘与识别.md §4。insert 中 #0 是插入后光标位置，#1 #2… 是 Tab 依次跳转的占位；mode=math 的键在光标不在 $…$ 内时由编辑器自动补成 $…$。",
+  "rowsMax": 10,
+  "actions": [
+    { "id": "left", "label": "←", "kind": "action" },
+    { "id": "right", "label": "→", "kind": "action" },
+    { "id": "next", "label": "⇥", "kind": "action", "hint": "跳到下一个占位" },
+    { "id": "backspace", "label": "⌫", "kind": "action" },
+    { "id": "system", "label": "中", "kind": "action", "hint": "切换到系统键盘输入中文" },
+    { "id": "ink", "label": "✍", "kind": "action", "hint": "改用手写" },
+    { "id": "done", "label": "完成", "kind": "action" }
+  ],
+  "layers": [
+    {
+      "id": "common",
+      "label": "常用",
+      "rows": [
+        [
+          { "label": "∀", "insert": "\\forall ", "mode": "math" },
+          { "label": "∃", "insert": "\\exists ", "mode": "math" },
+          { "label": "ε", "insert": "\\varepsilon", "mode": "math" },
+          { "label": "δ", "insert": "\\delta", "mode": "math" },
+          { "label": "N", "insert": "N", "mode": "math" },
+          { "label": "n", "insert": "n", "mode": "math" },
+          { "label": "<", "insert": "<", "mode": "math", "variants": ["\\le", "\\ll"] },
+          { "label": ">", "insert": ">", "mode": "math", "variants": ["\\ge", "\\gg"] },
+          { "label": "≤", "insert": "\\le ", "mode": "math" },
+          { "label": "≥", "insert": "\\ge ", "mode": "math" }
+        ],
+        [
+          { "label": "=", "insert": "=", "mode": "math", "variants": ["\\ne", "\\approx", "\\equiv"] },
+          { "label": "≠", "insert": "\\ne ", "mode": "math" },
+          { "label": "→", "insert": "\\to ", "mode": "math" },
+          { "label": "∞", "insert": "\\infty", "mode": "math" },
+          { "label": "⇒", "insert": "\\Rightarrow ", "mode": "math", "variants": ["\\Leftrightarrow"] },
+          { "label": "(", "insert": "(", "mode": "math" },
+          { "label": ")", "insert": ")", "mode": "math" },
+          { "label": "+", "insert": "+", "mode": "math" },
+          { "label": "−", "insert": "-", "mode": "math" },
+          { "label": "·", "insert": "\\cdot ", "mode": "math" }
+        ],
+        [
+          { "label": "a/b", "latex": "\\frac{a}{b}", "insert": "\\frac{#0}{#1}", "kind": "template", "mode": "math" },
+          { "label": "|x|", "latex": "|x|", "insert": "\\left|#0\\right|", "kind": "template", "mode": "math" },
+          { "label": "√", "latex": "\\sqrt{x}", "insert": "\\sqrt{#0}", "kind": "template", "mode": "math", "variants": ["\\sqrt[#1]{#0}"] },
+          { "label": "xⁿ", "latex": "x^{n}", "insert": "^{#0}", "kind": "template", "mode": "math" },
+          { "label": "xₙ", "latex": "x_{n}", "insert": "_{#0}", "kind": "template", "mode": "math" },
+          { "label": "aₙ", "latex": "a_n", "insert": "a_n", "mode": "math", "variants": ["a_{n+1}", "u_n", "S_n", "x_n"] },
+          { "label": "⌈x⌉", "latex": "\\lceil x\\rceil", "insert": "\\left\\lceil #0\\right\\rceil", "kind": "template", "mode": "math", "variants": ["\\left\\lfloor #0\\right\\rfloor", "[#0]"] },
+          { "label": "lim", "latex": "\\lim_{n\\to\\infty}", "insert": "\\lim_{#0\\to #1}", "kind": "template", "mode": "math", "variants": ["\\lim_{n\\to\\infty}", "\\lim_{x\\to x_0}"] },
+          { "label": "∑", "latex": "\\sum", "insert": "\\sum_{#0}^{#1}", "kind": "template", "mode": "math", "variants": ["\\sum_{n=1}^{\\infty}"] },
+          { "label": "{aₙ}", "latex": "\\{a_n\\}", "insert": "\\{#0\\}", "kind": "template", "mode": "math" }
+        ]
+      ]
+    },
+    {
+      "id": "phrases",
+      "label": "证明句式",
+      "note": "常用的证明连接语，减少手机上切中文输入法的次数；只是句式，不含任何解题内容",
+      "rows": [
+        [
+          { "label": "任取 ε>0", "insert": "任取 $\\varepsilon>0$，", "kind": "phrase", "mode": "text" },
+          { "label": "存在 N", "insert": "存在 $N$，", "kind": "phrase", "mode": "text" },
+          { "label": "当 n>N 时", "insert": "当 $n>N$ 时，", "kind": "phrase", "mode": "text" },
+          { "label": "取 N=", "insert": "取 $N=#0$，", "kind": "phrase", "mode": "text" }
+        ],
+        [
+          { "label": "取 δ=", "insert": "取 $\\delta=#0$，", "kind": "phrase", "mode": "text" },
+          { "label": "当 0<|x−x₀|<δ 时", "insert": "当 $0<|x-x_0|<\\delta$ 时，", "kind": "phrase", "mode": "text" },
+          { "label": "要使…只需", "insert": "要使 $#0$，只需 $#1$。", "kind": "phrase", "mode": "text" },
+          { "label": "于是", "insert": "于是", "kind": "phrase", "mode": "text" }
+        ],
+        [
+          { "label": "所以", "insert": "所以", "kind": "phrase", "mode": "text" },
+          { "label": "由…得", "insert": "由#0得", "kind": "phrase", "mode": "text" },
+          { "label": "不妨设", "insert": "不妨设", "kind": "phrase", "mode": "text" },
+          { "label": "反设", "insert": "反设", "kind": "phrase", "mode": "text" }
+        ],
+        [
+          { "label": "矛盾", "insert": "矛盾。", "kind": "phrase", "mode": "text" },
+          { "label": "综上", "insert": "综上，", "kind": "phrase", "mode": "text" },
+          { "label": "收敛", "insert": "收敛", "kind": "phrase", "mode": "text" },
+          { "label": "发散", "insert": "发散", "kind": "phrase", "mode": "text" }
+        ]
+      ]
+    },
+    {
+      "id": "logic",
+      "label": "关系·集合",
+      "rows": [
+        [
+          { "label": "∈", "insert": "\\in ", "mode": "math" },
+          { "label": "∉", "insert": "\\notin ", "mode": "math" },
+          { "label": "⊂", "insert": "\\subset ", "mode": "math" },
+          { "label": "⊆", "insert": "\\subseteq ", "mode": "math" },
+          { "label": "∪", "insert": "\\cup ", "mode": "math" },
+          { "label": "∩", "insert": "\\cap ", "mode": "math" },
+          { "label": "∅", "insert": "\\varnothing", "mode": "math" },
+          { "label": "ℕ", "insert": "\\mathbb{N}", "mode": "math" },
+          { "label": "ℝ", "insert": "\\mathbb{R}", "mode": "math" },
+          { "label": "ℤ", "insert": "\\mathbb{Z}", "mode": "math" }
+        ],
+        [
+          { "label": "⇔", "insert": "\\Leftrightarrow ", "mode": "math" },
+          { "label": "¬", "insert": "\\neg ", "mode": "math" },
+          { "label": "∧", "insert": "\\land ", "mode": "math" },
+          { "label": "∨", "insert": "\\lor ", "mode": "math" },
+          { "label": "≈", "insert": "\\approx ", "mode": "math" },
+          { "label": "≡", "insert": "\\equiv ", "mode": "math" },
+          { "label": "±", "insert": "\\pm ", "mode": "math" },
+          { "label": "…", "insert": "\\cdots ", "mode": "math" },
+          { "label": ",", "insert": ",\\ ", "mode": "math" },
+          { "label": ":", "insert": ":\\ ", "mode": "math" }
+        ]
+      ]
+    },
+    {
+      "id": "greek",
+      "label": "希腊",
+      "rows": [
+        [
+          { "label": "α", "insert": "\\alpha", "mode": "math" },
+          { "label": "β", "insert": "\\beta", "mode": "math" },
+          { "label": "γ", "insert": "\\gamma", "mode": "math" },
+          { "label": "δ", "insert": "\\delta", "mode": "math" },
+          { "label": "ε", "insert": "\\varepsilon", "mode": "math" },
+          { "label": "η", "insert": "\\eta", "mode": "math" },
+          { "label": "θ", "insert": "\\theta", "mode": "math" },
+          { "label": "λ", "insert": "\\lambda", "mode": "math" },
+          { "label": "μ", "insert": "\\mu", "mode": "math" },
+          { "label": "ξ", "insert": "\\xi", "mode": "math" }
+        ],
+        [
+          { "label": "π", "insert": "\\pi", "mode": "math" },
+          { "label": "ρ", "insert": "\\rho", "mode": "math" },
+          { "label": "σ", "insert": "\\sigma", "mode": "math" },
+          { "label": "τ", "insert": "\\tau", "mode": "math" },
+          { "label": "φ", "insert": "\\varphi", "mode": "math" },
+          { "label": "ω", "insert": "\\omega", "mode": "math" },
+          { "label": "Δ", "insert": "\\Delta", "mode": "math" },
+          { "label": "Σ", "insert": "\\Sigma", "mode": "math" },
+          { "label": "Ω", "insert": "\\Omega", "mode": "math" },
+          { "label": "∂", "insert": "\\partial", "mode": "math" }
+        ]
+      ]
+    },
+    {
+      "id": "analysis",
+      "label": "函数·分析",
+      "rows": [
+        [
+          { "label": "sup", "insert": "\\sup ", "mode": "math" },
+          { "label": "inf", "insert": "\\inf ", "mode": "math" },
+          { "label": "max", "insert": "\\max ", "mode": "math" },
+          { "label": "min", "insert": "\\min ", "mode": "math" },
+          { "label": "ln", "insert": "\\ln ", "mode": "math" },
+          { "label": "sin", "insert": "\\sin ", "mode": "math" },
+          { "label": "cos", "insert": "\\cos ", "mode": "math" },
+          { "label": "eˣ", "latex": "e^{x}", "insert": "e^{#0}", "kind": "template", "mode": "math" },
+          { "label": "f(x)", "insert": "f(#0)", "kind": "template", "mode": "math" },
+          { "label": "f′", "insert": "f'(#0)", "kind": "template", "mode": "math" }
+        ],
+        [
+          { "label": "∫", "latex": "\\int_a^b", "insert": "\\int_{#0}^{#1}", "kind": "template", "mode": "math" },
+          { "label": "d/dx", "latex": "\\frac{d}{dx}", "insert": "\\frac{\\mathrm{d}}{\\mathrm{d}x}", "kind": "template", "mode": "math" },
+          { "label": "limsup", "insert": "\\limsup_{n\\to\\infty}", "mode": "math" },
+          { "label": "liminf", "insert": "\\liminf_{n\\to\\infty}", "mode": "math" },
+          { "label": "∏", "insert": "\\prod_{#0}^{#1}", "kind": "template", "mode": "math" },
+          { "label": "x→x₀⁺", "insert": "x\\to x_0^{+}", "mode": "math" },
+          { "label": "(a,b)", "insert": "(#0,#1)", "kind": "template", "mode": "math" },
+          { "label": "[a,b]", "insert": "[#0,#1]", "kind": "template", "mode": "math" },
+          { "label": "nᵖ", "latex": "n^{p}", "insert": "n^{#0}", "kind": "template", "mode": "math" },
+          { "label": "(−1)ⁿ", "latex": "(-1)^{n}", "insert": "(-1)^{#0}", "kind": "template", "mode": "math" }
+        ]
+      ]
+    },
+    {
+      "id": "digits",
+      "label": "123",
+      "rows": [
+        [
+          { "label": "1", "insert": "1", "mode": "math" }, { "label": "2", "insert": "2", "mode": "math" }, { "label": "3", "insert": "3", "mode": "math" },
+          { "label": "4", "insert": "4", "mode": "math" }, { "label": "5", "insert": "5", "mode": "math" }, { "label": "6", "insert": "6", "mode": "math" },
+          { "label": "7", "insert": "7", "mode": "math" }, { "label": "8", "insert": "8", "mode": "math" }, { "label": "9", "insert": "9", "mode": "math" },
+          { "label": "0", "insert": "0", "mode": "math" }
+        ],
+        [
+          { "label": "+", "insert": "+", "mode": "math" }, { "label": "−", "insert": "-", "mode": "math" }, { "label": "×", "insert": "\\times ", "mode": "math" },
+          { "label": "÷", "insert": "/", "mode": "math" }, { "label": ".", "insert": ".", "mode": "math" }, { "label": "x", "insert": "x", "mode": "math" },
+          { "label": "y", "insert": "y", "mode": "math" }, { "label": "k", "insert": "k", "mode": "math" }, { "label": "m", "insert": "m", "mode": "math" },
+          { "label": "A", "insert": "A", "mode": "math" }
+        ]
+      ]
+    }
+  ]
+}

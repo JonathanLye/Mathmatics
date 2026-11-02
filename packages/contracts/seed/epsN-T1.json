@@ -1,0 +1,249 @@
+{
+  "schemaVersion": "1.0",
+  "id": "epsN-T1",
+  "version": 1,
+  "kind": "transfer",
+  "public": {
+    "title": "函数极限 · ε-δ（迁移）",
+    "stem": "用 $\\varepsilon$-$\\delta$ 定义证明 $\\displaystyle\\lim_{x\\to 1}(2x+1)=3$。",
+    "source": {
+      "book": "v3 原型自编",
+      "itemType": "authored"
+    },
+    "chapter": "第三章 函数极限",
+    "tags": [
+      "ε-δ",
+      "迁移"
+    ],
+    "difficulty": 1,
+    "role": "optional",
+    "concepts": [
+      "func-limit"
+    ],
+    "layers": {
+      "L1": {
+        "enabled": false
+      },
+      "L2": {
+        "enabled": false
+      },
+      "L3": {
+        "enabled": true,
+        "skippable": false,
+        "skipRule": "none"
+      },
+      "L4": {
+        "enabled": false
+      },
+      "L5": {
+        "enabled": false
+      },
+      "L6": {
+        "enabled": false
+      }
+    },
+    "selfcheckCount": 0,
+    "askChips": [
+      "δ 和 ε 是什么关系？",
+      "这一行在做什么？"
+    ],
+    "keyCount": 3,
+    "budget": {
+      "reveal": 1,
+      "dwellSec": 20,
+      "rapidWindowSec": 30,
+      "rapidCount": 3,
+      "rapidLockSec": 60,
+      "stuckMs": 180000
+    }
+  },
+  "secret": {
+    "keys": [
+      {
+        "id": "K1",
+        "kind": "core",
+        "label": "化简 |f(x)−3|",
+        "deps": [],
+        "patterns": [
+          "2\\|x-1\\|",
+          "\\|2x-2\\|",
+          "\\|2\\(x-1\\)\\|"
+        ],
+        "examples": [
+          "$|(2x+1)-3|=2|x-1|$"
+        ],
+        "leak": [
+          "2|x-1|",
+          "|2x-2|",
+          "|2(x-1)|"
+        ],
+        "jev": "把 |f(x)−3| 化成 |x−1| 的倍数",
+        "hints": [
+          {
+            "level": "H0",
+            "text": "你要让哪个量小于 $\\varepsilon$？先把它写成和 $|x-1|$ 有关的样子。",
+            "cost": 0
+          },
+          {
+            "level": "H1",
+            "text": "回到目标：$|f(x)-3|<\\varepsilon$，而条件给的是 $|x-1|$ 很小。",
+            "cost": 0
+          },
+          {
+            "level": "H2",
+            "text": "把 $|(2x+1)-3|$ 化简，看看它是 $|x-1|$ 的几倍。",
+            "cost": 0.5
+          },
+          {
+            "level": "H3",
+            "text": "$|(2x+1)-3|=|2x-2|$。再提出一个公因数。",
+            "cost": 1
+          },
+          {
+            "level": "H4",
+            "text": "$|(2x+1)-3|=2|x-1|$。下一行由你写：要让它 $<\\varepsilon$，$|x-1|$ 要小于多少？",
+            "cost": 1,
+            "handsBack": true
+          }
+        ]
+      },
+      {
+        "id": "K2",
+        "kind": "core",
+        "label": "取 δ 只依赖 ε",
+        "deps": [
+          "K1"
+        ],
+        "patterns": [
+          "δ[=≤][^,;]*ε/[2-9]",
+          "δ=min\\([^)]*ε/[2-9]"
+        ],
+        "examples": [
+          "取 $\\delta=\\frac{\\varepsilon}{2}$"
+        ],
+        "leak": [
+          "δ=ε/2",
+          "ε/2"
+        ],
+        "jev": "取定一个只依赖 ε 的 δ",
+        "hints": [
+          {
+            "level": "H0",
+            "text": "$\\delta$ 可以依赖哪些量？",
+            "cost": 0
+          },
+          {
+            "level": "H1",
+            "text": "定义里 $\\delta$ 在 $x$ 之前取定，只能依赖 $\\varepsilon$。",
+            "cost": 0
+          },
+          {
+            "level": "H2",
+            "text": "从上一行的不等式反推：$|x-1|$ 小到什么程度就够了？",
+            "cost": 0.5
+          },
+          {
+            "level": "H3",
+            "text": "只要 $2|x-1|<\\varepsilon$，即 $|x-1|<\\frac{\\varepsilon}{2}$。",
+            "cost": 1
+          },
+          {
+            "level": "H4",
+            "text": "取 $\\delta=\\frac{\\varepsilon}{2}$。下一行：对 $0<|x-1|<\\delta$ 写出结论。",
+            "cost": 1,
+            "handsBack": true
+          }
+        ]
+      },
+      {
+        "id": "K3",
+        "kind": "core",
+        "label": "串成链，落到 < ε",
+        "deps": [
+          "K1",
+          "K2"
+        ],
+        "patterns": [
+          "\\|x-1\\|<δ[\\s\\S]*<ε",
+          "\\|x-1\\|<δ[\\s\\S]*\\|f\\(x\\)-3\\|[\\s\\S]*=ε"
+        ],
+        "examples": [
+          "当 $0<|x-1|<\\delta$ 时，$|f(x)-3|=2|x-1|<2\\delta=\\varepsilon$"
+        ],
+        "leak": [],
+        "jev": "对 0<|x−1|<δ 得出 |f(x)−3|<ε",
+        "hints": [
+          {
+            "level": "H0",
+            "text": "你最终要写下的不等式是什么？",
+            "cost": 0
+          },
+          {
+            "level": "H1",
+            "text": "收尾：对 $0<|x-1|<\\delta$，把前面的式子连起来，落到 $<\\varepsilon$。",
+            "cost": 0
+          },
+          {
+            "level": "H2",
+            "text": "把\"化简\"那一行和 $\\delta$ 的取法接起来。",
+            "cost": 0.5
+          },
+          {
+            "level": "H3",
+            "text": "当 $0<|x-1|<\\delta$ 时，$|f(x)-3|=\\cdots<\\varepsilon$。省略号由你补。",
+            "cost": 1
+          },
+          {
+            "level": "H4",
+            "text": "当 $0<|x-1|<\\delta$ 时，$|f(x)-3|=2|x-1|<2\\delta=\\varepsilon$。最后写一句结论。",
+            "cost": 1,
+            "handsBack": true
+          }
+        ]
+      }
+    ],
+    "routes": [
+      [
+        "K1",
+        "K2",
+        "K3"
+      ]
+    ],
+    "errors": [
+      {
+        "id": "E1",
+        "label": "δ 依赖 x",
+        "patterns": [
+          "δ=[^,;.则时当]*(?<![A-Za-z])x(?![A-Za-z])"
+        ],
+        "question": "你取的 $\\delta$ 里出现了 $x$。$\\delta$ 能依赖 $x$ 吗？"
+      }
+    ],
+    "allowedTheorems": [],
+    "forbiddenTheorems": [],
+    "selfcheckBank": [],
+    "summaryPoints": [],
+    "referenceProofs": [
+      {
+        "id": "R1",
+        "route": 0,
+        "publishable": true,
+        "text": "任取 $\\varepsilon>0$，取 $\\delta=\\frac{\\varepsilon}{2}$。当 $0<|x-1|<\\delta$ 时，$|(2x+1)-3|=2|x-1|<2\\delta=\\varepsilon$。故 $\\lim_{x\\to1}(2x+1)=3$。"
+      }
+    ]
+  },
+  "review": {
+    "status": "published",
+    "reviewer": "新增（待罗老师复核）",
+    "autoChecks": {
+      "schema": true,
+      "katex": true,
+      "leakExhaustive": true,
+      "patternSelfTest": true,
+      "lean": "skipped"
+    }
+  },
+  "provenance": {
+    "portedFrom": "08-重构原型/index.html PKG.epsN.transfer（补全为完整题目包）"
+  }
+}

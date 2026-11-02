@@ -1,0 +1,32 @@
+{
+  "name": "@proof-gym/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "start": "node src/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "catalog:",
+    "@fastify/cookie": "catalog:",
+    "@fastify/rate-limit": "catalog:",
+    "@proof-gym/contracts": "workspace:*",
+    "@proof-gym/engine": "workspace:*",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
+    "fastify": "catalog:",
+    "pg": "catalog:",
+    "pino": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

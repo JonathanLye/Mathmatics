@@ -15,3 +15,14 @@ Thumbs.db
 work/.npm-cache/
 work/.npm-logs/
 work/*.log
+
+# Node / pnpm / 本地数据库
+node_modules/
+.pnpm-store/
+.data/
+coverage/
+dist/
+*.tsbuildinfo
+
+# 本机 pnpm/lock 运行目录
+work/runtime/
