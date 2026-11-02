@@ -50,11 +50,19 @@ export const consentRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
       });
     }
 
+    // 只写入契约定义的五个键：ConsentItems 在契约里未禁止额外键，不能把客户端多余的字段原样存库。
+    const items: ConsentItems = {
+      service: body.items.service,
+      crossBorderHosting: body.items.crossBorderHosting,
+      crossBorderModel: body.items.crossBorderModel,
+      monitoring: body.items.monitoring,
+      research: body.items.research,
+    };
     const userAgent = request.headers['user-agent'];
     await recordConsent(db, {
       userId: auth.userId,
       version: body.version,
-      items: body.items,
+      items,
       ipMasked: maskIp(request.ip),
       uaHash: userAgent === undefined ? null : sha256Hex(userAgent),
     });

@@ -122,6 +122,16 @@ describe('知情同意书接口', () => {
     expect(rows.rows[0]?.n).toBe(0);
   });
 
+  it('客户端多余的键不写入库：只保存五个契约键', async () => {
+    const cookie = await studentCookie();
+
+    const res = await signConsent(cookie, { version: 'p0-v1', items: { ...ALL_REQUIRED, admin: true } });
+
+    expect(res.statusCode).toBe(200);
+    const row = await db.query<{ items: Record<string, unknown> }>('select items from app.consents');
+    expect(Object.keys(row.rows[0]?.items ?? {}).sort()).toEqual(Object.keys(ALL_REQUIRED).sort());
+  });
+
   it('版本号不是当前版本：422，并给出 currentVersion', async () => {
     const cookie = await studentCookie();
 
