@@ -1,8 +1,11 @@
+import { randomUUID } from 'node:crypto';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { REFUSAL_TEXT } from '../src/help/hints.ts';
 
 import {
+  assertHelpResult,
   leakHits,
   postClaim,
   postHelp,
@@ -94,8 +97,10 @@ afterEach(async () => {
   await h.close();
 });
 
-describe('红队（09 §8，自由提问通道）', () => {
-  it('40 条 × 4 个进度点：零泄题，施压得到一句拒绝，透露量不变', async () => {
+const matchedOf = (state: Record<string, any>): string[] => (state.hint.matched as string[]) ?? [];
+
+describe('红队（09 §8)', () => {
+  it('40 条自由提问 × 4 个进度点：零泄题，施压得到一句拒绝，透露量不变，响应符合 HelpResult', async () => {
     const secrets = await secretsOf(h.db);
     expect(CASES).toHaveLength(40);
     for (const point of POINTS) {
@@ -104,10 +109,10 @@ describe('红队（09 §8，自由提问通道）', () => {
         const before = (await stateOf(h.db, h.attemptId)).hint.reveal as number;
         const res = await postHelp(h, { intent: 'free', text: c.text });
         expect(res.statusCode, `${point.name} ${c.id} ${res.body}`).toBe(200);
+        assertHelpResult(res);
         const after = await stateOf(h.db, h.attemptId);
-        const matched = (after.hint.matched as string[]) ?? [];
 
-        expect(leakHits([res.body], secrets, matched), `${point.name} ${c.id} 泄题`).toEqual([]);
+        expect(leakHits([res.body], secrets, matchedOf(after)), `${point.name} ${c.id} 泄题`).toEqual([]);
         expect(after.hint.reveal, `${point.name} ${c.id} 透露量`).toBe(before);
         if (c.pressure) {
           expect(res.json().routed, `${point.name} ${c.id}`).toBe('pressure');
@@ -117,12 +122,36 @@ describe('红队（09 §8，自由提问通道）', () => {
     }
   });
 
-  // 连点锁由引擎按 hintTimes 计数（30 秒内 3 次）。计数只针对会经过引擎的请求：H0/H1 直接下发，以及领取。
-  // H2 起的预览不进引擎、不计数（预览不透露任何内容，真正的透露在领取时检查）。这里用已有的请求时间直接构造"连点"。
+  // 09 §8 的证明行通道：注入类输入作为证明行提交到 /lines。泄题检查用提交前的 matched，
+  // 因为学生行可能恰好命中一个关键步骤，那时 matched 会在提交后扩大。
+  it('注入类输入作为证明行提交：零泄题、透露量不变；响应只可能是 200 或 409（状态不适用），不接受 422/500', async () => {
+    const secrets = await secretsOf(h.db);
+    const injections = CASES.filter((c) => c.category === '注入（证明行）' || c.id === 'R25' || c.id === 'R26');
+    expect(injections.length).toBeGreaterThanOrEqual(4);
+    for (const point of POINTS) {
+      await setState(h.db, h.attemptId, point.layer, point.mutate(structuredClone(initial)));
+      for (const c of injections) {
+        const beforeState = await stateOf(h.db, h.attemptId);
+        const matchedBefore = matchedOf(beforeState);
+        const res = await h.app.inject({
+          method: 'POST',
+          url: `/api/v1/attempts/${h.attemptId}/lines`,
+          headers: { cookie: h.cookie, 'x-requested-with': 'proof-gym' },
+          payload: { statement: c.text, input: { provenance: 'keyboard', draftId: randomUUID() } },
+        });
+        expect([200, 409], `${point.name} ${c.id} ${res.body}`).toContain(res.statusCode);
+        expect(leakHits([res.body], secrets, matchedBefore), `${point.name} ${c.id} 泄题`).toEqual([]);
+        const after = await stateOf(h.db, h.attemptId);
+        expect(after.hint.reveal, `${point.name} ${c.id} 透露量`).toBe(beforeState.hint.reveal);
+      }
+    }
+  });
+
   it('刷提示：30 秒内已有 2 次请求时，第 3 次 H0 请求被连点锁拦下，锁期间不下发', async () => {
     const now = Date.now();
     await setState(h.db, h.attemptId, 'L3', { ...initial, layer: 3, hint: { ...initial.hint, hintTimes: [now - 2000, now - 1000] } });
     const first = await postHelp(h, { intent: 'stuck' });
+    assertHelpResult(first);
     expect(first.json().preview).toMatchObject({ allowed: false, reason: 'rapid_lock' });
     const second = await postHelp(h, { intent: 'stuck' });
     expect(second.json().preview).toMatchObject({ allowed: false, reason: 'rapid_lock' });
@@ -130,18 +159,18 @@ describe('红队（09 §8，自由提问通道）', () => {
     expect((await stateOf(h.db, h.attemptId)).hint.reveal).toBe(0);
   });
 
-  it('接口扒取：篡改的预览令牌被拒绝；学生不能读教师端接口', async () => {
+  it('接口扒取：篡改的预览令牌被拒绝；学生提交教师端的事件类型被拒收（wrong_role）', async () => {
     const forged = await postClaim(h, 'pt_forged.AAAA');
     expect(forged.statusCode).toBe(409);
-    expect(forged.body).toContain('HINT_PREVIEW_EXPIRED');
+    expect(forged.json().error.code).toBe('HINT_PREVIEW_EXPIRED');
 
-    const secrets = await secretsOf(h.db);
-    const teacher = await h.app.inject({
-      method: 'GET',
-      url: '/api/v1/teacher/problems/epsN',
-      headers: { cookie: h.cookie },
+    const batch = await h.app.inject({
+      method: 'POST',
+      url: '/api/v1/events/batch',
+      headers: { cookie: h.cookie, 'x-requested-with': 'proof-gym' },
+      payload: { events: [{ id: randomUUID(), type: 't.view' }] },
     });
-    expect(teacher.statusCode).not.toBe(200);
-    expect(leakHits([teacher.body], secrets, [])).toEqual([]);
+    expect(batch.statusCode, batch.body).toBe(200);
+    expect(batch.json().rejected).toEqual([expect.objectContaining({ reason: 'wrong_role' })]);
   });
 });

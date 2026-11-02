@@ -2,6 +2,7 @@ import { gateRule, type Secret } from '@proof-gym/engine';
 import type { FastifyInstance } from 'fastify';
 import { expect } from 'vitest';
 
+import { loadContract } from '../../src/contract.ts';
 import { seedContent } from '../../src/db/seed.ts';
 import type { Db } from '../../src/db/index.ts';
 
@@ -127,4 +128,11 @@ export function leakHits(bodies: readonly string[], secrets: readonly Secret[], 
     }
   }
   return hits;
+}
+
+const contract = loadContract();
+
+// 每个 /help 与 /hints/claim 的响应都必须符合 HelpResult（06 §4.2 的 schema）。不合规时直接失败。
+export function assertHelpResult(res: { body: string }): void {
+  contract.validate('HelpResult', JSON.parse(res.body));
 }
