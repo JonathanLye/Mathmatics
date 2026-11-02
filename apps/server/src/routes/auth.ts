@@ -4,6 +4,7 @@ import { maskIp, sha256Hex } from '../auth/crypto.ts';
 import { buildMe } from '../auth/me.ts';
 import { clearSessionCookie, requireAuth, revokeSession, setSessionCookie } from '../auth/session.ts';
 import { studentLogin } from '../auth/student-login.ts';
+import { teacherLogin } from '../auth/teacher-login.ts';
 import type { AppConfig } from '../config.ts';
 import type { ContractValidator } from '../contract.ts';
 import type { Db } from '../db/index.ts';
@@ -18,6 +19,12 @@ interface StudentLoginBody {
   inviteCode: string;
   studentNo: string;
   deviceId: string;
+}
+
+interface TeacherLoginBody {
+  username: string;
+  password: string;
+  totp?: string;
 }
 
 export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
@@ -40,6 +47,27 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
       setSessionCookie(reply, session.sessionId, session.expiresAt);
 
       const me = await buildMe(db, { userId: session.userId, role: 'student', sessionId: session.sessionId });
+      contract.validate('Me', me);
+      return me;
+    },
+  );
+
+  // 与学生登录共用同一个限流规则（10 次/分/IP）。
+  app.post(
+    '/auth/teacher/login',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      contract.validateRequest('/auth/teacher/login', 'post', request.body);
+      const body = request.body as TeacherLoginBody;
+
+      const session = await teacherLogin(db, {
+        username: body.username,
+        password: body.password,
+        ipMasked: maskIp(request.ip),
+      });
+      setSessionCookie(reply, session.sessionId, session.expiresAt);
+
+      const me = await buildMe(db, { userId: session.userId, role: session.role, sessionId: session.sessionId });
       contract.validate('Me', me);
       return me;
     },
