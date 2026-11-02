@@ -1,0 +1,781 @@
+{
+  "source": "08-重构原型/index.html 的 DEMO_SC[weak]，经 headless 自动播放记录（scratchpad/golden-v3-raw.json）；只保留 v3 实际记录的字段，去掉 pid",
+  "scenario": "weak",
+  "independence": 0.5,
+  "final": {
+    "reveal": 2,
+    "matched": [
+      "K1",
+      "K2"
+    ],
+    "status": {
+      "1": "done",
+      "2": "done"
+    }
+  },
+  "steps": [
+    {
+      "step": 1,
+      "do": "先向系统要完整证明（搬出老师）",
+      "error": null,
+      "layer": 1,
+      "status": {},
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "ask",
+          "pressure": true
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "do": "写定义：“不会写”",
+      "error": null,
+      "layer": 1,
+      "status": {},
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "def_submit",
+          "miss": 4,
+          "order": false
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "do": "点“看不懂”",
+      "error": null,
+      "layer": 1,
+      "status": {},
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "plain_card_open"
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "do": "判断题答错",
+      "error": null,
+      "layer": 1,
+      "status": {},
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "plain_card_answer",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "do": "判断题答对",
+      "error": null,
+      "layer": 1,
+      "status": {},
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "plain_card_answer",
+          "correct": true
+        }
+      ]
+    },
+    {
+      "step": 6,
+      "do": "照着理解写出定义",
+      "error": null,
+      "layer": 2,
+      "status": {
+        "1": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "def_submit",
+          "miss": 0,
+          "order": true
+        },
+        {
+          "type": "layer_done",
+          "layer": 1
+        }
+      ]
+    },
+    {
+      "step": 7,
+      "do": "点“看通用骨架”",
+      "error": null,
+      "layer": 2,
+      "status": {
+        "1": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "frame_template"
+        }
+      ]
+    },
+    {
+      "step": 8,
+      "do": "照模板写骨架",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "frame_submit",
+          "miss": 0
+        },
+        {
+          "type": "layer_done",
+          "layer": 2
+        }
+      ]
+    },
+    {
+      "step": 9,
+      "do": "点“要一条提示”（H0）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {
+        "K1": 1
+      },
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K1",
+          "level": "H0",
+          "cost": 0
+        }
+      ]
+    },
+    {
+      "step": 10,
+      "do": "再点一次（H1）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {
+        "K1": 2
+      },
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K1",
+          "level": "H1",
+          "cost": 0
+        }
+      ]
+    },
+    {
+      "step": 11,
+      "do": "写一行，分子算错",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {
+        "K1": 2
+      },
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 1,
+          "cls": "err",
+          "keys": [],
+          "hasJust": true
+        }
+      ]
+    },
+    {
+      "step": 12,
+      "do": "点提示（H2）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0.5,
+      "matched": [],
+      "hintLv": {
+        "K1": 3
+      },
+      "keyCost": {
+        "K1": 0.5
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K1",
+          "level": "H2",
+          "cost": 0.5
+        }
+      ]
+    },
+    {
+      "step": 13,
+      "do": "写一行含糊的话",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0.5,
+      "matched": [],
+      "hintLv": {
+        "K1": 3
+      },
+      "keyCost": {
+        "K1": 0.5
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 2,
+          "cls": "unknown",
+          "keys": [],
+          "hasJust": false
+        }
+      ]
+    },
+    {
+      "step": 14,
+      "do": "点提示（H3）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 1,
+      "matched": [],
+      "hintLv": {
+        "K1": 4
+      },
+      "keyCost": {
+        "K1": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K1",
+          "level": "H3",
+          "cost": 1
+        }
+      ]
+    },
+    {
+      "step": 15,
+      "do": "照提示写出第 1 行",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 1,
+      "matched": [
+        "K1"
+      ],
+      "hintLv": {
+        "K1": 4
+      },
+      "keyCost": {
+        "K1": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 3,
+          "cls": "match",
+          "keys": [
+            "K1"
+          ],
+          "hasJust": true
+        }
+      ]
+    },
+    {
+      "step": 16,
+      "do": "连点 3 次提示",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 1,
+      "matched": [
+        "K1"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 2
+      },
+      "keyCost": {
+        "K1": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K2",
+          "level": "H0",
+          "cost": 0
+        },
+        {
+          "type": "hint",
+          "key": "K2",
+          "level": "H1",
+          "cost": 0
+        },
+        {
+          "type": "rapid_hint"
+        }
+      ]
+    },
+    {
+      "step": 17,
+      "do": "写一行含糊的话",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 1,
+      "matched": [
+        "K1"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 2
+      },
+      "keyCost": {
+        "K1": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 4,
+          "cls": "unknown",
+          "keys": [],
+          "hasJust": false
+        }
+      ]
+    },
+    {
+      "step": 18,
+      "do": "点提示（H2）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 1.5,
+      "matched": [
+        "K1"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 3
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 0.5
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K2",
+          "level": "H2",
+          "cost": 0.5
+        }
+      ]
+    },
+    {
+      "step": 19,
+      "do": "再写一行含糊的话",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 1.5,
+      "matched": [
+        "K1"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 3
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 0.5
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 5,
+          "cls": "unknown",
+          "keys": [],
+          "hasJust": false
+        }
+      ]
+    },
+    {
+      "step": 20,
+      "do": "点提示（H3）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K2",
+          "level": "H3",
+          "cost": 1
+        }
+      ]
+    },
+    {
+      "step": 21,
+      "do": "照提示写出放大那一行",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 6,
+          "cls": "match",
+          "keys": [
+            "K1",
+            "K2"
+          ],
+          "hasJust": true
+        }
+      ]
+    },
+    {
+      "step": 22,
+      "do": "点提示（H0）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4,
+        "K3": 1
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K3",
+          "level": "H0",
+          "cost": 0
+        }
+      ]
+    },
+    {
+      "step": 23,
+      "do": "点提示（H1）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4,
+        "K3": 2
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "hint",
+          "key": "K3",
+          "level": "H1",
+          "cost": 0
+        }
+      ]
+    },
+    {
+      "step": 24,
+      "do": "再写一行含糊的话",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4,
+        "K3": 2
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 7,
+          "cls": "unknown",
+          "keys": [],
+          "hasJust": false
+        }
+      ]
+    },
+    {
+      "step": 25,
+      "do": "再点提示（H2）",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4,
+        "K3": 2
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": true,
+      "flagged": false,
+      "events": [
+        {
+          "type": "budget_exhausted",
+          "key": "K3"
+        }
+      ]
+    },
+    {
+      "step": 26,
+      "do": "点“标记求助老师”",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4,
+        "K3": 2
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": true,
+      "flagged": true,
+      "events": [
+        {
+          "type": "flag_teacher"
+        }
+      ]
+    },
+    {
+      "step": 27,
+      "do": "切到教师页",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 2,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {
+        "K1": 4,
+        "K2": 4,
+        "K3": 2
+      },
+      "keyCost": {
+        "K1": 1,
+        "K2": 1
+      },
+      "exhausted": true,
+      "flagged": true,
+      "events": []
+    }
+  ]
+}

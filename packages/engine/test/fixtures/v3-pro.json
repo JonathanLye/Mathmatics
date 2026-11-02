@@ -1,0 +1,419 @@
+{
+  "source": "08-重构原型/index.html 的 DEMO_SC[pro]，经 headless 自动播放记录（scratchpad/golden-v3-raw.json）；只保留 v3 实际记录的字段，去掉 pid",
+  "scenario": "pro",
+  "independence": 1,
+  "final": {
+    "reveal": 0,
+    "matched": [
+      "K1",
+      "K2",
+      "K3",
+      "K4"
+    ],
+    "status": {
+      "1": "done",
+      "2": "done",
+      "3": "done",
+      "4": "done",
+      "5": "done",
+      "6": "done"
+    }
+  },
+  "steps": [
+    {
+      "step": 1,
+      "do": "写出定义，量词顺序正确",
+      "error": null,
+      "layer": 2,
+      "status": {
+        "1": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "def_submit",
+          "miss": 0,
+          "order": true
+        },
+        {
+          "type": "layer_done",
+          "layer": 1
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "do": "写出证明骨架",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "frame_submit",
+          "miss": 0
+        },
+        {
+          "type": "layer_done",
+          "layer": 2
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "do": "写第 1 行：化简，并写依据",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 1,
+          "cls": "match",
+          "keys": [
+            "K1"
+          ],
+          "hasJust": true
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "do": "写第 2 行：放大",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 2,
+          "cls": "match",
+          "keys": [
+            "K1",
+            "K2"
+          ],
+          "hasJust": true
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "do": "向右栏问一个概念：什么是充分条件",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "ask",
+          "pressure": false
+        }
+      ]
+    },
+    {
+      "step": 6,
+      "do": "写第 3 行：取 N",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 3,
+          "cls": "match",
+          "keys": [
+            "K3"
+          ],
+          "hasJust": true
+        }
+      ]
+    },
+    {
+      "step": 7,
+      "do": "写第 4 行：把前面连成一条链",
+      "error": null,
+      "layer": 3,
+      "status": {
+        "1": "done",
+        "2": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3",
+        "K4"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "step_submit",
+          "n": 4,
+          "cls": "match",
+          "keys": [
+            "K1",
+            "K2",
+            "K4"
+          ],
+          "hasJust": true
+        }
+      ]
+    },
+    {
+      "step": 8,
+      "do": "点“写完了”",
+      "error": null,
+      "layer": 4,
+      "status": {
+        "1": "done",
+        "2": "done",
+        "3": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3",
+        "K4"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "finish_try",
+          "complete": true
+        },
+        {
+          "type": "layer_done",
+          "layer": 3
+        }
+      ]
+    },
+    {
+      "step": 9,
+      "do": "自检：回答 3 个关于自己证明的问题",
+      "error": null,
+      "layer": 5,
+      "status": {
+        "1": "done",
+        "2": "done",
+        "3": "done",
+        "4": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3",
+        "K4"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "self_check",
+          "answered": 3
+        },
+        {
+          "type": "layer_done",
+          "layer": 4
+        }
+      ]
+    },
+    {
+      "step": 10,
+      "do": "迁移题：换一个对象独立做",
+      "error": null,
+      "layer": 6,
+      "status": {
+        "1": "done",
+        "2": "done",
+        "3": "done",
+        "4": "done",
+        "5": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3",
+        "K4"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "transfer_submit",
+          "len": 51
+        },
+        {
+          "type": "layer_done",
+          "layer": 5
+        }
+      ]
+    },
+    {
+      "step": 11,
+      "do": "总结：五问各答一句",
+      "error": null,
+      "layer": 6,
+      "status": {
+        "1": "done",
+        "2": "done",
+        "3": "done",
+        "4": "done",
+        "5": "done",
+        "6": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3",
+        "K4"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "summary_submit",
+          "missingPoint": false
+        },
+        {
+          "type": "problem_done",
+          "independence": 1
+        }
+      ]
+    },
+    {
+      "step": 12,
+      "do": "切到教师页",
+      "error": null,
+      "layer": 6,
+      "status": {
+        "1": "done",
+        "2": "done",
+        "3": "done",
+        "4": "done",
+        "5": "done",
+        "6": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3",
+        "K4"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": []
+    },
+    {
+      "step": 13,
+      "do": "点“本机编译验证”",
+      "error": null,
+      "layer": 6,
+      "status": {
+        "1": "done",
+        "2": "done",
+        "3": "done",
+        "4": "done",
+        "5": "done",
+        "6": "done"
+      },
+      "reveal": 0,
+      "matched": [
+        "K1",
+        "K2",
+        "K3",
+        "K4"
+      ],
+      "hintLv": {},
+      "keyCost": {},
+      "exhausted": false,
+      "flagged": false,
+      "events": [
+        {
+          "type": "lean_check",
+          "id": "epsN",
+          "ok": false,
+          "ms": 0
+        }
+      ]
+    }
+  ]
+}
