@@ -1,0 +1,42 @@
+name: 契约变更
+description: 改 OpenAPI / JSON Schema / DDL / 事件 / seed（B 维护，A、C 审）
+title: "[contract] "
+labels: ["area:contracts"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        字段只增不删（见 `contracts/README.md`）；事件只改 `contracts/tools/events-catalog.mjs` 再重新生成，生成物禁止手改。
+  - type: textarea
+    id: change
+    attributes:
+      label: 改什么
+      description: 接口 / 字段 / 事件 / 表，写清楚新旧对比
+    validations:
+      required: true
+  - type: textarea
+    id: compat
+    attributes:
+      label: 兼容性
+      description: 是否只增不删；旧客户端、旧数据是否受影响
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 三端影响
+      value: |
+        - A 学生端：
+        - B 服务端：
+        - C 教师端：
+    validations:
+      required: true
+  - type: textarea
+    id: docs
+    attributes:
+      label: 需要同步的文档章节
+      placeholder: "06 §2、08 §3（生成区）"
+  - type: textarea
+    id: rollback
+    attributes:
+      label: 回滚方式

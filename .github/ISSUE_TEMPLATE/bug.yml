@@ -1,0 +1,40 @@
+name: Bug
+description: 实际行为与规格或预期不一致
+title: "[bug] "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: 不要贴学生姓名、学号、原始作答；截图先打码。
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望
+      description: 引用规格时写文档编号与章节
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: "iPhone 15 / 微信内置浏览器 / commit abc1234"
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图（已脱敏）
+      render: text

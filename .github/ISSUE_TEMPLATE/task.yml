@@ -1,0 +1,42 @@
+name: 任务
+description: 一个可交付任务（必须有 DoD）
+title: "[A|B|C] "
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        规格以 `10-开发文档` 为准；查不到的产品规则先问 Lead，不要自己发明。
+        记得设置：负责人（Assignees）、`area:*` 和 `priority:*` 标签、Milestone；前置任务在右侧 Relationships → Mark as blocked by 里关联。
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 做完后什么变成真的
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围 / 涉及文件
+      placeholder: "- apps/student/src/pages/..."
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: 验收标准（DoD）
+      description: 逐条可验证；PR 里贴命令、截图或测试结果
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: deps
+    attributes:
+      label: 依赖
+      description: 前置 issue 同时用 Relationships → Mark as blocked by 关联
+  - type: textarea
+    id: refs
+    attributes:
+      label: 参考文档
+      placeholder: "10-开发文档/02-学生端设计规范.md §3"
