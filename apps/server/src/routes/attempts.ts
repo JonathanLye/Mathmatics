@@ -65,7 +65,7 @@ function parseBody<T>(contract: ContractValidator, path: string, request: Fastif
 // 手写、拍照、混合来源需要已确认的识别结果（16 §2）。识别服务本期未接入，因此这些来源一律拒绝。
 function rejectUnconfirmedInput(input: InputMeta): void {
   if (input.provenance === 'ink' || input.provenance === 'photo' || input.provenance === 'mixed') {
-    throw new AppError('RECOG_NOT_CONFIRMED', 422, '手写或拍照内容需先确认识别结果');
+    throw new AppError('RECOG_NOT_CONFIRMED', 409, '手写或拍照内容需先确认识别结果');
   }
 }
 
