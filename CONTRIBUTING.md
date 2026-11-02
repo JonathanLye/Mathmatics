@@ -7,8 +7,8 @@
 | 角色 | GitHub | 代码范围 | 主要职责 |
 |---|---|---|---|
 | A | `XuJinSheng1111111` | `apps/student/`、`packages/ui-math/` | 学生端、手写/键盘/MathText、微课与图解、学生侧 bug |
-| B | `JonathanLye` | `apps/server/`、`packages/engine/`、`apps/worker/`、`packages/contracts/`、`infra/` | 服务端、引擎、事件、闸门、识别、导入 worker、部署与 CI |
-| C | `lzjzj-creator` | `apps/teacher/`、`apps/import/`（或 `tools/import/`）、题库审核/导出 | 教师端、审核屏、导入界面、运营/管理页 |
+| B | `JonathanLye` | `apps/server/`（教师接口除外）、`packages/engine/`、`apps/worker/`、`packages/contracts/`、`infra/` | 服务端、引擎、事件、闸门、识别、导入 worker、部署与 CI；审 C 的服务端代码 |
+| C | `lzjzj-creator` | `apps/teacher/`、`apps/server/src/routes/teacher/`、`apps/server/src/services/teacher/`（`/teacher/*` 接口）、`apps/import/`（或 `tools/import/`）、题库审核/导出 | 教师端页面与接口、审核屏、导入界面、运营/管理页 |
 | PO/Lead | `JonathanLye`（兼 B） | `10-开发文档/`、`.github/`、`CONTRIBUTING.md`、`AGENTS.md` | 需求与验收、老师/学校对接、issue 优先级、合并裁决 |
 
 `.github/CODEOWNERS` 按上表自动请求评审。冲刺期每个路径都列三人（该区 owner 在前），作者以外任一人批准即可；作者自己的批准不算。

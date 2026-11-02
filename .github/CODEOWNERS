@@ -29,6 +29,8 @@
 
 # 教师端 / 导入（C）
 /apps/teacher/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
+/apps/server/src/routes/teacher/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
+/apps/server/src/services/teacher/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
 /apps/import/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
 /tools/import/ @lzjzj-creator @JonathanLye @XuJinSheng1111111
 
