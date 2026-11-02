@@ -2,6 +2,7 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 
+import { createModelGateway } from './ai/gateway.ts';
 import { loadConfig, type AppConfig } from './config.ts';
 import { loadContract } from './contract.ts';
 import type { Db } from './db/index.ts';
@@ -29,7 +30,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     global: false,
     errorResponseBuilder: () => new AppError('RATE_LIMITED', 429, '操作太频繁，请稍后再试'),
   });
-  await app.register(healthRoutes, { config });
+  // 网关只在有数据库时才能调用（审计写 app.model_calls）；/health 不需要数据库，两种情况都能报告依赖状态。
+  const gateway = createModelGateway({ registry: config.models, db: options.db });
+  await app.register(healthRoutes, { config, gateway });
 
   if (options.db) {
     await app.register(apiRoutes, { prefix: '/api/v1', db: options.db, config, contract: loadContract() });
