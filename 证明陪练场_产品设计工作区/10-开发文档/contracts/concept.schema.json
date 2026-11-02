@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof-gym.local/contracts/concept.schema.json",
+  "title": "概念库 ConceptLibrary v1",
+  "description": "第 1–2 层用的公共知识：定义卡、分步微课、参数化图解、术语词条。属于形式部分，可以下发给学生，但所有文本仍要过闸门（外发时按当前作答的未透露关键步骤检查）。规则：卡片、微课、图解里永不使用具体题目的对象（03-三大矛盾专题 矛盾 1）。",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "concepts",
+    "glossary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "concepts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Concept"
+      }
+    },
+    "glossary": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/GlossEntry"
+      }
+    }
+  },
+  "$defs": {
+    "Slug": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{1,63}$"
+    },
+    "MathText": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "Concept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "definition",
+        "card",
+        "lesson"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Slug"
+        },
+        "kind": {
+          "enum": [
+            "definition",
+            "frame"
+          ],
+          "description": "definition=第 1 层定义概念；frame=第 2 层证明骨架微课"
+        },
+        "title": {
+          "type": "string"
+        },
+        "definition": {
+          "$ref": "#/$defs/MathText",
+          "description": "量词形式的标准定义（L1 通过后才在'我的证明本'里展示；核验阶段不直接展示，避免抄写）"
+        },
+        "card": {
+          "$ref": "#/$defs/PlainCard"
+        },
+        "lesson": {
+          "$ref": "#/$defs/Lesson"
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": [
+                "draft",
+                "published"
+              ]
+            },
+            "reviewer": {
+              "type": "string"
+            },
+            "reviewedAt": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "PlainCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plain",
+        "map",
+        "distortion",
+        "boundary"
+      ],
+      "description": "直观卡五段：一句直观 / 词与符号对应 / 失真说明 / 边界例子 / 回到定义",
+      "properties": {
+        "plain": {
+          "$ref": "#/$defs/MathText"
+        },
+        "map": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "$ref": "#/$defs/MathText"
+            }
+          }
+        },
+        "distortion": {
+          "$ref": "#/$defs/MathText",
+          "description": "这个直观说法会让人误解什么，必须带反例"
+        },
+        "boundary": {
+          "$ref": "#/$defs/CheckQuestion"
+        }
+      }
+    },
+    "CheckQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "q",
+        "options",
+        "answer",
+        "right",
+        "wrong"
+      ],
+      "properties": {
+        "q": {
+          "$ref": "#/$defs/MathText"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": {
+            "type": "string"
+          }
+        },
+        "answer": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "right": {
+          "$ref": "#/$defs/MathText"
+        },
+        "wrong": {
+          "$ref": "#/$defs/MathText"
+        }
+      }
+    },
+    "Lesson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/LessonStep"
+          }
+        }
+      }
+    },
+    "LessonStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "intuition",
+            "map",
+            "distortion",
+            "boundary",
+            "build",
+            "return"
+          ]
+        },
+        "text": {
+          "$ref": "#/$defs/MathText"
+        },
+        "visual": {
+          "$ref": "#/$defs/VisualSpec"
+        },
+        "check": {
+          "$ref": "#/$defs/CheckQuestion",
+          "description": "每步一个小核验题；答对才能下一步，答错给 wrong 文本后可重试"
+        }
+      }
+    },
+    "VisualSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "params"
+      ],
+      "description": "参数化图解。前端只认这几种 type，由自研 SVG/canvas 组件渲染（H5 与小程序都能跑）。表达式用受限语法 Expr，前端自带解析器求值，绝不 eval。",
+      "properties": {
+        "type": {
+          "enum": [
+            "seq-band",
+            "partial-sums",
+            "func-band",
+            "monotone-steps",
+            "number-line"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "expr": {
+              "$ref": "#/$defs/Expr",
+              "description": "数列通项 a(n) 或函数 f(x)"
+            },
+            "exprLatex": {
+              "$ref": "#/$defs/MathText"
+            },
+            "series": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expr",
+                  "label"
+                ],
+                "properties": {
+                  "expr": {
+                    "$ref": "#/$defs/Expr"
+                  },
+                  "label": {
+                    "$ref": "#/$defs/MathText"
+                  }
+                }
+              }
+            },
+            "limit": {
+              "type": "number"
+            },
+            "at": {
+              "type": "number",
+              "description": "func-band 的 x0"
+            },
+            "epsilon": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                },
+                "init": {
+                  "type": "number"
+                },
+                "step": {
+                  "type": "number"
+                }
+              }
+            },
+            "nMax": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 400
+            },
+            "xRange": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "yRange": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "showN": {
+              "type": "boolean",
+              "description": "seq-band：是否标出'从第 N 项起都在带内'的 N（随 ε 变化）"
+            }
+          }
+        }
+      }
+    },
+    "Expr": {
+      "type": "string",
+      "maxLength": 120,
+      "pattern": "^[0-9a-z+\\-*/^().,\\s]+$",
+      "description": "受限表达式：数字、变量 n 或 x、+ - * / ^、括号、函数 sqrt abs sin cos exp log min max pow。例：1+(-1)^n/n"
+    },
+    "GlossEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "triggers",
+        "answer"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "triggers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "作用在 canon(学生问题) 上的正则"
+        },
+        "answer": {
+          "$ref": "#/$defs/MathText",
+          "description": "1–2 句；不出现任何题目的关键步骤片段（外发前仍过闸门）"
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "L1",
+              "L2",
+              "L3",
+              "L4",
+              "L5",
+              "L6"
+            ]
+          },
+          "description": "可用的层；缺省为全部"
+        }
+      }
+    }
+  }
+}

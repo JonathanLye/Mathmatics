@@ -1,0 +1,19 @@
+{
+  "name": "@proof-gym/contracts",
+  "private": true,
+  "type": "module",
+  "description": "证明陪练场三端共用契约：OpenAPI、数据库 DDL、题目包/概念库/事件 JSON Schema、种子数据与参考实现（canon、发布门禁）",
+  "scripts": {
+    "check": "node tools/check-generated.mjs && node tools/check-seeds.mjs && node tools/check-events.mjs && node tools/check-sql.mjs && npx --yes @redocly/cli@2.72.1 lint openapi.yaml --format=stylish",
+    "check:generated": "node tools/check-generated.mjs",
+    "check:seeds": "node tools/check-seeds.mjs",
+    "check:events": "node tools/check-events.mjs",
+    "check:sql": "node tools/check-sql.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "katex": "^0.16.22"
+  }
+}

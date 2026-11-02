@@ -1,0 +1,1661 @@
+openapi: 3.1.0
+info:
+  title: 证明陪练场 API
+  version: 1.0.0-p0
+  description: |
+    三端共用的接口契约（学生端 H5/小程序、教师端、服务端）。说明见 06-接口契约.md。
+
+    约定：
+    - 基础路径 `/api/v1`；JSON UTF-8；时间 ISO 8601（UTC）。
+    - 鉴权：HttpOnly + Secure + SameSite=Lax 的会话 Cookie `pg_sid`；教师端镜像 iframe 用短期 `mirrorToken`（查询参数）。
+    - 写操作带 `Idempotency-Key` 头（uuid）。同一个键 24 小时内重放返回同一结果。
+    - 学生作答相关的写接口一律返回 `{ state: AttemptState, ... }`。前端只渲染 `state`，不自己推算层、预算、门槛。
+    - 写接口可带 `If-Match: <stateVersion>`；版本落后返回 409 `STATE_STALE` 和最新 `state`。
+    - 错误统一为 `{ error: { code, message, detail? } }`，`message` 可直接给用户看。
+    - **DTO 白名单**：任何学生可调用的接口都不得返回题目包 secret 部分的任何字段（关键步骤、leak、pattern、提示原文库、要点卡、参考证明）。契约测试会扫描响应体。
+  contact:
+    name: 证明陪练场项目组
+  license:
+    name: 内部使用（未开源）
+    identifier: LicenseRef-Internal
+servers:
+  - url: /api/v1
+tags:
+  - name: auth
+    description: 登录、会话、知情同意
+  - name: student
+    description: 学生首页、证明本
+  - name: attempt
+    description: 六层作答（服务端状态机）
+  - name: input
+    description: 手写/拍照识别与确认
+  - name: help
+    description: 求助：提示阶梯、概念解释、行检查
+  - name: events
+    description: 前端事件上报
+  - name: teacher
+    description: 班级、看板、干预、布置、导出
+  - name: content
+    description: 题库、审核、导入、Lean 核验
+  - name: ops
+    description: 健康检查
+
+security:
+  - cookieAuth: []
+
+paths:
+  # ------------------------------------------------------------------ auth
+  /auth/student/login:
+    post:
+      tags: [auth]
+      summary: 学生登录（邀请码 + 学号）
+      description: 首次登录时用学号认领名单里的一行；名单里没有该学号返回 403 `NOT_IN_ROSTER`。响应会告诉前端是否需要先签知情同意。
+      operationId: studentLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteCode, studentNo, deviceId]
+              properties:
+                inviteCode: { type: string, minLength: 6, maxLength: 6 }
+                studentNo: { type: string, minLength: 4, maxLength: 20 }
+                deviceId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 登录成功，已设置 Cookie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /auth/teacher/login:
+    post:
+      tags: [auth]
+      summary: 教师登录（用户名 + 密码 + 可选 TOTP）
+      operationId: teacherLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+                totp: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 退出登录
+      operationId: logout
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '204': { description: 已退出 }
+  /me:
+    get:
+      tags: [auth]
+      summary: 当前用户
+      operationId: getMe
+      responses:
+        '200':
+          description: 当前用户
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Error' }
+  /consents:
+    get:
+      tags: [auth]
+      summary: 当前同意书文本与本人签署状态
+      operationId: getConsent
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 同意书
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentDoc' }
+    post:
+      tags: [auth]
+      summary: 签署知情同意（service、crossBorderHosting、monitoring 为必选；crossBorderModel、research 可选）
+      operationId: submitConsent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, items]
+              properties:
+                version: { type: string }
+                items: { $ref: '#/components/schemas/ConsentItems' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已记录
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+
+  # ------------------------------------------------------------------ student
+  /student/home:
+    get:
+      tags: [student]
+      summary: 学生首页：进行中、待完成、已完成、证明本摘要
+      operationId: studentHome
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 首页数据
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudentHome' }
+  /student/assignments/{assignmentId}:
+    get:
+      tags: [student]
+      summary: 布置详情（题面与公开配置）
+      operationId: getAssignment
+      parameters: [{ $ref: '#/components/parameters/assignmentId' }]
+      responses:
+        '200':
+          description: 布置详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssignmentCard' }
+        '404': { $ref: '#/components/responses/Error' }
+  /student/assignments/{assignmentId}/attempt:
+    post:
+      tags: [attempt]
+      summary: 开始或恢复本题作答（幂等：已有作答则返回它）
+      operationId: startAttempt
+      parameters: [{ $ref: '#/components/parameters/assignmentId' }]
+      responses:
+        '200': { $ref: '#/components/responses/State' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /student/notebook:
+    get:
+      tags: [student]
+      summary: 我的证明本：自己写完的证明、总结、薄弱点、待重做
+      operationId: getNotebook
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 证明本
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notebook' }
+
+  # ------------------------------------------------------------------ attempt
+  /attempts/{attemptId}:
+    get:
+      tags: [attempt]
+      summary: 读取作答状态（断线重连、切回前台时调用）
+      operationId: getAttempt
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '200': { $ref: '#/components/responses/State' }
+        '404': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/layers/{layer}/enter:
+    post:
+      tags: [attempt]
+      summary: 切换到某层（只能去已解锁的层）
+      operationId: enterLayer
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/layer' }]
+      responses:
+        '200': { $ref: '#/components/responses/State' }
+        '409': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/layers/{layer}/skip:
+    post:
+      tags: [attempt]
+      summary: 跳过某层（受跳过规则约束）
+      operationId: skipLayer
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/layer' }]
+      responses:
+        '200': { $ref: '#/components/responses/State' }
+        '409': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/definition:
+    post:
+      tags: [attempt]
+      summary: 第 1 层：提交定义（自然语言或符号）
+      operationId: submitDefinition
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TextSubmission' }
+      responses:
+        '200': { $ref: '#/components/responses/State' }
+        '409': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/lesson/{conceptId}:
+    get:
+      tags: [attempt]
+      summary: 第 1–2 层：取微课（直观卡 + 分步讲解 + 图解）
+      description: 文本已按当前作答过闸门；按学生原话生成的补充讲解放在 `generated` 里（可能为空）。
+      operationId: getLesson
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/conceptId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 微课
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LessonView' }
+  /attempts/{attemptId}/lesson/{conceptId}/check:
+    post:
+      tags: [attempt]
+      summary: 微课某一步的小核验
+      operationId: lessonCheck
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/conceptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stepId, choice]
+              properties:
+                stepId: { type: string }
+                choice: { type: integer, minimum: 0 }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 判定与反馈
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [correct, feedback, state]
+                properties:
+                  correct: { type: boolean }
+                  feedback: { $ref: '#/components/schemas/MathText' }
+                  nextStepId: { type: [string, 'null'] }
+                  state: { $ref: '#/components/schemas/AttemptState' }
+  /attempts/{attemptId}/framework:
+    post:
+      tags: [attempt]
+      summary: 第 2 层：提交证明骨架
+      operationId: submitFramework
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TextSubmission' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+  /attempts/{attemptId}/framework/template:
+    post:
+      tags: [attempt]
+      summary: 第 2 层：查看通用骨架模板（形式部分，不计透露量）
+      operationId: viewFrameTemplate
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+  /attempts/{attemptId}/lines:
+    post:
+      tags: [attempt]
+      summary: 第 3 层（含迁移题）：加入一行证明
+      description: 服务端归类（规则为主，Jev 影子），在 `state.notes` 里追加锚定本行的批注。手写/拍照来源必须带已确认的 `recogId`。
+      operationId: addLine
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LineSubmission' }
+      responses:
+        '200': { $ref: '#/components/responses/State' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/lines/{lineId}:
+    patch:
+      tags: [attempt]
+      summary: 修改一行（重新归类；原文保留在事件里）
+      operationId: editLine
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/lineId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LineSubmission' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+    delete:
+      tags: [attempt]
+      summary: 删除一行（软删除）
+      operationId: deleteLine
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/lineId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+  /attempts/{attemptId}/finish:
+    post:
+      tags: [attempt]
+      summary: 第 3 层：点"写完了"
+      operationId: finishProof
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+  /attempts/{attemptId}/selfcheck/{itemId}:
+    post:
+      tags: [attempt]
+      summary: 第 4 层：回答一道自检题
+      operationId: answerSelfcheck
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { name: itemId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TextSubmission' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+  /attempts/{attemptId}/transfer:
+    post:
+      tags: [attempt]
+      summary: 第 5 层：开始迁移题（创建子作答，返回子作答的 state）
+      operationId: startTransfer
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '200': { $ref: '#/components/responses/State' }
+        '409': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/summary:
+    post:
+      tags: [attempt]
+      summary: 第 6 层：提交五问总结
+      operationId: submitSummary
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers, input]
+              properties:
+                answers:
+                  type: array
+                  minItems: 5
+                  maxItems: 5
+                  items: { $ref: '#/components/schemas/MathText' }
+                input: { $ref: '#/components/schemas/InputMeta' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+  /attempts/{attemptId}/park:
+    post:
+      tags: [attempt]
+      summary: 先搁置本题
+      operationId: parkAttempt
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+  /attempts/{attemptId}/draft:
+    put:
+      tags: [attempt]
+      summary: 草稿备份（前端以 IndexedDB 为主，这里每 15 秒或切后台时备份一次）
+      operationId: putDraft
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target, content]
+              properties:
+                target: { type: string }
+                content: { type: object }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '204': { description: 已保存 }
+  /attempts/{attemptId}/review:
+    get:
+      tags: [attempt]
+      summary: 题目关闭且教师已发布讲评后，查看参考证明与讲评（之前返回 403）
+      operationId: getPublishedReview
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '200':
+          description: 参考证明与讲评
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proofs]
+                properties:
+                  proofs: { type: array, items: { $ref: '#/components/schemas/MathText' } }
+                  note: { $ref: '#/components/schemas/MathText' }
+        '403': { $ref: '#/components/responses/Error' }
+
+  # ------------------------------------------------------------------ input / recognition
+  /recognitions/ink:
+    post:
+      tags: [input]
+      summary: 识别一行手写（写完这一行时调用，不做实时识别）
+      description: 上传 ink-v1 笔迹（gzip 后 base64）。服务端保存原始笔迹，主识别 + 交叉比对，返回 MathText 供学生确认/修改。
+      operationId: recognizeInk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attemptId, draftId, target, ink]
+              properties:
+                attemptId: { type: string, format: uuid }
+                draftId: { type: string, format: uuid }
+                target: { $ref: '#/components/schemas/InputTarget' }
+                ink: { type: string, contentEncoding: base64, description: 'gzip(JSON ink-v1)，≤ 256KB' }
+      responses:
+        '200':
+          description: 识别结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recognition' }
+        '413': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /recognitions/photo:
+    post:
+      tags: [input]
+      summary: 拍照识别（整页 → 切行）
+      operationId: recognizePhoto
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [attemptId, draftId, target, image]
+              properties:
+                attemptId: { type: string, format: uuid }
+                draftId: { type: string, format: uuid }
+                target: { $ref: '#/components/schemas/InputTarget' }
+                source: { type: string, enum: [camera, album] }
+                image: { type: string, format: binary, description: 'JPEG/PNG，前端压到长边 ≤ 2000px、≤ 2MB，去 EXIF' }
+      responses:
+        '200':
+          description: 切行后的识别结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recognition' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /recognitions/{recogId}/confirm:
+    post:
+      tags: [input]
+      summary: 学生确认（可改过）识别结果；之后才能用它提交
+      operationId: confirmRecognition
+      parameters: [{ name: recogId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { $ref: '#/components/schemas/MathText' }
+                lines: { type: array, items: { $ref: '#/components/schemas/MathText' }, description: '拍照：确认后的各行' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已确认
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recogId, edited]
+                properties:
+                  recogId: { type: string, format: uuid }
+                  edited: { type: boolean }
+                  rendered: { type: boolean, description: KaTeX 是否能渲染 }
+
+  # ------------------------------------------------------------------ help
+  /attempts/{attemptId}/help:
+    post:
+      tags: [help]
+      summary: 求助（一个入口，三种意图 + 自由提问）
+      description: |
+        - `stuck`：返回下一条提示的**预览**（级别、将计入的透露量、能否领取）。H0/H1 直接下发；H2 起要再调 `/hints/claim` 才下发。
+        - `concept`：概念解释（词条/微课入口），不计透露量。
+        - `check_line`：对指定行（缺省最新一行）给批注。
+        - `free`：自由提问，服务端判意图后按上面三类处理；索要答案/施压一句拒绝 + H0。
+      operationId: requestHelp
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [intent]
+              properties:
+                intent: { type: string, enum: [stuck, concept, check_line, free] }
+                text: { type: string, maxLength: 300 }
+                lineId: { type: string, format: uuid }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 求助结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HelpResult' }
+  /attempts/{attemptId}/hints/claim:
+    post:
+      tags: [help]
+      summary: 确认领取一条计透露量的提示（H2–H4）
+      description: 必须带 `/help` 返回的 `previewToken`（60 秒有效）。服务端重新检查门槛（再写一行、停留 20 秒、连点锁、额度），不读学生文本。
+      operationId: claimHint
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [previewToken]
+              properties:
+                previewToken: { type: string }
+      responses:
+        '200':
+          description: 提示已下发
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HelpResult' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/flag-teacher:
+    post:
+      tags: [help]
+      summary: 标记求助老师（额度用完或卡住时）
+      operationId: flagTeacher
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/State' }
+
+  # ------------------------------------------------------------------ events
+  /events/batch:
+    post:
+      tags: [events]
+      summary: 批量上报前端事件（幂等）
+      description: 每批 ≤ 100 条、≤ 256KB。按事件 `id` 去重。只接受 events.schema.json 中 $defs/ClientEvent 允许的类型；服务端类型一律拒收。
+      operationId: ingestEvents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  maxItems: 100
+                  items: { $ref: './events.schema.json#/$defs/ClientEvent' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 入库结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted, duplicates, rejected]
+                properties:
+                  accepted: { type: integer }
+                  duplicates: { type: integer }
+                  rejected:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        reason: { type: string }
+                  integrity: { $ref: '#/components/schemas/IntegrityView' }
+
+  # ------------------------------------------------------------------ teacher
+  /teacher/classes:
+    get:
+      tags: [teacher]
+      summary: 我的班级
+      operationId: listClasses
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 班级列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ClassSummary' }
+    post:
+      tags: [teacher]
+      summary: 建班（生成邀请码）
+      operationId: createClass
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, term]
+              properties:
+                name: { type: string }
+                term: { type: string }
+                settings: { $ref: '#/components/schemas/ClassSettings' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '201':
+          description: 已建班
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassSummary' }
+  /teacher/classes/{classId}/roster:
+    post:
+      tags: [teacher]
+      summary: 导入名单（CSV：学号,姓名；姓名可空）
+      operationId: importRoster
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: { type: string }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 导入结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [added, duplicates, invalid]
+                properties:
+                  added: { type: integer }
+                  duplicates: { type: integer }
+                  invalid: { type: array, items: { type: object, properties: { row: { type: integer }, reason: { type: string } } } }
+  /teacher/classes/{classId}/invite-code:
+    post:
+      tags: [teacher]
+      summary: 重置邀请码
+      operationId: rotateInvite
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 新邀请码
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassSummary' }
+  /teacher/classes/{classId}/live:
+    get:
+      tags: [teacher]
+      summary: 实时看板快照（P0 每 5 秒轮询；P1 改用 /stream）
+      operationId: getLive
+      parameters: [{ $ref: '#/components/parameters/classId' }, { name: assignmentId, in: query, schema: { type: string, format: uuid } }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 看板快照
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiveSnapshot' }
+  /teacher/classes/{classId}/stream:
+    get:
+      tags: [teacher]
+      summary: 实时看板推送（SSE）
+      description: '事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线后用 `Last-Event-ID` 续传。'
+      operationId: streamLive
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /teacher/classes/{classId}/metrics:
+    get:
+      tags: [teacher]
+      summary: 班级指标（口径见 08-事件与数据字典.md §4）
+      operationId: getMetrics
+      parameters: [{ $ref: '#/components/parameters/classId' }, { name: assignmentId, in: query, schema: { type: string, format: uuid } }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 指标
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetricsView' }
+  /teacher/attempts/{attemptId}:
+    get:
+      tags: [teacher]
+      summary: 学生作答详情（全部行、批注、提示、识别、诚信信号、时间线）
+      operationId: getAttemptDetail
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttemptDetail' }
+  /teacher/attempts/{attemptId}/events:
+    get:
+      tags: [teacher]
+      summary: 作答事件流（回放用；按 seq 分页）
+      operationId: getAttemptEvents
+      parameters:
+        - { $ref: '#/components/parameters/attemptId' }
+        - { name: afterSeq, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 500 } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 事件
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, nextSeq]
+                properties:
+                  events: { type: array, items: { $ref: './events.schema.json' } }
+                  nextSeq: { type: [integer, 'null'] }
+  /teacher/attempts/{attemptId}/stream:
+    get:
+      tags: [teacher]
+      summary: 镜像预览推送（SSE，P1）：该作答每次 state_version 变化推送学生视图
+      description: '事件名：`state`（data=AttemptState，与学生端看到的完全一致）、`ping`（每 20 秒）。可用教师 Cookie 或 mirrorToken 鉴权。'
+      operationId: streamAttempt
+      parameters:
+        - { $ref: '#/components/parameters/attemptId' }
+        - { name: token, in: query, schema: { type: string }, description: mirror-token 返回的只读令牌（iframe 内使用） }
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /teacher/attempts/{attemptId}/mirror-token:
+    post:
+      tags: [teacher]
+      summary: 取镜像预览令牌（P1）：教师端 iframe 用它以只读模式打开学生页面
+      operationId: getMirrorToken
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 5 分钟有效的只读令牌
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, url, expiresAt]
+                properties:
+                  token: { type: string }
+                  url: { type: string, description: '/s/mirror?attempt=…&token=…' }
+                  expiresAt: { type: string, format: date-time }
+  /teacher/attempts/{attemptId}/unlock:
+    post:
+      tags: [teacher]
+      summary: 解锁作答（测验模式切出过多被锁等）；可同时补发一条 H4（额度耗尽出口）
+      operationId: unlockAttempt
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grantH4: { type: string, description: '解锁时补发 H4 的关键步骤 ID（可选）；补发会记 teacherOverride，且该步需学生补依据≥6字才计入 matched' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已解锁
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttemptDetail' }
+  /teacher/attempts/{attemptId}/nudge:
+    post:
+      tags: [teacher]
+      summary: 给学生发一句话（同样过闸门；被改写会告知教师）
+      operationId: nudgeStudent
+      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 200 }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已发送
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shown, gated]
+                properties:
+                  shown: { $ref: '#/components/schemas/MathText' }
+                  gated: { type: boolean }
+  /teacher/flags/{flagId}/resolve:
+    post:
+      tags: [teacher]
+      summary: 处理求助标记或诚信信号
+      operationId: resolveFlag
+      parameters: [{ name: flagId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                disposition: { type: string, enum: [dismissed, noted, talked] }
+                note: { type: string }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '204': { description: 已处理 }
+  /teacher/assignments:
+    post:
+      tags: [teacher]
+      summary: 布置练习或测验
+      operationId: createAssignment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignmentCreate' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '201':
+          description: 已布置
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssignmentCard' }
+  /teacher/assignments/{assignmentId}:
+    patch:
+      tags: [teacher]
+      summary: 修改布置（时间、开关；已开始的作答不受题目版本变化影响）
+      operationId: updateAssignment
+      parameters: [{ $ref: '#/components/parameters/assignmentId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignmentCreate' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已修改
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssignmentCard' }
+  /teacher/assignments/{assignmentId}/publish-review:
+    post:
+      tags: [teacher]
+      summary: 题目关闭后发布参考证明与讲评（A/B 两组同时发布）
+      operationId: publishReview
+      parameters: [{ $ref: '#/components/parameters/assignmentId' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                proofIds: { type: array, items: { type: string } }
+                note: { $ref: '#/components/schemas/MathText' }
+      responses:
+        '200':
+          description: 已发布
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssignmentCard' }
+        '409': { $ref: '#/components/responses/Error' }
+  /teacher/exports:
+    post:
+      tags: [teacher]
+      summary: 导出（默认匿名；实名需管理员审批）
+      operationId: createExport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [classId, format, tables]
+              properties:
+                classId: { type: string, format: uuid }
+                assignmentIds: { type: array, items: { type: string, format: uuid } }
+                format: { type: string, enum: [csv, xlsx, jsonl] }
+                tables: { type: array, items: { type: string, enum: [attempts, lines, hints, help, recognitions, integrity, events] } }
+                anonymized: { type: boolean, default: true }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '202':
+          description: 已排队
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+  /teacher/exports/{exportId}:
+    get:
+      tags: [teacher]
+      summary: 导出任务状态与下载链接
+      operationId: getExport
+      parameters: [{ name: exportId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+
+  # ------------------------------------------------------------------ content
+  /teacher/problems:
+    get:
+      tags: [content]
+      summary: 题库列表（含审核状态）
+      operationId: listProblems
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [draft, pending, returned, published, retired] } }
+        - { name: chapter, in: query, schema: { type: string } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 题目
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProblemListItem' }
+  /teacher/problems/{problemId}/versions/{version}:
+    get:
+      tags: [content]
+      summary: 完整题目包（含 secret；仅教师/审核角色；读参考证明记审计）
+      operationId: getProblemVersion
+      parameters:
+        - { name: problemId, in: path, required: true, schema: { type: string } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 题目包
+          content:
+            application/json:
+              schema: { $ref: './problem-package.schema.json' }
+  /teacher/problems/{problemId}/versions/{version}/review:
+    post:
+      tags: [content]
+      summary: 审核结论（通过 / 退回 / 直接修改后通过）
+      operationId: reviewProblem
+      parameters:
+        - { name: problemId, in: path, required: true, schema: { type: string } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, return, edit] }
+                comments: { type: string }
+                edited: { $ref: './problem-package.schema.json' }
+                minutes: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: 已记录（approve 且自动校验全过时发布为新版本）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemListItem' }
+        '422': { $ref: '#/components/responses/Error' }
+  /teacher/imports:
+    post:
+      tags: [content]
+      summary: 发起题库导入任务（PDF 页码范围 → 题目包草稿）
+      operationId: createImport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId]
+              properties:
+                sourceId: { type: string, format: uuid }
+                pages: { type: array, items: { type: integer }, description: 页码范围，缺省为整本 }
+                chapters: { type: array, items: { type: integer } }
+                itemTypes: { type: array, items: { type: string, enum: [example, exam, exercise] } }
+                proofOnly: { type: boolean, default: true }
+                maxDrafts: { type: integer, default: 10 }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '202':
+          description: 已排队
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+  /teacher/imports/{jobId}:
+    get:
+      tags: [content]
+      summary: 导入任务进度与草稿列表
+      operationId: getImport
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 进度
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+  /teacher/lean/check:
+    post:
+      tags: [content]
+      summary: 用 Lean 4 + mathlib 编译题目包登记的参考证明（沿用 08 server.mjs，转为 worker 任务）
+      operationId: leanCheck
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [problemId, version]
+              properties:
+                problemId: { type: string }
+                version: { type: integer }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 编译结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  sorry: { type: boolean }
+                  ms: { type: integer }
+                  toolchain: { type: string }
+                  output: { type: string }
+
+  # ------------------------------------------------------------------ ops
+  /health:
+    get:
+      tags: [ops]
+      summary: 健康检查（各外部依赖可用性与降级开关状态）
+      operationId: health
+      security: []
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  version: { type: string }
+                  deps: { type: object, additionalProperties: { type: string, enum: [ok, degraded, down, disabled] } }
+                  flags: { type: object, additionalProperties: { type: boolean } }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: pg_sid
+  parameters:
+    attemptId: { name: attemptId, in: path, required: true, schema: { type: string, format: uuid } }
+    assignmentId: { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    classId: { name: classId, in: path, required: true, schema: { type: string, format: uuid } }
+    lineId: { name: lineId, in: path, required: true, schema: { type: string, format: uuid } }
+    conceptId: { name: conceptId, in: path, required: true, schema: { type: string } }
+    layer: { name: layer, in: path, required: true, schema: { $ref: '#/components/schemas/LayerId' } }
+  responses:
+    Error:
+      description: 错误
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    State:
+      description: 最新作答状态
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [state]
+            properties:
+              state: { $ref: '#/components/schemas/AttemptState' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, NOT_IN_ROSTER, INVALID_INVITE, CONSENT_REQUIRED, WRONG_LAYER, LAYER_LOCKED, STATE_STALE, ATTEMPT_LOCKED, ASSIGNMENT_CLOSED, RECOG_NOT_CONFIRMED, HINT_NOT_READY, HINT_PREVIEW_EXPIRED, BUDGET_EXHAUSTED, RATE_LIMITED, PAYLOAD_TOO_LARGE, PHOTO_DISABLED, TEST_MODE_RESTRICTED, UPSTREAM_UNAVAILABLE, VALIDATION_FAILED, INTERNAL]
+            message: { type: string, description: 可直接展示给用户的中文 }
+            detail: { type: object, description: '如 { waitSec, softLanding: [...], state }' }
+    MathText:
+      type: string
+      maxLength: 4000
+      description: 中文 + $…$ 行内 LaTeX；字面 $ 写作 \$
+    LayerId:
+      type: string
+      enum: [L1, L2, L3, L4, L5, L6]
+    InputTarget:
+      type: string
+      enum: [def, frame, line_statement, line_justification, selfcheck, summary, help_text]
+    Me:
+      type: object
+      additionalProperties: false
+      required: [userId, role, anonCode, consentRequired]
+      properties:
+        userId: { type: string, format: uuid }
+        role: { type: string, enum: [student, teacher, admin] }
+        anonCode: { type: string }
+        displayName: { type: [string, 'null'] }
+        classes: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string } } } }
+        consentRequired: { type: boolean }
+        features: { type: object, additionalProperties: { type: boolean }, description: '功能开关：photo, lessonGenerated, mirror, testMode …' }
+    ConsentItems:
+      type: object
+      required: [service, crossBorderHosting, crossBorderModel, monitoring, research]
+      properties:
+        service: { type: boolean, description: 服务所需处理（必选） }
+        crossBorderHosting: { type: boolean, description: 数据存储于中国香港服务器（P0 必选） }
+        crossBorderModel: { type: boolean, description: 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关对该生跳过 Jev） }
+        monitoring: { type: boolean, description: 作答过程监测（必选） }
+        research: { type: boolean, description: 匿名数据用于教研（可选） }
+    ConsentDoc:
+      type: object
+      additionalProperties: false
+      required: [version, sections, signed]
+      properties:
+        version: { type: string }
+        sections:
+          type: array
+          items:
+            type: object
+            required: [key, title, body, required]
+            properties:
+              key: { type: string, enum: [service, crossBorderHosting, crossBorderModel, monitoring, research] }
+              title: { type: string }
+              body: { type: string }
+              required: { type: boolean }
+        signed: { type: [object, 'null'] }
+    StudentHome:
+      type: object
+      required: [inProgress, todo, done]
+      properties:
+        inProgress: { type: array, items: { $ref: '#/components/schemas/AssignmentCard' } }
+        todo: { type: array, items: { $ref: '#/components/schemas/AssignmentCard' } }
+        done: { type: array, items: { $ref: '#/components/schemas/AssignmentCard' } }
+        week: { type: object, properties: { keysOwn: { type: integer }, keysTotal: { type: integer }, problemsDone: { type: integer } }, description: '本周"自己写出的关键步骤"' }
+        notebook: { type: object, properties: { cards: { type: integer }, toRedo: { type: integer } } }
+    AssignmentCard:
+      type: object
+      required: [assignmentId, title, mode, status]
+      properties:
+        assignmentId: { type: string, format: uuid }
+        title: { type: string }
+        chapter: { type: string }
+        stem: { $ref: '#/components/schemas/MathText' }
+        mode: { type: string, enum: [practice, test] }
+        status: { type: string, enum: [scheduled, open, closed, cancelled] }
+        openAt: { type: string, format: date-time }
+        closeAt: { type: [string, 'null'], format: date-time }
+        attemptId: { type: [string, 'null'], format: uuid }
+        attemptStatus: { type: [string, 'null'], enum: [active, parked, locked, completed, abandoned, null] }
+        currentLayer: { oneOf: [{ $ref: '#/components/schemas/LayerId' }, { type: 'null' }] }
+        reviewPublished: { type: boolean }
+    PublicProblemView:
+      type: object
+      additionalProperties: false
+      required: [problemId, version, title, stem, chapter, keyCount]
+      properties:
+        problemId: { type: string }
+        version: { type: integer }
+        title: { type: string }
+        stem: { $ref: '#/components/schemas/MathText' }
+        chapter: { type: string }
+        source: { type: string, description: '显示用来源，如 华东师大版同步辅导 · 第二章 · 例 4' }
+        keyCount: { type: integer }
+        askChips: { type: array, items: { type: string } }
+    LayerStatus:
+      type: object
+      required: [layer, title, status, enabled, skippable]
+      properties:
+        layer: { $ref: '#/components/schemas/LayerId' }
+        title: { type: string }
+        status: { type: string, enum: [locked, active, done, skipped, disabled] }
+        enabled: { type: boolean }
+        skippable: { type: boolean }
+    ProofLine:
+      type: object
+      additionalProperties: false
+      required: [lineId, n, statement, provenance, flagged]
+      properties:
+        lineId: { type: string, format: uuid }
+        n: { type: integer, minimum: 1 }
+        statement: { $ref: '#/components/schemas/MathText' }
+        justification: { $ref: '#/components/schemas/MathText' }
+        provenance: { type: string, enum: [ink, keyboard, photo, mixed, paste] }
+        flagged: { type: boolean, description: 有一个待回应的批注（不代表"错"） }
+        createdAt: { type: string, format: date-time }
+    Note:
+      type: object
+      description: 右栏/行内的一条批注或回复。text 已过闸门。
+      additionalProperties: false
+      required: [noteId, kind, who, text, at]
+      properties:
+        noteId: { type: string, format: uuid }
+        kind: { type: string, enum: [annotation, hint, concept, system, refusal, lesson, nudge, student] }
+        who: { type: string, description: '显示的署名：批注 / H2 · 透露 0.5 / 助教 / 老师 / 你' }
+        text: { $ref: '#/components/schemas/MathText' }
+        lineId: { type: [string, 'null'], format: uuid, description: 锚定的行（行内显示） }
+        level: { type: [string, 'null'], enum: [H0, H1, H2, H3, H4, null] }
+        cost: { type: [number, 'null'] }
+        lessonConceptId: { type: [string, 'null'], description: 有值时显示"看分步讲解"入口 }
+        at: { type: string, format: date-time }
+    BudgetView:
+      type: object
+      required: [revealUsed, revealMax, keysOwn, keysTotal]
+      properties:
+        revealUsed: { type: number }
+        revealMax: { type: number }
+        keysOwn: { type: integer, description: 自己写出的关键步骤数（H4 示范后写出依据才算） }
+        keysTotal: { type: integer }
+    HelpState:
+      type: object
+      additionalProperties: false
+      required: [hintAvailable, exhausted, flagged]
+      properties:
+        hintAvailable: { type: boolean, description: 当前层是否提供提示阶梯 }
+        nextLevel: { type: [string, 'null'], enum: [H0, H1, H2, H3, H4, null] }
+        nextCost: { type: [number, 'null'], description: '领取下一条将增加的透露量（花之前显示）' }
+        waitSec: { type: [integer, 'null'], description: 停留门槛剩余秒数 }
+        needAttempt: { type: boolean, description: 需要先再写一行 }
+        rapidLockUntil: { type: [string, 'null'], format: date-time }
+        exhausted: { type: boolean }
+        flagged: { type: boolean }
+        stuckOffer: { type: boolean, description: 连续卡住，界面可温和询问是否需要提示 }
+    IntegrityView:
+      type: object
+      required: [mode, locked]
+      properties:
+        mode: { type: string, enum: [practice, test] }
+        locked: { type: boolean }
+        warnings: { type: integer }
+        maxWarnings: { type: [integer, 'null'] }
+        notice: { type: [string, 'null'], description: 需要展示的一次性提醒文案 }
+        watermark: { type: [string, 'null'], description: '测验模式水印文字（匿名码 + 时间）' }
+    DefView:
+      type: object
+      properties:
+        task: { $ref: '#/components/schemas/MathText' }
+        conceptId: { type: string }
+        submissions: { type: integer }
+        last: { $ref: '#/components/schemas/MathText' }
+        lessonSuggested: { type: boolean, description: 两次未过时为 true，界面主动展开"分步讲解" }
+    FrameView:
+      type: object
+      properties:
+        task: { $ref: '#/components/schemas/MathText' }
+        lessonId: { type: string }
+        last: { $ref: '#/components/schemas/MathText' }
+        templateShown: { type: boolean }
+        template: { oneOf: [{ $ref: '#/components/schemas/MathText' }, { type: 'null' }] }
+    StepsView:
+      type: object
+      additionalProperties: false
+      properties:
+        lines: { type: array, items: { $ref: '#/components/schemas/ProofLine' } }
+        canFinish: { type: boolean }
+    SelfcheckView:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [itemId, question, status]
+            properties:
+              itemId: { type: string }
+              question: { $ref: '#/components/schemas/MathText' }
+              answer: { $ref: '#/components/schemas/MathText' }
+              status: { type: string, enum: [open, accepted, followup] }
+    SummaryView:
+      type: object
+      properties:
+        questions: { type: array, items: { type: string }, minItems: 5, maxItems: 5 }
+        answers: { type: array, items: { $ref: '#/components/schemas/MathText' } }
+        followup: { oneOf: [{ $ref: '#/components/schemas/MathText' }, { type: 'null' }] }
+    TransferView:
+      type: object
+      properties:
+        childAttemptId: { type: [string, 'null'], format: uuid }
+        stem: { $ref: '#/components/schemas/MathText' }
+        status: { type: string, enum: [not_started, active, completed, skipped] }
+    AttemptState:
+      type: object
+      description: 学生端唯一的状态来源（DTO 白名单：只含这里列出的字段）
+      additionalProperties: false
+      required: [attemptId, stateVersion, kind, status, mode, problem, currentLayer, layers, budget, notes, help, integrity, serverTime]
+      properties:
+        attemptId: { type: string, format: uuid }
+        parentAttemptId: { type: [string, 'null'], format: uuid }
+        stateVersion: { type: integer }
+        kind: { type: string, enum: [main, transfer] }
+        status: { type: string, enum: [active, parked, locked, completed, abandoned] }
+        mode: { type: string, enum: [practice, test] }
+        problem: { $ref: '#/components/schemas/PublicProblemView' }
+        currentLayer: { $ref: '#/components/schemas/LayerId' }
+        layers: { type: array, items: { $ref: '#/components/schemas/LayerStatus' } }
+        budget: { $ref: '#/components/schemas/BudgetView' }
+        def: { $ref: '#/components/schemas/DefView' }
+        frame: { $ref: '#/components/schemas/FrameView' }
+        steps: { $ref: '#/components/schemas/StepsView' }
+        selfcheck: { $ref: '#/components/schemas/SelfcheckView' }
+        transfer: { $ref: '#/components/schemas/TransferView' }
+        summary: { $ref: '#/components/schemas/SummaryView' }
+        notes: { type: array, items: { $ref: '#/components/schemas/Note' }, description: 最近 50 条，按时间正序 }
+        help: { $ref: '#/components/schemas/HelpState' }
+        integrity: { $ref: '#/components/schemas/IntegrityView' }
+        completion:
+          type: object
+          properties:
+            done: { type: boolean }
+            independence: { type: [number, 'null'] }
+            reviewAvailable: { type: boolean }
+            leanCard: { type: [object, 'null'], description: '完成后展示的 mathlib4 对照（只含定理名，不含学生没写过的步骤）' }
+        serverTime: { type: string, format: date-time }
+    InputMeta:
+      type: object
+      required: [provenance, draftId]
+      properties:
+        provenance: { type: string, enum: [ink, keyboard, photo, mixed, paste] }
+        draftId: { type: string, format: uuid }
+        recogId: { type: string, format: uuid, description: ink/photo/mixed 时必填，且必须已确认 }
+        pasteChars: { type: integer, minimum: 0 }
+    TextSubmission:
+      type: object
+      required: [text, input]
+      properties:
+        text: { $ref: '#/components/schemas/MathText' }
+        input: { $ref: '#/components/schemas/InputMeta' }
+    LineSubmission:
+      type: object
+      required: [statement, input]
+      properties:
+        statement: { $ref: '#/components/schemas/MathText' }
+        justification: { $ref: '#/components/schemas/MathText' }
+        input: { $ref: '#/components/schemas/InputMeta' }
+        justificationInput: { $ref: '#/components/schemas/InputMeta' }
+    Recognition:
+      type: object
+      required: [recogId, status]
+      properties:
+        recogId: { type: string, format: uuid }
+        status: { type: string, enum: [ok, empty, low_confidence, error] }
+        text: { $ref: '#/components/schemas/MathText' }
+        lines:
+          type: array
+          description: 拍照时切出的各行
+          items:
+            type: object
+            required: [text]
+            properties:
+              text: { $ref: '#/components/schemas/MathText' }
+              bbox: { type: array, items: { type: number }, minItems: 4, maxItems: 4 }
+              confidence: { type: number }
+        confidence: { type: number }
+        agree: { type: [boolean, 'null'], description: 两路识别是否一致；不一致时界面高亮差异处请学生核对 }
+        diff: { type: array, items: { type: object, properties: { start: { type: integer }, end: { type: integer }, alt: { type: string } } } }
+        rendered: { type: boolean, description: KaTeX 能否渲染 }
+    LessonView:
+      type: object
+      required: [conceptId, title, card, steps]
+      properties:
+        conceptId: { type: string }
+        title: { type: string }
+        card: { type: object, description: concept.schema.json 的 PlainCard（已过闸门） }
+        steps: { type: array, items: { type: object, description: 'concept.schema.json 的 LessonStep（check.answer 不下发，由 /check 判定）' } }
+        generated: { oneOf: [{ $ref: '#/components/schemas/MathText' }, { type: 'null' }], description: '针对学生原话的补充讲解（已过闸门与异厂商复核），可能为空' }
+        currentStepId: { type: string }
+    HelpResult:
+      type: object
+      required: [routed, state]
+      properties:
+        routed: { type: string, enum: [stuck, concept, check_line, pressure, off_topic] }
+        preview:
+          type: object
+          description: 'stuck 且下一条计透露量时返回；领取需调 /hints/claim'
+          properties:
+            level: { type: string, enum: [H2, H3, H4] }
+            cost: { type: number }
+            revealAfter: { type: number }
+            allowed: { type: boolean }
+            reason: { type: [string, 'null'], enum: [need_attempt, dwell, rapid_lock, budget, layer, test_mode, complete, null] }
+            waitSec: { type: [integer, 'null'] }
+            previewToken: { type: [string, 'null'] }
+            softLanding:
+              type: array
+              description: 额度用完时可做的事
+              items: { type: string, enum: [back_to_definition, open_lesson, park_and_next, flag_teacher] }
+        note: { $ref: '#/components/schemas/Note' }
+        state: { $ref: '#/components/schemas/AttemptState' }
+    ClassSettings:
+      type: object
+      properties:
+        photoEnabled: { type: boolean, default: true }
+        lessonGenerated: { type: boolean, default: true, description: 第 1–2 层是否允许按学生原话生成补充讲解 }
+        revealBudget: { type: number, default: 2 }
+        integrityPractice: { type: string, enum: [log_and_notice, log_only], default: log_and_notice }
+        testMaxSwitches: { type: integer, default: 3 }
+    ClassSummary:
+      type: object
+      required: [classId, name, term, inviteCode, students]
+      properties:
+        classId: { type: string, format: uuid }
+        name: { type: string }
+        term: { type: string }
+        inviteCode: { type: string }
+        students: { type: integer }
+        claimed: { type: integer, description: 名单中已登录认领的人数 }
+        settings: { $ref: '#/components/schemas/ClassSettings' }
+    AssignmentCreate:
+      type: object
+      required: [classId, problemId, version, mode, openAt]
+      properties:
+        classId: { type: string, format: uuid }
+        problemId: { type: string }
+        version: { type: integer }
+        mode: { type: string, enum: [practice, test] }
+        openAt: { type: string, format: date-time }
+        closeAt: { type: [string, 'null'], format: date-time }
+        settings:
+          type: object
+          properties:
+            layers: { type: object, additionalProperties: { type: boolean } }
+            revealBudget: { type: number }
+            photoEnabled: { type: boolean }
+            hintsEnabled: { type: boolean, description: 测验模式默认 false }
+            maxSwitches: { type: integer }
+            durationMin: { type: integer, description: 测验限时 }
+    LiveRow:
+      type: object
+      required: [anonCode, attemptId, status, layer]
+      properties:
+        anonCode: { type: string }
+        displayName: { type: [string, 'null'], description: 仅教师可见；导出默认不含 }
+        attemptId: { type: [string, 'null'], format: uuid }
+        status: { type: string, enum: [not_started, active, idle, away, parked, locked, completed] }
+        layer: { oneOf: [{ $ref: '#/components/schemas/LayerId' }, { type: 'null' }] }
+        keysOwn: { type: integer }
+        keysTotal: { type: integer }
+        reveal: { type: number }
+        stuckSec: { type: integer, description: 无新关键步骤的时长 }
+        currentKeyLabel: { type: [string, 'null'], description: '当前卡在哪个关键步骤（教师可见步骤名）' }
+        lastActiveAt: { type: [string, 'null'], format: date-time }
+        awayCount: { type: integer }
+        flags: { type: array, items: { type: string, enum: [help, integrity, budget_exhausted, low_conf] } }
+    LiveSnapshot:
+      type: object
+      required: [classId, rows, summary, at]
+      properties:
+        classId: { type: string, format: uuid }
+        assignmentId: { type: [string, 'null'], format: uuid }
+        rows: { type: array, items: { $ref: '#/components/schemas/LiveRow' } }
+        summary:
+          type: object
+          properties:
+            online: { type: integer }
+            started: { type: integer }
+            completed: { type: integer }
+            stuck: { type: integer }
+            flagged: { type: integer }
+            layerFunnel: { type: object, additionalProperties: { type: integer } }
+            keyHeat: { type: array, items: { type: object, properties: { key: { type: string }, label: { type: string }, stuck: { type: integer }, viaHint: { type: integer } } } }
+        at: { type: string, format: date-time }
+    MetricsView:
+      type: object
+      description: '口径见 08-事件与数据字典.md §4；样本 < 10 时只给人数不给比例'
+      properties:
+        n: { type: integer }
+        completionRate: { type: [number, 'null'] }
+        independenceMedian: { type: [number, 'null'] }
+        firstHelpLatencyMedianSec: { type: [number, 'null'] }
+        postHintDwellMedianSec: { type: [number, 'null'] }
+        rapidHintEvents: { type: integer }
+        autonomousCoverage: { type: [number, 'null'] }
+        layerFunnel: { type: object, additionalProperties: { type: integer } }
+        keyHeat: { type: array, items: { type: object } }
+        recognition: { type: object, properties: { requests: { type: integer }, editRate: { type: number }, disagreeRate: { type: number } } }
+        integrity: { type: object, properties: { awayEventsMedian: { type: number }, flagged: { type: integer } } }
+    AttemptDetail:
+      type: object
+      required: [attemptId, anonCode, status, problem, lines, hints, notes, timeline]
+      properties:
+        attemptId: { type: string, format: uuid }
+        anonCode: { type: string }
+        displayName: { type: [string, 'null'] }
+        status: { type: string }
+        mode: { type: string }
+        problem: { type: object, properties: { problemId: { type: string }, version: { type: integer }, title: { type: string } } }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              lineId: { type: string, format: uuid }
+              layer: { $ref: '#/components/schemas/LayerId' }
+              n: { type: integer }
+              statement: { $ref: '#/components/schemas/MathText' }
+              justification: { $ref: '#/components/schemas/MathText' }
+              provenance: { type: string }
+              cls: { type: string }
+              keys: { type: array, items: { type: string } }
+              conf: { type: [number, 'null'] }
+              path: { type: string }
+              recognition: { type: [object, 'null'], description: 识别原文、置信度、是否改过 }
+              inkId: { type: [string, 'null'], format: uuid, description: 可回放笔迹 }
+        hints: { type: array, items: { type: object } }
+        notes: { type: array, items: { $ref: '#/components/schemas/Note' } }
+        integrity: { type: array, items: { type: object } }
+        timeline: { type: array, items: { type: object, description: '按时间的关键事件摘要（层切换、提交、提示、切出）' } }
+        metrics: { type: object }
+    ProblemListItem:
+      type: object
+      required: [problemId, title, version, status]
+      properties:
+        problemId: { type: string }
+        title: { type: string }
+        chapter: { type: string }
+        kind: { type: string, enum: [main, transfer] }
+        version: { type: integer }
+        status: { type: string, enum: [draft, pending, returned, published, retired] }
+        autoChecks: { type: object }
+        source: { type: string }
+    ImportJob:
+      type: object
+      required: [jobId, status]
+      properties:
+        jobId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, done, failed, cancelled] }
+        stage: { type: [string, 'null'], enum: [render, ocr, extract, draft, check, null] }
+        progress: { type: object, properties: { pages: { type: integer }, pagesDone: { type: integer }, items: { type: integer }, drafts: { type: integer } } }
+        costCny: { type: number }
+        drafts:
+          type: array
+          items:
+            type: object
+            properties:
+              draftId: { type: string, format: uuid }
+              problemId: { type: string }
+              itemRef: { type: string }
+              status: { type: string }
+              disagreements: { type: integer }
+              autoChecks: { type: object }
+    ExportJob:
+      type: object
+      required: [exportId, status]
+      properties:
+        exportId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, pending_approval, running, done, failed, expired] }
+        url: { type: [string, 'null'] }
+        rows: { type: [integer, 'null'] }
+    Notebook:
+      type: object
+      properties:
+        cards:
+          type: array
+          items:
+            type: object
+            properties:
+              attemptId: { type: string, format: uuid }
+              title: { type: string }
+              proof: { type: array, items: { $ref: '#/components/schemas/MathText' }, description: 学生自己写的证明 }
+              summary: { type: array, items: { $ref: '#/components/schemas/MathText' } }
+              definition: { $ref: '#/components/schemas/MathText', description: 通过核验后才展示标准定义 }
+              weakPoints: { type: array, items: { type: string } }
+              completedAt: { type: string, format: date-time }
+        toRedo: { type: array, items: { $ref: '#/components/schemas/AssignmentCard' } }

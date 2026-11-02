@@ -1,0 +1,147 @@
+{
+  "schemaVersion": "1.0",
+  "id": "epsN",
+  "version": 1,
+  "kind": "main",
+  "public": {
+    "title": "数列极限 · ε-N",
+    "stem": "用 $\\varepsilon$-$N$ 定义证明 $\\displaystyle\\lim_{n\\to\\infty}\\frac{3n+1}{n+2}=3$。",
+    "source": { "book": "v3 原型自编", "itemType": "authored" },
+    "chapter": "第二章 数列极限",
+    "tags": ["ε-N", "放缩"],
+    "difficulty": 2,
+    "role": "required",
+    "concepts": ["seq-limit"],
+    "layers": {
+      "L1": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L2": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L3": { "enabled": true, "skippable": false, "skipRule": "none" },
+      "L4": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L5": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L6": { "enabled": true, "skippable": false, "skipRule": "none" }
+    },
+    "def": { "task": "写出\"数列 $\\{a_n\\}$ 以 $A$ 为极限\"的定义。可以用量词，也可以先用你自己的话说。", "conceptId": "seq-limit" },
+    "frame": {
+      "task": "写出这个证明的骨架：开头写什么、结尾要落到什么、中间要构造的是什么。不必写出构造本身。",
+      "template": "要证 $\\forall\\varepsilon>0\\ \\exists N\\ \\forall n>N:\\ P(n)$。骨架：任取 $\\varepsilon>0$。取 $N=$ ＿（待构造）。则当 $n>N$ 时，$\\cdots<\\varepsilon$。",
+      "lessonId": "frame-forall-exists"
+    },
+    "selfcheckCount": 3,
+    "transferProblemId": "epsN-T1",
+    "askChips": ["这一行在做什么？", "什么是充分条件？", "ε 和 N 是什么关系？"],
+    "keyCount": 4,
+    "budget": { "reveal": 2, "dwellSec": 20, "rapidWindowSec": 30, "rapidCount": 3, "rapidLockSec": 60, "stuckMs": 180000 }
+  },
+  "secret": {
+    "def": {
+      "components": [
+        { "id": "forall_eps", "label": "对任意 ε>0", "patterns": ["(∀|任意|任给|对一切|对于任意|对任何|任取|不管多小的).{0,3}ε"], "missing": "缺少\"对任意 $\\varepsilon>0$\"。", "jev": "学生的描述是否表达了\"对每一个给定的正数 ε（误差可以任意小）\"？" },
+        { "id": "exists_N", "label": "存在 N", "patterns": ["(∃|存在|总有|能找到|总能找到).{0,4}N", "从某一项(起|开始)"], "missing": "缺少\"存在 $N$\"。", "jev": "学生的描述是否表达了\"存在某个项数 N（从某一项起）\"？" },
+        { "id": "n_gt_N", "label": "当 n>N 时", "patterns": ["n>N", "n≥N\\+1", "以后的(每一|所有)项|之后的(每一|所有)项"], "missing": "缺少\"当 $n>N$ 时\"。", "jev": "学生的描述是否表达了\"对所有 n>N（之后的每一项）\"？" },
+        { "id": "abs_lt", "label": "|a_n − A| < ε", "patterns": ["\\|a_?n-A\\|<ε", "\\|A-a_?n\\|<ε", "(距离|相差|差的绝对值).{0,6}(小于|<)ε"], "missing": "缺少\"$|a_n-A|<\\varepsilon$\"。", "jev": "学生的描述是否表达了\"a_n 与 A 的距离小于 ε\"？" }
+      ],
+      "order": ["forall_eps", "exists_N"],
+      "orderQuestion": "量词都在。它们的先后顺序会改变含义，你的顺序是哪个在前？"
+    },
+    "frame": {
+      "checks": [
+        { "id": "F1", "patterns": ["(任取|任给|设|对任意|∀).{0,6}ε"], "missing": "骨架里还缺：开头——先固定任意的 $\\varepsilon>0$。" },
+        { "id": "F2", "patterns": ["(取|存在|令|∃).{0,6}N"], "missing": "骨架里还缺：中间——要构造一个 $N$。" },
+        { "id": "F3", "patterns": ["n>N"], "missing": "骨架里还缺：对 $n>N$ 的情形。" },
+        { "id": "F4", "patterns": ["<ε"], "missing": "骨架里还缺：结尾——落到某个量 $<\\varepsilon$。" }
+      ]
+    },
+    "keys": [
+      {
+        "id": "K1", "kind": "core", "label": "化简 |a_n−3|", "deps": [],
+        "patterns": ["5/\\(n\\+2\\)", "5/\\(2\\+n\\)"],
+        "examples": ["$|a_n-3|=\\left|\\frac{3n+1}{n+2}-3\\right|=\\frac{5}{n+2}$", "|a_n − 3| = 5/(n+2)"],
+        "leak": ["5/(n+2)", "5/(2+n)"],
+        "jev": "把 |a_n−3| 化简成只含 n 的分式",
+        "hints": [
+          { "level": "H0", "text": "你要让哪个量小于 $\\varepsilon$？先把它写成最简的样子。", "cost": 0 },
+          { "level": "H1", "text": "回到目标：$|a_n-3|<\\varepsilon$。先单独处理 $|a_n-3|$。", "cost": 0 },
+          { "level": "H2", "text": "通分以后，$|a_n-3|$ 会变成一个只含 $n$ 的分式。", "cost": 0.5 },
+          { "level": "H3", "text": "分子是 $3n+1-3(n+2)$。把它算出来，再看分母。", "cost": 1 },
+          { "level": "H4", "text": "$|a_n-3|=\\frac{5}{n+2}$。下一行由你写：要让它 $<\\varepsilon$，$n$ 需要满足什么？", "cost": 1, "handsBack": true }
+        ]
+      },
+      {
+        "id": "K2", "kind": "core", "label": "放大到关于 n 的简单式子", "deps": ["K1"],
+        "patterns": ["n>5/ε", "5/n(?![+\\d(])", "5/ε-2"],
+        "examples": ["$\\frac{5}{n+2}<\\frac{5}{n}$", "要使 5/n<ε，只需 n>5/ε"],
+        "leak": ["5/n", "5/ε"],
+        "jev": "把上一行的分式放大成更简单的、关于 n 单调的式子，从而得到 n 的充分条件",
+        "hints": [
+          { "level": "H0", "text": "你现在要从\"某式 $<\\varepsilon$\"推出关于 $n$ 的条件。", "cost": 0 },
+          { "level": "H1", "text": "你只需要 $n$ 的一个充分条件，不必是充要条件。", "cost": 0 },
+          { "level": "H2", "text": "试着把上一行的分式放大成更简单、关于 $n$ 单调的式子。", "cost": 0.5 },
+          { "level": "H3", "text": "$\\frac{5}{n+2}<\\frac{5}{n}$。", "cost": 1 },
+          { "level": "H4", "text": "$\\frac{5}{n}<\\varepsilon$ 当且仅当 $n>\\frac{5}{\\varepsilon}$。下一行：$N$ 取什么？你来写。", "cost": 1, "handsBack": true }
+        ]
+      },
+      {
+        "id": "K3", "kind": "core", "label": "取 N 只依赖 ε", "deps": ["K2"],
+        "patterns": ["N[=≥][^,;]*5/ε", "N[=≥][^,;]*⌈"],
+        "examples": ["取 $N=\\left\\lceil\\frac{5}{\\varepsilon}\\right\\rceil$", "N=[5/ε]+1"],
+        "leak": ["⌈5/ε⌉", "N=5/ε", "N≥5/ε", "[5/ε]+1"],
+        "jev": "取定一个只依赖 ε 的 N",
+        "hints": [
+          { "level": "H0", "text": "$N$ 可以依赖哪些量？", "cost": 0 },
+          { "level": "H1", "text": "定义里 $N$ 在 $n$ 之前取定，所以 $N$ 只能依赖 $\\varepsilon$。", "cost": 0 },
+          { "level": "H2", "text": "把上一行关于 $n$ 的条件，改写成\"只要 $N$ 取得够大\"。", "cost": 0.5 },
+          { "level": "H3", "text": "取 $N$ 使得 $N\\ge\\frac{5}{\\varepsilon}$。", "cost": 1 },
+          { "level": "H4", "text": "$N=\\left\\lceil\\frac{5}{\\varepsilon}\\right\\rceil$。下一行：对 $n>N$ 写出结论。", "cost": 1, "handsBack": true }
+        ]
+      },
+      {
+        "id": "K4", "kind": "core", "label": "串成链，落到 < ε", "deps": ["K1", "K2", "K3"],
+        "patterns": ["n>N[\\s\\S]*<ε"],
+        "examples": ["当 $n>N$ 时，$|a_n-3|=\\frac{5}{n+2}<\\frac{5}{n}<\\varepsilon$"],
+        "leak": [],
+        "jev": "对 n>N 把前面的不等式连成一条链，得到 |a_n−3|<ε",
+        "hints": [
+          { "level": "H0", "text": "你最终要写下的那个不等式是什么？", "cost": 0 },
+          { "level": "H1", "text": "收尾：对 $n>N$，把前面的不等式连起来，落到 $<\\varepsilon$。", "cost": 0 },
+          { "level": "H2", "text": "把\"化简\"和\"放大\"两行接成一条链。", "cost": 0.5 },
+          { "level": "H3", "text": "当 $n>N$ 时，$|a_n-3|=\\cdots<\\cdots<\\varepsilon$。省略号由你补。", "cost": 1 },
+          { "level": "H4", "text": "当 $n>N$ 时，$|a_n-3|=\\frac{5}{n+2}<\\frac{5}{n}<\\varepsilon$。最后写一句结论。", "cost": 1, "handsBack": true }
+        ]
+      }
+    ],
+    "routes": [["K1", "K2", "K3", "K4"]],
+    "errors": [
+      { "id": "E1", "label": "N 依赖 n", "patterns": ["N=[^,;.则时当]*(?<![A-Za-z])n(?![A-Za-z])"], "question": "你取的 $N$ 里出现了 $n$。定义里 $N$ 在 $n$ 之前取定，$N$ 能依赖 $n$ 吗？" },
+      { "id": "E2", "label": "分子算错", "patterns": ["\\|a_?n-3\\|=(?!5/)\\d+/\\(n\\+2\\)"], "question": "这一行的分子，请你再算一次。" },
+      { "id": "E3", "label": "不等号方向", "patterns": [">ε\\.?$"], "question": "这一行的不等号方向，和你要证的方向一致吗？" }
+    ],
+    "allowedTheorems": [],
+    "forbiddenTheorems": [],
+    "selfcheckBank": [
+      { "id": "SC1", "dimension": "justification", "template": "第 {line:K2} 行是由哪几行、用什么推出的？", "check": { "type": "lineRefs", "minChars": 4 } },
+      { "id": "SC2", "dimension": "meaning", "template": "你的证明里，$N$ 起什么作用？它依赖哪些量？", "check": { "type": "mentions", "patterns": ["ε"], "jev": "回答是否说明 N 只依赖于 ε、与 n 无关？", "minChars": 4 } },
+      { "id": "SC3", "dimension": "logical_status", "template": "如果把\"$n>N$\"换成\"$n\\ge1$\"，你的证明哪一行会断？", "check": { "type": "lineRefs", "minChars": 2 } },
+      { "id": "SC4", "dimension": "meaning", "template": "第 {line:K3} 行里，为什么 $N$ 要取成整数（或至少取得足够大）？", "check": { "type": "jev", "jev": "回答是否说明 N 是项数（自然数）或只需足够大即可？", "minChars": 4 } },
+      { "id": "SC5", "dimension": "condition", "template": "第 {line:K2} 行放大时，用到了 $n$ 的什么性质？", "check": { "type": "jev", "jev": "回答是否指出用到了 n 为正（n+2>n>0）？", "minChars": 4 } },
+      { "id": "SC6", "dimension": "transfer", "template": "如果把数列换成 $\\frac{an+b}{cn+d}$，你的证明里哪一行最需要重新设计？", "check": { "type": "lineRefs", "minChars": 2 } }
+    ],
+    "summaryPoints": [
+      { "id": "P1", "patterns": ["依赖|只与ε|只能依赖|只和ε"], "question": "你的总结没有提到 $N$ 和 $\\varepsilon$ 的依赖关系。它重要吗？", "jev": "总结是否提到 N 只依赖 ε？" },
+      { "id": "P2", "patterns": ["放大|放缩|充分"], "question": "你的总结没有提到\"放大到更简单的式子\"这一步。它是本题的关键选择吗？", "jev": "总结是否提到放缩/只需充分条件？" }
+    ],
+    "referenceProofs": [
+      { "id": "R1", "route": 0, "publishable": true, "text": "任取 $\\varepsilon>0$。$|a_n-3|=\\left|\\frac{3n+1}{n+2}-3\\right|=\\frac{5}{n+2}<\\frac{5}{n}$。取 $N=\\left\\lceil\\frac{5}{\\varepsilon}\\right\\rceil$，则当 $n>N$ 时，$|a_n-3|<\\frac{5}{n}<\\frac{5}{N}\\le\\varepsilon$。故 $\\lim_{n\\to\\infty}\\frac{3n+1}{n+2}=3$。" }
+    ],
+    "lean": {
+      "file": "EpsN.lean",
+      "status": "proved",
+      "map": [["K1", "化简 |a_n − 3|", "field_simp, Real.dist_eq"], ["K2", "放大到更简单的式子", "div_lt_iff₀, nlinarith"], ["K3", "取 N 只依赖 ε", "exists_nat_gt"], ["K4", "串成链，落到 < ε", "Metric.tendsto_atTop"]]
+    }
+  },
+  "review": {
+    "status": "published",
+    "reviewer": "v3 原型（待罗老师复核）",
+    "autoChecks": { "schema": true, "katex": true, "leakExhaustive": true, "patternSelfTest": true, "lean": "ok" }
+  },
+  "provenance": { "portedFrom": "08-重构原型/index.html PKG.epsN" }
+}

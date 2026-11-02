@@ -1,0 +1,157 @@
+{
+  "schemaVersion": "1.0",
+  "id": "series",
+  "version": 1,
+  "kind": "main",
+  "public": {
+    "title": "交错级数 · 收敛性",
+    "stem": "判断 $\\displaystyle\\sum_{n=1}^{\\infty}\\frac{(-1)^{n-1}}{\\sqrt n}$ 是发散、条件收敛还是绝对收敛，并证明你的结论。",
+    "source": { "book": "v3 原型自编", "itemType": "authored" },
+    "chapter": "第十二章 数项级数",
+    "tags": ["交错级数", "条件收敛", "p 级数"],
+    "difficulty": 2,
+    "role": "required",
+    "concepts": ["series-conv"],
+    "layers": {
+      "L1": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L2": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L3": { "enabled": true, "skippable": false, "skipRule": "none" },
+      "L4": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L5": { "enabled": true, "skippable": true, "skipRule": "self" },
+      "L6": { "enabled": true, "skippable": false, "skipRule": "none" }
+    },
+    "def": { "task": "写出级数 $\\sum a_n$\"绝对收敛\"和\"条件收敛\"的定义。", "conceptId": "series-conv" },
+    "frame": {
+      "task": "先写出你的判断，再写出要证明这个判断需要证哪几件事。不必写出怎么证。",
+      "template": "判断：＿。要证：(1) $\\sum a_n$ ＿；(2) $\\sum|a_n|$ ＿。",
+      "lessonId": "frame-classify-series"
+    },
+    "selfcheckCount": 3,
+    "transferProblemId": "series-T1",
+    "askChips": ["这一行在做什么？", "交错级数是什么？", "条件收敛是什么意思？"],
+    "keyCount": 5,
+    "budget": { "reveal": 2, "dwellSec": 20, "rapidWindowSec": 30, "rapidCount": 3, "rapidLockSec": 60, "stuckMs": 180000 }
+  },
+  "secret": {
+    "def": {
+      "components": [
+        { "id": "abs_def", "label": "绝对收敛：∑|a_n| 收敛", "patterns": ["绝对收敛[^.;]*(\\|a_?n\\||绝对值)[^.;]*收敛"], "missing": "\"绝对收敛\"的定义不完整。", "jev": "学生是否说明了：绝对收敛指各项取绝对值后的级数收敛？" },
+        { "id": "cond_def", "label": "条件收敛：∑a_n 收敛且 ∑|a_n| 发散", "patterns": ["条件收敛[^.;]*收敛[^.;]*(\\|a_?n\\||绝对值)[^.;]*发散"], "missing": "\"条件收敛\"要同时说清两件事。", "jev": "学生是否同时说明了：原级数收敛，并且取绝对值后的级数发散？" }
+      ],
+      "order": []
+    },
+    "frame": {
+      "checks": [
+        { "id": "F1", "patterns": ["(发散|条件收敛|绝对收敛)"], "missing": "先给出判断。" },
+        { "id": "F2", "patterns": ["(两|二|2|①|\\(1\\))"], "missing": "这个判断需要拆成几件事？" },
+        { "id": "F3", "patterns": ["(\\|a_?n\\||绝对值)"], "missing": "有一件事是关于 $\\sum|a_n|$ 的。" }
+      ]
+    },
+    "keys": [
+      {
+        "id": "K1", "kind": "core", "label": "u_n = 1/√n 单调递减", "deps": [],
+        "patterns": ["(递减|单调减|单调下降|u_\\(n\\+1\\)[<≤]u_n|1/√\\(n\\+1\\)[<≤]1/√n)"],
+        "examples": ["$\\frac{1}{\\sqrt{n+1}}<\\frac{1}{\\sqrt n}$，所以 $u_n$ 单调递减", "u_{n+1} ≤ u_n"],
+        "leak": ["单调递减", "1/√(n+1)<1/√n"],
+        "jev": "说明 u_n=1/√n 随 n 增大而减小",
+        "hints": [
+          { "level": "H0", "text": "通项的绝对值 $\\frac{1}{\\sqrt n}$，随 $n$ 增大会怎样变化？你写过它的依据吗？", "cost": 0 },
+          { "level": "H1", "text": "对交错级数，先把通项写成 $(-1)^{n-1}u_n$，单独研究 $u_n$。", "cost": 0 },
+          { "level": "H2", "text": "比较 $u_{n+1}$ 和 $u_n$。", "cost": 0.5 },
+          { "level": "H3", "text": "$n+1>n$，所以 $\\sqrt{n+1}>\\sqrt n$。取倒数后呢？", "cost": 1 },
+          { "level": "H4", "text": "$\\frac{1}{\\sqrt{n+1}}<\\frac{1}{\\sqrt n}$，即 $\\{u_n\\}$ 单调递减。下一行由你写。", "cost": 1, "handsBack": true }
+        ]
+      },
+      {
+        "id": "K2", "kind": "core", "label": "u_n → 0", "deps": [],
+        "patterns": ["(→0|趋于0|趋向于0|极限[^.;]{0,6}0|lim[^.;]*=0)"],
+        "examples": ["$\\lim_{n\\to\\infty}\\frac{1}{\\sqrt n}=0$", "u_n 趋于 0"],
+        "leak": ["1/√n→0", "极限为0"],
+        "jev": "说明 u_n 的极限为 0",
+        "hints": [
+          { "level": "H0", "text": "$u_n$ 的极限你写了吗？", "cost": 0 },
+          { "level": "H1", "text": "收敛性判别通常要求通项的极限满足某个条件。你的证明里有这一条吗？", "cost": 0 },
+          { "level": "H2", "text": "$\\frac{1}{\\sqrt n}$ 是 $n$ 的几次幂？", "cost": 0.5 },
+          { "level": "H3", "text": "由 $\\sqrt n\\to+\\infty$ 得出 $u_n$ 的极限。", "cost": 1 },
+          { "level": "H4", "text": "$\\lim\\frac{1}{\\sqrt n}=0$。下一行：用前两行得出什么？", "cost": 1, "handsBack": true }
+        ]
+      },
+      {
+        "id": "K3", "kind": "core", "label": "交错级数判别法 ⇒ 收敛", "deps": ["K1", "K2"],
+        "patterns": ["(莱布尼茨|莱布尼兹|Leibniz|leibniz|狄利克雷|Dirichlet|dirichlet)[^.;]*收敛"],
+        "examples": ["由莱布尼茨判别法，原级数收敛", "由 Leibniz 判别法 ∑a_n 收敛"],
+        "leak": ["莱布尼茨", "莱布尼兹", "狄利克雷", "Leibniz", "leibniz", "Dirichlet", "dirichlet"],
+        "jev": "引用交错级数判别法（莱布尼茨或狄利克雷）得出原级数收敛",
+        "hints": [
+          { "level": "H0", "text": "你已经有了关于 $u_n$ 的两条性质。它们合起来能推出什么？", "cost": 0 },
+          { "level": "H1", "text": "回到你的骨架：第 (1) 件事还没证完。", "cost": 0 },
+          { "level": "H2", "text": "交错级数有现成的判别法。它要求哪些条件？", "cost": 0.5 },
+          { "level": "H3", "text": "由莱布尼茨判别法，$\\sum a_n$ 收敛。请核对它的条件你都写过了。", "cost": 1 },
+          { "level": "H4", "text": "由莱布尼茨判别法（$u_n$ 单调递减且趋于 0），原级数收敛。下一行由你写。", "cost": 1, "handsBack": true }
+        ]
+      },
+      {
+        "id": "K4", "kind": "core", "label": "∑1/√n 发散（p=1/2）", "deps": [],
+        "patterns": ["(p=1/2|p级数|p-级数|调和|1/2[<≤]1)[^.]*发散", "发散[^.]*(p=1/2|p级数|p-级数|1/2)"],
+        "examples": ["$\\sum\\frac{1}{\\sqrt n}$ 是 $p=\\frac12$ 的 $p$ 级数，发散", "∑|a_n| 发散，因为 p=1/2≤1"],
+        "leak": ["p=1/2", "p级数", "p-级数"],
+        "jev": "说明 ∑|a_n|=∑1/√n 发散并给出依据",
+        "hints": [
+          { "level": "H0", "text": "$\\sum|a_n|$ 具体是哪个级数？", "cost": 0 },
+          { "level": "H1", "text": "回到你的骨架：第 (2) 件事还没证。", "cost": 0 },
+          { "level": "H2", "text": "$\\sum\\frac{1}{\\sqrt n}$ 属于哪一类有现成结论的级数？", "cost": 0.5 },
+          { "level": "H3", "text": "$\\sum\\frac{1}{\\sqrt n}$ 是 $p$ 级数，$p=?$。它与 1 比较。", "cost": 1 },
+          { "level": "H4", "text": "$\\sum\\frac{1}{\\sqrt n}$ 是 $p=\\frac12$ 的 $p$ 级数，$p\\le1$，发散。下一行：结论。", "cost": 1, "handsBack": true }
+        ]
+      },
+      {
+        "id": "K5", "kind": "core", "label": "收敛 + 非绝对收敛 ⇒ 条件收敛", "deps": ["K3", "K4"],
+        "patterns": ["(故|所以|因此|综上|从而|由\\(1\\)\\(2\\))[^.]*条件收敛"],
+        "examples": ["综上，原级数条件收敛"],
+        "leak": [],
+        "jev": "合并 (1)(2) 得出条件收敛",
+        "hints": [
+          { "level": "H0", "text": "你的最后一行回答了题目问的哪一个选项？", "cost": 0 },
+          { "level": "H1", "text": "结论要同时引用 (1) 和 (2)。", "cost": 0 },
+          { "level": "H2", "text": "把 (1) 和 (2) 合成一句结论。", "cost": 0.5 },
+          { "level": "H3", "text": "由 (1)(2)，原级数 ＿ 收敛。", "cost": 1 },
+          { "level": "H4", "text": "由 (1)(2)，原级数条件收敛。", "cost": 1 }
+        ]
+      }
+    ],
+    "routes": [["K1", "K2", "K3", "K4", "K5"]],
+    "errors": [
+      { "id": "E1", "label": "单调方向写反", "patterns": ["(递增|单调增|1/√\\(n\\+1\\)[>≥]1/√n)"], "question": "比较 $\\sqrt{n+1}$ 和 $\\sqrt n$ 的大小，再看取倒数后不等号的方向。" },
+      { "id": "E2", "label": "认为交错判别法不适用", "patterns": ["(莱布尼茨|莱布尼兹|Leibniz)[^.,;]*(不适用|不满足|不能用|发散)"], "question": "你认为哪一个条件不满足？把条件逐条写出来核对。" },
+      { "id": "E3", "label": "误判为绝对收敛", "patterns": ["^(?![\\s\\S]*(不|非)[是为]?绝对收敛)(?![\\s\\S]*条件收敛)[\\s\\S]*绝对收敛"], "question": "$\\sum|a_n|$ 具体是哪个级数？它收敛吗？依据是什么？" }
+    ],
+    "allowedTheorems": ["莱布尼茨判别法", "狄利克雷判别法", "p 级数收敛性"],
+    "forbiddenTheorems": [],
+    "selfcheckBank": [
+      { "id": "SC1", "dimension": "justification", "template": "第 {line:K3} 行是由哪几行、用什么推出的？", "check": { "type": "lineRefs", "mustRefKeys": ["K1", "K2"], "minChars": 4 } },
+      { "id": "SC2", "dimension": "meaning", "template": "你的证明里，\"$u_n$ 越来越小\"这条性质用在了哪一行？", "check": { "type": "lineRefs", "minChars": 2 } },
+      { "id": "SC3", "dimension": "logical_status", "template": "如果去掉\"$u_n$ 的极限为 0\"这一条，你的证明哪一行会断？", "check": { "type": "lineRefs", "minChars": 2 } },
+      { "id": "SC4", "dimension": "condition", "template": "第 {line:K4} 行用的结论，对 $p$ 的取值有什么要求？", "check": { "type": "mentions", "patterns": ["p≤1|p<1|小于等于1|不超过1|p>1"], "minChars": 3 } },
+      { "id": "SC5", "dimension": "modular", "template": "你的证明分成了哪两部分？每部分的结论分别是什么？", "check": { "type": "jev", "jev": "回答是否分出了'原级数收敛'和'绝对值级数发散'两部分？", "minChars": 6 } },
+      { "id": "SC6", "dimension": "transfer", "template": "如果通项换成 $\\frac{(-1)^{n-1}}{n^2}$，你的哪一部分结论会改变？", "check": { "type": "jev", "jev": "回答是否指出绝对值级数那部分结论会改变（变为收敛）？", "minChars": 4 } }
+    ],
+    "summaryPoints": [
+      { "id": "P1", "patterns": ["两|二|2|拆"], "question": "你的总结没有提到\"这个判断要拆成两件事\"。它是关键选择吗？", "jev": "总结是否提到要拆成原级数与绝对值级数两件事？" },
+      { "id": "P2", "patterns": ["条件|核对"], "question": "你的总结没有提到判别法的条件要逐条核对。下次会漏吗？", "jev": "总结是否提到逐条核对判别法条件？" }
+    ],
+    "referenceProofs": [
+      { "id": "R1", "route": 0, "publishable": true, "text": "记 $u_n=\\frac{1}{\\sqrt n}$。(1) $\\frac{1}{\\sqrt{n+1}}<\\frac{1}{\\sqrt n}$，$\\{u_n\\}$ 单调递减，且 $\\lim u_n=0$，由莱布尼茨判别法，$\\sum\\frac{(-1)^{n-1}}{\\sqrt n}$ 收敛。(2) $\\sum|a_n|=\\sum\\frac{1}{\\sqrt n}$ 是 $p=\\frac12\\le1$ 的 $p$ 级数，发散。由 (1)(2)，原级数条件收敛。" }
+    ],
+    "lean": {
+      "file": "Series.lean",
+      "status": "proved",
+      "map": [["K1", "u_n = 1/√n 单调递减", "Antitone"], ["K2", "u_n → 0", "Real.tendsto_sqrt_atTop, Tendsto.div_atTop"], ["K3", "交错级数判别法 ⇒ 收敛", "Antitone.tendsto_alternating_series_of_tendsto_zero"], ["K4", "∑1/√n 发散（p=1/2）", "Real.summable_one_div_nat_rpow, summable_nat_add_iff"], ["K5", "收敛 + 非绝对收敛 ⇒ 条件收敛", "Summable"]]
+    }
+  },
+  "review": {
+    "status": "published",
+    "reviewer": "v3 原型（待罗老师复核）",
+    "autoChecks": { "schema": true, "katex": true, "leakExhaustive": true, "patternSelfTest": true, "lean": "ok" }
+  },
+  "provenance": { "portedFrom": "08-重构原型/index.html PKG.series" }
+}
