@@ -13,6 +13,7 @@
     "@electric-sql/pglite": "catalog:",
     "@fastify/cookie": "catalog:",
     "@fastify/rate-limit": "catalog:",
+    "@node-rs/argon2": "catalog:",
     "@proof-gym/contracts": "workspace:*",
     "@proof-gym/engine": "workspace:*",
     "ajv": "catalog:",
