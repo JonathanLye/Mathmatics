@@ -14,9 +14,10 @@
     "build": "node tools/smoke.mjs",
     "check:contracts": "node tools/check-contracts.mjs",
     "gen:types": "node tools/gen-types.mjs",
-    "db:reset": "node tools/db.ts reset",
-    "db:seed": "node tools/db.ts seed",
-    "db:query": "node tools/db.ts query"
+    "db:reset": "node apps/server/src/db/cli.ts reset",
+    "db:migrate": "node apps/server/src/db/cli.ts migrate",
+    "db:seed": "node apps/server/src/db/cli.ts seed",
+    "db:query": "node apps/server/src/db/cli.ts query"
   },
   "devDependencies": {
     "@types/node": "catalog:",

@@ -11,5 +11,12 @@
     "./seed/*": "./seed/*",
     "./tools/*": "./tools/*",
     "./gen/*": "./gen/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }
