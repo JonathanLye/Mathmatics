@@ -63,6 +63,11 @@ function schemaValidate(pkg: ProblemPackage): CheckIssue[] {
 // 与 contracts/tools/check-seeds.mjs 的穷举泄题同一实现（engine/leak 复跑 gateRule）。
 export function checkPackage(pkg: ProblemPackage): CheckResult {
   const issues: CheckIssue[] = [...schemaValidate(pkg)];
+  // schema 不通过时不再继续（否则 KaTeX/leak 会在缺字段的畸形包上抛 TypeError，A 复审 P2-3）。
+  if (issues.length > 0) return { ok: false, issues };
+  if (pkg === null || typeof pkg !== 'object' || pkg.public === undefined || pkg.secret === undefined) {
+    return { ok: false, issues: [{ where: 'package', message: '缺少 public/secret' }] };
+  }
 
   walkStrings(pkg, 'package', (where, text) => {
     for (const match of text.matchAll(MATH)) {

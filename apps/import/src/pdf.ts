@@ -14,6 +14,7 @@ function hasPdftoppm(): boolean {
 }
 
 export function renderPdf(file: string, pages: number[], dir: string): RenderResult {
+  if (file.startsWith('-')) throw new Error('PDF 路径不能以 - 开头（避免被 pdftoppm 当作选项）');
   if (!hasPdftoppm()) {
     return { rendered: false, reason: '未找到 pdftoppm（poppler-utils）；请安装后重试，或用 --skip-render / OCR fixture 模式' };
   }

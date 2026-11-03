@@ -1,12 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { twoDrafts } from './draft.ts';
 import { copyFixturePages, readOcrPages } from './ocr.ts';
 import { renderPdf } from './pdf.ts';
-import { writeDraftOutputs } from './report.ts';
+import { writeDraftOutputs, writeJobReport } from './report.ts';
 import { splitItems, type ImportItem } from './split.ts';
-import { jobDir, newJobId, parsePageRange, readJob, sha256File, writeJob, type JobManifest } from './workspace.ts';
+import { assertJobId, jobDir, newJobId, parsePageRange, readJob, sha256File, writeJob, type JobManifest } from './workspace.ts';
 import { publishPackage } from './publish.ts';
 
 interface ParsedArgs {
@@ -43,14 +44,25 @@ function optional(parsed: ParsedArgs, name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function intOption(parsed: ParsedArgs, name: string, fallback: number, min: number, max: number): number {
+  const raw = optional(parsed, name);
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`--${name} 需要 ${min}–${max} 的整数，收到：${raw}`);
+  }
+  return value;
+}
+
 function readJson<T>(file: string): T {
   return JSON.parse(readFileSync(file, 'utf8')) as T;
 }
 
 async function commandPdf(parsed: ParsedArgs): Promise<void> {
   const file = required(parsed, 'file');
+  if (file.startsWith('-')) throw new Error('PDF 路径不能以 - 开头（避免被 pdftoppm 当作选项）');
   const pages = parsePageRange(required(parsed, 'pages'));
-  const jobId = optional(parsed, 'job') ?? newJobId();
+  const jobId = optional(parsed, 'job') === undefined ? newJobId() : assertJobId(optional(parsed, 'job') as string);
   const dir = jobDir(jobId);
   mkdirSync(dir, { recursive: true });
 
@@ -81,7 +93,7 @@ async function commandPdf(parsed: ParsedArgs): Promise<void> {
 }
 
 function commandItems(parsed: ParsedArgs): void {
-  const jobId = required(parsed, 'job');
+  const jobId = assertJobId(required(parsed, 'job'));
   const job = readJob(jobId);
   const pages = readOcrPages(jobDir(jobId));
   const items = splitItems(pages, {
@@ -98,29 +110,34 @@ function commandItems(parsed: ParsedArgs): void {
 }
 
 async function commandDraft(parsed: ParsedArgs): Promise<void> {
-  const jobId = required(parsed, 'job');
+  const jobId = assertJobId(required(parsed, 'job'));
   const job = readJob(jobId);
   const dir = jobDir(jobId);
   const all = readJson<ImportItem[]>(join(dir, 'items.json'));
   const wanted = optional(parsed, 'items')?.split(',').map((id) => id.trim());
-  const selected = (wanted === undefined ? all : all.filter((item) => wanted.includes(item.itemId))).slice(
-    0,
-    Number(optional(parsed, 'max') ?? '10'),
-  );
+  const max = intOption(parsed, 'max', 10, 1, 50);
+  const selected = (wanted === undefined ? all : all.filter((item) => wanted.includes(item.itemId))).slice(0, max);
   if (selected.length === 0) throw new Error('没有可起草的条目（检查 --items 或先跑 import:items）');
 
   const fixtureA = optional(parsed, 'draft-fixture-a');
   const fixtureB = optional(parsed, 'draft-fixture-b');
+  if ((fixtureA === undefined) !== (fixtureB === undefined)) {
+    throw new Error('--draft-fixture-a / --draft-fixture-b 必须成对提供（或都不提供走 DeepSeek）');
+  }
+
   const outputs = [];
   for (const item of selected) {
     const drafts = await twoDrafts(item, { fixtureA, fixtureB });
     const out = writeDraftOutputs(dir, item, drafts.a, drafts.b);
     outputs.push({ itemId: item.itemId, ...out, provider: drafts.provider });
-    console.log(`- ${item.itemId} → ${out.problemId}.json（采用 ${out.chosen}，${out.ok ? '校验通过' : '校验未通过，见 report.md'}）`);
+    console.log(
+      `- ${item.itemId} → ${out.problemId}（采用 ${out.chosen}，${out.ok ? '校验通过' : '校验未通过，见单条报告'}）`,
+    );
   }
   job.stages.drafts = outputs.map((out) => out.problemId);
   writeJob(job);
-  console.log(JSON.stringify({ outputs: outputs.map(({ itemId, problemId, reportPath, ok }) => ({ itemId, problemId, reportPath, ok })) }, null, 2));
+  const jobReport = writeJobReport(dir, outputs);
+  console.log(JSON.stringify({ jobReport, outputs: outputs.map(({ itemId, problemId, reportPath, ok }) => ({ itemId, problemId, reportPath, ok })) }, null, 2));
   if (outputs.some((out) => !out.ok)) process.exitCode = 1;
 }
 
@@ -129,7 +146,7 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
   if (file === undefined) throw new Error('用法：pnpm import:publish <imports/.../problem.json> --reviewer T-01 --minutes 90');
   const result = await publishPackage(file, {
     reviewer: required(parsed, 'reviewer'),
-    minutes: Number(optional(parsed, 'minutes') ?? '0'),
+    minutes: intOption(parsed, 'minutes', 0, 0, 100000),
     databaseUrl: process.env.DATABASE_URL,
   });
   console.log(JSON.stringify(result, null, 2));
@@ -145,12 +162,12 @@ function usage(): void {
   pnpm import:draft --job <jobId> [--items id1,id2] [--max 4] [--draft-fixture-a a.json --draft-fixture-b b.json]
   pnpm import:publish imports/<jobId>/<problemId>.json --reviewer T-01 --minutes 90
 
-离线模式：OCR 用 --ocr-fixture（page-027.md …），起草用 --draft-fixture-a/b；
-真实 OCR（SimpleTex/Qwen）与 DeepSeek 起草为 P1 provider 接口，需要对应 API key。`);
+仓库内自带的最小 fixtures：apps/import/fixtures/ch2（OCR）、fixtures/epsN.json 与 epsN-alt.json（两稿）。
+离线模式：OCR 用 --ocr-fixture，起草用 --draft-fixture-a/b；真实 OCR 与 DeepSeek 起草为 P1 provider 接口。`);
 }
 
-async function main(): Promise<void> {
-  const [command, ...rest] = process.argv.slice(2);
+export async function run(argv: string[]): Promise<void> {
+  const [command, ...rest] = argv;
   const parsed = parseArgs(rest);
   if (command === undefined || parsed.flags.has('help') === true) {
     usage();
@@ -175,7 +192,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run(process.argv.slice(2)).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

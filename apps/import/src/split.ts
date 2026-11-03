@@ -34,7 +34,7 @@ export function splitItems(pages: OcrPage[], options: { chapter?: string; proofO
     let body = '';
     let index = 0;
     const flush = (): void => {
-      if (body.trim() === '') return;
+      if (label.trim() === '' && body.trim() === '') return;
       const full = `${label}\n${body}`.trim();
       const proofLike = /证明|试证|求证|prove|verify/i.test(full);
       items.push({
@@ -50,10 +50,17 @@ export function splitItems(pages: OcrPage[], options: { chapter?: string; proofO
       body = '';
     };
 
+    let started = false;
     for (const line of lines) {
-      if (ITEM_START.test(line) && body.trim() !== '') flush();
-      if (ITEM_START.test(line) && label === '' && body.trim() === '') label = line;
-      else body += `${line}\n`;
+      if (ITEM_START.test(line)) {
+        if (started && body.trim() !== '') flush();
+        started = true;
+        label = line;
+        body = '';
+        continue;
+      }
+      // 第一个题目开始前的页眉/章节标题是前言，不能当成条目正文（否则会切出空条目）。
+      if (started) body += `${line}\n`;
     }
     flush();
   }
