@@ -49,6 +49,21 @@ pnpm build              # 启动冒烟：真实拉起 server 并请求 /health
 pnpm check:contracts    # 契约门禁（同步校验 + 4 项检查 + redocly）
 ```
 
+### 局域网 / 手机真机联调
+
+默认只监听 `127.0.0.1`。要让同一 Wi-Fi 的手机访问，必须显式监听非回环地址，并且**提供三把密钥**（否则会使用源码里写死的开发密钥，启动直接失败）：
+
+```bash
+HOST=0.0.0.0 \
+NODE_ENV=production \
+SESSION_SECRET="$(openssl rand -hex 32)" \
+STUDENT_NO_PEPPER="$(openssl rand -hex 32)" \
+PII_KEY="$(openssl rand -base64 32)" \
+pnpm dev
+```
+
+注意 `pg_sid` Cookie 是 `Secure` 的，纯 HTTP 的局域网地址无法写入/回传登录态；真机联调要么走 HTTPS 隧道（如 Caddy/ngrok），要么用浏览器 devtools 的 secure context 方案。生产容器里由 `infra/docker-compose.yml` 显式设置 `HOST=0.0.0.0`，不需要改这里。
+
 ## 当前状态（2026-11-03）
 
 - 开发文档 v1.1 已入库；契约门禁全绿。
