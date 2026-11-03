@@ -21,7 +21,11 @@ const FILES = [
 ];
 const DIRS = ['seed'];
 const KEEP = new Set(['package.json', 'README.md', 'tsconfig.json']);
-const KEEP_DIRS = new Set(['gen', 'node_modules']);
+// 顶层保留的生成物目录（不参与「多余文件」检查）。
+const KEEP_DIRS = new Set(['gen']);
+// 任意层级都不属于契约源：依赖目录与版本库元数据（pnpm 会在 packages/contracts 下建 node_modules）。
+const SKIP_DIR_NAMES = new Set(['node_modules', '.git']);
+const SKIP_FILE_NAMES = new Set(['.DS_Store']);
 
 const check = process.argv.includes('--check');
 
@@ -53,7 +57,10 @@ function listCopied() {
   const out = [];
   const walkDst = (rel) => {
     for (const entry of fs.readdirSync(path.join(DST, rel), { withFileTypes: true })) {
-      if (rel === '.' && entry.isDirectory() && KEEP_DIRS.has(entry.name)) continue;
+      // 不看 isDirectory()：node_modules 可能是符号链接（pnpm），按名字跳过最稳。
+      if (SKIP_DIR_NAMES.has(entry.name)) continue;
+      if (SKIP_FILE_NAMES.has(entry.name)) continue;
+      if (rel === '.' && KEEP_DIRS.has(entry.name)) continue;
       const next = path.posix.join(rel, entry.name);
       if (entry.isDirectory()) walkDst(next);
       else out.push(next);
