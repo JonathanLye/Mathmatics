@@ -37,7 +37,21 @@ describe('学号哈希与掩码', () => {
   it('IP 存 /24 掩码，非 IPv4 返回 null', () => {
     expect(maskIp('203.0.113.77')).toBe('203.0.113.0/24');
     expect(maskIp('::ffff:203.0.113.77')).toBe('203.0.113.0/24');
-    expect(maskIp('2001:db8::1')).toBeNull();
+    expect(maskIp('2001:db8::1')).toBe('2001:db8:0::/48');
+    expect(maskIp('2001:0DB8:85a3:0000:0000:8a2e:0370:7334')).toBe('2001:db8:85a3::/48');
+    expect(maskIp('::1')).toBe('0:0:0::/48');
+    expect(maskIp('fe80::1%eth0')).toBe('fe80:0:0::/48');
+    expect(maskIp('1:2:3:4:5:6:7:8')).toBe('1:2:3::/48');
+    expect(maskIp('2001:db8:ffff::1')).toBe('2001:db8:ffff::/48');
+    expect(maskIp('::FFFF:203.0.113.77')).toBe('203.0.113.0/24');
+    expect(maskIp('::ffff:c000:0285')).toBe('192.0.2.0/24');
+    expect(maskIp('64:ff9b::192.0.2.33')).toBe('64:ff9b:0::/48');
+    expect(maskIp('999.999.999.999')).toBeNull();
+    expect(maskIp('not-an-ip')).toBeNull();
+    expect(maskIp('1::2::3')).toBeNull();
+    expect(maskIp('1:2:3:4:5:6:7:8:9')).toBeNull();
+    expect(maskIp('1:2:3:4:5:6:7:8::')).toBeNull();
+    expect(maskIp('::1:2:3:4:5:6:7:8')).toBeNull();
     expect(maskIp(undefined)).toBeNull();
   });
 
