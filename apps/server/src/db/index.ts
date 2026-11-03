@@ -98,7 +98,11 @@ export function createPgPool(connectionString: string, onError: (error: Error) =
 }
 
 async function openPg(connectionString: string, onPoolError: (error: Error) => void): Promise<Db> {
-  const pool = createPgPool(connectionString, onPoolError);
+  return pgDbFromPool(createPgPool(connectionString, onPoolError), onPoolError);
+}
+
+// 从池构造 Db。单独导出是为了用假池测试 tx 的错误处理（见 test/ops-hardening.test.ts）。
+export function pgDbFromPool(pool: Pool, onError: (error: Error) => void): Db {
 
   return {
     driver: 'pg',
@@ -108,6 +112,10 @@ async function openPg(connectionString: string, onPoolError: (error: Error) => v
     },
     async tx(fn) {
       const client = await pool.connect();
+      // 借出的连接归我们管（node-postgres #3202）：数据库重启、idle_in_transaction_session_timeout 杀连接时，
+      // 它会在这个 client 上触发 'error'，没有监听器就是未捕获异常。查询里的错误会照常抛给 fn，所以这里只记录。
+      const onClientError = (error: Error) => onError(error);
+      client.on('error', onClientError);
       // 回滚失败说明连接已损坏：必须带错误释放（pool 会销毁它），而不是放回池里；原始错误不能被回滚错误盖掉。
       let broken: Error | undefined;
       try {
@@ -123,6 +131,7 @@ async function openPg(connectionString: string, onPoolError: (error: Error) => v
         }
         throw error;
       } finally {
+        client.off('error', onClientError);
         client.release(broken);
       }
     },
