@@ -1,0 +1,9 @@
+node_modules/
+dist/
+unpackage/
+.vite/
+coverage/
+screenshots/
+tests/.artifacts/
+*.log
+.DS_Store

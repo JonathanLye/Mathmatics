@@ -1,0 +1,109 @@
+/**
+ * 设计 token —— 唯一来源：10-开发文档/02-学生端设计规范.md §2
+ * 规则：
+ * - 颜色只表达含义：红=批注（问句）、琥珀=计透露量的提示、绿=衔接/完成。
+ * - 同时映射到 TDesign 的 --td-* 变量，便于 t- 组件跟着换肤。
+ * - 深色模式：prefers-color-scheme + [data-theme="dark"] 两处都要生效。
+ */
+:root {
+  /* 颜色（浅色） */
+  --paper: #f7f6f2;
+  --sheet: #ffffff;
+  --ink: #1d2430;
+  --ink-2: #5d6878;
+  --rule: #e2e4e8;
+  --accent: #2b4fa3;
+  --accent-soft: #e8eefb;
+  --margin: #9a3b4f;
+  --margin-soft: #f7ecef;
+  --hint: #9a6b12;
+  --hint-soft: #fbf3e2;
+  --ok: #2f7a54;
+  --focus: #2b4fa3;
+
+  /* 间距 / 圆角 / 阴影 / 动效 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --radius-input: 6px;
+  --radius-card: 10px;
+  --radius-sheet: 16px;
+  --shadow-dock: 0 -1px 0 var(--rule), 0 -6px 18px rgba(29, 36, 48, 0.06);
+  --shadow-sheet: 0 -8px 28px rgba(29, 36, 48, 0.16);
+  --dur-fast: 150ms;
+  --dur-normal: 200ms;
+
+  /* 文案排版 */
+  --font-serif: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fs-stem: 17px;
+  --fs-body: 16px;
+  --fs-small: 13px;
+  --fs-mono: 12px;
+  --lh-body: 1.65;
+
+  /* 视口与安全区（02 §6） */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --keyboard-inset: 0px;
+
+  /* 布局宽度（平板/桌面） */
+  --content-max: 720px;
+  --edge-max: 320px;
+
+  /* TDesign 映射 */
+  --td-brand-color: var(--accent);
+  --td-bg-color-page: var(--paper);
+  --td-bg-color-container: var(--sheet);
+  --td-text-color-primary: var(--ink);
+  --td-text-color-secondary: var(--ink-2);
+  --td-component-border: var(--rule);
+  --td-success-color: var(--ok);
+  --td-warning-color: var(--hint);
+  --td-radius-default: var(--radius-input);
+  --td-radius-medium: var(--radius-card);
+  --td-font-family: var(--font-sans);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #12161d;
+    --sheet: #1a1f28;
+    --ink: #e4e8ef;
+    --ink-2: #9aa5b5;
+    --rule: #2c3442;
+    --accent: #8fb0ff;
+    --accent-soft: #1f2b45;
+    --margin: #e58aa0;
+    --margin-soft: #33202a;
+    --hint: #e3b65a;
+    --hint-soft: #33291a;
+    --ok: #6fcf9b;
+    --focus: #8fb0ff;
+    --shadow-dock: 0 -1px 0 var(--rule), 0 -6px 18px rgba(0, 0, 0, 0.35);
+    --shadow-sheet: 0 -8px 28px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* 允许手动切换（设置页/演示页用 html[data-theme]） */
+html[data-theme='dark'] {
+  --paper: #12161d;
+  --sheet: #1a1f28;
+  --ink: #e4e8ef;
+  --ink-2: #9aa5b5;
+  --rule: #2c3442;
+  --accent: #8fb0ff;
+  --accent-soft: #1f2b45;
+  --margin: #e58aa0;
+  --margin-soft: #33202a;
+  --hint: #e3b65a;
+  --hint-soft: #33291a;
+  --ok: #6fcf9b;
+  --focus: #8fb0ff;
+}

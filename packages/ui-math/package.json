@@ -1,0 +1,19 @@
+{
+  "name": "@proof-gym/ui-math",
+  "version": "0.0.0",
+  "private": true,
+  "description": "证明陪练场 · 公共前端组件：MathText / 证明键盘 / 手写画布 / 识别确认（角色 A）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mathText": "./src/mathText.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "katex": "^0.19.1",
+    "vue": "^3.4.21"
+  },
+  "sideEffects": false
+}
