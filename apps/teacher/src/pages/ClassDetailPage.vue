@@ -5,12 +5,25 @@ import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
 import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterImportResult } from '../api/types.ts';
+import ExportPanel from '../components/ExportPanel.vue';
+import MetricsPanel from '../components/MetricsPanel.vue';
+import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
 
 const route = useRoute();
 const classId = computed(() => String(route.params.classId ?? ''));
 const tab = ref('live');
 const classInfo = ref<ClassSummary | null>(null);
 const pageError = ref('');
+
+// 学生详情抽屉（#35：解锁 / 发一句话 / 处理标记）
+const drawerVisible = ref(false);
+const selectedAttemptId = ref<string | null>(null);
+
+function openAttempt(row: LiveRow): void {
+  if (row.attemptId === null || row.attemptId === undefined) return;
+  selectedAttemptId.value = row.attemptId;
+  drawerVisible.value = true;
+}
 
 // 实时看板（#51 提供 /live；未上线时显示提示，不阻塞其他页签）
 const live = ref<LiveSnapshot | null>(null);
@@ -248,6 +261,7 @@ onBeforeUnmount(() => {
           :loading="liveLoading"
           size="small"
           hover
+          @row-click="(row: LiveRow) => openAttempt(row)"
         >
           <template #status="{ row }">
             <t-tag :theme="row.status === 'completed' ? 'success' : row.status === 'locked' ? 'danger' : 'default'">
@@ -351,13 +365,19 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="metrics" label="指标">
-        <t-alert theme="info" message="指标页随 #35 上线：层漏斗、关键步骤卡点热力、独立度分布（口径 08 §4）。" style="margin: 12px 0" />
+        <MetricsPanel :class-id="classId" :assignment-id="live?.assignmentId ?? undefined" />
       </t-tab-panel>
 
       <t-tab-panel value="export" label="导出">
-        <t-alert theme="info" message="导出页随 #35 上线：默认匿名、字段与 08 §5 一致、带字段字典。" style="margin: 12px 0" />
+        <ExportPanel :class-id="classId" />
       </t-tab-panel>
     </t-tabs>
+
+    <StudentDetailDrawer
+      v-model:visible="drawerVisible"
+      :attempt-id="selectedAttemptId"
+      @refresh="loadLive"
+    />
   </div>
 </template>
 
