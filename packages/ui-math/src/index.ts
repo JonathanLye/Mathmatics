@@ -53,9 +53,30 @@ export type {
   RawKeyboardLayoutKey,
 } from './keyboard'
 
+// #15：识别确认纯逻辑（两路 diff / 归一化 / 合并 / MathText 片段）
+export {
+  alternativeDisplayText,
+  buildAlternativeText,
+  compareRecognition,
+  diffRecognitionTexts,
+  isInsideMathRange,
+  mergeRecognitionResult,
+  normalizeRecognitionText,
+  recognitionStatusHint,
+  toMathFragment,
+} from './recognition'
+export type {
+  CompareSegment,
+  RecognitionComparison,
+  RecognitionConflict,
+  RecognitionDiffSpan,
+  RecognitionLike,
+  RecognitionRoute,
+} from './recognition'
+
 export { default as MathText } from './MathText.vue'
 export { default as MathTextEditor } from './MathTextEditor.vue'
 export { default as ProofKeyboard } from './ProofKeyboard.vue'
-// 后续由 #14 / #15 提供：
+export { default as RecognitionConfirm } from './RecognitionConfirm.vue'
+// 后续由 #14 提供：
 // export { default as InkCanvas } from './InkCanvas.vue'
-// export { default as RecognitionConfirm } from './RecognitionConfirm.vue'

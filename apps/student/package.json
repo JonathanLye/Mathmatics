@@ -14,7 +14,8 @@
     "build:mock": "uni build --mode mock",
     "e2e:flows": "node tests/flows.mjs",
     "e2e:flows:help": "node tests/flows-help.mjs",
-    "e2e:flows:l3": "node tests/flows-l3.mjs"
+    "e2e:flows:l3": "node tests/flows-l3.mjs",
+    "e2e:flows:recog": "node tests/flows-recog.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5030420261029002",

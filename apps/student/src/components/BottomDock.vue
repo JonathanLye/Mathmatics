@@ -19,7 +19,7 @@ defineProps<{ inkActive?: boolean; helpBusy?: boolean }>()
       <text class="pg-dock__icon">⌨</text>
       <text class="pg-dock__label">键盘</text>
     </button>
-    <button class="pg-dock__btn" @tap="emit('photo')">
+    <button class="pg-dock__btn pg-dock__btn--photo" @tap="emit('photo')">
       <text class="pg-dock__icon">📷</text>
       <text class="pg-dock__label">拍照</text>
     </button>
