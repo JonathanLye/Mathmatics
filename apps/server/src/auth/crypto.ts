@@ -35,10 +35,22 @@ export function sha256Hex(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-// IP 存 /24 掩码（05 §7）。非 IPv4 暂不记录（P0 不做 IPv6 掩码）。
+// IP 存掩码（05 §7）：IPv4 存 /24，IPv6 存 /48（运营商通常给用户分配 /48–/64，/48 之后的位可以直接识别到个人）。
+// 手机网络越来越多是 IPv6，只处理 IPv4 会让这类会话没有任何来源记录。解析不了的返回 null。
 export function maskIp(ip: string | undefined): string | null {
-  const match = /^(?:::ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/.exec(ip ?? '');
-  return match ? `${match[1]}.0/24` : null;
+  const v4 = /^(?:::ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/.exec(ip ?? '');
+  if (v4) return `${v4[1]}.0/24`;
+
+  const bare = (ip ?? '').split('%')[0] ?? ''; // 去掉 zone id（fe80::1%eth0）
+  if (!/^[0-9a-f:]+$/i.test(bare) || !bare.includes(':')) return null;
+  const halves = bare.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] === '' ? [] : (halves[0] ?? '').split(':');
+  const tail = halves.length === 2 ? (halves[1] === '' ? [] : (halves[1] ?? '').split(':')) : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  const groups = [...head, ...Array<string>(Math.max(fill, 0)).fill('0'), ...tail];
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/i.test(g))) return null;
+  return `${groups.slice(0, 3).map((g) => g.toLowerCase().replace(/^0+(?=.)/, '')).join(':')}::/48`;
 }
 
 export function newAnonCode(prefix: 'S' | 'T'): string {
