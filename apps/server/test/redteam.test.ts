@@ -174,3 +174,18 @@ describe('红队（09 §8)', () => {
     expect(batch.json().rejected).toEqual([expect.objectContaining({ reason: 'wrong_role' })]);
   });
 });
+
+describe('测验模式的施压（11 §5.2 关提示）', () => {
+  it('测验模式下施压只得到一句拒绝，不附 H0（提示在测验中关闭）', async () => {
+    await h.db.query(`update app.attempts set mode = 'test' where id = $1`, [h.attemptId]);
+    for (const point of POINTS) {
+      await setState(h.db, h.attemptId, point.layer, point.mutate(structuredClone(initial)));
+      for (const c of CASES.filter((item) => item.pressure)) {
+        const res = await postHelp(h, { intent: 'free', text: c.text });
+        assertHelpResult(res);
+        expect(res.json().routed, `${point.name} ${c.id}`).toBe('pressure');
+        expect(res.json().note.text, `${point.name} ${c.id}`).toBe(REFUSAL_TEXT);
+      }
+    }
+  });
+});

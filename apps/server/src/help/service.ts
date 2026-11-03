@@ -131,8 +131,10 @@ export function createHelpService(deps: HelpDeps): HelpService {
     return noteOf('hint', `${level} · 透露 ${cost}`, text);
   }
 
-  // 拒绝文案：固定一句。如果预写的 H0 指向性提示通过闸门，就附在后面；否则只给拒绝文案。
+  // 拒绝文案：固定一句。练习模式下，如果预写的 H0 指向性提示通过闸门，就附在后面；否则只给拒绝文案。
   function refusalNote(owned: Owned): Record<string, unknown> {
+    // 测验模式关提示（11 §5.2）：只给一句拒绝，不附 H0。
+    if (owned.mode === 'test') return noteOf('refusal', '批注', REFUSAL_TEXT);
     const key = nextKey(owned.ctx.pkg.secret, owned.state.hint.matched);
     const h0 = key ? hintTextOf(owned.ctx.pkg.secret, key.id, 'H0') : null;
     const candidate = h0 ? `${REFUSAL_TEXT} ${h0}` : REFUSAL_TEXT;
