@@ -27,4 +27,19 @@ describe('loadConfig：开发密钥只能留在本机回环上', () => {
     expect(() => loadConfig({ NODE_ENV: 'production', HOST: '0.0.0.0' })).toThrow();
     expect(() => loadConfig({ NODE_ENV: 'production', HOST: '0.0.0.0', ...SECRETS })).not.toThrow();
   });
+
+  it('空串按“没提供”处理：非回环失败，回环回落开发密钥', () => {
+    expect(() => loadConfig({ HOST: '0.0.0.0', ...SECRETS, SESSION_SECRET: '' })).toThrow('不是回环地址');
+    expect(() => loadConfig({ HOST: '0.0.0.0', SESSION_SECRET: '', PII_KEY: '', STUDENT_NO_PEPPER: '' })).toThrow('不是回环地址');
+    const loopback = loadConfig({ HOST: '127.0.0.1', SESSION_SECRET: '', PII_KEY: '', STUDENT_NO_PEPPER: '' });
+    expect(loopback.sessionSecret.length).toBeGreaterThanOrEqual(32);
+    expect(loopback.piiKey.length).toBe(32);
+  });
+
+  it('非回环即使显式提供密钥，也要求 32 字符；PII_KEY 空串不能回落公开 key', () => {
+    expect(() => loadConfig({ HOST: '0.0.0.0', ...SECRETS, SESSION_SECRET: 'short' })).toThrow('32 个字符');
+    expect(() => loadConfig({ HOST: '0.0.0.0', ...SECRETS, STUDENT_NO_PEPPER: 'short' })).toThrow('32 个字符');
+    expect(() => loadConfig({ HOST: '0.0.0.0', ...SECRETS, PII_KEY: '' })).toThrow('不是回环地址');
+    expect(() => loadConfig({ NODE_ENV: 'production', HOST: '0.0.0.0', ...SECRETS, PII_KEY: '' })).toThrow('PII_KEY');
+  });
 });

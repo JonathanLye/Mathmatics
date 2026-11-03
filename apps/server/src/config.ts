@@ -26,6 +26,11 @@ const DEV_STUDENT_NO_PEPPER = 'proof-gym-dev-student-no-pepper-not-for-productio
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '::1', 'localhost']);
 const MODELS_PATH = fileURLToPath(new URL('../config/models.yaml', import.meta.url));
 
+// 空串等于没提供：不能拿 '' 当密钥（会被当成“已提供”而绕过回环守卫）。
+function configured(raw: string | undefined): raw is string {
+  return raw !== undefined && raw !== '';
+}
+
 function positiveInt(raw: string | undefined, fallback: number, name: string): number {
   if (raw === undefined || raw === '') return fallback;
   const value = Number(raw);
@@ -37,27 +42,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const appEnv = (env.NODE_ENV ?? 'development') as AppEnv;
   const isProduction = appEnv === 'production';
 
-  const sessionSecret = env.SESSION_SECRET ?? (isProduction ? '' : DEV_SESSION_SECRET);
-  if (isProduction && sessionSecret.length < 32) {
-    throw new Error('SESSION_SECRET 必须在生产环境提供，且不少于 32 个字符');
-  }
-
-  const piiKey = env.PII_KEY ? Buffer.from(env.PII_KEY, 'base64') : isProduction ? Buffer.alloc(0) : DEV_PII_KEY;
+  const host = env.HOST ?? '127.0.0.1';
+  const loopback = LOOPBACK_HOSTS.has(host);
+  const sessionSecret = configured(env.SESSION_SECRET) ? env.SESSION_SECRET : isProduction ? '' : DEV_SESSION_SECRET;
+  const piiKey = configured(env.PII_KEY) ? Buffer.from(env.PII_KEY, 'base64') : isProduction ? Buffer.alloc(0) : DEV_PII_KEY;
+  const studentNoPepper = configured(env.STUDENT_NO_PEPPER) ? env.STUDENT_NO_PEPPER : isProduction ? '' : DEV_STUDENT_NO_PEPPER;
   if (piiKey.length !== 32) {
     throw new Error('PII_KEY 必须是 base64 编码的 32 字节（AES-256 密钥）');
   }
 
-  const studentNoPepper = env.STUDENT_NO_PEPPER ?? (isProduction ? '' : DEV_STUDENT_NO_PEPPER);
-  if (isProduction && studentNoPepper.length < 32) {
-    throw new Error('STUDENT_NO_PEPPER 必须在生产环境提供，且不少于 32 个字符');
-  }
-
   // 开发用的写死密钥只允许在本机回环上用：NODE_ENV 没设（默认 development）又监听在非回环地址时，
-  // 等于把可伪造会话的公开密钥暴露出去，启动即失败。
-  const host = env.HOST ?? '127.0.0.1';
-  const usesDevSecrets = !isProduction && (env.SESSION_SECRET === undefined || env.PII_KEY === undefined || env.STUDENT_NO_PEPPER === undefined);
-  if (usesDevSecrets && !LOOPBACK_HOSTS.has(host)) {
+  // 等于把可伪造会话的公开密钥暴露出去，启动即失败。空串按“没提供”处理。
+  const usesDevSecrets =
+    !isProduction && (!configured(env.SESSION_SECRET) || !configured(env.PII_KEY) || !configured(env.STUDENT_NO_PEPPER));
+  if (usesDevSecrets && !loopback) {
     throw new Error(`HOST=${host} 不是回环地址，但 SESSION_SECRET / PII_KEY / STUDENT_NO_PEPPER 没有全部提供（会使用写死的开发密钥）。请提供密钥并设置 NODE_ENV=production`);
+  }
+  // 生产或非回环（即使显式给了密钥）都要求至少 32 字符；空串/短串不能蒙混成“已提供”。
+  if ((isProduction || !loopback) && sessionSecret.length < 32) {
+    throw new Error('SESSION_SECRET 必须在生产环境或非回环监听时提供，且不少于 32 个字符');
+  }
+  if ((isProduction || !loopback) && studentNoPepper.length < 32) {
+    throw new Error('STUDENT_NO_PEPPER 必须在生产环境或非回环监听时提供，且不少于 32 个字符');
   }
 
   const port = Number(env.PORT ?? 3000);

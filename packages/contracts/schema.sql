@@ -83,7 +83,7 @@ CREATE TABLE app.consents (
   user_id     uuid NOT NULL REFERENCES app.users(id),
   version     text NOT NULL,                          -- 同意书版本号，改文案必须升版本
   items       jsonb NOT NULL,                         -- {service, crossBorderHosting, crossBorderModel, monitoring, research}
-  ip_masked   text,                                   -- /24 掩码
+  ip_masked   text,                                   -- IPv4 /24、IPv6 /48 掩码
   ua_hash     text,
   created_at  timestamptz NOT NULL DEFAULT now(),
   revoked_at  timestamptz
