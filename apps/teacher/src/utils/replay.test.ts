@@ -51,5 +51,6 @@ describe('事件级回放（04 §5.2）', () => {
     expect(eventLabel('line.submit', 'L3', { n: 2 })).toBe('提交第 2 行');
     expect(eventLabel('integ.visibility', 'L3', { state: 'hidden' })).toBe('离开页面');
     expect(eventLabel('integ.visibility', 'L3', { state: 'visible' })).toBe('回到页面');
+    expect(eventLabel('layer.skip', 'L2', {})).toBe('跳过 L2');
   });
 });

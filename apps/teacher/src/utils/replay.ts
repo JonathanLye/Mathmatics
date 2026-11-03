@@ -46,6 +46,16 @@ export function eventLabel(type: string, layer: string | null | undefined, paylo
       return payload.state === 'hidden' ? '离开页面' : '回到页面';
     case 'attempt.start':
       return '开始作答';
+    case 'layer.skip':
+      return `跳过 ${layer ?? '本层'}`;
+    case 'layer.done':
+      return `完成 ${layer ?? '本层'}`;
+    case 'finish.try':
+      return '尝试提交完成';
+    case 'selfcheck.submit':
+      return '提交自检';
+    case 'summary.submit':
+      return '提交总结';
     default:
       return type;
   }
