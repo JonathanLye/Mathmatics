@@ -1,23 +1,30 @@
 <script setup lang="ts">
 /**
- * ink-v1 手写画布（issue #14）。
+ * ink-v1 手写画布（issue #14，格式严格按 10-开发文档/03-手写键盘与识别.md §2.1）。
  *
  * 分工：
  * - 数据/平滑/撤销/橡皮/划掉删除/序列化/重放全部在 ./ink.ts 纯逻辑里（不依赖 DOM）；
- * - 本组件只负责：H5 事件采集（Pointer Events + pointer capture + getCoalescedEvents）、
- *   canvas 2D 绘制（双画布：底图 + 当前笔，每帧只重绘当前一笔）、工具按钮、「写完这一行」导出。
+ * - 上传编码（gzip + base64，≤256KB）在 ./inkCapture.ts；
+ * - 本组件只负责：H5 事件采集（Pointer Events + pointer capture + coalesced events + 压感）、
+ *   canvas 2D 渲染（perfect-freehand 可变线宽，双画布保证每帧只重绘当前一笔）、
+ *   工具按钮、「写完这一行」：同时 emit 原始 JSON（update:modelValue）与 gzip(JSON) 的 base64（finish）。
  *
- * 平台：
- * - H5：真 canvas 2D（devicePixelRatio 高清）、全屏 + 横屏方向锁（尽力而为）；
- * - 非 H5（小程序 P2）：降级 view 提示先用键盘，不加载任何 canvas 代码（#ifdef H5）。
+ * 采集字段（03 §2.1 / §2.6）：
+ * - p：pen / touch / mouse（PointerEvent.pointerType）；
+ * - pressure：0–1，设备不支持压感时固定 0.5；
+ * - t：相对 t0 的毫秒；t0 为会话起始的墙钟时间；
+ * - w/h/dpr/orientation/fullscreen：尺寸、朝向、全屏状态，在落笔开始/结束与方向、全屏切换时同步进文档。
  *
- * 硬规则：本组件不做任何识别/判定/门槛；只 emit 原始 ink-v1 JSON（识别由 #21 服务端负责）。
+ * 平台：H5 用真 canvas；非 H5（小程序 P2）走 #ifndef 降级 view。
+ * 本组件不做任何识别/判定；识别由 #21 服务端负责。
  * 组件契约（apps/student/src/components/README.md）：props modelValue/height/readonly，
- * emits update:modelValue / finish / draw-start，与占位实现兼容。
+ * emits update:modelValue / finish / draw-start，与占位实现兼容（finish 载荷按审计要求改为 gzip base64）。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { getStroke } from 'perfect-freehand'
 import {
   DEFAULT_ERASER_RADIUS,
+  DEFAULT_PRESSURE,
   MIN_POINT_DISTANCE,
   appendPoint,
   canRedoInk,
@@ -29,19 +36,23 @@ import {
   eraseInkAlongPath,
   parseInk,
   redoInk,
-  replayInk,
   serializeInk,
-  setInkCanvas,
+  setInkMeta,
   smoothPoints,
   undoInk,
   visibleStrokes,
+  type InkDocument,
   type InkEditState,
+  type InkOrientation,
   type InkPoint,
+  type InkPointerType,
+  type InkStroke,
 } from './ink'
+import { buildInkCapture } from './inkCapture'
 
 const props = withDefaults(
   defineProps<{
-    /** ink-v1 JSON 字符串（v-model） */
+    /** ink-v1 JSON 字符串（v-model，03 §2.1） */
     modelValue?: string
     /** 画布高度：数字按 px，字符串原样（默认 100%） */
     height?: number | string
@@ -52,12 +63,13 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string): void
-  (e: 'finish', v: string): void
+  /** 写完这一行：gzip(JSON) 的 base64，可直接作为 /recognitions/ink 的 ink 字段（≤256KB） */
+  (e: 'finish', gzipBase64: string): void
   (e: 'draw-start'): void
 }>()
 
-/** 默认线宽（CSS px）。手写一行字号约 16px，2.6px 接近中性笔。 */
-const STROKE_WIDTH = 2.6
+/** perfect-freehand 的笔迹最大直径（CSS px）。 */
+const INK_STROKE_SIZE = 3.2
 /** dpr 上限：避免 4x 屏上像素画布过大导致内存/合成开销（03 §2.2 高清，但按性能预算封顶）。 */
 const MAX_DPR = 3
 
@@ -70,6 +82,7 @@ const canUndo = ref(false)
 const canRedo = ref(false)
 const strokeCount = ref(0)
 const drawingFlag = ref(false)
+const finishing = ref(false)
 
 const rootStyle = computed(() => ({
   height: typeof props.height === 'number' ? props.height + 'px' : props.height,
@@ -77,7 +90,6 @@ const rootStyle = computed(() => ({
 
 // --- H5 运行时对象（非 H5 构建里由 #ifdef 剥掉使用处，保留声明不产生影响） ---
 let editState: InkEditState = createInkEditState(createInkDocument())
-let startAt = 0
 let inkColor = 'currentColor'
 let hostEl: HTMLElement | null = null
 let stageEl: HTMLElement | null = null
@@ -94,6 +106,7 @@ let activePointerId: number | null = null
 let drawing = false
 let penOnly = false
 let currentPoints: InkPoint[] = []
+let currentPointerType: InkPointerType = 'touch'
 let eraserPoints: InkPoint[] = []
 let lastEmitted = ''
 let statusTimer: ReturnType<typeof setTimeout> | null = null
@@ -107,12 +120,19 @@ function showStatus(text: string, ms = 2200): void {
   }, ms)
 }
 
-/** 会话相对时间（ms），写进 ink-v1 每个点的 t。 */
-function now(): number {
+/** 画布朝向（03 §2.6：方向变化写进 ink-v1）。 */
+function readOrientation(): InkOrientation {
   // #ifdef H5
-  if (typeof performance !== 'undefined') return Math.max(0, Math.round(performance.now() - startAt))
+  if (typeof window !== 'undefined') return window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait'
   // #endif
-  return 0
+  return 'portrait'
+}
+
+/** 会话相对时间（ms）：t = 当前墙钟 - t0（03 §2.1）。 */
+function now(): number {
+  const t0 = editState.doc.t0
+  if (!(t0 > 0)) return 0
+  return Math.max(0, Math.round(Date.now() - t0))
 }
 
 /** uni-app 里 ref 可能拿到组件实例（$el 才是 DOM）；统一解析成 HTMLElement。 */
@@ -132,20 +152,32 @@ function syncReactive(): void {
   strokeCount.value = visibleStrokes(editState.doc).length
 }
 
-/** 最近一次写入 v-model 的 JSON，用于避免父级回传时反复 load。 */
+/** 最近一次写入 v-model 的原始 JSON，用于避免父级回传时反复 load。 */
 function emitUpdate(): void {
   // #ifdef H5
-  const json = serializeInk(editState)
-  if (json === lastEmitted) return
-  lastEmitted = json
-  emit('update:modelValue', json)
+  const rawJson = serializeInk(editState)
+  if (rawJson === lastEmitted) return
+  lastEmitted = rawJson
+  emit('update:modelValue', rawJson)
   // #endif
+}
+
+/** 新建会话文档：尺寸/朝向/全屏/t0 都按当前环境记录（03 §2.1/§2.6）。 */
+function createSessionDoc(): InkDocument {
+  return createInkDocument({
+    w: Math.max(1, cssWidth || 1),
+    h: Math.max(1, cssHeight || 1),
+    dpr: pixelRatio || 1,
+    t0: Date.now(),
+    orientation: readOrientation(),
+    fullscreen: fullscreen.value,
+  })
 }
 
 /** 从 v-model 载入（只读回放与父级重置都走这里）。 */
 function loadModel(json: string, initial = false): void {
   if (!json) {
-    editState = createInkEditState(createInkDocument({ width: cssWidth || 1, height: cssHeight || 1, dpr: pixelRatio || 1 }))
+    editState = createInkEditState(createSessionDoc())
     lastEmitted = ''
     syncReactive()
     redrawBase()
@@ -154,9 +186,6 @@ function loadModel(json: string, initial = false): void {
   try {
     const doc = parseInk(json)
     editState = createInkEditState(doc)
-    if (!initial && cssWidth > 0 && cssHeight > 0) {
-      editState = setInkCanvas(editState, { width: cssWidth, height: cssHeight, dpr: pixelRatio })
-    }
     lastEmitted = json
     syncReactive()
     redrawBase()
@@ -180,7 +209,7 @@ function readInkColor(): string {
 }
 
 // ---------------------------------------------------------------------------
-// H5：创建画布与尺寸
+// H5：画布创建与元信息同步
 // ---------------------------------------------------------------------------
 
 function setupCanvas(): void {
@@ -191,7 +220,6 @@ function setupCanvas(): void {
   if (!host || !stage) return
   hostEl = host
   stageEl = stage
-  startAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
 
   const base = document.createElement('canvas')
   const live = document.createElement('canvas')
@@ -224,9 +252,12 @@ function setupCanvas(): void {
     resizeObserver.observe(stage)
   }
 
+  measureViewport()
+  editState = createInkEditState(createSessionDoc())
   inkColor = readInkColor()
   loadModel(props.modelValue, true)
   handleResize()
+  syncReactive()
   // #endif
 }
 
@@ -265,78 +296,136 @@ function teardownCanvas(): void {
   // #endif
 }
 
-function handleResize(): void {
+/** 尺寸/dpr 变化时重设像素画布（CSS 尺寸 × dpr）并保持 2D 变换。 */
+function measureViewport(): boolean {
   // #ifdef H5
-  if (!stageEl || !baseCanvas || !liveCanvas || !baseCtx || !liveCtx) return
-  const rect = stageEl.getBoundingClientRect()
+  const stage = stageEl
+  const base = baseCanvas
+  const live = liveCanvas
+  const baseContext = baseCtx
+  const liveContext = liveCtx
+  if (!stage || !base || !live || !baseContext || !liveContext) return false
+  const rect = stage.getBoundingClientRect()
   const width = Math.max(1, Math.round(rect.width))
   const height = Math.max(1, Math.round(rect.height))
   const rawDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
   const dpr = Math.max(1, Math.min(MAX_DPR, Math.round(rawDpr * 100) / 100))
-  if (width === cssWidth && height === cssHeight && dpr === pixelRatio) return
   cssWidth = width
   cssHeight = height
   pixelRatio = dpr
-  for (const canvas of [baseCanvas, liveCanvas]) {
+  for (const canvas of [base, live]) {
     canvas.width = Math.max(1, Math.round(width * dpr))
     canvas.height = Math.max(1, Math.round(height * dpr))
   }
-  baseCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  liveCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  // 只读回放保留 ink-v1 里记录的原始画布尺寸，绘制时等比缩放；编辑时同步成当前尺寸
-  if (!props.readonly) editState = setInkCanvas(editState, { width, height, dpr })
+  baseContext.setTransform(dpr, 0, 0, dpr, 0, 0)
+  liveContext.setTransform(dpr, 0, 0, dpr, 0, 0)
+  return true
+  // #endif
+  return false
+}
+
+/**
+ * 把尺寸/朝向/全屏同步进 ink-v1 文档（03 §2.6）。
+ * 在落笔开始/结束、窗口尺寸变化、方向变化、全屏切换时调用。
+ */
+function syncMeta(): void {
+  // #ifdef H5
+  if (props.readonly || !stageEl) return
+  const rect = stageEl.getBoundingClientRect()
+  editState = setInkMeta(editState, {
+    w: Math.max(1, Math.round(rect.width)),
+    h: Math.max(1, Math.round(rect.height)),
+    dpr: pixelRatio || 1,
+    orientation: readOrientation(),
+    fullscreen: fullscreen.value,
+  })
+  // #endif
+}
+
+function handleResize(): void {
+  // #ifdef H5
+  measureViewport()
+  syncMeta()
   redrawBase()
   clearLive()
   // #endif
 }
 
 // ---------------------------------------------------------------------------
-// H5：绘制（底图整层重绘；当前笔只重绘 live 层）
+// H5：渲染（perfect-freehand 可变线宽；底图整层重绘，当前笔只重绘 live 层）
 // ---------------------------------------------------------------------------
 
-function drawStrokePath(
-  ctx: CanvasRenderingContext2D,
-  points: readonly InkPoint[],
-  color: string,
-  width: number,
-): void {
-  if (!points.length) return
+/** 用 perfect-freehand 把一笔转成填充轮廓（输入 [x, y, pressure]，03 §2.2 可变线宽）。 */
+function strokeOutline(stroke: InkStroke): number[][] {
+  if (stroke.pts.length < 2) return []
+  const input: number[][] = stroke.pts.map((point) => [point[0], point[1], point[3]])
+  return getStroke(input, {
+    size: INK_STROKE_SIZE,
+    thinning: 0.55,
+    smoothing: 0.5,
+    streamline: 0.5,
+    simulatePressure: stroke.p !== 'pen',
+    last: true,
+  })
+}
+
+function fillOutline(ctx: CanvasRenderingContext2D, outline: readonly number[][], color: string): void {
+  const first = outline[0]
+  if (!first) return
   ctx.save()
-  ctx.strokeStyle = color
   ctx.fillStyle = color
-  ctx.lineWidth = width
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(first[0] ?? 0, first[1] ?? 0)
+  for (let i = 1; i < outline.length; i++) {
+    const point = outline[i]
+    if (point) ctx.lineTo(point[0] ?? 0, point[1] ?? 0)
+  }
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawInkStroke(ctx: CanvasRenderingContext2D, stroke: InkStroke, color: string): void {
+  const points = stroke.pts
+  if (!points.length) return
   if (points.length === 1) {
-    const only = points[0]
-    if (only) {
-      ctx.beginPath()
-      ctx.arc(only[0], only[1], Math.max(0.6, width / 2), 0, Math.PI * 2)
-      ctx.fill()
-    }
+    const point = points[0]
+    if (!point) return
+    ctx.save()
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(point[0], point[1], Math.max(0.6, (INK_STROKE_SIZE / 2) * (0.6 + 0.4 * point[3])), 0, Math.PI * 2)
+    ctx.fill()
     ctx.restore()
     return
   }
-  ctx.beginPath()
+  fontSmoothingHint()
+  fillOutline(ctx, strokeOutline(stroke), color)
+}
+
+/** 空实现占位：保留调用点，避免未来加入样式细节时忘记（当前无操作）。 */
+function fontSmoothingHint(): void {
+  // 目前不需要额外处理；保留函数让绘制流程可读
+}
+
+function drawEraserTrail(ctx: CanvasRenderingContext2D, points: readonly InkPoint[], color: string): void {
+  if (!points.length) return
+  ctx.save()
+  ctx.globalAlpha = 0.22
+  ctx.strokeStyle = color
+  ctx.lineWidth = DEFAULT_ERASER_RADIUS * 2
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
   const first = points[0]
   if (!first) {
     ctx.restore()
     return
   }
+  ctx.beginPath()
   ctx.moveTo(first[0], first[1])
-  if (points.length === 2) {
-    const second = points[1]
-    if (second) ctx.lineTo(second[0], second[1])
-  } else {
-    // 二次贝塞尔穿过中点：实时书写看起来平滑（数据仍是原始采样点）
-    for (let i = 1; i < points.length - 1; i++) {
-      const current = points[i]
-      const next = points[i + 1]
-      if (!current || !next) continue
-      ctx.quadraticCurveTo(current[0], current[1], (current[0] + next[0]) / 2, (current[1] + next[1]) / 2)
-    }
-    const last = points[points.length - 1]
-    if (last) ctx.lineTo(last[0], last[1])
+  for (let i = 1; i < points.length; i++) {
+    const point = points[i]
+    if (point) ctx.lineTo(point[0], point[1])
   }
   ctx.stroke()
   ctx.restore()
@@ -354,20 +443,18 @@ function redrawBase(): void {
   let scale = 1
   let offsetX = 0
   let offsetY = 0
-  if (props.readonly && doc.canvas.width > 0 && doc.canvas.height > 0) {
-    // 回放/缩略图：按 contain 等比缩放，保证「导出的 ink-v1 能重放」不被裁切
-    const fit = Math.min(cssWidth / doc.canvas.width, cssHeight / doc.canvas.height)
+  if (props.readonly && doc.w > 0 && doc.h > 0) {
+    // 回放/缩略图：按 contain 等比缩放，保证导出的 ink-v1 重放不被裁切
+    const fit = Math.min(cssWidth / doc.w, cssHeight / doc.h)
     if (Number.isFinite(fit) && fit > 0) {
       scale = Math.min(fit, 4)
-      offsetX = (cssWidth - doc.canvas.width * scale) / 2
-      offsetY = (cssHeight - doc.canvas.height * scale) / 2
+      offsetX = (cssWidth - doc.w * scale) / 2
+      offsetY = (cssHeight - doc.h * scale) / 2
     }
   }
   ctx.setTransform(pixelRatio * scale, 0, 0, pixelRatio * scale, pixelRatio * offsetX, pixelRatio * offsetY)
   const color = inkColor || readInkColor()
-  for (const stroke of visibleStrokes(doc)) {
-    drawStrokePath(ctx, stroke.points, stroke.color === 'currentColor' ? color : stroke.color, stroke.width)
-  }
+  for (const stroke of visibleStrokes(doc)) drawInkStroke(ctx, stroke, color)
   // #endif
 }
 
@@ -385,15 +472,12 @@ function drawLive(): void {
   ctx.clearRect(0, 0, cssWidth, cssHeight)
   const color = inkColor || readInkColor()
   if (tool.value === 'eraser') {
-    if (eraserPoints.length > 0) {
-      ctx.save()
-      ctx.globalAlpha = 0.22
-      drawStrokePath(ctx, eraserPoints, color, DEFAULT_ERASER_RADIUS * 2)
-      ctx.restore()
-    }
+    drawEraserTrail(ctx, eraserPoints, color)
     return
   }
-  if (currentPoints.length > 0) drawStrokePath(ctx, currentPoints, color, STROKE_WIDTH)
+  if (currentPoints.length > 0) {
+    drawInkStroke(ctx, { id: -1, p: currentPointerType, pts: currentPoints }, color)
+  }
   // #endif
 }
 
@@ -412,10 +496,26 @@ function scheduleLiveDraw(): void {
 }
 
 // ---------------------------------------------------------------------------
-// H5：Pointer Events 采集（pointer capture + coalesced events + 防手掌误触）
+// H5：Pointer Events 采集（pointer capture + coalesced events + 防手掌误触 + 压感）
 // ---------------------------------------------------------------------------
 
-/** 把 PointerEvent 的 clientX/Y 转成画布内 CSS 像素点。 */
+/** 压感：设备不支持时固定 0.5（03 §2.1）。 */
+function readPressure(event: PointerEvent): number {
+  const raw = event.pressure
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0 && raw <= 1) {
+    return Math.round(raw * 1000) / 1000
+  }
+  return DEFAULT_PRESSURE
+}
+
+/** p 字段：PointerEvent.pointerType 归一化成 pen / touch / mouse（03 §2.1）。 */
+function readPointerType(event: PointerEvent): InkPointerType {
+  const type = event.pointerType
+  if (type === 'pen' || type === 'mouse') return type
+  return 'touch'
+}
+
+/** 把 PointerEvent 的 clientX/Y 转成画布内 CSS 像素点（含 t 与 pressure）。 */
 function eventPoint(event: PointerEvent): InkPoint {
   // #ifdef H5
   const stage = stageEl
@@ -423,10 +523,10 @@ function eventPoint(event: PointerEvent): InkPoint {
     const rect = stage.getBoundingClientRect()
     const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left))
     const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top))
-    return [Math.round(x * 100) / 100, Math.round(y * 100) / 100, now()]
+    return [Math.round(x * 100) / 100, Math.round(y * 100) / 100, now(), readPressure(event)]
   }
   // #endif
-  return [0, 0, 0]
+  return [0, 0, 0, DEFAULT_PRESSURE]
 }
 
 /** 取 coalesced events 补齐高频采样（03 §2.2）；不支持时退回单事件。 */
@@ -450,9 +550,11 @@ function onPointerDown(event: PointerEvent): void {
   const stage = stageEl
   if (!stage) return
   event.preventDefault()
+  syncMeta() // 落笔开始：把尺寸/朝向/全屏写进 ink-v1（03 §2.6）
   activePointerId = event.pointerId
   drawing = true
   drawingFlag.value = true
+  currentPointerType = readPointerType(event)
   statusText.value = ''
   try {
     stage.setPointerCapture(event.pointerId)
@@ -514,21 +616,21 @@ function onPointerUp(event: PointerEvent): void {
     }
     eraserPoints = []
     clearLive()
+    syncMeta()
     return
   }
 
   if (currentPoints.length > 0) {
     const result = commitInkStroke(
       editState,
-      { points: smoothPoints(currentPoints, 3), color: inkColor || 'currentColor', width: STROKE_WIDTH },
+      { pts: smoothPoints(currentPoints, 3), p: currentPointerType },
       now(),
     )
     editState = result.state
-    if (result.scratch?.matched) {
-      showStatus('已划掉 ' + result.scratch.coveredIds.length + ' 笔（可撤销）')
-    }
+    if (result.scratch?.matched) showStatus('已划掉 ' + result.scratch.coveredIds.length + ' 笔（可撤销）')
     currentPoints = []
     clearLive()
+    syncMeta() // 落笔结束：同步一次元信息（03 §2.6）
     afterChange()
   }
   // #endif
@@ -577,6 +679,7 @@ function onFullscreenChange(): void {
   // #ifdef H5
   if (typeof document === 'undefined') return
   fullscreen.value = Boolean(document.fullscreenElement)
+  syncMeta() // 全屏状态变化写进 ink-v1（03 §2.6）
   // #endif
 }
 
@@ -609,20 +712,38 @@ async function onToggleFullscreen(): Promise<void> {
       }
       fullscreen.value = false
     }
+    syncMeta()
   } catch {
     showStatus('当前浏览器不支持全屏')
   }
   // #endif
 }
 
-/** 「写完这一行」：导出 ink-v1 并交给父级（识别由 #21 服务端接）。 */
-function onFinish(): void {
+/**
+ * 「写完这一行」：
+ * 1) 原始 ink-v1 JSON 通过 update:modelValue 交给父级（回放/草稿用）；
+ * 2) gzip(JSON) 的 base64 通过 finish 交给父级（openapi /recognitions/ink 的 ink 字段，≤256KB）。
+ */
+async function onFinish(): Promise<void> {
   // #ifdef H5
-  if (props.readonly) return
-  const json = serializeInk(editState)
-  lastEmitted = json
-  emit('update:modelValue', json)
-  emit('finish', json)
+  if (props.readonly || finishing.value) return
+  finishing.value = true
+  try {
+    const rawJson = serializeInk(editState)
+    lastEmitted = rawJson
+    emit('update:modelValue', rawJson)
+    const capture = await buildInkCapture(editState)
+    if (capture.overLimit) {
+      showStatus('笔迹超过 256 KB，已抽稀仍超限，请精简后再试', 3600)
+    } else if (capture.simplified) {
+      showStatus('笔迹较大，已按 1px 距离抽稀后打包', 3200)
+    }
+    emit('finish', capture.base64)
+  } catch {
+    showStatus('打包笔迹失败，请重试')
+  } finally {
+    finishing.value = false
+  }
   // #endif
 }
 
@@ -645,18 +766,20 @@ onBeforeUnmount(() => {
 watch(
   () => props.modelValue,
   (value) => {
-    // #ifdef H5
     if (!value) {
+      // #ifdef H5
       if (props.readonly) {
         loadModel('', true)
       } else {
-        editState = createInkEditState(createInkDocument({ width: cssWidth || 1, height: cssHeight || 1, dpr: pixelRatio || 1 }))
+        editState = createInkEditState(createSessionDoc())
         lastEmitted = ''
         syncReactive()
         redrawBase()
       }
+      // #endif
       return
     }
+    // #ifdef H5
     if (value === lastEmitted) return
     loadModel(value)
     // #endif
@@ -670,6 +793,13 @@ watch(
     syncReactive()
   },
 )
+
+defineExpose({
+  /** 当前原始 ink-v1 JSON（测试/父级回放用）。 */
+  getInkJson: (): string => serializeInk(editState),
+  /** 上传用 gzip(JSON) 的 base64（03 §2.1，≤256KB）。 */
+  buildInkCapture: () => buildInkCapture(editState),
+})
 </script>
 
 <template>
@@ -700,8 +830,12 @@ watch(
       </button>
       <button class="ui-ink-canvas__tool" :disabled="strokeCount === 0" @tap="onClear">清空</button>
       <button class="ui-ink-canvas__tool" @tap="onToggleFullscreen">{{ fullscreen ? '退出全屏' : '全屏' }}</button>
-      <button class="ui-ink-canvas__tool ui-ink-canvas__tool--primary" :disabled="strokeCount === 0" @tap="onFinish">
-        写完这一行
+      <button
+        class="ui-ink-canvas__tool ui-ink-canvas__tool--primary"
+        :disabled="strokeCount === 0 || finishing"
+        @tap="onFinish"
+      >
+        {{ finishing ? '打包中…' : '写完这一行' }}
       </button>
     </view>
     <!-- #endif -->
