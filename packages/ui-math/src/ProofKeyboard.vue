@@ -248,7 +248,8 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: max(38vh, 360px); /* 02 §4.7：高度约屏高 38%；矮屏保底 360px 保证 44px 触控 */
+  /* 02 §4.7（2026-11 修订）：大屏约 38%，最小 360px（844 屏上约 43%；保证右侧 7 个 ≥44px 动作键） */
+  height: max(38vh, 360px);
   box-sizing: border-box;
   padding-bottom: var(--safe-bottom, 0px);
   background: var(--sheet, #fff);

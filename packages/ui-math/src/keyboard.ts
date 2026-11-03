@@ -13,10 +13,15 @@
  * - `mode: "math"` 的键在光标不在 `$…$` 内时由编辑器自动补成 `$…$`（光标和占位一起平移）；
  * - `mode: "text"` 的键（证明句式）原样插入（句式自带 `$…$`）。
  */
-// 布局读只读副本 packages/contracts/keyboard-layout.json（唯一源：10-开发文档/contracts/）。
-// 为什么走 @ui-math 别名而不是相对路径：uni-app 的 Vite 配置开了 preserveSymlinks，pnpm 软链下
-// 包内相对路径会被算在 apps/student/node_modules/@proof-gym/ui-math/... 上；@ui-math 在 app 与
-// vitest 两边都映射到 packages/ui-math/src（真实源码目录），从那里再回到仓库根的 packages/contracts。
+// 布局读只读副本 `packages/contracts/keyboard-layout.json`（唯一源：10-开发文档/contracts/，
+// 由 tools/sync-contracts.mjs 同步；CI 的 `node tools/sync-contracts.mjs --check` 保证副本与源逐字节一致）。
+//
+// 这里用 `@ui-math` 别名而不是包内相对路径：uni-app 的 Vite 配置开了 preserveSymlinks，pnpm 软链下
+// 包内相对路径会按 apps/student/node_modules/@proof-gym/ui-math/... 计算而解析失败（build:h5 实测报
+// Could not resolve）；@ui-math 在 app（vite.config.ts）与测试（vitest.config.ts）两边都映射到
+// packages/ui-math/src（真实源码目录），从那里再回到仓库根的 packages/contracts，两边都能自洽。
+// 未改成「alias 直指 packages/contracts」的原因：那需要在 apps/student/vite.config.ts 另加跨包别名；
+// 现有链路无需额外配置，副本与唯一源的一致性已由上面的 CI 门禁保证。
 import rawKeyboardLayout from '@ui-math/../../../packages/contracts/keyboard-layout.json'
 
 // ---------------------------------------------------------------------------
