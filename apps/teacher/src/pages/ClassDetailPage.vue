@@ -1,0 +1,374 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import { MessagePlugin } from 'tdesign-vue-next';
+
+import { api, ApiError } from '../api/client.ts';
+import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterImportResult } from '../api/types.ts';
+
+const route = useRoute();
+const classId = computed(() => String(route.params.classId ?? ''));
+const tab = ref('live');
+const classInfo = ref<ClassSummary | null>(null);
+const pageError = ref('');
+
+// 实时看板（#51 提供 /live；未上线时显示提示，不阻塞其他页签）
+const live = ref<LiveSnapshot | null>(null);
+const liveError = ref('');
+const liveLoading = ref(false);
+let pollTimer: number | undefined;
+
+// 名单（04 §10）
+const fileInput = ref<HTMLInputElement | null>(null);
+const importing = ref(false);
+const importResult = ref<RosterImportResult | null>(null);
+const rotating = ref(false);
+
+// 布置（04 §7）
+const createdAssignments = ref<AssignmentCard[]>([]);
+const creating = ref(false);
+const assignmentForm = ref({
+  problemId: 'epsN',
+  version: 1,
+  mode: 'practice' as 'practice' | 'test',
+  openAt: toLocalInput(new Date()),
+  closeAt: '',
+  revealBudget: 2,
+});
+
+const STATUS_LABEL: Record<string, string> = {
+  not_started: '未开始',
+  active: '活跃',
+  idle: '空闲',
+  away: '离开中',
+  parked: '搁置',
+  locked: '锁定',
+  completed: '已完成',
+};
+const FLAG_LABEL: Record<string, string> = {
+  help: '求助',
+  integrity: '诚信',
+  budget_exhausted: '额度用完',
+  low_conf: '低置信',
+};
+
+const liveColumns = [
+  { colKey: 'displayName', title: '学生' },
+  { colKey: 'status', title: '状态' },
+  { colKey: 'layer', title: '层' },
+  { colKey: 'keysOwn', title: '自己写出' },
+  { colKey: 'reveal', title: '透露' },
+  { colKey: 'stuckSec', title: '无进展' },
+  { colKey: 'flags', title: '标记' },
+  { colKey: 'lastActiveAt', title: '最近活动' },
+];
+
+const stats = computed(() => {
+  const summary = live.value?.summary;
+  return [
+    { label: '在线', value: summary?.online ?? 0 },
+    { label: '已开始', value: summary?.started ?? 0 },
+    { label: '已完成', value: summary?.completed ?? 0 },
+    { label: '卡住', value: summary?.stuck ?? 0 },
+    { label: '标记', value: summary?.flagged ?? 0 },
+  ];
+});
+
+function toLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function messageOf(caught: unknown): string {
+  return caught instanceof ApiError ? caught.message : caught instanceof Error ? caught.message : '请求失败';
+}
+
+async function loadClassInfo(): Promise<void> {
+  try {
+    const list = await api.get<ClassSummary[]>('/api/v1/teacher/classes');
+    classInfo.value = list.find((item) => item.classId === classId.value) ?? null;
+    if (classInfo.value === null) pageError.value = '班级不存在或不属于你';
+  } catch (caught) {
+    pageError.value = messageOf(caught);
+  }
+}
+
+async function loadLive(): Promise<void> {
+  liveLoading.value = true;
+  try {
+    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live`);
+    liveError.value = '';
+  } catch (caught) {
+    live.value = null;
+    liveError.value =
+      caught instanceof ApiError && (caught.status === 404 || caught.status === 501)
+        ? '实时看板接口尚未上线（#51），上线后自动生效。'
+        : messageOf(caught);
+  } finally {
+    liveLoading.value = false;
+  }
+}
+
+function startPolling(): void {
+  stopPolling();
+  // 04 §2.2：P0 每 5 秒轮询；页面不可见时暂停。
+  pollTimer = window.setInterval(() => {
+    // 只在看板页签且页面可见时轮询（A 复审 P3-11）。
+    if (!document.hidden && tab.value === 'live') void loadLive();
+  }, 5000);
+}
+
+function stopPolling(): void {
+  if (pollTimer !== undefined) {
+    clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+}
+
+async function onFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  importing.value = true;
+  try {
+    const result = await api.postCsv<RosterImportResult>(`/api/v1/teacher/classes/${classId.value}/roster`, file);
+    importResult.value = result;
+    MessagePlugin.success(`导入完成：新增 ${result.added}，重复 ${result.duplicates}，非法 ${result.invalid.length}`);
+    await loadClassInfo();
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    importing.value = false;
+    input.value = '';
+  }
+}
+
+async function rotateInvite(): Promise<void> {
+  rotating.value = true;
+  try {
+    const updated = await api.post<ClassSummary>(`/api/v1/teacher/classes/${classId.value}/invite-code`);
+    classInfo.value = updated;
+    MessagePlugin.success(`新邀请码：${updated.inviteCode}`);
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    rotating.value = false;
+  }
+}
+
+async function copyInvite(): Promise<void> {
+  if (classInfo.value === null) return;
+  try {
+    await navigator.clipboard.writeText(classInfo.value.inviteCode);
+    MessagePlugin.success('邀请码已复制');
+  } catch {
+    MessagePlugin.warning('复制失败，请手动选中邀请码复制');
+  }
+}
+
+async function createAssignment(): Promise<void> {
+  if (assignmentForm.value.problemId.trim() === '') {
+    MessagePlugin.warning('请填写题目 ID');
+    return;
+  }
+  creating.value = true;
+  try {
+    const openAt = new Date(assignmentForm.value.openAt);
+    if (Number.isNaN(openAt.getTime())) throw new Error('开放时间格式不对');
+    const closeAt = assignmentForm.value.closeAt === '' ? null : new Date(assignmentForm.value.closeAt);
+    if (closeAt !== null && Number.isNaN(closeAt.getTime())) throw new Error('截止时间格式不对');
+
+    const card = await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
+      classId: classId.value,
+      problemId: assignmentForm.value.problemId.trim(),
+      version: Number(assignmentForm.value.version),
+      mode: assignmentForm.value.mode,
+      openAt: openAt.toISOString(),
+      closeAt: closeAt === null ? null : closeAt.toISOString(),
+      settings: { revealBudget: Number(assignmentForm.value.revealBudget) },
+    });
+    createdAssignments.value.unshift(card);
+    MessagePlugin.success('布置已创建');
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    creating.value = false;
+  }
+}
+
+function statusLabel(status: string): string {
+  return STATUS_LABEL[status] ?? status;
+}
+
+function flagLabel(flag: string): string {
+  return FLAG_LABEL[flag] ?? flag;
+}
+
+onMounted(async () => {
+  await loadClassInfo();
+  await loadLive();
+  startPolling();
+});
+
+function onVisibility(): void {
+  if (!document.hidden && tab.value === 'live') void loadLive();
+}
+
+document.addEventListener('visibilitychange', onVisibility);
+
+onBeforeUnmount(() => {
+  stopPolling();
+  document.removeEventListener('visibilitychange', onVisibility);
+});
+</script>
+
+<template>
+  <div class="page">
+    <div class="page-head">
+      <h2>{{ classInfo?.name ?? '班级' }}</h2>
+      <span v-if="classInfo" class="page-sub" style="margin: 0">
+        邀请码 <span class="mono">{{ classInfo.inviteCode }}</span> · 名单 {{ classInfo.students }} 人 · 已认领 {{ classInfo.claimed }}
+      </span>
+    </div>
+    <t-alert v-if="pageError" theme="error" :message="pageError" />
+
+    <t-tabs v-model="tab">
+      <t-tab-panel value="live" label="实时看板">
+        <t-alert v-if="liveError" theme="warning" :message="liveError" style="margin: 12px 0" />
+        <div class="stat-cards">
+          <div v-for="item in stats" :key="item.label" class="stat-card">
+            <div class="value">{{ item.value }}</div>
+            <div class="label">{{ item.label }}</div>
+          </div>
+        </div>
+        <t-table
+          :data="live?.rows ?? []"
+          :columns="liveColumns"
+          row-key="anonCode"
+          :loading="liveLoading"
+          size="small"
+          hover
+        >
+          <template #status="{ row }">
+            <t-tag :theme="row.status === 'completed' ? 'success' : row.status === 'locked' ? 'danger' : 'default'">
+              {{ statusLabel(row.status) }}
+            </t-tag>
+          </template>
+          <template #flags="{ row }">
+            <t-space v-if="row.flags && row.flags.length">
+              <t-tag v-for="flag in row.flags" :key="flag" size="small" variant="light">
+                {{ flagLabel(flag) }}
+              </t-tag>
+            </t-space>
+            <span v-else>—</span>
+          </template>
+          <template #lastActiveAt="{ row }">
+            <span>{{ row.lastActiveAt ? new Date(row.lastActiveAt).toLocaleTimeString('zh-CN') : '—' }}</span>
+          </template>
+          <template #empty>
+            <div class="empty">
+              {{ liveError ? '看板接口待上线。' : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
+            </div>
+          </template>
+        </t-table>
+        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。</div>
+      </t-tab-panel>
+
+      <t-tab-panel value="roster" label="名单">
+        <t-alert
+          theme="info"
+          message="当前契约没有 GET 名单列表接口（见 #50 PR 的缺口说明）；本页提供导入与认领人数，列表待 B 补契约后展示。"
+          style="margin: 12px 0"
+        />
+        <div class="inline-actions" style="margin-bottom: 16px">
+          <span>邀请码 <b class="mono">{{ classInfo?.inviteCode ?? '—' }}</b></span>
+          <t-button size="small" variant="outline" @click="copyInvite">复制</t-button>
+          <t-button size="small" :loading="rotating" @click="rotateInvite">重置邀请码</t-button>
+          <t-button size="small" theme="primary" :loading="importing" @click="fileInput?.click()">导入名单 CSV</t-button>
+          <input ref="fileInput" type="file" accept=".csv,text/csv" hidden @change="onFileChange" />
+        </div>
+        <div class="page-sub">CSV：<code>学号,姓名</code>（姓名可空）；UTF-8/GBK 自动识别；重复学号合并；非法行会给出原因。</div>
+        <t-table
+          v-if="importResult"
+          :data="importResult.invalid"
+          :columns="[
+            { colKey: 'row', title: '行号' },
+            { colKey: 'reason', title: '原因' },
+          ]"
+          row-key="row"
+          size="small"
+        >
+          <template #empty><div class="empty">没有非法行。</div></template>
+        </t-table>
+        <div v-if="importResult" class="page-sub" style="margin-top: 8px">
+          本次导入：新增 {{ importResult.added }}，重复 {{ importResult.duplicates }}，非法 {{ importResult.invalid.length }}。
+        </div>
+      </t-tab-panel>
+
+      <t-tab-panel value="assignments" label="布置">
+        <t-form label-width="90px" style="max-width: 560px; margin-top: 12px">
+          <t-form-item label="题目 ID">
+            <t-input v-model="assignmentForm.problemId" placeholder="如：epsN" />
+          </t-form-item>
+          <t-form-item label="版本">
+            <t-input-number v-model="assignmentForm.version" :min="1" theme="normal" />
+          </t-form-item>
+          <t-form-item label="模式">
+            <t-select v-model="assignmentForm.mode" :options="[{ label: '练习', value: 'practice' }, { label: '测验', value: 'test' }]" />
+          </t-form-item>
+          <t-form-item label="开放时间">
+            <input v-model="assignmentForm.openAt" class="native-input" type="datetime-local" />
+          </t-form-item>
+          <t-form-item label="截止时间">
+            <input v-model="assignmentForm.closeAt" class="native-input" type="datetime-local" />
+          </t-form-item>
+          <t-form-item label="透露预算">
+            <t-input-number v-model="assignmentForm.revealBudget" :min="0" :max="10" theme="normal" />
+          </t-form-item>
+          <t-form-item label=" ">
+            <t-button theme="primary" :loading="creating" @click="createAssignment">布置</t-button>
+          </t-form-item>
+        </t-form>
+
+        <t-alert
+          theme="info"
+          message="当前契约没有 GET 布置列表接口（见 #50 PR）；这里只显示本次会话创建的布置。列表接口补上后自动替换。"
+          style="margin: 12px 0"
+        />
+        <t-table
+          :data="createdAssignments"
+          :columns="[
+            { colKey: 'title', title: '题目' },
+            { colKey: 'mode', title: '模式' },
+            { colKey: 'status', title: '状态' },
+            { colKey: 'openAt', title: '开放' },
+          ]"
+          row-key="assignmentId"
+          size="small"
+        >
+          <template #empty><div class="empty">还没有创建布置。</div></template>
+        </t-table>
+      </t-tab-panel>
+
+      <t-tab-panel value="metrics" label="指标">
+        <t-alert theme="info" message="指标页随 #35 上线：层漏斗、关键步骤卡点热力、独立度分布（口径 08 §4）。" style="margin: 12px 0" />
+      </t-tab-panel>
+
+      <t-tab-panel value="export" label="导出">
+        <t-alert theme="info" message="导出页随 #35 上线：默认匿名、字段与 08 §5 一致、带字段字典。" style="margin: 12px 0" />
+      </t-tab-panel>
+    </t-tabs>
+  </div>
+</template>
+
+<style scoped>
+.native-input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--td-component-border, #e3e6eb);
+  border-radius: 4px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary, #1f2329);
+  font: inherit;
+}
+</style>

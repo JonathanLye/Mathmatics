@@ -1,0 +1,79 @@
+// 统一的 fetch 封装（06 §1）：
+// - 同源 Cookie（credentials: 'include'）；本地开发由 Vite 代理 /api 到 server。
+// - 非 GET 一律带 X-Requested-With: proof-gym（CSRF 校验）。
+// - 错误统一解析 { error: { code, message, detail } }。
+export class ApiError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: number,
+    message: string,
+    readonly detail?: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+interface ErrorEnvelope {
+  error?: { code?: string; message?: string; detail?: unknown };
+}
+
+async function parseError(res: Response): Promise<ApiError> {
+  const body = (await res.json().catch(() => null)) as ErrorEnvelope | null;
+  return new ApiError(
+    body?.error?.code ?? 'HTTP_ERROR',
+    res.status,
+    body?.error?.message ?? `请求失败（${res.status}）`,
+    body?.error?.detail,
+  );
+}
+
+async function handle<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
+  // 会话过期统一通知 shell（App.vue 清理 session 并跳登录），避免每个页面各写一遍。
+  if (res.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pg:unauthorized'));
+  }
+  if (!res.ok) throw await parseError(res);
+  return (await res.json()) as T;
+}
+
+function headersFor(method: string, json: boolean): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (json) headers['content-type'] = 'application/json';
+  if (method !== 'GET') headers['x-requested-with'] = 'proof-gym';
+  return headers;
+}
+
+export const api = {
+  get<T>(path: string): Promise<T> {
+    return fetch(path, { headers: headersFor('GET', false), credentials: 'include' }).then(handle<T>);
+  },
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return fetch(path, {
+      method: 'POST',
+      headers: headersFor('POST', body !== undefined),
+      credentials: 'include',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }).then(handle<T>);
+  },
+  patch<T>(path: string, body: unknown): Promise<T> {
+    return fetch(path, {
+      method: 'PATCH',
+      headers: headersFor('PATCH', true),
+      credentials: 'include',
+      body: JSON.stringify(body),
+    }).then(handle<T>);
+  },
+  // 名单 CSV 用原始字节上传（服务端做 UTF-8/GBK 探测，04 §10）。
+  postCsv<T>(path: string, file: File): Promise<T> {
+    return file.arrayBuffer().then((buffer) =>
+      fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'text/csv', 'x-requested-with': 'proof-gym' },
+        credentials: 'include',
+        body: buffer,
+      }).then(handle<T>),
+    );
+  },
+};
