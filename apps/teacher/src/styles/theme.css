@@ -1,0 +1,204 @@
+/* 教师端基础样式：桌面优先（04 开头），信息密度高于学生端：表格行高 40px、正文 14px。
+   颜色尽量走 TDesign CSS 变量（--td-*），暗色由 [theme-mode="dark"] 切换（TDesign 官方变量方案）。 */
+:root {
+  --pg-bg: var(--td-bg-color-page, #f5f7fa);
+  --pg-surface: var(--td-bg-color-container, #ffffff);
+  --pg-text: var(--td-text-color-primary, #1f2329);
+  --pg-text-secondary: var(--td-text-color-secondary, #5e6670);
+  --pg-border: var(--td-component-border, #e3e6eb);
+  --pg-brand: var(--td-brand-color, #006eff);
+  --pg-danger: var(--td-error-color, #d54941);
+  --pg-success: var(--td-success-color, #2ba471);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+}
+
+.app-shell {
+  display: flex;
+  min-height: 100%;
+}
+
+.app-aside {
+  width: 180px;
+  flex: 0 0 180px;
+  background: var(--pg-surface);
+  border-right: 1px solid var(--pg-border);
+  padding: 20px 12px;
+}
+
+.app-brand {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--pg-text);
+}
+
+.app-brand-sub {
+  font-size: 12px;
+  color: var(--pg-text-secondary);
+  margin: 2px 0 22px;
+}
+
+.app-nav-item {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 6px;
+  color: var(--pg-text);
+  text-decoration: none;
+}
+
+.app-nav-item.router-link-active {
+  color: var(--pg-brand);
+  background: var(--td-brand-color-light, #e8f1ff);
+  font-weight: 500;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--pg-surface);
+  border-bottom: 1px solid var(--pg-border);
+}
+
+.app-user {
+  color: var(--pg-text-secondary);
+}
+
+.app-content {
+  flex: 1;
+  padding: 20px;
+  overflow: auto;
+}
+
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.page-head h2 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.page-sub {
+  color: var(--pg-text-secondary);
+  margin: -8px 0 16px;
+}
+
+.empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--pg-text-secondary);
+}
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+
+.stat-card {
+  background: var(--pg-surface);
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.stat-card .value {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.stat-card .label {
+  font-size: 12px;
+  color: var(--pg-text-secondary);
+  margin-top: 4px;
+}
+
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pg-bg);
+}
+
+.login-card {
+  width: 360px;
+  padding: 28px;
+  border-radius: 10px;
+  background: var(--pg-surface);
+  border: 1px solid var(--pg-border);
+}
+
+.login-card h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.login-sub {
+  color: var(--pg-text-secondary);
+  font-size: 12px;
+  margin-bottom: 22px;
+}
+
+.login-error {
+  color: var(--pg-danger);
+  font-size: 13px;
+  margin-bottom: 12px;
+  min-height: 18px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+
+@media (max-width: 768px) {
+  .app-aside {
+    display: none;
+  }
+  .app-content {
+    padding: 12px;
+  }
+}
