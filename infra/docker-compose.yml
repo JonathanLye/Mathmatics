@@ -33,6 +33,23 @@ services:
       timeout: 3s
       retries: 10
 
+  # 一次性迁移：server 启动前执行 pnpm db:migrate 的等价命令（幂等，见 apps/server/migrations/README.md）。
+  # 种子题目不在这里导入：首次部署后手动 `docker compose run --rm migrate node apps/server/src/db/cli.ts seed`。
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["node", "apps/server/src/db/cli.ts", "migrate"]
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://proof_gym:${POSTGRES_PASSWORD:?}@postgres:5432/proof_gym
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   server:
     build:
       context: ..
@@ -48,6 +65,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     expose:
       - "3000"
     healthcheck:
@@ -71,6 +90,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

@@ -86,6 +86,65 @@ jobs:
       - name: Smoke
         run: pnpm build
 
+  # PGlite 覆盖不到 node-postgres 驱动路径与真实 advisory 锁；这个 job 只做迁移/种子冒烟，不进 ci-gate。
+  postgres:
+    name: postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: proof_gym
+          POSTGRES_USER: proof_gym
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U proof_gym -d proof_gym"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://proof_gym:postgres@127.0.0.1:5432/proof_gym
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Setup pnpm and Node
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          runtime: node@24
+          cache: true
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Migrate twice on real PostgreSQL
+        run: pnpm db:migrate && pnpm db:migrate
+      - name: Seed
+        run: pnpm db:seed
+      - name: Assert version table and schema
+        working-directory: apps/server
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+          await client.connect();
+          const versions = await client.query('select version, sha256 from public.schema_migrations order by version');
+          if (!versions.rows.some((row) => row.version === '0000_init')) throw new Error('缺少基线 0000_init');
+          for (const row of versions.rows) {
+            if (row.version !== '0000_init' && !/^[0-9a-f]{64}$/.test(row.sha256 ?? '')) {
+              throw new Error(`迁移缺少 sha256：${row.version}`);
+            }
+          }
+          const tables = await client.query("select to_regclass('app.users') as users, to_regclass('app.attempts') as attempts");
+          if (!tables.rows[0].users || !tables.rows[0].attempts) throw new Error('schema.sql 未生效');
+          await client.end();
+          NODE
+
   # 唯一 required status check：子 job 跳过也算过，真实失败才红。
   ci-gate:
     name: ci-gate
