@@ -3,10 +3,11 @@ import { createMockState, DEFAULT_MOCK, isMockKey, MOCK_LABELS, parseMockKey, ty
 import { useAttempt } from '@/stores/attempt'
 
 // #9 DoD：4 份典型 AttemptState 必须存在，且结构符合学生端渲染需要。
-const KEYS: MockKey[] = ['l1-active', 'l3-active', 'l3-exhausted', 'completed']
+// #26 追加 l3-ready / l4-active / l5-active / l6-active 四份，用来走 L3→L4→L5→L6→完成页 全流程。
+const KEYS: MockKey[] = ['l1-active', 'l3-active', 'l3-exhausted', 'l3-ready', 'l4-active', 'l5-active', 'l6-active', 'completed']
 
-describe('典型 AttemptState（issue #9）', () => {
-  it('四个状态都有中文标签与默认 mock', () => {
+describe('典型 AttemptState（issue #9 / #26）', () => {
+  it('状态都有中文标签与默认 mock', () => {
     expect(Object.keys(MOCK_LABELS).sort()).toEqual([...KEYS].sort())
     expect(KEYS).toContain(DEFAULT_MOCK)
   })
@@ -42,10 +43,39 @@ describe('典型 AttemptState（issue #9）', () => {
     expect(s.budget.revealUsed).toBe(s.budget.revealMax)
   })
 
-  it('④ 本题完成：status=completed 且 completion.done', () => {
+  it('④ 第 3 层可写完了：有行且 canFinish=true', () => {
+    const s = createMockState('l3-ready')
+    expect(s.currentLayer).toBe('L3')
+    expect(s.steps?.canFinish).toBe(true)
+    expect((s.steps?.lines ?? []).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('⑤ 第 4 层自检：3 道题、均为 open', () => {
+    const s = createMockState('l4-active')
+    expect(s.currentLayer).toBe('L4')
+    expect(s.selfcheck?.items).toHaveLength(3)
+    expect(s.selfcheck?.items.every((item) => item.status === 'open')).toBe(true)
+  })
+
+  it('⑥ 第 5 层迁移题：transfer=active 且有题面', () => {
+    const s = createMockState('l5-active')
+    expect(s.currentLayer).toBe('L5')
+    expect(s.transfer?.status).toBe('active')
+    expect(s.transfer?.stem).toContain('$')
+  })
+
+  it('⑦ 第 6 层总结：五问、answers 为空', () => {
+    const s = createMockState('l6-active')
+    expect(s.currentLayer).toBe('L6')
+    expect(s.summary?.questions).toHaveLength(5)
+    expect(s.summary?.answers).toHaveLength(0)
+  })
+
+  it('⑧ 本题完成：status=completed、completion.done、总结五问已答', () => {
     const s = createMockState('completed')
     expect(s.status).toBe('completed')
     expect(s.completion?.done).toBe(true)
+    expect(s.summary?.answers).toHaveLength(5)
   })
 })
 

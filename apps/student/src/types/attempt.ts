@@ -90,6 +90,74 @@ export interface StepsView {
   canFinish: boolean
 }
 
+/** 微课/图解小核验（concept.schema.json 的 CheckQuestion；answer 由服务端判定，前端不自己判对错）。 */
+export interface CheckQuestion {
+  q: string
+  options: string[]
+  answer: number
+  right: string
+  wrong: string
+}
+
+/** 参数化图解（concept.schema.json 的 VisualSpec；前端只认这几种 type，不执行数据里的代码）。 */
+export interface VisualSpec {
+  type: 'seq-band' | 'partial-sums' | 'func-band' | 'monotone-steps' | 'number-line'
+  title?: string
+  params: {
+    expr?: string
+    exprLatex?: string
+    series?: Array<{ expr: string; label: string }>
+    limit?: number
+    at?: number
+    epsilon?: { min?: number; max?: number; init?: number; step?: number }
+    nMax?: number
+    xRange?: [number, number]
+    yRange?: [number, number]
+    showN?: boolean
+  }
+}
+
+/** 微课一步（concept.schema.json 的 LessonStep；check.answer 不下发，由 /lesson/check 判定）。 */
+export interface LessonStep {
+  id: string
+  kind: 'intuition' | 'map' | 'distortion' | 'boundary' | 'build' | 'return'
+  text: string
+  visual?: VisualSpec
+  check?: CheckQuestion
+}
+
+/** 微课（openapi LessonView；服务端已过闸门）。 */
+export interface LessonView {
+  conceptId: string
+  title: string
+  steps: LessonStep[]
+  generated?: string | null
+  currentStepId?: string
+}
+
+export interface SelfcheckItem {
+  itemId: string
+  question: string
+  answer?: string
+  status: 'open' | 'accepted' | 'followup'
+}
+
+export interface SelfcheckView {
+  items: SelfcheckItem[]
+}
+
+export interface TransferView {
+  childAttemptId?: string | null
+  stem?: string | null
+  status: 'not_started' | 'active' | 'completed' | 'skipped'
+}
+
+export interface SummaryView {
+  questions: string[]
+  answers: string[]
+  followup?: string | null
+}
+
 export interface HelpState {
   hintAvailable: boolean
   nextLevel?: HintLevel
@@ -160,13 +228,13 @@ export interface AttemptState {
   def?: DefView
   frame?: FrameView
   steps?: StepsView
-  selfcheck?: unknown
-  transfer?: unknown
-  summary?: unknown
+  selfcheck?: SelfcheckView
+  transfer?: TransferView
+  summary?: SummaryView
   notes: Note[]
   help: HelpState
   integrity: IntegrityView
-  completion?: { done: boolean; independence?: number | null; reviewAvailable?: boolean; leanCard?: unknown }
+  completion?: CompletionView
   serverTime: string
 }
 
@@ -176,6 +244,36 @@ export interface InputMeta {
   draftId: string
   recogId?: string
   pasteChars?: number
+}
+
+/** 证明本卡片（openapi Notebook.cards；mock 阶段额外带 mock 键，真实接口按 attemptId 取状态）。 */
+export interface NotebookCard {
+  attemptId: string
+  title: string
+  proof?: string[]
+  summary?: string[]
+  definition?: string
+  weakPoints?: string[]
+  completedAt?: string
+  /** 仅 mock：回到该题时加载哪份典型 state；真实接口用 attemptId 拉取。 */
+  mock?: string
+}
+
+export interface NotebookView {
+  cards: NotebookCard[]
+  toRedo?: Array<{ assignmentId?: string; title?: string; attemptId?: string | null }>
+}
+
+export interface LeanCard {
+  theorems?: string[]
+  steps?: Array<{ keyId?: string; label?: string; tactic?: string }>
+}
+
+export interface CompletionView {
+  done: boolean
+  independence?: number | null
+  reviewAvailable?: boolean
+  leanCard?: LeanCard | null
 }
 
 export interface LineDraft {

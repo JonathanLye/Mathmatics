@@ -133,7 +133,30 @@ const PAGES = [
     hash: '#/pages/practice/index?mock=completed',
     marker: { selector: '.pg-practice__donetitle', text: '本题完成' },
   },
-  { name: 'proofbook', hash: '#/pages/proofbook/index' },
+  {
+    // #26 第 4 层：自检（3 道题）→ 断言自检表单真实 DOM。
+    name: 'practice-l4',
+    hash: '#/pages/practice/index?mock=l4-active',
+    marker: { selector: '[data-testid="selfcheck-form"]', text: '第 4 层 · 自检' },
+  },
+  {
+    // #26 第 5 层：迁移题（已开始态）→ 断言迁移题表单。
+    name: 'practice-l5',
+    hash: '#/pages/practice/index?mock=l5-active',
+    marker: { selector: '[data-testid="transfer-form"]', text: '第 5 层 · 迁移题' },
+  },
+  {
+    // #26 第 6 层：总结五问 → 断言总结表单。
+    name: 'practice-l6',
+    hash: '#/pages/practice/index?mock=l6-active',
+    marker: { selector: '[data-testid="summary-form"]', text: '第 6 层 · 总结' },
+  },
+  {
+    // #26 证明本：断言真实列表卡片（不再只截空页）。
+    name: 'proofbook',
+    hash: '#/pages/proofbook/index',
+    marker: { selector: '[data-testid="notebook-card"]', text: '数列极限' },
+  },
 ]
 const VIEWPORTS = [
   { name: 'mobile', width: 390, height: 844, isMobile: true },

@@ -1,16 +1,23 @@
-# mocks —— 4 份典型 AttemptState（issue #9）
+# mocks —— 典型 AttemptState（issue #9 / #26）
 
 > 契约真源：`10-开发文档/contracts/openapi.yaml` 的 `AttemptState`。
 > 这里的数据只用于「#18/#19 未完成时」让 UI 可跑、可验收；字段名与结构必须和契约一致。
 
-## 四份 mock（`src/mocks/attemptStates.ts`）
+## 典型 mock（`src/mocks/attemptStates.ts`）
 
 | key | 场景 | 覆盖的 UI 状态 |
 |---|---|---|
-| `l1-active` | 第 1 层进行中（新题） | 表单、层导航锁定态、预算 0 |
+| `l1-active` | 第 1 层进行中（新题） | 表单、层导航锁定态、预算 0、微课入口 |
 | `l3-active` | 第 3 层进行中（2 行 + 行内批注） | 行列表、红笔批注、canFinish=false |
 | `l3-exhausted` | 透露额度用尽 + 长时间卡住 | 软着陆四出路、琥珀色提示、`help.exhausted` |
+| `l3-ready` | 第 3 层可点「写完了」（#26 全流程起点） | 行列表、canFinish=true |
+| `l4-active` | 第 4 层自检（3 道题待答） | 自检列表、只读证明、追问态 |
+| `l5-active` | 第 5 层迁移题（子作答已创建） | 迁移题题面、输入区 |
+| `l6-active` | 第 6 层总结（五问待答） | 总结表单 |
 | `completed` | 本题完成（第 6 层） | 完成卡片、独立度、leanCard、证明本入口 |
+
+第 1 层微课、自检题、迁移题面、总结五问、证明本列表的内容在 `src/mocks/laterLayers.ts`（取自
+`contracts/seed/concepts.json` / `epsN.json` / `epsN-T1.json` 与 01/02 文档），真实接口接入后由服务端下发（#24）。
 
 做题页切换方式：
 1. 页面底部右下角的 `mock: …` 悬浮按钮（`MockSwitcher.vue`）；
