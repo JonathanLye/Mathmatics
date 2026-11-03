@@ -10,6 +10,9 @@ import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import type { FrameView } from '@/types/attempt'
 
+/** 单条 MathText 上限，对齐 openapi.yaml 的 `MathText.maxLength: 4000`；最终以服务端校验为准（#24）。 */
+const MAX_MATH_TEXT = 4000
+
 const props = withDefaults(defineProps<{ layer?: string; view?: FrameView; busy?: boolean }>(), {
   layer: 'L2',
   view: () => ({}),
@@ -23,8 +26,6 @@ const emit = defineEmits<{
 }>()
 
 const draft = ref('')
-/** 本机展开过通用骨架；服务端 templateShown=true 时直接展开。 */
-const localTemplateShown = ref(false)
 
 watch(
   () => props.view.last,
@@ -33,45 +34,40 @@ watch(
   },
   { immediate: true },
 )
-watch(
-  () => props.view.templateShown,
-  (shown) => {
-    if (shown) localTemplateShown.value = true
-  },
-  { immediate: true },
-)
 
 const text = computed(() => draft.value.trim())
 const canSubmit = computed(() => text.value.length > 0 && !props.busy)
-const templateVisible = computed(() => Boolean(props.view.template) && localTemplateShown.value)
+/** 是否展示通用骨架只看服务端 state（viewFrameTemplate 返回 templateShown=true），本地不置状态。 */
+const templateVisible = computed(() => Boolean(props.view.template) && Boolean(props.view.templateShown))
+/** 接近上限时把字数提示变色。 */
+const nearLimit = computed(() => draft.value.length >= MAX_MATH_TEXT * 0.95)
 
 function submit() {
   if (!canSubmit.value) return
   emit('submit', text.value)
 }
 
-/** 通用骨架不计透露量；同时把"讲解入口"交给父级（微课 #26 接入）。 */
+/** 通用骨架不计透露量；由父组件调 POST /framework/template，本组件只上抛 lesson 事件。 */
 function showTemplate() {
-  localTemplateShown.value = true
   emit('lesson')
 }
 </script>
 
 <template>
-  <view class="pg-layer">
+  <view class="pg-layer" data-testid="layer2-form">
     <view class="pg-layer__head">
       <text class="pg-layer__title">第 2 层 · 证明骨架</text>
       <text class="pg-layer__step pg-small">写出框架</text>
     </view>
 
-    <view class="pg-layer__task">
+    <view class="pg-layer__task" data-testid="layer2-task">
       <MathText :text="props.view.task || '写出这个证明的骨架。'" serif block />
     </view>
     <text class="pg-layer__hint pg-small">
       开头写什么、结尾落到什么、中间要构造的是什么；最后补一句「真正要解决的是什么」。不用写出构造本身。
     </text>
 
-    <view v-if="templateVisible" class="pg-layer__template">
+    <view v-if="templateVisible" class="pg-layer__template" data-testid="layer2-template">
       <text class="pg-layer__templatelabel pg-small">通用骨架（不计透露量）</text>
       <MathText :text="props.view.template || ''" serif block />
     </view>
@@ -79,23 +75,40 @@ function showTemplate() {
     <textarea
       v-model="draft"
       class="pg-layer__input"
-      :maxlength="-1"
+      data-testid="layer2-input"
+      :maxlength="MAX_MATH_TEXT"
       :disabled="props.busy"
       placeholder="按骨架写：任取 ε>0。取 N=＿（待构造）。则当 n>N 时，⋯<ε。"
       placeholder-style="font-size:16px;line-height:1.65;color:#9aa5b5;padding:10px 12px"
     />
+    <text
+      v-if="text"
+      class="pg-layer__count pg-small"
+      :class="{ 'pg-layer__count--near': nearLimit }"
+      data-testid="layer2-count"
+    >已写 {{ draft.length }} / {{ MAX_MATH_TEXT }} 字</text>
 
-    <view v-if="text" class="pg-layer__preview">
+    <view v-if="text" class="pg-layer__preview" data-testid="layer2-preview">
       <text class="pg-layer__previewlabel pg-small">公式预览</text>
       <MathText :text="text" block />
     </view>
 
-    <button class="pg-layer__btn pg-layer__btn--primary" :disabled="!canSubmit" @tap="submit">
+    <button
+      class="pg-layer__btn pg-layer__btn--primary"
+      data-testid="layer2-check"
+      role="button"
+      :disabled="!canSubmit"
+      @tap="submit"
+    >
       {{ props.busy ? '核对中…' : '核对' }}
     </button>
     <view class="pg-layer__row">
-      <button class="pg-layer__btn" :disabled="props.busy" @tap="showTemplate">看通用骨架</button>
-      <button class="pg-layer__btn" :disabled="props.busy" @tap="emit('skip')">跳过</button>
+      <button class="pg-layer__btn" data-testid="layer2-template-btn" role="button" :disabled="props.busy" @tap="showTemplate">
+        看通用骨架
+      </button>
+      <button class="pg-layer__btn" data-testid="layer2-skip" role="button" :disabled="props.busy" @tap="emit('skip')">
+        跳过
+      </button>
     </view>
   </view>
 </template>
@@ -128,6 +141,8 @@ function showTemplate() {
   color: var(--ink);
 }
 .pg-layer__hint { color: var(--ink-2); }
+.pg-layer__count { color: var(--ink-2); align-self: flex-end; }
+.pg-layer__count--near { color: var(--hint); font-weight: 600; }
 .pg-layer__template {
   display: flex;
   flex-direction: column;

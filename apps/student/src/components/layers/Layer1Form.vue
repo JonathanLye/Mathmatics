@@ -10,6 +10,9 @@ import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import type { DefView } from '@/types/attempt'
 
+/** 单条 MathText 上限，对齐 openapi.yaml 的 `MathText.maxLength: 4000`；最终以服务端校验为准（#24）。 */
+const MAX_MATH_TEXT = 4000
+
 const props = withDefaults(defineProps<{ layer?: string; view?: DefView; busy?: boolean }>(), {
   layer: 'L1',
   view: () => ({}),
@@ -36,6 +39,8 @@ watch(
 
 const text = computed(() => draft.value.trim())
 const canSubmit = computed(() => text.value.length > 0 && !props.busy)
+/** 接近上限时把字数提示变色。 */
+const nearLimit = computed(() => draft.value.length >= MAX_MATH_TEXT * 0.95)
 
 function submit() {
   if (!canSubmit.value) return
@@ -44,13 +49,13 @@ function submit() {
 </script>
 
 <template>
-  <view class="pg-layer">
+  <view class="pg-layer" data-testid="layer1-form">
     <view class="pg-layer__head">
       <text class="pg-layer__title">第 1 层 · 记忆核验</text>
       <text class="pg-layer__step pg-small">写出定义</text>
     </view>
 
-    <view class="pg-layer__task">
+    <view class="pg-layer__task" data-testid="layer1-task">
       <MathText :text="props.view.task || '写出本题要用到的定义。'" serif block />
     </view>
     <text class="pg-layer__hint pg-small">
@@ -60,23 +65,40 @@ function submit() {
     <textarea
       v-model="draft"
       class="pg-layer__input"
-      :maxlength="-1"
+      data-testid="layer1-input"
+      :maxlength="MAX_MATH_TEXT"
       :disabled="props.busy"
       placeholder="在这里写出定义……"
       placeholder-style="font-size:16px;line-height:1.65;color:#9aa5b5;padding:10px 12px"
     />
+    <text
+      v-if="text"
+      class="pg-layer__count pg-small"
+      :class="{ 'pg-layer__count--near': nearLimit }"
+      data-testid="layer1-count"
+    >已写 {{ draft.length }} / {{ MAX_MATH_TEXT }} 字</text>
 
-    <view v-if="text" class="pg-layer__preview">
+    <view v-if="text" class="pg-layer__preview" data-testid="layer1-preview">
       <text class="pg-layer__previewlabel pg-small">公式预览</text>
       <MathText :text="text" block />
     </view>
 
-    <button class="pg-layer__btn pg-layer__btn--primary" :disabled="!canSubmit" @tap="submit">
+    <button
+      class="pg-layer__btn pg-layer__btn--primary"
+      data-testid="layer1-check"
+      role="button"
+      :disabled="!canSubmit"
+      @tap="submit"
+    >
       {{ props.busy ? '核对中…' : '核对' }}
     </button>
     <view class="pg-layer__row">
-      <button class="pg-layer__btn" :disabled="props.busy" @tap="emit('lesson')">看不懂</button>
-      <button class="pg-layer__btn" :disabled="props.busy" @tap="emit('skip')">已掌握，跳过</button>
+      <button class="pg-layer__btn" data-testid="layer1-lesson" role="button" :disabled="props.busy" @tap="emit('lesson')">
+        看不懂
+      </button>
+      <button class="pg-layer__btn" data-testid="layer1-skip" role="button" :disabled="props.busy" @tap="emit('skip')">
+        已掌握，跳过
+      </button>
     </view>
   </view>
 </template>
@@ -109,6 +131,8 @@ function submit() {
   color: var(--ink);
 }
 .pg-layer__hint { color: var(--ink-2); }
+.pg-layer__count { color: var(--ink-2); align-self: flex-end; }
+.pg-layer__count--near { color: var(--hint); font-weight: 600; }
 /* uni-app H5 的 textarea 是 <uni-textarea> 自定义元素，内层才是原生 textarea。 */
 .pg-layer__input {
   display: block;
