@@ -1,24 +1,211 @@
 <script setup lang="ts">
-// #8 占位：正式提示预览卡在 #16 实现。
-import type { HintPreview } from '@/types/attempt'
-const props = withDefaults(defineProps<{ preview?: HintPreview | null; busy?: boolean }>(), { preview: null, busy: false })
-const emit = defineEmits<{ (e: 'claim'): void; (e: 'decline'): void }>()
+/**
+ * 提示预览卡（issue #16，02 §4.8 / 01 §4.1）：「花之前告知代价」。
+ * 只渲染服务端下发的 HintPreview，不在前端重算门槛/预算/判定（08 §8 AI 规则 3）。
+ * 契约见 components/README.md；#16 追加的可选项：
+ * - budget：用于文案「（你已用 0.5 / 2），剩余 1。」；不传只显示本条成本；
+ * - emits retry / soft-landing（blocked 时「重新获取预览」、额度用完的四个出路按钮）。
+ * HintPreview 字段全部可选：blocked preview 只有 allowed/reason/waitSec，缺 level 时只渲染原因行。
+ */
+import { computed, onUnmounted, ref, watch } from 'vue'
+import type { BudgetView, HintPreview } from '@/types/attempt'
+import {
+  PREVIEW_ALLOWED_GUIDANCE,
+  formatRevealAmount,
+  previewAllowed,
+  previewCanRetry,
+  previewCostLine,
+  previewDwellSeconds,
+  previewReasonText,
+  previewSoftLandingItems,
+  previewTitle,
+} from './hintPreviewCopy'
+
+const props = withDefaults(
+  defineProps<{
+    preview: HintPreview
+    busy?: boolean
+    /** 可选：服务端预算快照，用于显示「已用 / 剩余」；不传时只显示本条成本 */
+    budget?: BudgetView | null
+  }>(),
+  { busy: false, budget: null },
+)
+const emit = defineEmits<{
+  (e: 'claim'): void
+  (e: 'decline'): void
+  /** blocked 时「重新获取预览」：页面重新 /help（建议项，见 PR #91 审计） */
+  (e: 'retry'): void
+  /** 额度用完/被门槛挡住时的软着陆出路 */
+  (e: 'soft-landing', action: string): void
+}>()
+
+const title = computed(() => previewTitle(props.preview))
+const costLine = computed(() => previewCostLine(props.preview, props.budget))
+const reasonText = computed(() => previewReasonText(props.preview, remain.value))
+const allowed = computed(() => previewAllowed(props.preview) && !props.busy)
+const canRetry = computed(() => previewCanRetry(props.preview) && !props.busy)
+const softItems = computed(() => previewSoftLandingItems(props.preview.softLanding))
+const guidance = PREVIEW_ALLOWED_GUIDANCE
+
+/** dwell 门槛的倒计时：只把服务端 waitSec 逐秒显示，到 0 也不在前端放开「领取」。 */
+const remain = ref(0)
+let timer: ReturnType<typeof setInterval> | null = null
+let autoRetried = false
+function stopTimer() {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
+}
+watch(
+  () => props.preview,
+  (preview) => {
+    stopTimer()
+    autoRetried = false
+    remain.value = previewDwellSeconds(preview) ?? 0
+    if (remain.value > 0) {
+      timer = setInterval(() => {
+        remain.value = Math.max(0, remain.value - 1)
+        if (remain.value <= 0) {
+          stopTimer()
+          // 归零只说明服务端给的等待时间到了；是否可领仍由服务端决定 —— 自动重新取一次预览。
+          if (!autoRetried && !props.busy) {
+            autoRetried = true
+            emit('retry')
+          }
+        }
+      }, 1000)
+    }
+  },
+  { immediate: true },
+)
+onUnmounted(stopTimer)
 </script>
+
 <template>
-  <view v-if="props.preview" class="pg-preview">
-    <text class="pg-preview__title">下一条：{{ props.preview.level }} · 透露 {{ props.preview.cost }}</text>
-    <text class="pg-preview__text pg-small">正式预览卡在 #16 实现。</text>
+  <view class="pg-preview" role="dialog" aria-label="提示预览" aria-live="polite">
+    <text v-if="title" class="pg-preview__title">{{ title }}</text>
+    <text v-if="costLine" class="pg-preview__cost">{{ costLine }}</text>
+    <text v-if="allowed" class="pg-preview__hint pg-small">{{ guidance }}</text>
+    <text v-else class="pg-preview__reason pg-small">{{ reasonText }}</text>
+
+    <!-- 额度用完/被门槛挡住时：服务端 softLanding 渲染成按钮（02 §4.8「卡片换成四个出路按钮」） -->
+    <view v-if="!allowed && softItems.length > 0" class="pg-preview__softgrid">
+      <button
+        v-for="item in softItems"
+        :key="item.id"
+        :class="'pg-preview__softbtn pg-preview__softbtn--' + item.id"
+        :disabled="!!props.busy || item.disabled"
+        @tap="emit('soft-landing', item.id)"
+      >
+        {{ item.label }}<text v-if="item.disabled" class="pg-preview__soon">（即将上线）</text>
+      </button>
+    </view>
+
+    <button v-if="canRetry" class="pg-preview__retry" :disabled="!!props.busy" @tap="emit('retry')">
+      重新获取预览
+    </button>
+
     <view class="pg-preview__row">
-      <button class="pg-preview__btn" @tap="emit('decline')">先不要</button>
-      <button class="pg-preview__btn pg-preview__btn--primary" @tap="emit('claim')">领取</button>
+      <button class="pg-preview__btn pg-preview__decline" :disabled="!!props.busy" @tap="emit('decline')">
+        先不要
+      </button>
+      <button class="pg-preview__btn pg-preview__btn--primary pg-preview__claim" :disabled="!allowed" @tap="emit('claim')">
+        {{ props.busy ? '领取中…' : '领取' }}
+      </button>
     </view>
   </view>
 </template>
+
 <style scoped>
-.pg-preview { position: fixed; left: var(--sp-3); right: var(--sp-3); bottom: calc(120px + var(--safe-bottom)); z-index: 70; border: 1px solid var(--hint); background: var(--hint-soft); border-radius: var(--radius-card); padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-preview__title { font-weight: 600; color: var(--hint); }
-.pg-preview__text { color: var(--ink); }
-.pg-preview__row { display: flex; gap: var(--sp-2); }
-.pg-preview__btn { flex: 1; min-height: 44px; border: 1px solid var(--rule); border-radius: var(--radius-input); background: var(--sheet); color: var(--ink); }
-.pg-preview__btn--primary { border-color: var(--hint); color: var(--hint); }
+/* 琥珀色 = 计透露量的代价（02 §2.2、§4.8 线框）。 */
+.pg-preview {
+  position: fixed;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  bottom: calc(120px + var(--safe-bottom));
+  z-index: 70;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--hint);
+  border-radius: var(--radius-card);
+  background: var(--hint-soft);
+  box-shadow: var(--shadow-sheet);
+}
+.pg-preview__title {
+  color: var(--hint);
+  font-family: var(--font-serif);
+  font-size: var(--fs-stem);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.pg-preview__cost {
+  color: var(--ink);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+.pg-preview__hint {
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+}
+.pg-preview__reason {
+  color: var(--hint);
+  font-size: var(--fs-small);
+}
+.pg-preview__softgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.pg-preview__softbtn {
+  min-height: 44px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--hint);
+  border-radius: var(--radius-input);
+  background: var(--sheet);
+  color: var(--hint);
+  font-size: var(--fs-small);
+}
+.pg-preview__softbtn:disabled {
+  opacity: 0.45;
+}
+.pg-preview__soon {
+  font-size: var(--fs-mono);
+}
+.pg-preview__retry {
+  min-height: 44px;
+  border: 1px dashed var(--hint);
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--hint);
+  font-size: var(--fs-small);
+}
+.pg-preview__row {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+.pg-preview__btn {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-input);
+  background: var(--sheet);
+  color: var(--ink);
+  font-size: var(--fs-body);
+}
+.pg-preview__btn--primary {
+  border-color: var(--hint);
+  background: var(--hint);
+  color: var(--sheet);
+  font-weight: 600;
+}
+.pg-preview__btn:disabled {
+  opacity: 0.45;
+}
 </style>

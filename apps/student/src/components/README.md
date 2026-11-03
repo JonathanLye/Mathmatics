@@ -92,23 +92,32 @@ emits: { 'write-next': [] }
 
 ### `<HelpDrawer>`（#16）
 ```ts
-props: { open: boolean; help: HelpState; mode: AttemptMode; busy?: boolean }
+props: {
+  open: boolean
+  help: HelpState
+  mode: AttemptMode
+  busy?: boolean
+  note?: Note | null   // /help 返回的 note：H0/H1 免费提示、概念解释、施压拒绝、off_topic 都会在抽屉里展示
+}
 emits: {
   'update:open': [v: boolean]
-  intent: [intent: HelpIntent]                 // stuck | concept | check_line
-  send: [text: string]                          // 自由输入
+  intent: [intent: HelpIntent]                 // stuck | concept | check_line（free 只用于自由提问，见 send）
+  send: [text: string]                          // 自由提问：页面用 intent=free + text 发 /help（06 §3.4）
   claim: []                                     // 领取预览卡提示
   decline: []                                   // 先不要
-  soft-landing: [action: string]                // 额度用尽四出路
+  'soft-landing': [action: string]              // 额度用尽四出路（flag_teacher 后端未实现，置灰）
 }
 ```
+- 只渲染 `HelpState`/`Note`，不判门槛；请求在途（busy）时遮罩/关闭按钮/Esc 都不关抽屉；有 role=dialog/aria-modal，Esc 可关（busy 除外）。
 
 ### `<HintPreviewCard>`（#16）
 ```ts
-props: { preview: HintPreview; busy?: boolean }
-emits: { claim: []; decline: [] }
+props: { preview: HintPreview; busy?: boolean; budget?: BudgetView | null }
+emits: { claim: []; decline: []; retry: []; 'soft-landing': [action: string] }
 ```
-- 琥珀色边框；文案「这条会计入透露 0.5，剩余 1.5」；不能领取时显示原因与倒计时并置灰。
+- 琥珀色边框；文案「这条会计入透露 0.5（你已用 0.5 / 2），剩余 1。」（剩余 = 预算上限 − 已用 − 本条；不传 budget 时只显示成本）。
+- `HintPreview` 字段全部可选（契约无 required）：blocked preview 只有 `{ allowed:false, reason, waitSec }`，此时**只渲染原因行**（无标题/成本），`fmt` 对 undefined 不崩；`revealAfter` 是领取后的累计透露量，不是秒数。
+- 不能领取时显示原因并置灰「领取」；dwell 倒计时到 0 emit `retry`（也可手动「重新获取预览」）；`softLanding` 渲染成四个出路按钮（`flag_teacher` 后端未实现，置灰并注「即将上线」）。
 
 ### `<EditorSheet>`（#12/#15 整合，层内编辑）
 ```ts
