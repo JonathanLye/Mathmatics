@@ -9,6 +9,8 @@ export interface PreviewClaims {
   level: string;
   stateVersion: number;
   expiresAt: number;
+  // 对应 app.help_requests.id；领取成功/失败时回填 outcome。旧令牌没有该字段也兼容。
+  helpId?: string;
 }
 
 function macKey(secret: string): Buffer {
@@ -44,7 +46,8 @@ export function verifyPreview(secret: string, token: string, now: number): Previ
     typeof claims.attemptId !== 'string' ||
     typeof claims.level !== 'string' ||
     typeof claims.stateVersion !== 'number' ||
-    typeof claims.expiresAt !== 'number'
+    typeof claims.expiresAt !== 'number' ||
+    (claims.helpId !== undefined && typeof claims.helpId !== 'string')
   ) {
     return null;
   }

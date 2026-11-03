@@ -253,6 +253,22 @@ describe('Idempotency-Key（06 §1）', () => {
     expect((await db.query(`select 1 from app.idempotency_keys`)).rows).toHaveLength(1);
   });
 
+  it('/help 带同一键重放：只写 1 条 help.request 与 1 行 help_requests（#82+#84 联调）', async () => {
+    const { cookie, attemptId } = await atLayer3();
+    const first = await post(cookie, `/attempts/${attemptId}/help`, { intent: 'concept' }, { 'idempotency-key': KEY_A });
+    const again = await post(cookie, `/attempts/${attemptId}/help`, { intent: 'concept' }, { 'idempotency-key': KEY_A });
+
+    expect(first.statusCode, first.body).toBe(200);
+    expect(again.statusCode).toBe(200);
+    expect(again.headers[REPLAY_HEADER]).toBe('true');
+    const events = (
+      await db.query<{ n: string }>(`select count(*)::text n from ev.events where attempt_id = $1 and type = 'help.request'`, [attemptId])
+    ).rows[0]?.n;
+    const rows = (await db.query<{ n: string }>(`select count(*)::text n from app.help_requests where attempt_id = $1`, [attemptId])).rows[0]?.n;
+    expect(events).toBe('1');
+    expect(rows).toBe('1');
+  });
+
   it('复审 R4：同一 POST /lines 带同一键发两次，库里只有一行', async () => {
     const { cookie, attemptId } = await atLayer3();
     await post(cookie, `/attempts/${attemptId}/lines`, line, { 'idempotency-key': KEY_A });

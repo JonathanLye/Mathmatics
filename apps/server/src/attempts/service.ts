@@ -57,7 +57,21 @@ type AssignmentRow = {
   close_at: Date | null;
 };
 
+export interface HelpRecordInput {
+  intent: 'stuck' | 'concept' | 'check_line' | 'free';
+  routed: 'stuck' | 'concept' | 'check_line' | 'pressure' | 'off_topic';
+  routedBy: 'chip' | 'rule' | 'jev' | 'llm';
+  // 学生自由输入的原文：只进 app.help_requests（08 §2 要求保留，研究用），事件里只有字数。
+  text?: string;
+  lineId?: string;
+}
+
 export interface AttemptService {
+  // 08 §3 的服务端事件 help.request + app.help_requests 一行；返回 helpId。每次 /help 都要记，不论结果。
+  // 作答不可写（锁定/搁置/已结束）或布置已关闭时不记录，返回 null：这些状态不接受任何写入
+  // （作答状态由 schema status CHECK 与 guardWritable 约束；布置关闭见 06 §5 ASSIGNMENT_CLOSED；测验锁定见 11 §5.2）。
+  recordHelp(userId: string, attemptId: string, input: HelpRecordInput): Promise<string | null>;
+  setHelpOutcome(helpId: string | null, outcome: 'hint' | 'concept' | 'annotation' | 'refusal' | 'denied'): Promise<void>;
   start(userId: string, assignmentId: string): Promise<Record<string, unknown>>;
   get(userId: string, attemptId: string): Promise<Record<string, unknown>>;
   command(spec: StepSpec): Promise<Record<string, unknown>>;
@@ -308,6 +322,54 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     });
   }
 
+  async function recordHelp(userId: string, attemptId: string, input: HelpRecordInput): Promise<string | null> {
+    return db.tx(async (tx) => {
+      const row = await lockOwned(tx, attemptId, userId);
+      if (row.status !== 'active') return null;
+      try {
+        await guardAssignmentOpen(tx, row);
+      } catch (error) {
+        if (error instanceof AppError && error.code === 'ASSIGNMENT_CLOSED') return null;
+        throw error;
+      }
+      const helpId = randomUUID();
+      const anon = await userAnon(tx, row.user_id);
+      const payload: Record<string, unknown> = {
+        helpId,
+        intent: input.intent,
+        routed: input.routed,
+        routedBy: input.routedBy,
+        ...(input.text === undefined ? {} : { textChars: [...input.text].length }),
+      };
+      const layer = `L${row.state.layer}`;
+      const seq = await appendEvents(tx, row, [{ type: 'help.request', at: Date.now(), payload }], anon, layer);
+      await tx.query(`update app.attempts set last_event_seq = $2 where id = $1`, [row.id, seq]);
+
+      // line_id 外键：只接受这次作答自己的行，其它一律不记（不信任客户端传来的 id）。
+      let lineId: string | null = null;
+      if (input.lineId !== undefined) {
+        const found = await tx.query(`select 1 from app.attempt_lines where id = $1 and attempt_id = $2`, [input.lineId, row.id]);
+        lineId = found.rows.length > 0 ? input.lineId : null;
+      }
+      await tx.query(
+        `insert into app.help_requests (id, attempt_id, layer, intent, routed, routed_by, text, line_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [helpId, row.id, layer, input.intent, input.routed, input.routedBy, input.text ?? null, lineId],
+      );
+      return helpId;
+    });
+  }
+
+  // 行与事件已在 recordHelp 的事务里提交；这里是一次独立 UPDATE。两步之间崩溃会让 outcome 留在 NULL，
+  // 语义上可接受（不丢求助记录，只是缺结果），不为此把 service 边界改成跨事务。
+  async function setHelpOutcome(
+    helpId: string | null,
+    outcome: 'hint' | 'concept' | 'annotation' | 'refusal' | 'denied',
+  ): Promise<void> {
+    if (helpId === null) return;
+    await db.query(`update app.help_requests set outcome = $2 where id = $1`, [helpId, outcome]);
+  }
+
   async function get(userId: string, attemptId: string): Promise<Record<string, unknown>> {
     const row = (
       await db.query<AttemptRow>(`select * from app.attempts where id = $1 and user_id = $2`, [attemptId, userId])
@@ -390,6 +452,8 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
   }
 
   return {
+    recordHelp,
+    setHelpOutcome,
     start,
     get,
     command,

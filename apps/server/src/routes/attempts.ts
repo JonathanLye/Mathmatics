@@ -284,7 +284,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/help', helpLimited, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<HelpSubmission>(contract, '/attempts/{attemptId}/help', request);
-    return helpSvc.help(auth.userId, attemptId(request), helpInput(body));
+    return helpSvc.help(auth.userId, attemptId(request), helpInput(body), body.lineId === undefined ? {} : { lineId: body.lineId });
   });
 
   // 领取 H2–H4 提示（06 §4.2）：必须带 /help 返回的 previewToken。

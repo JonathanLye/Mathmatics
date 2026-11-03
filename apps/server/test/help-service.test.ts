@@ -72,6 +72,8 @@ describe('求助与领取（响应均符合 HelpResult）', () => {
     expect(claimed.json().note).toMatchObject({ kind: 'hint', who: 'H2 · 透露 0.5' });
     const after = (await stateOf(h.db, h.attemptId)).hint.reveal as number;
     expect(after - before).toBeCloseTo(0.5);
+    const outcome = (await h.db.query<{ outcome: string | null }>(`select outcome from app.help_requests order by created_at desc limit 1`)).rows[0]?.outcome;
+    expect(outcome).toBe('hint');
   });
 
   it('令牌被改动、换了作答、或已用过，都返回 HINT_PREVIEW_EXPIRED', async () => {
@@ -103,16 +105,25 @@ describe('求助与领取（响应均符合 HelpResult）', () => {
     const preview = await postHelp(h, { intent: 'stuck' });
     expect((await postClaim(h, preview.json().preview.previewToken as string)).statusCode).toBe(200);
 
+    const helpId = (
+      await h.db.query<{ id: string }>(
+        `insert into app.help_requests (attempt_id, layer, intent, routed, routed_by) values ($1, 'L3', 'stuck', 'stuck', 'chip') returning id`,
+        [h.attemptId],
+      )
+    ).rows[0]?.id as string;
     const fresh = signPreview(SECRET, {
       attemptId: h.attemptId,
       level: 'H3',
       stateVersion: await stateVersion(),
       expiresAt: Date.now() + 60_000,
+      helpId,
     });
     const refused = await postClaim(h, fresh);
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error.code).toBe('HINT_NOT_READY');
     expect(refused.json().error.detail).toMatchObject({ needAttempt: true });
+    const outcome = (await h.db.query<{ outcome: string | null }>(`select outcome from app.help_requests where id = $1`, [helpId])).rows[0]?.outcome;
+    expect(outcome).toBe('denied');
   });
 
   it('施压的自由提问：一句拒绝 + H0，透露量不变', async () => {

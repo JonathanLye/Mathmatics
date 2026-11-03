@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { signPreview, verifyPreview } from '../src/help/token.ts';
 
 const SECRET = 'unit-test-secret-at-least-thirty-two-chars';
-const claims = { attemptId: 'a1', level: 'H2', stateVersion: 3, expiresAt: 10_000 };
+const claims = { attemptId: 'a1', level: 'H2', stateVersion: 3, expiresAt: 10_000, helpId: 'h1' };
 
 describe('预览令牌', () => {
   it('签名后在有效期内可验证，返回原始内容', () => {
@@ -25,5 +25,7 @@ describe('预览令牌', () => {
     expect(verifyPreview(SECRET, `pt_${body}.${sig.slice(0, -2)}AA`, 5_000)).toBeNull();
     expect(verifyPreview(SECRET, 'not-a-token', 5_000)).toBeNull();
     expect(verifyPreview(SECRET, 'pt_onlybody', 5_000)).toBeNull();
+    const badHelpId = Buffer.from(JSON.stringify({ ...claims, helpId: 42 }), 'utf8').toString('base64url');
+    expect(verifyPreview(SECRET, `pt_${badHelpId}.${sig}`, 5_000)).toBeNull();
   });
 });
