@@ -172,6 +172,11 @@ jobs:
       - name: Install Chromium (match playwright-core)
         working-directory: apps/student
         run: npx --yes playwright@$(node -p "require('playwright-core/package.json').version") install --with-deps chromium
+      - name: Locate Chromium
+        run: |
+          CHROME_BIN=$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)
+          if [ -z "$CHROME_BIN" ]; then echo 'chromium binary not found'; exit 1; fi
+          echo "PG_CHROMIUM=$CHROME_BIN" >> "$GITHUB_ENV"
       - name: Screens + mock 状态断言（390/768/1280）
         run: pnpm --filter @proof-gym/student run e2e:screens
       - name: Flows（本分支有脚本才跑；#88/#89 等后续 PR 接入）
