@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 
 import { trustNearestProxy } from '../src/app.ts';
-import { createPgPool, PG_POOL_SETTINGS } from '../src/db/index.ts';
+import type { Pool } from 'pg';
+
+import { createPgPool, pgDbFromPool, PG_POOL_SETTINGS } from '../src/db/index.ts';
 import { testConfig } from './support/fixtures.ts';
 
 import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
@@ -77,5 +79,53 @@ describe('trustProxy（生产只信任最近一跳）', () => {
     });
     expect(res.json().ip).toBe('203.0.113.9');
     await app.close();
+  });
+});
+
+describe('pg 事务里借出的连接', () => {
+  // 假连接：query 按脚本返回/抛错；release 记录参数。
+  function fakePool(script: (sql: string) => void) {
+    const client = Object.assign(new EventEmitter(), {
+      released: [] as unknown[],
+      query: async (sql: string) => {
+        script(sql);
+        return { rows: [], rowCount: 0 };
+      },
+      release(arg?: unknown) {
+        this.released.push(arg);
+      },
+    });
+    const pool = { connect: async () => client, on() {}, query: async () => ({ rows: [], rowCount: 0 }), end: async () => {} } as unknown as Pool;
+    return { client, pool };
+  }
+
+  it('借出期间连接触发 error 不会变成未捕获异常，且归还后监听器已移除', async () => {
+    const seen: Error[] = [];
+    const { client, pool } = fakePool(() => {});
+    const db = pgDbFromPool(pool, (error) => seen.push(error));
+
+    await db.tx(async () => {
+      expect(client.listenerCount('error')).toBe(1);
+      expect(() => client.emit('error', new Error('terminating connection due to administrator command'))).not.toThrow();
+    });
+
+    expect(seen.map((e) => e.message)).toEqual(['terminating connection due to administrator command']);
+    expect(client.listenerCount('error')).toBe(0);
+    expect(client.released).toEqual([undefined]);
+  });
+
+  it('ROLLBACK 失败：抛出的仍是原始错误，连接带错误释放（销毁而不是放回池）', async () => {
+    const { client, pool } = fakePool((sql) => {
+      if (sql === 'ROLLBACK') throw new Error('connection lost');
+    });
+    const db = pgDbFromPool(pool, () => {});
+
+    await expect(
+      db.tx(async () => {
+        throw new Error('业务错误');
+      }),
+    ).rejects.toThrow('业务错误');
+    expect(client.released).toHaveLength(1);
+    expect((client.released[0] as Error).message).toBe('connection lost');
   });
 });
