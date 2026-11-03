@@ -68,8 +68,9 @@ export interface HelpRecordInput {
 
 export interface AttemptService {
   // 08 §3 的服务端事件 help.request + app.help_requests 一行；返回 helpId。每次 /help 都要记，不论结果。
-  recordHelp(userId: string, attemptId: string, input: HelpRecordInput): Promise<string>;
-  setHelpOutcome(helpId: string, outcome: 'hint' | 'concept' | 'annotation' | 'refusal' | 'denied'): Promise<void>;
+  // 作答不可写（锁定/搁置/已结束）或布置已关闭时不记录，返回 null：这些状态不接受任何写入（11 §5.2、06 §5）。
+  recordHelp(userId: string, attemptId: string, input: HelpRecordInput): Promise<string | null>;
+  setHelpOutcome(helpId: string | null, outcome: 'hint' | 'concept' | 'annotation' | 'refusal' | 'denied'): Promise<void>;
   start(userId: string, assignmentId: string): Promise<Record<string, unknown>>;
   get(userId: string, attemptId: string): Promise<Record<string, unknown>>;
   command(spec: StepSpec): Promise<Record<string, unknown>>;
@@ -319,9 +320,16 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     });
   }
 
-  async function recordHelp(userId: string, attemptId: string, input: HelpRecordInput): Promise<string> {
+  async function recordHelp(userId: string, attemptId: string, input: HelpRecordInput): Promise<string | null> {
     return db.tx(async (tx) => {
       const row = await lockOwned(tx, attemptId, userId);
+      if (row.status !== 'active') return null;
+      try {
+        await guardAssignmentOpen(tx, row);
+      } catch (error) {
+        if (error instanceof AppError && error.code === 'ASSIGNMENT_CLOSED') return null;
+        throw error;
+      }
       const helpId = randomUUID();
       const anon = await userAnon(tx, row.user_id);
       const payload: Record<string, unknown> = {
@@ -350,7 +358,8 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     });
   }
 
-  async function setHelpOutcome(helpId: string, outcome: string): Promise<void> {
+  async function setHelpOutcome(helpId: string | null, outcome: string): Promise<void> {
+    if (helpId === null) return;
     await db.query(`update app.help_requests set outcome = $2 where id = $1`, [helpId, outcome]);
   }
 

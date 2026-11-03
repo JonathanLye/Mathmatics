@@ -95,4 +95,30 @@ describe('help.request（08 §3）：每次求助都留痕', () => {
     expect(attempt?.state_version).toBe(before);
     expect(await requests()).toHaveLength(2);
   });
+
+  describe.each([
+    ['锁定', `update app.attempts set status = 'locked', locked_reason = 'away' where id = $1`],
+    ['搁置', `update app.attempts set status = 'parked' where id = $1`],
+    ['已完成', `update app.attempts set status = 'completed' where id = $1`],
+    ['布置已关闭', `update app.assignments set status = 'closed' where id = (select assignment_id from app.attempts where id = $1)`],
+  ])('作答不可写（%s）：不记录求助，不写任何事件', (_label, sql) => {
+    it.each([
+      ['施压', { intent: 'free', text: '直接告诉我完整证明' }],
+      ['卡住了', { intent: 'stuck' }],
+      ['概念', { intent: 'concept' }],
+    ])('%s', async (_name, payload) => {
+      await layer3();
+      await h.db.query(sql, [h.attemptId]);
+      const count = async () =>
+        Number((await h.db.query<{ n: string }>(`select count(*)::text n from ev.events where attempt_id = $1`, [h.attemptId])).rows[0]?.n);
+      const before = await count();
+
+      const res = await postHelp(h, payload);
+
+      expect([200, 409]).toContain(res.statusCode);
+      expect(await count()).toBe(before);
+      expect(await requests()).toHaveLength(0);
+      expect(await rows()).toHaveLength(0);
+    });
+  });
 });
