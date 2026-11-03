@@ -4,8 +4,9 @@
  * 依赖：playwright-core + 本机 ms-playwright chromium（PG_CHROMIUM 可指定），与 tests/screenshots.mjs 同一套。
  *
  * 覆盖：
- *  拍照 → 识别确认面板出现（两路结果 + 不一致处高亮 + 选左/选右）
- *  → 选右/选左切换 → 重新识别 → 改一下（MathTextEditor + 证明键盘，点 ε 改一处）
+ *  拍照 → 识别确认面板出现（两路结果 + 服务端 agree/diff 驱动的不一致提示与高亮 + 选左/选右）
+ *  → 选右/选左切换（横幅不变，证明前端不重算一致性）→ 重新识别
+ *  → 改一下（MathTextEditor + 证明键盘，点 ε 改一处）
  *  → 确认加入 → 页面「识别结果（已确认）」草稿出现且文本包含改动
  *  → 再拍照 → 放弃重写 → 面板关闭且草稿不变；
  * 输出 PASS/FAIL；有失败时退出码 1。
@@ -132,10 +133,16 @@ async function main() {
     await page.locator('.pg-dock__btn--photo').click()
     await waitVisible(page, '.ui-recog')
     includes('面板标题', await innerText(page, '.ui-recog__title'), '识别结果 · 请核对')
-    includes('两路不一致提示', await innerText(page, '.ui-recog__summary'), '两路识别不一致')
-    ok((await page.locator('.ui-recog__conflict').count()) >= 1, '不一致处被切出（高亮块 ≥ 1）')
+    includes('两路不一致提示（来自服务端 agree）', await innerText(page, '.ui-recog__summary'), '两路识别不一致')
+    // mock 的 Recognition 形状：agree=false、diff 只给 1 段；横幅/高亮数量必须与服务端字段一致
+    const recogPanel = page.locator('.ui-recog').first()
+    ok((await recogPanel.getAttribute('data-agree')) === 'false', '横幅读服务端 agree（data-agree=false）')
+    ok((await recogPanel.getAttribute('data-conflicts')) === '1', '高亮数量 = 服务端 diff 数量（1 处）')
+    ok((await recogPanel.getAttribute('data-simple')) === 'false', 'agree=false 不走「直接显示 + 单按钮」分支')
+    ok((await page.locator('.ui-recog__conflict').count()) === 1, '高亮块 = 服务端 diff 的 1 处（前端不自行切分）')
     includes('左路（主识别）可见', await innerText(page, '.ui-recog__route--left'), '左 · 主识别')
     includes('右路（交叉识别）可见', await innerText(page, '.ui-recog__route--right'), '右 · 交叉识别')
+    includes('右路文本由服务端 diff.alt 还原', await innerText(page, '.ui-recog__route--right'), 'z')
     includes('高亮块文案', await innerText(page, '.ui-recog__conflict'), '这一处两种识别不一致')
     includes('有选左按钮', await innerText(page, '.ui-recog__fragment--left'), '左')
     includes('有选右按钮', await innerText(page, '.ui-recog__fragment--right'), '右')
@@ -147,6 +154,8 @@ async function main() {
     let leftClass = (await page.locator('.ui-recog__fragment--left').first().getAttribute('class')) || ''
     let rightClass = (await page.locator('.ui-recog__fragment--right').first().getAttribute('class')) || ''
     ok(!leftClass.includes('ui-recog__fragment--active') && rightClass.includes('ui-recog__fragment--active'), '选右后高亮切到右路')
+    // 选左/选右只影响「采用哪一路」；一致与否仍以服务端 agree 为准，横幅不变
+    includes('切换选择后横幅仍读服务端 agree', await innerText(page, '.ui-recog__summary'), '两路识别不一致')
     await page.locator('.ui-recog__fragment--left').first().click()
     leftClass = (await page.locator('.ui-recog__fragment--left').first().getAttribute('class')) || ''
     rightClass = (await page.locator('.ui-recog__fragment--right').first().getAttribute('class')) || ''

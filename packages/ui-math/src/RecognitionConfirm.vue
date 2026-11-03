@@ -3,6 +3,9 @@
  * 识别确认面板（issue #15，03 §3.2、02 §4.6）。
  *
  * - 渲染两路识别结果（左=主识别，右=交叉识别），不一致处逐处高亮、可选左/选右；
+ * - 一致与否/高亮位置**全部来自服务端 recognition.agree / recognition.diff**（03 §3.1 第 6 步），
+ *   前端不做归一化、LCS 或任何文本比较（12 §1 接口边界）；
+ * - 02 §4.6：服务端 agree=true 且 status=ok → 直接显示主结果、单按钮「确认」；
  * - 「改一下」进入 MathTextEditor + ProofKeyboard 编辑，确认时返回最终文本；
  * - 「确认加入 / 放弃重写 / 重新识别」按组件契约 emit；识别结果永远不替学生改正
  *   （UI 只做「请核对」，不暗示对错，也不在前端做 canon/判分）。
@@ -18,13 +21,12 @@ import ProofKeyboard from './ProofKeyboard.vue'
 import type { KeyboardActionId, KeyboardInsertPayload } from './keyboard'
 import {
   alternativeDisplayText,
-  compareRecognition,
+  buildRecognitionView,
   mergeRecognitionResult,
   recognitionStatusHint,
+  recognitionSummary,
   toMathFragment,
-  type RecognitionComparison,
-  type RecognitionConflict,
-  type RecognitionLike,
+  type RecognitionHighlight,
   type RecognitionRoute,
 } from './recognition'
 import type { Recognition } from '../../../apps/student/src/types/attempt'
@@ -65,22 +67,18 @@ const editText = ref('')
 const keyboardOpen = ref(false)
 const editorRef = ref<MathTextEditorApi | null>(null)
 
-const comparison = computed<RecognitionComparison>(() =>
-  compareRecognition(props.recognition as unknown as RecognitionLike),
-)
-const conflicts = computed<RecognitionConflict[]>(() => comparison.value.conflicts)
-const statusHint = computed(() => recognitionStatusHint(comparison.value.status))
+// 视图里的一致与否/高亮位置全部来自服务端 Recognition，组件只渲染（props 直接是 Recognition，无需断言）。
+const view = computed(() => buildRecognitionView(props.recognition))
+const conflicts = computed<RecognitionHighlight[]>(() => view.value.conflicts)
+const simple = computed(() => view.value.simple)
+const statusHint = computed(() => recognitionStatusHint(view.value.status))
 const confidenceText = computed(() => {
   const confidence = props.recognition.confidence
   if (typeof confidence !== 'number' || !Number.isFinite(confidence)) return ''
   return '置信度 ' + Math.round(confidence * 100) + '%'
 })
-const routeSummary = computed(() => {
-  if (comparison.value.status !== 'ok') return '识别没有成功'
-  if (comparison.value.equal) return '两路识别一致'
-  return '两路识别不一致 · 请核对高亮的 ' + conflicts.value.length + ' 处'
-})
-const mergedText = computed(() => mergeRecognitionResult(comparison.value, choices.value))
+const routeSummary = computed(() => recognitionSummary(view.value))
+const mergedText = computed(() => mergeRecognitionResult(view.value.primary, conflicts.value, choices.value))
 /** 最终会提交的文本：对比态=按选择合并，编辑态=编辑器里的文本 */
 const resultText = computed(() => (mode.value === 'edit' ? editText.value : mergedText.value))
 
@@ -88,7 +86,7 @@ const resultText = computed(() => (mode.value === 'edit' ? editText.value : merg
 watch(
   () => props.recognition,
   () => {
-    choices.value = comparison.value.conflicts.map(() => 'primary' as RecognitionRoute)
+    choices.value = view.value.conflicts.map(() => 'primary' as RecognitionRoute)
     mode.value = 'compare'
     editText.value = ''
     keyboardOpen.value = false
@@ -96,21 +94,21 @@ watch(
   { immediate: true },
 )
 
-function conflictLeftText(conflict: RecognitionConflict): string {
+function conflictLeftText(conflict: RecognitionHighlight): string {
   if (!conflict.primary) return '（空）'
-  return toMathFragment(comparison.value.primary, conflict.start, conflict.end)
+  return toMathFragment(view.value.primary, conflict.start, conflict.end)
 }
 
-function conflictRightText(conflict: RecognitionConflict): string {
+function conflictRightText(conflict: RecognitionHighlight): string {
   if (!conflict.alternative) return '（空）'
-  return alternativeDisplayText(comparison.value.primary, conflict)
+  return alternativeDisplayText(view.value.primary, conflict)
 }
 
-function isRightChosen(conflict: RecognitionConflict): boolean {
+function isRightChosen(conflict: RecognitionHighlight): boolean {
   return (choices.value[conflict.index] ?? 'primary') === 'alternative'
 }
 
-function chooseConflict(conflict: RecognitionConflict, route: RecognitionRoute): void {
+function chooseConflict(conflict: RecognitionHighlight, route: RecognitionRoute): void {
   if (props.busy) return
   const next = conflicts.value.map(() => 'primary' as RecognitionRoute)
   for (let index = 0; index < next.length; index += 1) {
@@ -173,7 +171,14 @@ function discard(): void {
 
 <template>
   <view class="ui-recog-mask">
-    <view class="ui-recog" role="dialog" aria-label="识别结果确认">
+    <view
+      class="ui-recog"
+      role="dialog"
+      aria-label="识别结果确认"
+      :data-agree="view.agree === null ? 'null' : String(view.agree)"
+      :data-conflicts="conflicts.length"
+      :data-simple="simple ? 'true' : 'false'"
+    >
       <view class="ui-recog__head">
         <view class="ui-recog__headtext">
           <text class="ui-recog__title">{{ props.title }}</text>
@@ -184,21 +189,31 @@ function discard(): void {
 
       <text v-if="statusHint" class="ui-recog__statushint">{{ statusHint }}</text>
 
-      <!-- 核对态：两路结果 + 逐处二选一 + 合并预览 -->
+      <!-- 核对态：一致与否/高亮位置全部来自服务端 agree/diff，前端只渲染 -->
       <view v-if="mode === 'compare'" class="ui-recog__compare">
-        <view class="ui-recog__route ui-recog__route--left">
-          <text class="ui-recog__routelabel pg-small">左 · 主识别</text>
-          <MathText v-if="comparison.primary" :text="comparison.primary" block />
+        <!-- 02 §4.6：两路一致且置信度高（服务端 status=ok）→ 直接显示、单按钮确认 -->
+        <view v-if="simple" class="ui-recog__simple">
+          <MathText v-if="view.primary" :text="view.primary" block />
           <text v-else class="ui-recog__routeempty pg-small">（没有识别到内容）</text>
         </view>
 
-        <view v-if="props.showRoutes && !comparison.equal" class="ui-recog__route ui-recog__route--right">
-          <text class="ui-recog__routelabel pg-small">右 · 交叉识别</text>
-          <MathText v-if="comparison.alternative" :text="comparison.alternative" block />
-          <text v-else class="ui-recog__routeempty pg-small">（空）</text>
-        </view>
+        <template v-else>
+          <view class="ui-recog__route ui-recog__route--left">
+            <text class="ui-recog__routelabel pg-small">左 · 主识别</text>
+            <MathText v-if="view.primary" :text="view.primary" block />
+            <text v-else class="ui-recog__routeempty pg-small">（没有识别到内容）</text>
+          </view>
 
-        <view v-if="conflicts.length > 0" class="ui-recog__conflicts">
+          <view
+            v-if="props.showRoutes && conflicts.length > 0 && view.alternative !== view.primary"
+            class="ui-recog__route ui-recog__route--right"
+          >
+            <text class="ui-recog__routelabel pg-small">右 · 交叉识别</text>
+            <MathText v-if="view.alternative" :text="view.alternative" block />
+            <text v-else class="ui-recog__routeempty pg-small">（空）</text>
+          </view>
+
+          <view v-if="conflicts.length > 0" class="ui-recog__conflicts">
           <view
             v-for="conflict in conflicts"
             :key="conflict.index"
@@ -233,11 +248,12 @@ function discard(): void {
           </view>
         </view>
 
-        <view class="ui-recog__mergeline">
-          <text class="ui-recog__mergetag pg-small">将加入证明</text>
-          <MathText v-if="mergedText" :text="mergedText" block />
-          <text v-else class="ui-recog__routeempty pg-small">（空）</text>
-        </view>
+          <view class="ui-recog__mergeline">
+            <text class="ui-recog__mergetag pg-small">将加入证明</text>
+            <MathText v-if="mergedText" :text="mergedText" block />
+            <text v-else class="ui-recog__routeempty pg-small">（空）</text>
+          </view>
+        </template>
       </view>
 
       <!-- 编辑态：MathTextEditor + 证明键盘 -->
@@ -258,15 +274,18 @@ function discard(): void {
 
       <view class="ui-recog__actions">
         <template v-if="mode === 'compare'">
-          <button class="ui-recog__btn ui-recog__discard" :disabled="props.busy" @tap="discard">放弃重写</button>
-          <button class="ui-recog__btn ui-recog__rewrite" :disabled="props.busy" @tap="rewrite">重新识别</button>
-          <button class="ui-recog__btn ui-recog__editbtn" :disabled="props.busy" @tap="enterEditKeyboard">改一下</button>
+          <!-- 02 §4.6：服务端 agree=true 且 status=ok 时不摆二选一；只保留单按钮「确认」 -->
+          <template v-if="!simple">
+            <button class="ui-recog__btn ui-recog__discard" :disabled="props.busy" @tap="discard">放弃重写</button>
+            <button class="ui-recog__btn ui-recog__rewrite" :disabled="props.busy" @tap="rewrite">重新识别</button>
+            <button class="ui-recog__btn ui-recog__editbtn" :disabled="props.busy" @tap="enterEditKeyboard">改一下</button>
+          </template>
         </template>
         <template v-else>
           <button class="ui-recog__btn ui-recog__backcompare" :disabled="props.busy" @tap="backToCompare">返回核对</button>
         </template>
         <button class="ui-recog__btn ui-recog__btn--primary ui-recog__confirm" :disabled="props.busy" @tap="confirm">
-          {{ props.busy ? '处理中…' : '确认加入' }}
+          {{ props.busy ? '处理中…' : simple ? '确认' : '确认加入' }}
         </button>
       </view>
     </view>
@@ -340,6 +359,13 @@ function discard(): void {
   flex-direction: column;
   gap: var(--sp-2, 8px);
   min-width: 0;
+}
+/* 02 §4.6 直接显示分支（服务端 agree=true）：主结果单块，无二选一 */
+.ui-recog__simple {
+  padding: var(--sp-3, 12px);
+  border: 1px solid var(--rule, #e2e4e8);
+  border-radius: var(--radius-card, 10px);
+  background: var(--paper, #f7f6f2);
 }
 .ui-recog__route {
   padding: var(--sp-2, 8px) var(--sp-3, 12px);

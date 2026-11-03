@@ -53,25 +53,24 @@ export type {
   RawKeyboardLayoutKey,
 } from './keyboard'
 
-// #15：识别确认纯逻辑（两路 diff / 归一化 / 合并 / MathText 片段）
+// #15：识别确认纯逻辑（服务端 agree/diff → 展示与合并；前端不做一致性判定）
 export {
   alternativeDisplayText,
   buildAlternativeText,
-  compareRecognition,
-  diffRecognitionTexts,
+  buildRecognitionView,
+  diffHighlights,
   isInsideMathRange,
   mergeRecognitionResult,
-  normalizeRecognitionText,
   recognitionStatusHint,
+  recognitionSummary,
   toMathFragment,
 } from './recognition'
 export type {
-  CompareSegment,
-  RecognitionComparison,
-  RecognitionConflict,
   RecognitionDiffSpan,
+  RecognitionHighlight,
   RecognitionLike,
   RecognitionRoute,
+  RecognitionView,
 } from './recognition'
 
 export { default as MathText } from './MathText.vue'

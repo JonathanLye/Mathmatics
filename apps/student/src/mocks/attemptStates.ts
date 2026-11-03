@@ -4,7 +4,7 @@
  * 用途：无服务端时（#18/#19 未完成）让做题页可切换四种状态，验证 UI 骨架。
  * 注意：这里只放「服务端会下发的 state」，不冒充引擎判定；加行/提交后的状态变化见 api/client.ts 的 mock reducer。
  */
-import type { AttemptState, Note, ProblemView } from '@/types/attempt'
+import type { AttemptState, Note, ProblemView, Recognition } from '@/types/attempt'
 
 const problem: ProblemView = {
   problemId: 'epsN',
@@ -224,14 +224,19 @@ export function createMockState(key: MockKey): AttemptState {
 
 export const DEFAULT_MOCK: MockKey = 'l3-active'
 
-/** mock 识别结果（#15 的输入）：两路不一致的示例 */
-export const mockRecognition = {
+/**
+ * mock 识别结果（#15 的输入），严格按 openapi.yaml 的 Recognition 形状：
+ * - agree/diff/status 都是服务端字段，前端只渲染（不做一致性判定）；
+ * - diff.start/end 是主结果 text 的字符下标（这里是 '\frac{5}{n+2}' 的 [9,22)），
+ *   alt 是交叉路在该段的文本，右路由 buildAlternativeText 还原。
+ */
+export const mockRecognition: Recognition = {
   recogId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  status: 'ok' as const,
+  status: 'ok',
   text: '$|a_n-3|=\\frac{5}{n+2}$',
-  agree: false as const,
-  confidence: 0.72,
-  rendered: true as const,
-  diff: [{ start: 6, end: 11, alt: '5/(n+z)' }],
   lines: [{ text: '$|a_n-3|=\\frac{5}{n+2}$', confidence: 0.72 }],
+  confidence: 0.72,
+  agree: false,
+  diff: [{ start: 9, end: 22, alt: '\\frac{5}{n+z}' }],
+  rendered: true,
 }
