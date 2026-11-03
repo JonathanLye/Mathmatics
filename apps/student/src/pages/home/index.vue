@@ -3,6 +3,8 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { fetchHome, type HomeData } from '@/api/client'
+import OfflineBar from '@/components/OfflineBar.vue'
+import { initIntegrity } from '@/integrity/sdk'
 import { useSession } from '@/stores/session'
 import { maskStudentNo } from '@/stores/session'
 
@@ -21,10 +23,17 @@ function goPractice(mock?: string) {
   uni.navigateTo({ url: '/pages/practice/index' + q })
 }
 function goProofbook() { uni.navigateTo({ url: '/pages/proofbook/index' }) }
+
+/** #27：离线提示条的重试（把事件队列立刻补发一次；mock 下等同成功）。 */
+async function handleOfflineRetry(): Promise<void> {
+  await initIntegrity().flush('manual')
+}
 </script>
 
 <template>
   <view class="pg-page pg-home">
+    <!-- #27 离线提示条（首页）：断网/恢复提示，占正常文档流不遮操作区 -->
+    <OfflineBar @retry="handleOfflineRetry" />
     <view class="pg-home__head">
       <text class="pg-home__hello">{{ home?.greeting ?? maskStudentNo(session.studentNo.value) }}</text>
       <text class="pg-home__stat pg-small">本周你自己写出了 {{ home?.weeklyOwn ?? 0 }} 个关键步骤（共 {{ home?.weeklyTotal ?? 0 }} 个）</text>

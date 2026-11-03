@@ -30,6 +30,8 @@ const emit = defineEmits<{
   (e: 'update:open', v: boolean): void
   (e: 'submit', draft: LineDraft): void
   (e: 'request-recognition'): void
+  /** #27：输入变化上抛给父级，由父级防抖写 IndexedDB 草稿（不改变提交语义）。 */
+  (e: 'update:draft', d: { statement: string; justification: string }): void
 }>()
 
 const statement = ref('')
@@ -83,6 +85,14 @@ watch(
     if (props.open && !justificationDirty.value) justification.value = value ?? ''
   },
 )
+
+/**
+ * #27 草稿接线：只在打开期间把「这一行 / 依据」的当前值上抛（父级做 500ms 防抖落 IndexedDB）。
+ * 不触碰 dirty 状态、draftId 与提交流程，保证 main（#90/#12）语义不变。
+ */
+watch([statement, justification], ([nextStatement, nextJustification]) => {
+  if (props.open) emit('update:draft', { statement: nextStatement, justification: nextJustification })
+})
 
 let previousFocus: HTMLElement | null = null
 

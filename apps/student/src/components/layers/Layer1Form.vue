@@ -13,29 +13,36 @@ import type { DefView } from '@/types/attempt'
 /** 单条 MathText 上限，对齐 openapi.yaml 的 `MathText.maxLength: 4000`；最终以服务端校验为准（#24）。 */
 const MAX_MATH_TEXT = 4000
 
-const props = withDefaults(defineProps<{ layer?: string; view?: DefView; busy?: boolean }>(), {
+const props = withDefaults(defineProps<{ layer?: string; view?: DefView; busy?: boolean; initialText?: string }>(), {
   layer: 'L1',
   view: () => ({}),
   busy: false,
+  initialText: '',
 })
 
 const emit = defineEmits<{
   (e: 'submit', text: string): void
   (e: 'lesson'): void
   (e: 'skip'): void
+  /** #27：输入变化上抛，由做题页做 IndexedDB 防抖草稿保存。 */
+  (e: 'update:text', value: string): void
 }>()
 
 /** 输入草稿：提交前只留在本机，不写回服务端 state。 */
 const draft = ref('')
 
-// 断点续写：服务端 state 带上次提交时回填（换 mock / 恢复断点会换成新 state）。
+// 断点续写优先用本机草稿（#27），否则回填服务端 state 的上次提交（#11）。
 watch(
-  () => props.view.last,
-  (last) => {
-    if (typeof last === 'string') draft.value = last
+  [() => props.initialText, () => props.view.last],
+  ([initialText, last]) => {
+    if (typeof initialText === 'string' && initialText.length > 0) draft.value = initialText
+    else if (typeof last === 'string') draft.value = last
   },
   { immediate: true },
 )
+
+// 输入变化上报（防抖落盘由父级做）。
+watch(draft, (value) => emit('update:text', value))
 
 const text = computed(() => draft.value.trim())
 const canSubmit = computed(() => text.value.length > 0 && !props.busy)
@@ -66,6 +73,7 @@ function submit() {
       v-model="draft"
       class="pg-layer__input"
       data-testid="layer1-input"
+      data-pg-target="def"
       :maxlength="MAX_MATH_TEXT"
       :disabled="props.busy"
       placeholder="在这里写出定义……"
