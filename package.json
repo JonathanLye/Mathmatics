@@ -17,7 +17,11 @@
     "db:reset": "node apps/server/src/db/cli.ts reset",
     "db:migrate": "node apps/server/src/db/cli.ts migrate",
     "db:seed": "node apps/server/src/db/cli.ts seed",
-    "db:query": "node apps/server/src/db/cli.ts query"
+    "db:query": "node apps/server/src/db/cli.ts query",
+    "import:pdf": "node apps/import/src/cli.ts pdf",
+    "import:items": "node apps/import/src/cli.ts items",
+    "import:draft": "node apps/import/src/cli.ts draft",
+    "import:publish": "node apps/import/src/cli.ts publish"
   },
   "devDependencies": {
     "@types/node": "catalog:",
