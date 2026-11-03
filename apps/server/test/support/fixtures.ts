@@ -1,6 +1,6 @@
 import { buildApp } from '../../src/app.ts';
 import { studentNoHash } from '../../src/auth/crypto.ts';
-import { loadConfig } from '../../src/config.ts';
+import { loadConfig, type AppConfig } from '../../src/config.ts';
 import { applySchema, openDb, type Db } from '../../src/db/index.ts';
 
 export const testConfig = loadConfig({ NODE_ENV: 'test' });
@@ -39,8 +39,8 @@ export async function setupFixture(): Promise<Fixture> {
   return { db, classId, close: () => db.close() };
 }
 
-export async function buildTestApp(db: Db) {
-  return buildApp({ config: testConfig, logger: false, db });
+export async function buildTestApp(db: Db, overrides: Partial<AppConfig> = {}) {
+  return buildApp({ config: { ...testConfig, ...overrides }, logger: false, db });
 }
 
 export function loginBody(overrides: Record<string, unknown> = {}) {
