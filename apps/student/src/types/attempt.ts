@@ -114,6 +114,11 @@ export interface VisualSpec {
     xRange?: [number, number]
     yRange?: [number, number]
     showN?: boolean
+    /**
+     * 仅 mock 扩展（#26 微课）：预生成的序列点，供 diagrams/SeqBandDiagram 的 points prop 使用。
+     * 契约 VisualSpec 只有 expr（前端不执行数据里的表达式，真实接口 #24 由服务端给出渲染参数/点位）。
+     */
+    points?: Array<{ n: number; a: number }>
   }
 }
 

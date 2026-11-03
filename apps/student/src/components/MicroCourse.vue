@@ -8,7 +8,8 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
-import SeqBandDiagram from '@/components/SeqBandDiagram.vue'
+// #98 已提供统一的 seq-band 图解（N(ε) 只由 diagrams/seqBand.ts 计算）；这里不再保留 #26 的重复实现。
+import SeqBandDiagram from '@/components/diagrams/SeqBandDiagram.vue'
 import type { LessonStep, LessonView } from '@/types/attempt'
 
 const props = withDefaults(defineProps<{ open?: boolean; lesson?: LessonView | null; busy?: boolean }>(), {
@@ -39,6 +40,24 @@ const isLast = computed(() => total.value > 0 && stepIndex.value >= total.value 
 const currentChoice = computed(() => (step.value ? (choices.value[step.value.id] ?? -1) : -1))
 const status = computed<'idle' | 'wrong' | 'right'>(() => (step.value ? (checkStatus.value[step.value.id] ?? 'idle') : 'idle'))
 const canNext = computed(() => !step.value?.check || status.value === 'right')
+
+/**
+ * 把微课步骤的 VisualSpec 映射到 #98 的 SeqBandDiagram props（不执行 expr 求值）：
+ * A = params.limit，ε = params.epsilon.init ?? 0.3，nMax = params.nMax ?? 20；
+ * 序列点来自 mock/服务端预生成的 params.points（缺省时由 #98 组件用 sampleSeqPoints 兜底）。
+ * 真实接口 #24 接 VisualSpec 时再由服务端下发渲染参数（B 复核口径）。
+ */
+const seqBandProps = computed(() => {
+  const visual = step.value?.visual
+  if (!visual || visual.type !== 'seq-band') return null
+  const params = visual.params ?? {}
+  return {
+    points: params.points ?? [],
+    A: Number.isFinite(Number(params.limit)) ? Number(params.limit) : 0,
+    epsilon: Number(params.epsilon?.init ?? 0.3),
+    nMax: Number(params.nMax ?? 20),
+  }
+})
 
 function reset() {
   stepIndex.value = 0
@@ -96,7 +115,15 @@ function close() {
           <MathText :text="step.text" serif block />
         </view>
 
-        <SeqBandDiagram v-if="step.visual" :spec="step.visual" />
+        <view v-if="seqBandProps" class="pg-micro__visual" data-testid="seq-band">
+          <MathText v-if="step.visual?.params?.exprLatex" :text="step.visual.params.exprLatex" block />
+          <SeqBandDiagram
+            :points="seqBandProps.points"
+            :A="seqBandProps.A"
+            :epsilon="seqBandProps.epsilon"
+            :nMax="seqBandProps.nMax"
+          />
+        </view>
 
         <view v-if="step.check" class="pg-micro__check" data-testid="micro-check">
           <MathText :text="step.check.q" block />
@@ -203,6 +230,7 @@ function close() {
 }
 .pg-micro__kind { color: var(--ink-2); }
 .pg-micro__text { font-family: var(--font-serif); font-size: 16px; line-height: 1.65; color: var(--ink); }
+.pg-micro__visual { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-micro__check { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px dashed var(--rule); }
 .pg-micro__options { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-micro__option {

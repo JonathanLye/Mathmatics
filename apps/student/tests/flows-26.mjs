@@ -114,12 +114,28 @@ async function waitEnabled(page, testId, timeout = 8000) {
   }, testId, { timeout })
 }
 
-async function nValue(page, testId) {
-  return page.evaluate((id) => {
-    const el = document.querySelector('[data-testid="' + id + '"]')
-    const match = (el?.textContent || '').match(/\d+/)
-    return match ? Number(match[0]) : null
-  }, testId)
+/** 读 #98 seq-band 组件的 ε/N 读数（N(ε) 由 diagrams/seqBand.ts 的 minN 计算）。 */
+async function readSeqBandN(page) {
+  return page.evaluate(() => {
+    const el = document.querySelector('[data-testid="seq-band-readout"]')
+    const match = (el?.textContent || '').match(/N\(ε\)\s*=\s*(\d+|—)/)
+    if (!match) return null
+    return match[1] === '—' ? null : Number(match[1])
+  })
+}
+
+async function waitSeqBandNChanged(page, previous) {
+  await page.waitForFunction(
+    (prev) => {
+      const el = document.querySelector('[data-testid="seq-band-readout"]')
+      const match = (el?.textContent || '').match(/N\(ε\)\s*=\s*(\d+|—)/)
+      if (!match) return false
+      const value = match[1] === '—' ? null : Number(match[1])
+      return value !== null && value !== prev
+    },
+    previous,
+    { timeout: 5000 },
+  )
 }
 
 /** 真实点击：滚到可见后走鼠标事件；失败直接抛错（场景 catch 记 FAIL，不回退 JS click）。 */
@@ -179,17 +195,22 @@ async function main() {
     check('微课正文由 MathText 渲染（KaTeX）', (await page.getByTestId('micro-course').locator('.katex').count()) > 0)
 
     await waitTestId(page, 'seq-band')
-    check('微课含 seq-band 图解（SVG）', (await page.getByTestId('seq-band-svg').count()) === 1)
-    const initialN = await nValue(page, 'seq-band-n')
-    check('seq-band 按种子参数显示默认 N（ε=0.3 → N=3）', initialN === 3, 'N=' + initialN)
+    check('微课含 #98 seq-band 图解（.pg-seq 渲染）', (await page.getByTestId('seq-band').locator('.pg-seq').count()) === 1)
+    check('seq-band 画出序列点（60 个点）', (await page.getByTestId('seq-band').locator('svg circle').count()) === 60)
+    const initialN = await readSeqBandN(page)
+    check('seq-band 按微课例子读数（ε=0.3 → N(ε)=3，N 由 diagrams/seqBand.ts 计算）', initialN === 3, 'N=' + initialN)
 
+    // 「拖动 ε 看 N 变化」：uni <slider> 点击轨道按比例设值（H5 可交互）
+    check('图解含可拖动的 ε 滑块', (await countTestId(page, 'seq-band-slider')) === 1)
     await clickSliderAt(page, 'seq-band-slider', 0.85)
-    const afterBig = await nValue(page, 'seq-band-n')
-    check('拖动 ε 滑块调大 ε → N 不变或变小', afterBig !== null && initialN !== null && afterBig <= initialN, 'N=' + afterBig)
+    await waitSeqBandNChanged(page, initialN)
+    const afterBig = await readSeqBandN(page)
+    check('调大 ε → N 不变或变小（N 随 ε 变化）', afterBig !== null && initialN !== null && afterBig <= initialN, 'N=' + afterBig)
     await page.screenshot({ path: path.join(outDir, '1-micro-seqband.png'), fullPage: true })
 
-    await clickSliderAt(page, 'seq-band-slider', 0.15)
-    const afterSmall = await nValue(page, 'seq-band-n')
+    await clickSliderAt(page, 'seq-band-slider', 0.06)
+    await waitSeqBandNChanged(page, afterBig)
+    const afterSmall = await readSeqBandN(page)
     check('调小 ε → N 变大（N 依赖 ε）', afterSmall !== null && afterBig !== null && afterSmall > afterBig, 'N=' + afterSmall)
 
     check('小核验可选（有选项按钮）', (await countTestId(page, 'micro-option-0')) === 1)

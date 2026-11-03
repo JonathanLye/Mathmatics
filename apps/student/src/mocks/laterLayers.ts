@@ -34,6 +34,11 @@ export const mockLesson: LessonView = {
           epsilon: { min: 0.02, max: 0.6, init: 0.3, step: 0.01 },
           nMax: 60,
           showN: true,
+          // #26 微课例子 a_n = 1 + (-1)^n/n 的序列点（预生成；避免在执行期解析 expr，真实接口 #24 再适配）
+          points: Array.from({ length: 60 }, (_, index) => {
+            const n = index + 1
+            return { n, a: 1 + (n % 2 === 0 ? 1 : -1) / n }
+          }),
         },
       },
       check: {
