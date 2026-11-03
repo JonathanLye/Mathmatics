@@ -4,8 +4,8 @@
  * - 契约真源：`packages/contracts/openapi.yaml`（servers: /api/v1）。真实模式下本文件按契约调接口；
  *   传输细节（Cookie、CSRF 头、If-Match、Idempotency-Key、错误分类）在 `api/http.ts`。
  * - USE_MOCK 是开发/离线 Demo 开关：默认开；`VITE_USE_MOCK=false` 或 `setMockMode(false)` 走真实接口。
- * - 写请求：带 If-Match（= 当前 state.stateVersion）与 Idempotency-Key；同一逻辑提交的重试复用同一个键
- *   （键按「操作 + 作答 + 请求体」缓存，见 keyFor）。
+ * - 写请求：带 If-Match（= 当前 state.stateVersion）与 Idempotency-Key；键在「每个用户动作入口」生成一次，
+ *   只在同一次调用的 withRetry 重试之间复用，动作结束即丢弃（不同动作即使请求体相同也必须是新键）。
  * - 409 STATE_STALE：不重放业务逻辑，直接把 detail.state 作为最新状态返回，由页面覆盖本地 state。
  * - ASSIGNMENT_CLOSED 等终态错误原样抛出（ApiError.terminal），由页面提示、不重试。
  * - 前端永远不做判定：这里只做「请求 → 服务端 state」的搬运。
@@ -102,32 +102,23 @@ export interface TestClientOptions {
 export function configureClientForTests(options: TestClientOptions = {}): void {
   activeHttp = createHttpClient({ fetchImpl: options.fetchImpl, base: options.base })
   if (options.mock !== undefined) USE_MOCK = options.mock
-  idempotencyKeys.clear()
 }
 
-/** 测试隔离：恢复默认（mock 开、默认 http、清空幂等键缓存）。 */
+/** 测试隔离：恢复默认（mock 开、默认 http）。 */
 export function __resetClientForTests(): void {
   USE_MOCK = DEFAULT_USE_MOCK
   activeHttp = createHttpClient()
-  idempotencyKeys.clear()
   cachedDeviceId = null
   lastStateStaleAt = 0
 }
 
-const idempotencyKeys = new Map<string, string>()
-
-function keyFor(scope: string, attemptId: string, body: unknown): string {
-  const cacheKey = `${scope}|${attemptId}|${JSON.stringify(body)}`
-  const existing = idempotencyKeys.get(cacheKey)
-  if (existing !== undefined) return existing
-  const key = newIdempotencyKey()
-  idempotencyKeys.set(cacheKey, key)
-  if (idempotencyKeys.size > 200) {
-    const oldest = idempotencyKeys.keys().next().value
-    if (oldest !== undefined) idempotencyKeys.delete(oldest)
-  }
-  return key
-}
+/**
+ * 幂等键约定（IETF draft-ietf-httpapi-idempotency-key-header）：
+ * - 每个用户动作在 API 入口生成一个 uuid，只在同一次调用的 withRetry 重试之间复用；
+ * - 动作结束丢弃；不同动作即使请求体完全相同，也必须是不同的键
+ *   （服务端对同键 24 小时内重放首次响应，跨动作复用会把旧响应发给下一次操作）；
+ * - 调用方只有在更外层自行重放「同一个动作」时，才通过 options.idempotencyKey 传入。
+ */
 
 let lastStateStaleAt = 0
 /** 最近一次写请求是否收到过 409 STATE_STALE（页面可提示「已同步到最新状态」）。 */
@@ -144,7 +135,10 @@ function isAttemptState(value: unknown): value is AttemptState {
 }
 
 interface WriteOptions {
-  /** 调用方若重试，传入同一个键；不传则按请求体缓存生成。 */
+  /**
+   * 一般不要传：每个用户动作在 API 入口内部生成一次幂等键，只在同一次调用的重试之间复用。
+   * 仅当调用方自己在更外层重试/重放「同一个用户动作」时，才传入同一个键。
+   */
   idempotencyKey?: string
   /** 重试时必须复用同一个 draftId（InputMeta.draftId）。 */
   draftId?: string
@@ -219,10 +213,13 @@ function safeStorage(): StorageLike | null {
     if (typeof uniApi?.getStorageSync === 'function' && typeof uniApi.setStorageSync === 'function') {
       return { get: (key) => uniApi.getStorageSync?.(key), set: (key, value) => uniApi.setStorageSync?.(key, value) }
     }
+    // 02 §9：业务代码不直接用 localStorage；H5 兜底也必须放在条件编译里（小程序端只用 uni API）
+    // #ifdef H5
     if (globalWithStorage.localStorage) {
       const storage = globalWithStorage.localStorage
       return { get: (key) => storage.getItem(key), set: (key, value) => storage.setItem(key, String(value)) }
     }
+    // #endif
   } catch {
     // 隐私模式/SSR 下 storage 不可用：退回内存，不影响本次会话
   }
@@ -329,38 +326,19 @@ export const mockMe: MeView = {
   features: {},
 }
 
-/** 服务端 CONSENT_SECTIONS 的镜像（mock/fallback 渲染用；真实模式以 GET /consents 为准）。 */
+/** 离线/演示 fallback 的正文占位：正式文本只从 GET /consents 取（#62 待 PO 确认）。 */
+export const CONSENT_PLACEHOLDER_BODY = '（正文由服务端提供，待 #62 确认）'
+
+/**
+ * 离线/演示 fallback 只保留条目 key / 标题 / 是否必选；正文一律占位，
+ * 不得复制服务端同意书文本（PR #96 审计阻塞 2；正文待 #62 确认）。
+ */
 export const MOCK_CONSENT_SECTIONS: ConsentDoc['sections'] = [
-  {
-    key: 'service',
-    title: '服务所需处理',
-    body: '为提供练习功能，需要处理你的学号、作答内容和过程记录。',
-    required: true,
-  },
-  {
-    key: 'crossBorderHosting',
-    title: '数据存储在中国香港服务器',
-    body: '你的数据存储在中国香港的服务器上；不同意则无法使用本版本。',
-    required: true,
-  },
-  {
-    key: 'crossBorderModel',
-    title: '境外决策模型（可选）',
-    body: '去掉身份信息后的作答文本会发送给境外的 Jev 决策模型，用于判断你写的是哪一步。本版本中它只做对比记录，不同意不影响任何功能。',
-    required: false,
-  },
-  {
-    key: 'monitoring',
-    title: '过程监测',
-    body: '为了让老师了解你的练习过程，系统会记录：你写下的每一行（包括手写笔迹、识别和修改）、你什么时候求助、看了哪些提示、在每一层停留多久，以及你离开页面的次数和时长。老师可以查看你的作答过程。这些记录只用于教学和（在你同意的情况下）匿名的教学研究，不用于评分处罚。测验模式下，离开页面过多会锁定本题，需要老师解锁。',
-    required: true,
-  },
-  {
-    key: 'research',
-    title: '教研使用（可选）',
-    body: '匿名化后用于教学研究与论文；不同意不影响使用。撤回后，你的数据会从研究导出中排除。',
-    required: false,
-  },
+  { key: 'service', title: '服务所需处理', body: CONSENT_PLACEHOLDER_BODY, required: true },
+  { key: 'crossBorderHosting', title: '数据存储在中国香港服务器', body: CONSENT_PLACEHOLDER_BODY, required: true },
+  { key: 'crossBorderModel', title: '境外决策模型（可选）', body: CONSENT_PLACEHOLDER_BODY, required: false },
+  { key: 'monitoring', title: '过程监测', body: CONSENT_PLACEHOLDER_BODY, required: true },
+  { key: 'research', title: '教研使用（可选）', body: CONSENT_PLACEHOLDER_BODY, required: false },
 ]
 
 export const mockConsentDoc: ConsentDoc = {
@@ -419,12 +397,13 @@ export async function submitConsents(version: string, items: ConsentChoices): Pr
 /** POST /student/assignments/{assignmentId}/attempt：开始或恢复（服务端幂等：已有作答则返回它）。 */
 export async function startAttempt(assignmentId: string, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) return fetchAttempt()
-  const body = { assignmentId }
+  // 每个用户动作生成一次幂等键；withRetry 的每次重试复用同一个键（下同）
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
   const result = await withRetry(() =>
     activeHttp.post<{ state: AttemptState }>(
       `/student/assignments/${encodeURIComponent(assignmentId)}/attempt`,
       undefined,
-      { idempotencyKey: options.idempotencyKey ?? keyFor('start', assignmentId, body) },
+      { idempotencyKey },
     ),
   )
   if (!isAttemptState(result.data?.state)) {
@@ -458,7 +437,7 @@ export async function submitDef(state: AttemptState, text: string, options: Writ
   const body = { text, input: inputMeta('keyboard', options.draftId ?? newDraftId()) }
   return writeState(`/attempts/${state.attemptId}/definition`, body, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('definition', state.attemptId, body),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -481,7 +460,7 @@ export async function submitFramework(state: AttemptState, text: string, options
   const body = { text, input: inputMeta('keyboard', options.draftId ?? newDraftId()) }
   return writeState(`/attempts/${state.attemptId}/framework`, body, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('framework', state.attemptId, body),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -499,7 +478,7 @@ export async function viewFrameTemplate(state: AttemptState, options: WriteOptio
   }
   return writeState(`/attempts/${state.attemptId}/framework/template`, undefined, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('framework-template', state.attemptId, {}),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -566,7 +545,7 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   }
   return writeState(`/attempts/${state.attemptId}/lines`, body, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('lines', state.attemptId, body),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -586,7 +565,7 @@ export async function finishSteps(state: AttemptState, options: WriteOptions = {
   }
   return writeState(`/attempts/${state.attemptId}/finish`, undefined, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('finish', state.attemptId, {}),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -607,7 +586,7 @@ export async function answerSelfcheck(
   const body = { text, input: inputMeta('keyboard', options.draftId ?? newDraftId()) }
   return writeState(`/attempts/${state.attemptId}/selfcheck/${encodeURIComponent(itemId)}`, body, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('selfcheck', state.attemptId, body),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -649,7 +628,7 @@ export async function startTransfer(state: AttemptState, options: WriteOptions =
   }
   return writeState(`/attempts/${state.attemptId}/transfer`, undefined, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('transfer', state.attemptId, {}),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -684,7 +663,7 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   const body = { answers, input: inputMeta('keyboard', options.draftId ?? newDraftId()) }
   return writeState(`/attempts/${state.attemptId}/summary`, body, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('summary', state.attemptId, body),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -700,7 +679,7 @@ export async function parkAttempt(state: AttemptState, options: WriteOptions = {
   }
   return writeState(`/attempts/${state.attemptId}/park`, undefined, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('park', state.attemptId, {}),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -739,7 +718,7 @@ export async function skipLayer(state: AttemptState, layer: LayerId, options: Wr
   }
   return writeState(`/attempts/${state.attemptId}/layers/${layer}/skip`, undefined, {
     ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? keyFor('skip', state.attemptId, { layer }),
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
 }
 
@@ -863,9 +842,10 @@ export async function requestHelp(
     ...(intent === 'free' ? { text } : {}),
     ...(intent === 'check_line' && latestLineId ? { lineId: latestLineId } : {}),
   }
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
   const result = await withRetry(() =>
     activeHttp.post<HelpResult>(`/attempts/${state.attemptId}/help`, body, {
-      idempotencyKey: options.idempotencyKey ?? keyFor('help', state.attemptId, body),
+      idempotencyKey,
     }),
   )
   return result.data
@@ -915,9 +895,10 @@ export async function claimHint(state: AttemptState, preview: HintPreview, optio
     throw new ApiError({ status: 0, code: 'HINT_PREVIEW_EXPIRED', message: '提示预览已失效，请重新求助' })
   }
   const body = { previewToken }
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
   const result = await withRetry(() =>
     activeHttp.post<HelpResult>(`/attempts/${state.attemptId}/hints/claim`, body, {
-      idempotencyKey: options.idempotencyKey ?? keyFor('claim', state.attemptId, body),
+      idempotencyKey,
     }),
   )
   if (!isAttemptState(result.data?.state)) {
@@ -973,7 +954,7 @@ export async function submitSelfcheck(state: AttemptState, itemId: string, text:
     const body = { text, input: inputMeta('keyboard', newDraftId()) }
     return writeState(`/attempts/${state.attemptId}/selfcheck/${encodeURIComponent(itemId)}`, body, {
       ifMatch: state.stateVersion,
-      idempotencyKey: keyFor('selfcheck', state.attemptId, body),
+      idempotencyKey: newUuid(),
     })
   }
   await sleep()
@@ -1061,7 +1042,7 @@ export async function addTransferLine(state: AttemptState, draft: LineDraft): Pr
     }
     return writeState(`/attempts/${state.attemptId}/lines`, body, {
       ifMatch: state.stateVersion,
-      idempotencyKey: keyFor('addLine', state.attemptId, body),
+      idempotencyKey: newUuid(),
     })
   }
   await sleep()
@@ -1095,7 +1076,7 @@ export async function editTransferLine(state: AttemptState, lineId: string, draf
     }
     return writeStateWith('PATCH', `/attempts/${state.attemptId}/lines/${encodeURIComponent(lineId)}`, body, {
       ifMatch: state.stateVersion,
-      idempotencyKey: keyFor('editLine', state.attemptId, body),
+      idempotencyKey: newUuid(),
     })
   }
   await sleep()
@@ -1124,7 +1105,7 @@ export async function deleteTransferLine(state: AttemptState, lineId: string): P
   if (!USE_MOCK) {
     return writeStateWith('DELETE', `/attempts/${state.attemptId}/lines/${encodeURIComponent(lineId)}`, undefined, {
       ifMatch: state.stateVersion,
-      idempotencyKey: keyFor('deleteLine', state.attemptId, { lineId }),
+      idempotencyKey: newUuid(),
     })
   }
   await sleep()
@@ -1146,7 +1127,7 @@ export async function finishTransfer(state: AttemptState): Promise<AttemptState>
   if (!USE_MOCK) {
     return writeState(`/attempts/${state.attemptId}/finish`, undefined, {
       ifMatch: state.stateVersion,
-      idempotencyKey: keyFor('finish', state.attemptId, {}),
+      idempotencyKey: newUuid(),
     })
   }
   await sleep()

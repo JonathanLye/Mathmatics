@@ -56,7 +56,7 @@ async function submit() {
     <text v-if="errorText" class="pg-consent__error pg-small">{{ errorText }}</text>
     <button class="pg-consent__submit" :disabled="loading" @tap="submit">{{ loading ? '提交中…' : '同意并开始' }}</button>
     <text class="pg-consent__hint pg-small">
-      版本 {{ version }} · {{ mockMode ? 'mock 模式：文本为内置 fallback，签署只记在本地。' : '文本与签署状态来自服务端 GET/POST /consents（#18）。' }}
+      版本 {{ version }} · {{ mockMode ? 'mock 模式：正文为占位（正式文本由服务端 /consents 提供），签署只记在本地。' : '文本与签署状态来自服务端 GET/POST /consents（#18）。' }}
     </text>
   </view>
 </template>

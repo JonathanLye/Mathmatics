@@ -78,7 +78,7 @@ const requiredOk = computed(() => items.value.filter((item) => item.required).ev
 const mockSleep = (ms = 80) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 export function useSession() {
-  /** GET /consents：加载服务端同意书文本；mock 模式回落到内置文本。 */
+  /** GET /consents：加载服务端同意书文本；mock 模式回落到内置占位（正文只从 GET /consents 取）。 */
   async function loadConsentDoc(): Promise<boolean> {
     loading.value = true
     error.value = null

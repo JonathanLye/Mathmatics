@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   ApiError,
+  CONSENT_PLACEHOLDER_BODY,
   MOCK_CONSENT_SECTIONS,
   __resetClientForTests,
   addLine,
@@ -11,8 +12,10 @@ import {
   fetchHome,
   finishSteps,
   getConsents,
+  getDeviceId,
   isMockMode,
   login,
+  mockConsentDoc,
   mockHome,
   requestHelp,
   skipLayer,
@@ -61,9 +64,16 @@ const ME: MeView = {
   features: {},
 }
 
+/** 测试 fixture：正文由服务端返回，与客户端 fallback 无关。 */
 const CONSENT_DOC = {
   version: 'p0-v1',
-  sections: MOCK_CONSENT_SECTIONS.map((section) => ({ ...section })),
+  sections: [
+    { key: 'service', title: '服务所需处理', body: '测试正文 A', required: true },
+    { key: 'crossBorderHosting', title: '数据存储在中国香港服务器', body: '测试正文 B', required: true },
+    { key: 'crossBorderModel', title: '境外决策模型（可选）', body: '测试正文 C', required: false },
+    { key: 'monitoring', title: '过程监测', body: '测试正文 D', required: true },
+    { key: 'research', title: '教研使用（可选）', body: '测试正文 E', required: false },
+  ],
   signed: null,
 }
 
@@ -154,7 +164,7 @@ describe('真实接口客户端（issue #24）', () => {
     expect(session.me.value?.anonCode).toBe('S-TEST')
   })
 
-  it('开始作答带幂等键；同一逻辑重试复用同一个键', async () => {
+  it('每个用户动作生成新幂等键：两次相同请求也不同（不重放旧响应）', async () => {
     const state = mockState()
     const { calls, fetchImpl } = captureFetch(() => jsonResponse({ state }))
     configureClientForTests({ fetchImpl, mock: false })
@@ -164,7 +174,8 @@ describe('真实接口客户端（issue #24）', () => {
     const firstKey = headersOf(calls[0] as Call)['Idempotency-Key']
     const secondKey = headersOf(calls[1] as Call)['Idempotency-Key']
     expect(firstKey).toMatch(UUID_RE)
-    expect(secondKey).toBe(firstKey)
+    expect(secondKey).toMatch(UUID_RE)
+    expect(secondKey).not.toBe(firstKey)
     expect(calls[0]?.url).toContain('/student/assignments/22222222-2222-4222-8222-222222222222/attempt')
   })
 
@@ -322,5 +333,62 @@ describe('真实接口客户端（issue #24）', () => {
     const next = await submitDef(mockState(), '任取 ε>0')
     expect(next.currentLayer).toBe('L2')
     expect(called).toBe(false)
+  })
+
+  it('两个相同 body 的 requestHelp 动作使用不同幂等键（审计复现用例）', async () => {
+    const state = createMockState('l3-active')
+    const { calls, fetchImpl } = captureFetch(() => jsonResponse({ routed: 'stuck', state }))
+    configureClientForTests({ fetchImpl, mock: false })
+    await requestHelp(state, 'stuck')
+    await requestHelp(state, 'stuck')
+    const firstKey = headersOf(calls[0] as Call)['Idempotency-Key']
+    const secondKey = headersOf(calls[1] as Call)['Idempotency-Key']
+    expect(firstKey).toMatch(UUID_RE)
+    expect(secondKey).toMatch(UUID_RE)
+    expect(secondKey).not.toBe(firstKey)
+    expect(calls[0]?.body).toEqual({ intent: 'stuck' })
+    expect(calls[1]?.body).toEqual({ intent: 'stuck' })
+  })
+
+  it('同一次 requestHelp 的 withRetry 重试复用同一个幂等键', async () => {
+    const state = createMockState('l3-active')
+    let attempts = 0
+    const { calls, fetchImpl } = captureFetch(() => {
+      attempts += 1
+      if (attempts === 1) throw new Error('offline')
+      return jsonResponse({ routed: 'stuck', state })
+    })
+    configureClientForTests({ fetchImpl, mock: false })
+    await requestHelp(state, 'stuck')
+    expect(calls).toHaveLength(2)
+    expect(headersOf(calls[1] as Call)['Idempotency-Key']).toBe(headersOf(calls[0] as Call)['Idempotency-Key'])
+    expect(calls[1]?.body).toEqual({ intent: 'stuck' })
+  })
+
+  it('离线同意书 fallback 只有占位正文，不复制服务端文本', () => {
+    expect(mockConsentDoc.version).toBe('p0-v1')
+    expect(MOCK_CONSENT_SECTIONS.map((section) => section.key)).toEqual(CONSENT_KEYS)
+    for (const section of MOCK_CONSENT_SECTIONS) {
+      expect(section.title.length).toBeGreaterThan(0)
+      expect(section.body).toBe(CONSENT_PLACEHOLDER_BODY)
+    }
+    expect(CONSENT_PLACEHOLDER_BODY).toContain('服务端')
+  })
+
+  it('deviceId 走 uni 存储（业务代码不直接用 localStorage）', () => {
+    const stored = '99999999-9999-4999-8999-999999999999'
+    const writes: Array<{ key: string; value: unknown }> = []
+    ;(globalThis as { uni?: unknown }).uni = {
+      getStorageSync: (key: string) => (key === 'pg.deviceId' ? stored : ''),
+      setStorageSync: (key: string, value: unknown) => {
+        writes.push({ key, value })
+      },
+    }
+    try {
+      expect(getDeviceId()).toBe(stored)
+    } finally {
+      delete (globalThis as { uni?: unknown }).uni
+    }
+    expect(writes).toEqual([])
   })
 })
