@@ -1,5 +1,6 @@
 import { hasValidConsent } from '../auth/consent.ts';
 import type { Db, Queryable } from '../db/index.ts';
+import { applyIntegrityRules } from '../integrity/effects.ts';
 
 import { CLIENT_EVENT_TYPES, isValidClientEvent } from './client-schema.ts';
 
@@ -144,6 +145,12 @@ export async function ingestBatch(db: Db, actor: Actor, events: readonly unknown
       }
       await insertEvent(tx, c, actor, anon, attempt, seq);
     }
+
+    // 6. 诚信规则：粘贴、多设备、测验锁定。写服务端事件，与本批事件同一事务。
+    await applyIntegrityRules(tx, {
+      eventIds: fresh.map((c) => c.id),
+      attemptIds: fresh.flatMap((c) => (c.attemptId === null ? [] : [c.attemptId])),
+    });
 
     return { accepted: fresh.length, duplicates, rejected };
   });
