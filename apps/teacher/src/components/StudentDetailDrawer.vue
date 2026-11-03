@@ -4,6 +4,7 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
 import type { HelpFlagItem, IntegrityItem, TeacherAttemptDetail, TeacherLine } from '../api/types.ts';
 import { MIRROR_IFRAME_SANDBOX, isMirrorPageUrl } from '../utils/mirror.ts';
+import ReplayDialog from './ReplayDialog.vue';
 import MathTextView from './MathTextView.vue';
 
 const props = defineProps<{ visible: boolean; attemptId: string | null }>();
@@ -16,6 +17,7 @@ const nudgeText = ref('');
 const nudgeSending = ref(false);
 const resolving = ref<string | null>(null);
 const mirrorVisible = ref(false);
+const replayVisible = ref(false);
 const mirrorUrl = ref('');
 const mirrorLoading = ref(false);
 
@@ -182,6 +184,7 @@ function lineMeta(line: TeacherLine): string {
           <t-button size="small" :disabled="detail.status !== 'locked'">解锁</t-button>
         </t-popconfirm>
         <t-button size="small" :loading="mirrorLoading" @click="openMirror">镜像预览</t-button>
+        <t-button size="small" @click="replayVisible = true">回放</t-button>
         <div class="nudge-box">
           <t-input v-model="nudgeText" placeholder="发给学生一句话（≤200 字，过闸门）" :maxlength="200" />
           <t-button size="small" theme="primary" :loading="nudgeSending" @click="sendNudge">发送</t-button>
@@ -254,6 +257,8 @@ function lineMeta(line: TeacherLine): string {
         </div>
       </div>
     </div>
+
+    <ReplayDialog v-model:visible="replayVisible" :attempt-id="attemptId" />
 
     <t-dialog v-model:visible="mirrorVisible" header="镜像预览（只读）" width="900px" :footer="false">
       <div class="page-sub" style="margin-bottom: 8px">
