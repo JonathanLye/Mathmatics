@@ -2,6 +2,7 @@ import type { FastifyRequest } from 'fastify';
 
 import { requireAuth, type AuthContext } from '../../auth/session.ts';
 import type { Queryable } from '../../db/index.ts';
+import type { SerializedAttemptState } from '@proof-gym/engine';
 import { AppError } from '../../errors.ts';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,4 +43,48 @@ export async function assertClassTeacher(db: Queryable, auth: AuthContext, class
 export function uuidParam(value: string, label: string): string {
   if (!UUID_PATTERN.test(value)) throw new AppError('NOT_FOUND', 404, `${label}不存在`);
   return value;
+}
+
+
+// 教师端读一次作答所需的行 + 班级归属校验。非本班/不存在一律 404。
+export type TeacherAttemptRow = {
+  id: string;
+  assignment_id: string;
+  class_id: string;
+  user_id: string;
+  problem_id: string;
+  problem_version: number;
+  kind: 'main' | 'transfer';
+  mode: 'practice' | 'test';
+  status: string;
+  current_layer: string;
+  state: SerializedAttemptState;
+  state_version: number;
+  reveal: string | number;
+  keys_own: number;
+  keys_total: number;
+  last_event_seq: string | number;
+  started_at: Date | string;
+  completed_at: Date | string | null;
+};
+
+export async function loadTeacherAttempt(
+  db: Queryable,
+  auth: AuthContext,
+  attemptId: string,
+): Promise<TeacherAttemptRow> {
+  const row = (
+    await db.query<TeacherAttemptRow>(
+      `select a.id, a.assignment_id, asg.class_id, a.user_id, a.problem_id, a.problem_version,
+              a.kind, a.mode, a.status, a.current_layer, a.state, a.state_version,
+              a.reveal, a.keys_own, a.keys_total, a.last_event_seq, a.started_at, a.completed_at
+         from app.attempts a
+         join app.assignments asg on asg.id = a.assignment_id
+        where a.id = $1`,
+      [attemptId],
+    )
+  ).rows[0];
+  if (!row) throw new AppError('NOT_FOUND', 404, '作答不存在');
+  await assertClassTeacher(db, auth, row.class_id);
+  return row;
 }
