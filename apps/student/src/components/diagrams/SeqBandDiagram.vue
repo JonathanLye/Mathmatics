@@ -8,7 +8,7 @@
  */
 import { computed, ref, watch } from 'vue'
 
-import { bandOf, minN, nTicks, projectN, projectPoint, sampleSeqPoints, SAMPLE_A } from './seqBand'
+import { bandOf, minN, nTicks, projectN, projectPoint, sampleSeqPoints, SAMPLE_A, type SeqPoint } from './seqBand'
 
 const props = withDefaults(
   defineProps<{
@@ -18,10 +18,15 @@ const props = withDefaults(
     A?: number
     /** 图中最多画到第几项（03 §7 要求标注"图中只画到第 nMax 项"） */
     nMax?: number
+    /**
+     * 可选序列点（#26 微课用）：由调用方传入，避免把本题数列（seed epsN）画进概念微课。
+     * 缺省用 sampleSeqPoints；N(ε) 仍只由本目录 seqBand.ts 的 minN 计算，不引入第二套实现。
+     */
+    points?: SeqPoint[]
     width?: number
     height?: number
   }>(),
-  { epsilon: 0.5, A: SAMPLE_A, nMax: 20, width: 320, height: 196 },
+  { epsilon: 0.5, A: SAMPLE_A, nMax: 20, points: () => [], width: 320, height: 196 },
 )
 
 const emit = defineEmits<{ (event: 'update:epsilon', value: number): void }>()
@@ -39,7 +44,7 @@ const geometry = computed(() => ({
   height: props.height,
   padding: { left: 34, right: 14, top: 22, bottom: 40 },
 }))
-const points = computed(() => sampleSeqPoints(props.nMax))
+const points = computed(() => (props.points.length > 0 ? props.points : sampleSeqPoints(props.nMax)))
 const band = computed(() => bandOf(props.A, localEps.value))
 const result = computed(() => minN(points.value, props.A, localEps.value))
 const yRange = computed(() => {
@@ -76,8 +81,9 @@ const bandTop = computed(() => toY(band.value.high))
 const bandBottom = computed(() => toY(band.value.low))
 const axisBottom = computed(() => geometry.value.height - geometry.value.padding.bottom + 6)
 
-function onSlider(event: Event): void {
-  const value = Number((event.target as HTMLInputElement).value)
+function onSlider(event: { detail?: { value?: number } } | Event): void {
+  // uni <slider> 的事件 detail.value；H5 点击轨道也会触发 change。
+  const value = Number((event as { detail?: { value?: number } }).detail?.value)
   if (!Number.isFinite(value) || value <= 0) return
   localEps.value = value
   emit('update:epsilon', value)
@@ -155,17 +161,22 @@ function onSlider(event: Event): void {
 
     <!-- 滑块在图的下方（02 §4.9），旁边实时显示数值（等宽字体） -->
     <view class="pg-seq__controls">
-      <input
+      <slider
         class="pg-seq__slider"
-        type="range"
-        min="0.1"
-        max="2"
-        step="0.05"
+        data-testid="seq-band-slider"
+        :min="0.1"
+        :max="2"
+        :step="0.05"
         :value="localEps"
+        :show-value="false"
+        active-color="#2b4fa3"
+        background-color="#e2e4e8"
+        block-size="20"
         aria-label="拖动调整 ε"
-        @input="onSlider"
+        @changing="onSlider"
+        @change="onSlider"
       />
-      <text class="pg-seq__mono pg-small">ε = {{ fmt(localEps) }} · N(ε) = {{ result.N ?? '—' }}</text>
+      <text class="pg-seq__mono pg-small" data-testid="seq-band-readout">ε = {{ fmt(localEps) }} · N(ε) = {{ result.N ?? '—' }}</text>
     </view>
     <text class="pg-seq__note pg-small">图中只画到第 {{ nMax }} 项；N(ε) 是最小的 N，使所有 n &gt; N 的项都满足 |a_n − A| &lt; ε。</text>
   </view>

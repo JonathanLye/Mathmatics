@@ -16,6 +16,10 @@ import MockSwitcher from '@/components/MockSwitcher.vue'
 import Layer1Form from '@/components/layers/Layer1Form.vue'
 import Layer2Form from '@/components/layers/Layer2Form.vue'
 import ProofLineList from '@/components/layers/ProofLineList.vue'
+import SelfcheckForm from '@/components/layers/SelfcheckForm.vue'
+import TransferForm from '@/components/layers/TransferForm.vue'
+import SummaryForm from '@/components/layers/SummaryForm.vue'
+import MicroCourse from '@/components/MicroCourse.vue'
 import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
 import EditorSheet from '@/components/EditorSheet.vue'
@@ -26,8 +30,23 @@ import { useAttempt } from '@/stores/attempt'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
-import { addLine, claimHint, finishSteps, recognizeInk, requestHelp, skipLayer, submitDef, submitFramework, viewFrameTemplate } from '@/api/client'
-import type { HelpIntent, HintPreview, LayerId, LineDraft, Note, Recognition } from '@/types/attempt'
+import {
+  addLine,
+  claimHint,
+  completeTransfer,
+  fetchLesson,
+  finishSteps,
+  recognizeInk,
+  requestHelp,
+  skipLayer,
+  startTransfer,
+  submitDef,
+  submitFramework,
+  submitSelfcheck,
+  submitSummary,
+  viewFrameTemplate,
+} from '@/api/client'
+import type { HelpIntent, HintPreview, LayerId, LessonView, LineDraft, Note, Recognition } from '@/types/attempt'
 
 const { state, mockKey, busy, error, setMock, apply, run } = useAttempt()
 const { mode } = useViewport()
@@ -46,6 +65,9 @@ const recogOpen = ref(false)
 const recogBusy = ref(false)
 const recognition = ref<Recognition | null>(null)
 const recogDraft = ref<{ text: string; recogId: string; at: string } | null>(null)
+/** 第 1 层微课（02 §4.9）：内容由服务端下发，这里只保存在内存里渲染。 */
+const microOpen = ref(false)
+const microLesson = ref<LessonView | null>(null)
 
 const currentLayer = computed(() => state.value.currentLayer)
 const lines = computed(() => state.value.steps?.lines ?? [])
@@ -120,24 +142,64 @@ async function handleSubmit(text: string) {
 }
 
 /**
- * 第 1 层「看不懂」→ 微课入口（#26 接内容）；
+ * 第 1 层「看不懂」→ 取微课（GET /lesson/{conceptId}）并打开分步微课（02 §4.9）；
  * 第 2 层「看通用骨架」→ 契约的 POST /framework/template，由服务端返回 templateShown=true 的 state。
  */
 async function handleLesson() {
+  if (currentLayer.value === 'L1') {
+    const lesson = await run(() => fetchLesson(state.value))
+    if (!lesson) return
+    microLesson.value = lesson
+    microOpen.value = true
+    return
+  }
   if (currentLayer.value === 'L2') {
     const next = await run(() => viewFrameTemplate(state.value))
     if (next) apply(next)
     return
   }
-  show('微课/图解是 #26（第二轮 Day2）的内容；本轮先把入口留好')
+  show('本层的讲解入口在 #24 接入')
+}
+
+function closeMicro() {
+  microOpen.value = false
 }
 
 /** 跳层是独立操作（POST /layers/{L}/skip）：不把「已掌握，跳过」当文本提交，也不写 def/frame.last。 */
 async function handleSkip() {
   const layer = currentLayer.value
-  if (layer !== 'L1' && layer !== 'L2') return
+  if (layer !== 'L1' && layer !== 'L2' && layer !== 'L4' && layer !== 'L5') return
   const next = await run(() => skipLayer(state.value, layer))
   if (next) apply(next)
+}
+
+/** 第 4 层：提交一道自检题；判定与追问都来自服务端返回的 state。 */
+async function handleSelfcheckSubmit(itemId: string, text: string) {
+  const next = await run(() => submitSelfcheck(state.value, itemId, text))
+  if (next) apply(next)
+}
+
+/** 第 5 层：开始迁移题（创建子作答）；题面由服务端下发。 */
+async function handleStartTransfer() {
+  const next = await run(() => startTransfer(state.value))
+  if (next) apply(next)
+}
+
+/** 第 5 层：提交迁移题 → 服务端推进到第 6 层并下发总结五问。 */
+async function handleTransferSubmit(text: string) {
+  const next = await run(() => completeTransfer(state.value, text))
+  if (next) apply(next)
+}
+
+/** 第 6 层：提交五问总结 → 完成页。 */
+async function handleSubmitSummary(answers: string[]) {
+  const next = await run(() => submitSummary(state.value, answers))
+  if (next) apply(next)
+}
+
+/** 完成页「加入证明本」/ 首页「证明本」：打开证明本页（mock 列表见 fetchNotebook）。 */
+function goProofbook() {
+  uni.navigateTo({ url: '/pages/proofbook/index' })
 }
 
 async function handleAddLine(draft: LineDraft) {
@@ -383,17 +445,28 @@ function backHome() {
           </view>
 
           <template v-if="isCompleted">
-            <view class="pg-practice__done pg-sheet">
-              <text class="pg-practice__donetitle">本题完成</text>
+            <view class="pg-practice__done pg-sheet" data-testid="completion-card">
+              <text class="pg-practice__donetitle" data-testid="completion-title">本题完成</text>
               <text class="pg-practice__donebody pg-small">
                 自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；
                 透露 {{ state.budget.revealUsed }} / {{ state.budget.revealMax }}。
                 独立度 {{ state.completion?.independence ?? '-' }}。
               </text>
-              <text class="pg-practice__donebody pg-small">mathlib4 对照（只列定理名）：{{ (state.completion?.leanCard as any)?.theorems?.join('、') ?? '—' }}</text>
+              <text class="pg-practice__donebody pg-small">mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}</text>
+              <text v-if="state.completion?.leanCard?.steps?.length" class="pg-practice__donebody pg-small">
+                你写出的关键步骤：{{ state.completion?.leanCard?.steps?.map((s) => s.label).join('、') }}
+              </text>
+              <text class="pg-practice__donebody pg-small">P0 只核对关键步骤齐全，未校验逻辑顺序。</text>
               <view class="pg-practice__donerow">
-                <button class="pg-practice__btn" @tap="backHome">回首页</button>
-                <button class="pg-practice__btn pg-practice__btn--primary" @tap="backHome">加入证明本</button>
+                <button class="pg-practice__btn" role="button" data-testid="back-home" @tap="backHome">回首页</button>
+                <button
+                  class="pg-practice__btn pg-practice__btn--primary"
+                  role="button"
+                  data-testid="add-to-notebook"
+                  @tap="goProofbook"
+                >
+                  加入证明本
+                </button>
               </view>
             </view>
           </template>
@@ -437,6 +510,8 @@ function backHome() {
             <view class="pg-practice__finishrow">
               <button
                 class="pg-practice__btn pg-practice__btn--primary"
+                role="button"
+                data-testid="finish-steps"
                 :disabled="!state.steps?.canFinish || busy"
                 @tap="handleFinish"
               >
@@ -445,11 +520,29 @@ function backHome() {
             </view>
           </template>
 
+          <SelfcheckForm
+            v-else-if="currentLayer === 'L4'"
+            :view="state.selfcheck ?? null"
+            :lines="lines"
+            :busy="busy"
+            @submit="handleSelfcheckSubmit"
+            @skip="handleSkip"
+          />
+
+          <TransferForm
+            v-else-if="currentLayer === 'L5'"
+            :view="state.transfer ?? null"
+            :busy="busy"
+            @start="handleStartTransfer"
+            @submit="handleTransferSubmit"
+            @skip="handleSkip"
+          />
+
+          <SummaryForm v-else-if="currentLayer === 'L6'" :view="state.summary ?? null" :busy="busy" @submit="handleSubmitSummary" />
+
           <view v-else class="pg-practice__placeholder pg-sheet">
             <text class="pg-practice__layertitle">{{ currentLayer }} · {{ layerTitle }}</text>
-            <text class="pg-practice__layertask pg-small">
-              本层不在本轮 Day0–Day1 范围（第 4–6 层与迁移题在 #26 第二轮）。当前页只验证状态渲染。
-            </text>
+            <text class="pg-practice__layertask pg-small">这一层暂未接入。</text>
           </view>
         </view>
       </view>
@@ -526,6 +619,7 @@ function backHome() {
       @confirm="handleRecogConfirm"
       @discard="handleRecogDiscard"
     />
+    <MicroCourse :open="microOpen" :lesson="microLesson" @close="closeMicro" />
 
     <MockSwitcher v-if="mockEnabled" :model-value="mockKey" @update:model-value="onSwitchMock" />
 

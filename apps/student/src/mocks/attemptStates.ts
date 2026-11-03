@@ -5,6 +5,7 @@
  * 注意：这里只放「服务端会下发的 state」，不冒充引擎判定；加行/提交后的状态变化见 api/client.ts 的 mock reducer。
  */
 import type { AttemptState, Note, ProblemView, Recognition } from '@/types/attempt'
+import { mockSelfcheckItems, mockSummaryQuestions, mockTransferNotStarted, mockTransferStem } from '@/mocks/laterLayers'
 
 const problem: ProblemView = {
   problemId: 'epsN',
@@ -33,7 +34,8 @@ function layers(current: string, states: Record<string, string>): AttemptState['
     layer: id,
     title: layerTitles[id],
     status: (states[id] ?? 'locked') as AttemptState['layers'][number]['status'],
-    enabled: id !== 'L5',
+    // #26 之后第 4–6 层都已实现，seed/epsN.json 里六层 enabled 均为 true。
+    enabled: true,
     skippable: id === 'L1' || id === 'L2' || id === 'L4' || id === 'L5',
   }))
 }
@@ -166,13 +168,74 @@ function l3Exhausted(): AttemptState {
   return s
 }
 
-/** 状态 4：本题完成（第 6 层 / 完成页） */
+/** 状态 5：第 3 层已可点「写完了」（#26 全流程 e2e 的起点；2 行证明 + canFinish）。 */
+function l3Ready(): AttemptState {
+  const s = l3Active()
+  s.stateVersion = 13
+  s.steps = { lines: [line1, line2], canFinish: true }
+  return s
+}
+
+/** 状态 6：第 4 层自检进行中（3 道题待答）。 */
+function l4Active(): AttemptState {
+  const s = l3Ready()
+  s.stateVersion = 14
+  s.currentLayer = 'L4'
+  s.layers = layers('L4', { L1: 'done', L2: 'done', L3: 'done', L4: 'active' })
+  s.selfcheck = { items: mockSelfcheckItems.map((item) => ({ ...item })) }
+  return s
+}
+
+/** 状态 7：第 5 层迁移题进行中（子作答已创建，显示迁移题题面）。 */
+function l5Active(): AttemptState {
+  const s = l4Active()
+  s.stateVersion = 15
+  s.currentLayer = 'L5'
+  s.layers = layers('L5', { L1: 'done', L2: 'done', L3: 'done', L4: 'done', L5: 'active' })
+  s.selfcheck = {
+    items: (s.selfcheck?.items ?? []).map((item) => ({ ...item, status: 'accepted' as const, answer: '（mock：已通过）' })),
+  }
+  s.transfer = { childAttemptId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', stem: mockTransferStem, status: 'active' }
+  return s
+}
+
+/** 状态 8：第 6 层总结进行中（五问待答）。 */
+function l6Active(): AttemptState {
+  const s = l5Active()
+  s.stateVersion = 16
+  s.currentLayer = 'L6'
+  s.layers = layers('L6', { L1: 'done', L2: 'done', L3: 'done', L4: 'done', L5: 'done', L6: 'active' })
+  s.transfer = { ...(s.transfer ?? {}), status: 'completed' }
+  s.summary = { questions: [...mockSummaryQuestions], answers: [], followup: null }
+  return s
+}
+
+/** 状态 9：本题完成（第 6 层 / 完成页） */
 function completed(): AttemptState {
   const s = l3Active()
   s.stateVersion = 21
   s.status = 'completed'
   s.currentLayer = 'L6'
-  s.layers = layers('L6', { L1: 'done', L2: 'done', L3: 'done', L4: 'done', L5: 'skipped', L6: 'done' })
+  s.layers = layers('L6', { L1: 'done', L2: 'done', L3: 'done', L4: 'done', L5: 'done', L6: 'done' })
+  s.selfcheck = {
+    items: mockSelfcheckItems.map((item, i) => ({
+      ...item,
+      status: 'accepted' as const,
+      answer: ['第 1 行通分得到的。', 'N 只依赖 ε。', '第 2 行会断。'][i],
+    })),
+  }
+  s.transfer = { childAttemptId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', stem: mockTransferStem, status: 'completed' }
+  s.summary = {
+    questions: [...mockSummaryQuestions],
+    answers: [
+      '证了 $\lim_{n\to\infty}\frac{3n+1}{n+2}=3$。',
+      '分两块：化简 $|a_n-3|$，再把 $\frac{5}{n+2}$ 放大到 $\frac{5}{n}$。',
+      '把分式放大成只含 $n$ 的式子，这一步决定后面的 $N$ 好取。',
+      '当 $n>N$ 时推出 $|a_n-3|<\varepsilon$，并写明 $N$ 只依赖 $\varepsilon$。',
+      '放大成 $\frac{5}{n}$ 下次能用；直接取 $N=5/\varepsilon$ 只适用于这个题。',
+    ],
+    followup: null,
+  }
   s.steps = { lines: [line1, line2, { ...line2, lineId: '88888888-8888-4888-8888-888888888888', n: 3, statement: '$\\frac{5}{n}<\\varepsilon$', justification: '取 $N=5/\\varepsilon$' }, { ...line1, lineId: '99999999-9999-4999-8999-999999999999', n: 4, statement: '$\\forall\\varepsilon>0\\ \\exists N\\ \\forall n>N: |a_n-3|<\\varepsilon$', justification: '综上' }], canFinish: true }
   s.budget = { revealUsed: 0.5, revealMax: 2, keysOwn: 3, keysTotal: 4 }
   s.notes = [note1, note2]
@@ -185,13 +248,25 @@ function completed(): AttemptState {
   return s
 }
 
-export type MockKey = 'l1-active' | 'l3-active' | 'l3-exhausted' | 'completed'
+export type MockKey =
+  | 'l1-active'
+  | 'l3-active'
+  | 'l3-exhausted'
+  | 'l3-ready'
+  | 'l4-active'
+  | 'l5-active'
+  | 'l6-active'
+  | 'completed'
 
 export const MOCK_LABELS: Record<MockKey, string> = {
   'l1-active': '① 第 1 层进行中',
   'l3-active': '② 第 3 层进行中',
   'l3-exhausted': '③ 透露额度用尽',
-  completed: '④ 本题完成',
+  'l3-ready': '④ 第 3 层可写完了',
+  'l4-active': '⑤ 第 4 层自检',
+  'l5-active': '⑥ 第 5 层迁移题',
+  'l6-active': '⑦ 第 6 层总结',
+  completed: '⑧ 本题完成',
 }
 
 /**
@@ -215,6 +290,10 @@ export function createMockState(key: MockKey): AttemptState {
     case 'l1-active': return l1Active()
     case 'l3-active': return l3Active()
     case 'l3-exhausted': return l3Exhausted()
+    case 'l3-ready': return l3Ready()
+    case 'l4-active': return l4Active()
+    case 'l5-active': return l5Active()
+    case 'l6-active': return l6Active()
     case 'completed': return completed()
     // 运行时兜底：类型层已穷尽，但 URL/存储等不可信输入可能把非法键传进来；
     // 返回默认状态而不是 undefined，避免 state.value 为空导致整页渲染抛错（PR #87 审计）。

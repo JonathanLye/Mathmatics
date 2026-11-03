@@ -7,7 +7,15 @@
  * - 前端永远不做判定：这里只模拟「服务端会返回什么 state」，不实现层/预算/门槛逻辑。
  */
 import { createMockState, DEFAULT_MOCK, mockRecognition, type MockKey } from '@/mocks/attemptStates'
-import type { AttemptState, HelpIntent, HelpResult, HintPreview, LayerId, LineDraft, Note, Recognition } from '@/types/attempt'
+import {
+  mockLesson,
+  mockNotebook,
+  mockSelfcheckItems,
+  mockSummaryQuestions,
+  mockTransferNotStarted,
+  mockTransferStem,
+} from '@/mocks/laterLayers'
+import type { AttemptState, HelpIntent, HelpResult, HintPreview, LayerId, LessonView, LineDraft, NotebookView, Note, Recognition } from '@/types/attempt'
 
 const USE_MOCK = true
 const LATENCY = 160
@@ -95,7 +103,18 @@ export async function skipLayer(state: AttemptState, layer: LayerId): Promise<At
         ? { ...l, status: 'active' as const }
         : l,
   )
-  if (nextLayer) next.currentLayer = nextLayer.layer
+  if (nextLayer) {
+    next.currentLayer = nextLayer.layer
+    // 跳到第 4 层之后的层时，服务端会一并下发展开所需的数据（01 §L4–L6）。
+    if (nextLayer.layer === 'L5') next.transfer = clone(mockTransferNotStarted)
+    if (nextLayer.layer === 'L6') {
+      next.transfer =
+        next.transfer && next.transfer.status !== 'completed'
+          ? { ...next.transfer, status: 'skipped' }
+          : next.transfer
+      next.summary = { questions: [...mockSummaryQuestions], answers: [], followup: null }
+    }
+  }
   next.serverTime = new Date().toISOString()
   return next
 }
@@ -175,7 +194,10 @@ export async function addLine(state: AttemptState, draft: LineDraft): Promise<At
   return next
 }
 
-/** 第 3 层：写完了（mock 推进到 L4） */
+/**
+ * 第 3 层：写完了（POST /finish）。
+ * mock：L3 done、L4 active，并由服务端挑 3 道自检题下发（01 §L4：一题依据、一题作用、一题逻辑地位）。
+ */
 export async function finishSteps(state: AttemptState): Promise<AttemptState> {
   await sleep()
   const next = clone(state)
@@ -184,8 +206,122 @@ export async function finishSteps(state: AttemptState): Promise<AttemptState> {
     l.layer === 'L3' ? { ...l, status: 'done' as const } : l.layer === 'L4' ? { ...l, status: 'active' as const } : l,
   )
   next.currentLayer = 'L4'
+  next.selfcheck = { items: mockSelfcheckItems.map((item) => ({ ...item })) }
   next.serverTime = new Date().toISOString()
   return next
+}
+
+/**
+ * 第 1–2 层：取微课（GET /attempts/{id}/lesson/{conceptId}）。
+ * mock 返回概念库的预写微课（seed concepts.json 的 seq-limit）；真实接口 #24 按 conceptId 下发。
+ * 微课文本已由服务端过闸门，前端只渲染。
+ */
+export async function fetchLesson(state: AttemptState, conceptId?: string): Promise<LessonView> {
+  await sleep()
+  const topic = conceptId ?? state.def?.conceptId ?? mockLesson.conceptId
+  return clone({ ...mockLesson, conceptId: topic })
+}
+
+/**
+ * 第 4 层：回答一道自检题（POST /attempts/{id}/selfcheck/{itemId}）。
+ *
+ * mock 判定口径（P0 规则兜底，01 §L4）：≥4 字即接受；不足 4 字返回 followup（只追问，不给答案）。
+ * 三道全部 accepted → L4 done、L5 active，并由服务端创建迁移题子作答（not_started）。
+ * TODO(#24)：接真实接口时带 Idempotency-Key，判定文案来自服务端。
+ */
+export async function submitSelfcheck(state: AttemptState, itemId: string, text: string): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  if (next.currentLayer !== 'L4' || !next.selfcheck) return next
+  const item = next.selfcheck.items.find((i) => i.itemId === itemId)
+  if (!item || item.status === 'accepted') return next
+  next.stateVersion += 1
+  const answer = text.trim()
+  item.answer = answer
+  item.status = answer.length >= 4 ? 'accepted' : 'followup'
+  if (next.selfcheck.items.every((i) => i.status === 'accepted')) {
+    next.layers = next.layers.map((l) =>
+      l.layer === 'L4' ? { ...l, status: 'done' as const } : l.layer === 'L5' ? { ...l, status: 'active' as const } : l,
+    )
+    next.currentLayer = 'L5'
+    next.transfer = clone(mockTransferNotStarted)
+  }
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/**
+ * 第 5 层：开始迁移题（POST /attempts/{id}/transfer）。
+ * mock：创建迁移题子作答（childAttemptId）并下发迁移题题面；已开始/已完成时原样返回。
+ */
+export async function startTransfer(state: AttemptState): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  if (next.currentLayer !== 'L5') return next
+  const transfer = next.transfer ?? clone(mockTransferNotStarted)
+  if (transfer.status === 'active' || transfer.status === 'completed') return next
+  next.stateVersion += 1
+  next.transfer = { ...transfer, childAttemptId: mockUuid(), stem: mockTransferStem, status: 'active' }
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/**
+ * 第 5 层：提交迁移题（mock：完成子作答 → L5 done、L6 active，服务端下发总结五问）。
+ * 迁移题与 L3 一样是「写一行」，判定在服务端；mock 阶段只推进层状态。
+ * TODO(#24)：真实接口走 /attempts/{childAttemptId}/lines + /finish。
+ */
+export async function completeTransfer(state: AttemptState, _text: string): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  if (next.currentLayer !== 'L5' || next.transfer?.status !== 'active') return next
+  next.stateVersion += 1
+  next.transfer = { ...next.transfer, status: 'completed' }
+  next.layers = next.layers.map((l) =>
+    l.layer === 'L5' ? { ...l, status: 'done' as const } : l.layer === 'L6' ? { ...l, status: 'active' as const } : l,
+  )
+  next.currentLayer = 'L6'
+  next.summary = { questions: [...mockSummaryQuestions], answers: [], followup: null }
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/**
+ * 第 6 层：提交五问总结（POST /attempts/{id}/summary）。
+ * mock：L6 done、attempt completed，返回完成页信息（独立度 / mathlib4 对照只列定理名与步骤名）。
+ * TODO(#24)：追问/要点比对在服务端；P0 只校齐全，不校验逻辑顺序。
+ */
+export async function submitSummary(state: AttemptState, answers: string[]): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  if (next.currentLayer !== 'L6' || !next.summary) return next
+  next.stateVersion += 1
+  next.summary = { ...next.summary, answers: answers.slice(0, next.summary.questions.length), followup: null }
+  next.layers = next.layers.map((l) => (l.layer === 'L6' ? { ...l, status: 'done' as const } : l))
+  next.status = 'completed'
+  next.budget = { ...next.budget, keysOwn: Math.max(next.budget.keysOwn, 3) }
+  next.completion = {
+    done: true,
+    independence: 0.75,
+    reviewAvailable: false,
+    leanCard: {
+      theorems: ['Filter.Tendsto', 'Metric.tendsto_atTop'],
+      steps: [
+        { keyId: 'K1', label: '化简 |aₙ−3|' },
+        { keyId: 'K2', label: '放大到关于 n 的简单式子' },
+        { keyId: 'K3', label: '取 N 只依赖 ε' },
+        { keyId: 'K4', label: '串成链，落到 < ε' },
+      ],
+    },
+  }
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/** 证明本（GET /student/notebook）：mock 返回已完成作业列表；cards[].mock 仅 mock 阶段用来「回到该题」。 */
+export async function fetchNotebook(): Promise<NotebookView> {
+  await sleep()
+  return clone(mockNotebook)
 }
 
 /** 可领取的预览。revealAfter 是「领取后的累计透露量」（不是秒；见 08 事件字典 hint.deliver.revealAfter）。 */
