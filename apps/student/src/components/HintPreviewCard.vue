@@ -2,11 +2,24 @@
 /**
  * 提示预览卡（issue #16，02 §4.8 / 01 §4.1）：「花之前告知代价」。
  * 只渲染服务端下发的 HintPreview，不在前端重算门槛/预算/判定（08 §8 AI 规则 3）。
- * 契约见 components/README.md；#16 追加一个可选 prop：
- * - budget：用于文案「剩余 X」（12-分工 #16 DoD），不传则只显示本条成本。
+ * 契约见 components/README.md；#16 追加的可选项：
+ * - budget：用于文案「（你已用 0.5 / 2），剩余 1。」；不传只显示本条成本；
+ * - emits retry / soft-landing（blocked 时「重新获取预览」、额度用完的四个出路按钮）。
+ * HintPreview 字段全部可选：blocked preview 只有 allowed/reason/waitSec，缺 level 时只渲染原因行。
  */
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { BudgetView, HintPreview } from '@/types/attempt'
+import {
+  PREVIEW_ALLOWED_GUIDANCE,
+  formatRevealAmount,
+  previewAllowed,
+  previewCanRetry,
+  previewCostLine,
+  previewDwellSeconds,
+  previewReasonText,
+  previewSoftLandingItems,
+  previewTitle,
+} from './hintPreviewCopy'
 
 const props = withDefaults(
   defineProps<{
@@ -17,33 +30,27 @@ const props = withDefaults(
   }>(),
   { busy: false, budget: null },
 )
-const emit = defineEmits<{ (e: 'claim'): void; (e: 'decline'): void }>()
+const emit = defineEmits<{
+  (e: 'claim'): void
+  (e: 'decline'): void
+  /** blocked 时「重新获取预览」：页面重新 /help（建议项，见 PR #91 审计） */
+  (e: 'retry'): void
+  /** 额度用完/被门槛挡住时的软着陆出路 */
+  (e: 'soft-landing', action: string): void
+}>()
 
-/** 0.5 显示成 0.5，1 显示成 1（与 BudgetBar 口径一致）。 */
-const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+const title = computed(() => previewTitle(props.preview))
+const costLine = computed(() => previewCostLine(props.preview, props.budget))
+const reasonText = computed(() => previewReasonText(props.preview, remain.value))
+const allowed = computed(() => previewAllowed(props.preview) && !props.busy)
+const canRetry = computed(() => previewCanRetry(props.preview) && !props.busy)
+const softItems = computed(() => previewSoftLandingItems(props.preview.softLanding))
+const guidance = PREVIEW_ALLOWED_GUIDANCE
 
-/** H0–H4 口径（00-README §5）：H2 方向 / H3 局部一步 / H4 示范一行。 */
-const LEVEL_TITLE: Record<'H2' | 'H3' | 'H4', string> = {
-  H2: '方向提示',
-  H3: '局部一步',
-  H4: '示范一行',
-}
-
-const title = computed(() => '下一条：' + LEVEL_TITLE[props.preview.level] + '（' + props.preview.level + '）')
-
-const costLine = computed(() => {
-  const cost = fmt(props.preview.cost)
-  const b = props.budget
-  if (!b) return '这条会计入透露 ' + cost + '。'
-  const remain = Math.max(0, b.revealMax - b.revealUsed - props.preview.cost)
-  return '这条会计入透露 ' + cost + '（你已用 ' + fmt(b.revealUsed) + ' / ' + fmt(b.revealMax) + '），剩余 ' + fmt(remain) + '。'
-})
-
-const allowed = computed(() => props.preview.allowed && !props.busy)
-
-/** dwell 门槛的倒计时：只把服务端给的 waitSec 逐秒显示出来，到 0 也不会在前端放开「领取」。 */
+/** dwell 门槛的倒计时：只把服务端 waitSec 逐秒显示，到 0 也不在前端放开「领取」。 */
 const remain = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
+let autoRetried = false
 function stopTimer() {
   if (timer) {
     clearInterval(timer)
@@ -52,61 +59,53 @@ function stopTimer() {
 }
 watch(
   () => props.preview,
-  (p) => {
+  (preview) => {
     stopTimer()
-    remain.value = Math.max(0, Math.floor(Number(p.waitSec ?? 0)))
-    if (p.reason === 'dwell' && !p.allowed && remain.value > 0) {
+    autoRetried = false
+    remain.value = previewDwellSeconds(preview) ?? 0
+    if (remain.value > 0) {
       timer = setInterval(() => {
         remain.value = Math.max(0, remain.value - 1)
-        if (remain.value <= 0) stopTimer()
+        if (remain.value <= 0) {
+          stopTimer()
+          // 归零只说明服务端给的等待时间到了；是否可领仍由服务端决定 —— 自动重新取一次预览。
+          if (!autoRetried && !props.busy) {
+            autoRetried = true
+            emit('retry')
+          }
+        }
       }, 1000)
     }
   },
   { immediate: true },
 )
 onUnmounted(stopTimer)
-
-/** 不可领取的原因：只翻译服务端 reason，不自己判定。 */
-const reasonText = computed(() => {
-  switch (props.preview.reason) {
-    case 'need_attempt':
-      return '先自己写完下一行，再来领取。'
-    case 'dwell':
-      return remain.value > 0 ? '还要再停留 ' + remain.value + ' 秒，才能领取。' : '可以再试一次。'
-    case 'rapid_lock':
-      return '刚连续点了几次，先歇 60 秒再来。'
-    case 'budget':
-      return '本题透露额度已用完，不再升级提示。'
-    case 'layer':
-      return '当前层还不能领取提示。'
-    case 'test_mode':
-      return '测验模式不提供提示。'
-    case 'complete':
-      return '本题已经完成。'
-    default:
-      return ''
-  }
-})
-
-/** 额度用完时的软着陆出路（01 §4.4 / 06 §3.4 的 softLanding）。 */
-const SOFT_LANDING_LABEL: Record<string, string> = {
-  back_to_definition: '回定义',
-  open_lesson: '看讲解',
-  park_and_next: '先做下一题',
-  flag_teacher: '求助老师',
-}
-const softLandingText = computed(() =>
-  (props.preview.softLanding ?? []).map((id) => SOFT_LANDING_LABEL[id] ?? id).join(' / '),
-)
 </script>
 
 <template>
-  <view class="pg-preview" role="dialog" aria-label="提示预览">
-    <text class="pg-preview__title">{{ title }}</text>
-    <text class="pg-preview__cost">{{ costLine }}</text>
-    <text v-if="allowed" class="pg-preview__hint pg-small">领取后，下一级要等你再写一行、并停留 20 秒。</text>
+  <view class="pg-preview" role="dialog" aria-label="提示预览" aria-live="polite">
+    <text v-if="title" class="pg-preview__title">{{ title }}</text>
+    <text v-if="costLine" class="pg-preview__cost">{{ costLine }}</text>
+    <text v-if="allowed" class="pg-preview__hint pg-small">{{ guidance }}</text>
     <text v-else class="pg-preview__reason pg-small">{{ reasonText }}</text>
-    <text v-if="!allowed && softLandingText" class="pg-preview__soft pg-small">可以试试：{{ softLandingText }}</text>
+
+    <!-- 额度用完/被门槛挡住时：服务端 softLanding 渲染成按钮（02 §4.8「卡片换成四个出路按钮」） -->
+    <view v-if="!allowed && softItems.length > 0" class="pg-preview__softgrid">
+      <button
+        v-for="item in softItems"
+        :key="item.id"
+        :class="'pg-preview__softbtn pg-preview__softbtn--' + item.id"
+        :disabled="!!props.busy || item.disabled"
+        @tap="emit('soft-landing', item.id)"
+      >
+        {{ item.label }}<text v-if="item.disabled" class="pg-preview__soon">（即将上线）</text>
+      </button>
+    </view>
+
+    <button v-if="canRetry" class="pg-preview__retry" :disabled="!!props.busy" @tap="emit('retry')">
+      重新获取预览
+    </button>
+
     <view class="pg-preview__row">
       <button class="pg-preview__btn pg-preview__decline" :disabled="!!props.busy" @tap="emit('decline')">
         先不要
@@ -157,8 +156,32 @@ const softLandingText = computed(() =>
   color: var(--hint);
   font-size: var(--fs-small);
 }
-.pg-preview__soft {
-  color: var(--ink-2);
+.pg-preview__softgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.pg-preview__softbtn {
+  min-height: 44px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--hint);
+  border-radius: var(--radius-input);
+  background: var(--sheet);
+  color: var(--hint);
+  font-size: var(--fs-small);
+}
+.pg-preview__softbtn:disabled {
+  opacity: 0.45;
+}
+.pg-preview__soon {
+  font-size: var(--fs-mono);
+}
+.pg-preview__retry {
+  min-height: 44px;
+  border: 1px dashed var(--hint);
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--hint);
   font-size: var(--fs-small);
 }
 .pg-preview__row {

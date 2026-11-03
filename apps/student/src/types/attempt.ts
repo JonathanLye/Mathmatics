@@ -13,7 +13,7 @@ export type AttemptStatus = 'active' | 'parked' | 'locked' | 'completed' | 'aban
 export type AttemptMode = 'practice' | 'test'
 export type NoteKind = 'annotation' | 'hint' | 'concept' | 'system' | 'refusal' | 'lesson' | 'nudge' | 'student'
 export type HintLevel = 'H0' | 'H1' | 'H2' | 'H3' | 'H4' | null
-export type HelpIntent = 'stuck' | 'concept' | 'check_line'
+export type HelpIntent = 'stuck' | 'concept' | 'check_line' | 'free'
 export type RecognitionStatus = 'ok' | 'empty' | 'low_confidence' | 'error'
 export type InputProvenance = 'ink' | 'keyboard' | 'photo' | 'mixed' | 'paste'
 
@@ -111,11 +111,17 @@ export interface IntegrityView {
   watermark?: string | null
 }
 
+/**
+ * 提示预览。字段全部可选：契约（openapi.yaml / packages/contracts/gen/api.ts）
+ * 没有 required；服务端 blocked preview 只返回 { allowed:false, reason, waitSec }，
+ * 没有 level/cost（06 §3.4「不能领取时 preview.allowed=false」）。
+ * revealAfter 是「领取后的累计透露量」，不是秒数；等待秒数一律看 waitSec。
+ */
 export interface HintPreview {
-  level: 'H2' | 'H3' | 'H4'
-  cost: number
-  revealAfter: number
-  allowed: boolean
+  level?: 'H2' | 'H3' | 'H4'
+  cost?: number
+  revealAfter?: number
+  allowed?: boolean
   reason?: 'need_attempt' | 'dwell' | 'rapid_lock' | 'budget' | 'layer' | 'test_mode' | 'complete' | null
   waitSec?: number | null
   previewToken?: string | null

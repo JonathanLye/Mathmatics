@@ -20,27 +20,33 @@ import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
 import EditorSheet from '@/components/EditorSheet.vue'
 import { useAttempt } from '@/stores/attempt'
+import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import { addLine, claimHint, finishSteps, requestHelp, skipLayer, submitDef, submitFramework, viewFrameTemplate } from '@/api/client'
 import type { HelpIntent, HintPreview, LayerId, LineDraft, Note } from '@/types/attempt'
 
-const { state, mockKey, busy, setMock, apply, run } = useAttempt()
+const { state, mockKey, busy, error, setMock, apply, run } = useAttempt()
 const { mode } = useViewport()
 
 const layersOpen = ref(false)
 const editorOpen = ref(false)
 const helpOpen = ref(false)
 const hintPreview = ref<HintPreview | null>(null)
-/** /help 返回的概念说明：抽屉里展示「助教」卡片（01 §4） */
+/** /help 返回的 note 卡片（H0/H1 提示、概念解释、施压拒绝、off_topic 都在抽屉里，01 §4） */
 const helpNote = ref<Note | null>(null)
+/** 最近一次求助请求：预览卡「重新获取预览」/ dwell 归零时按原意图重放 */
+const lastHelp = ref<{ intent: HelpIntent; text: string }>({ intent: 'concept', text: '' })
 const toast = ref('')
 
 const currentLayer = computed(() => state.value.currentLayer)
 const lines = computed(() => state.value.steps?.lines ?? [])
 const notes = computed(() => state.value.notes ?? [])
 const asideNotes = computed(() =>
-  notes.value.filter((n) => n.kind === 'annotation' || n.kind === 'hint' || n.kind === 'concept').slice(-8).reverse(),
+  notes.value
+    .filter((n) => n.kind === 'annotation' || n.kind === 'hint' || n.kind === 'concept' || n.kind === 'refusal' || n.kind === 'student')
+    .slice(-8)
+    .reverse(),
 )
 const isCompleted = computed(() => state.value.status === 'completed')
 const nextLineNo = computed(() => lines.value.length + 1)
@@ -88,6 +94,7 @@ function onSwitchMock(k: MockKey) {
   setMock(k)
   hintPreview.value = null
   helpNote.value = null
+  lastHelp.value = { intent: 'concept', text: '' }
   editorOpen.value = false
   helpOpen.value = false
 }
@@ -146,78 +153,107 @@ function handleHelpOpen(v: boolean) {
   if (!v) helpNote.value = null
 }
 
-/** 取 /help 返回 state 里最新一条 note（mock 的 requestHelp 只回 state，不回 note 字段）。 */
-function latestNote(notes: Note[] | undefined): Note | null {
-  if (!notes || notes.length === 0) return null
-  return notes[notes.length - 1] ?? null
-}
-
 /**
- * 三种意图 / 自由提问的统一出口（#16）：
- * - 返回 preview（H2 起）→ 抽屉收起，页面弹提示预览卡；
- * - 概念说明 → 01 §4 规定显示在抽屉里，抽屉保持打开，把 note 传给 HelpDrawer；
- * - 行检查 → 批注锚到行内（行下列表/页边），抽屉收起。
- * 这里只搬运服务端结果，不判定门槛与预算。
+ * 三种意图 / 自由提问的统一出口（#16；PR #91 审计 1 修复）：
+ * 1) 有 preview（H2 起，或 blocked preview）→ 抽屉收起，页面弹提示预览卡；
+ * 2) 有 note（H0/H1 免费提示、概念解释、施压拒绝、off_topic）→ 抽屉里展示 note 卡；
+ * 3) 两者都没有 → 才 toast。
+ * 只搬运服务端结果，不判定门槛与预算；不再从 state.notes 兜底取 note（真服务端 toAttemptState 的 notes 恒为空）。
  */
 async function runHelp(intent: HelpIntent, text = '') {
   const res = await run(() => requestHelp(state.value, intent, text))
-  if (!res) return
+  if (!res) {
+    // run() 会把错误放进 store.error；不再静默失败（PR #91 审计建议）
+    show(error.value ?? '求助暂时不可用，请稍后再试')
+    return
+  }
   apply(res.state)
+  lastHelp.value = { intent, text }
+
+  // 预览卡不依赖抽屉是否打开（点「卡住了」后抽屉会收起）
   if (res.preview) {
     helpNote.value = null
     hintPreview.value = res.preview
     helpOpen.value = false
     return
   }
-  const note = res.note ?? latestNote(res.state.notes)
-  if (res.routed === 'concept') {
+
+  // 请求在途时抽屉已被关掉（正常关闭在 busy 时已被 HelpDrawer 拦住，这里是兜底）：
+  // 只更新 state，不设置 note，避免重开抽屉时冒出陈旧卡片（PR #91 审计 4）。
+  if (!helpOpen.value) {
+    helpNote.value = null
+    return
+  }
+
+  const routed = res.routed
+  const note = res.note ?? null
+  if (note) {
+    hintPreview.value = null
+    if (routed === 'check_line') {
+      // 行检查的显示位置是行内（01 §4）：抽屉收起，批注由 state.notes 渲染到该行下方
+      helpNote.value = null
+      helpOpen.value = false
+      show('批注已放到这一行下方')
+      return
+    }
+    // H0/H1 提示、概念解释、施压拒绝、off_topic：01 §4 规定显示在抽屉里
     helpNote.value = note
     return
   }
+
+  hintPreview.value = null
   helpNote.value = null
   helpOpen.value = false
-  show(res.routed === 'check_line' ? '批注已放到这一行下方' : '已收到你的问题')
+  show(routed === 'concept' ? '概念解释暂不可用，请稍后再试' : '暂时没有新的内容，稍后再试')
 }
 
 function handleIntent(intent: HelpIntent) {
   void runHelp(intent)
 }
 
+/** 自由提问：契约 intent=free（06 §3.4），服务端据此跑施压/注入规则（B 的 #29）。 */
 function handleSend(text: string) {
-  if (!text.trim()) {
+  const trimmed = text.trim()
+  if (!trimmed) {
     show('先写一句你卡在哪')
     return
   }
-  void runHelp('concept', text.trim())
+  void runHelp('free', trimmed)
+}
+
+/** 预览卡「重新获取预览」/ dwell 归零：按原意图重新 /help（不自行放开门槛）。 */
+function handlePreviewRetry() {
+  const { intent, text } = lastHelp.value
+  hintPreview.value = null
+  void runHelp(intent, text)
 }
 
 async function handleClaim() {
   const preview = hintPreview.value
   if (!preview) return
   const next = await run(() => claimHint(state.value, preview))
-  if (next) {
-    apply(next)
+  if (!next) {
+    // 领取失败（真实接口下 409 HINT_PREVIEW_EXPIRED / HINT_NOT_READY）：清掉旧卡并提示，避免继续点过期 token
     hintPreview.value = null
-    show('已领取；下一级要等你再写一行并停留 20 秒')
+    show(error.value ?? '领取失败，请重新获取预览')
+    return
   }
+  apply(next)
+  hintPreview.value = null
+  const wait = typeof next.help.waitSec === 'number' && next.help.waitSec > 0 ? next.help.waitSec : 0
+  show('已领取；下一级要等你再写一行' + (wait > 0 ? '并停留 ' + wait + ' 秒' : '') + '后才能继续')
 }
 
 function handleDecline() {
   hintPreview.value = null
 }
 
-/** 软着陆四个出路的展示名（01 §4.4；页面只显示选择，不实现微课跳转）。 */
-const SOFT_LANDING_LABEL: Record<string, string> = {
-  back_to_definition: '回到定义',
-  open_lesson: '打开讲解',
-  park_and_next: '先做下一题再回来',
-  flag_teacher: '求助老师',
-}
-
+/** 软着陆出路（01 §4.4；文案与抽屉/预览卡共用 hintPreviewCopy，页面只显示选择，不实现微课跳转）。 */
 function handleSoftLanding(action: string) {
   helpOpen.value = false
   helpNote.value = null
-  show('已选「' + (SOFT_LANDING_LABEL[action] ?? action) + '」；微课/下一题入口在 #26 接入')
+  hintPreview.value = null
+  show('已选「' + softLandingLabel(action) + '」；微课/下一题入口在 #26 接入')
 }
 
 function handleInk() {
@@ -378,6 +414,8 @@ function backHome() {
       :busy="busy"
       @claim="handleClaim"
       @decline="handleDecline"
+      @retry="handlePreviewRetry"
+      @soft-landing="handleSoftLanding"
     />
 
     <EditorSheet
@@ -392,7 +430,7 @@ function backHome() {
 
     <MockSwitcher v-if="mockEnabled" :model-value="mockKey" @update:model-value="onSwitchMock" />
 
-    <view v-if="toast" class="pg-toast pg-small">{{ toast }}</view>
+    <view v-if="toast" class="pg-toast pg-small" role="status" aria-live="polite">{{ toast }}</view>
   </view>
 </template>
 

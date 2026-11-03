@@ -111,9 +111,11 @@ const note2: Note = {
   at: now,
 }
 
-/** 状态 1：第 1 层进行中（新题/登录后第一天） */
+/** 状态 1：第 1 层进行中（新题/登录后第一天）。首条提示是 H0（不计透露量，/help 直接回 note 没有 preview）。 */
 function l1Active(): AttemptState {
-  return base()
+  const s = base()
+  s.help = { ...s.help, nextLevel: 'H0', nextCost: 0 }
+  return s
 }
 
 /** 状态 2：第 3 层进行中（有 2 行 + 行内批注） */

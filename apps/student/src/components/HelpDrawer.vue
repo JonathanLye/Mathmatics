@@ -3,12 +3,13 @@
  * 求助抽屉（issue #16，02 §4.8 / 01 §4「一个入口，三种意图」）。
  * 只渲染服务端给的 HelpState / Note，不在这里判定门槛、不自己算预算（08 §8 AI 规则 3）。
  * 契约见 components/README.md；#16 追加一个可选 prop：
- * - note：页面把 /help 返回的概念说明（kind=concept）传进来，在抽屉里展示「助教」卡片
- *   （01 §4：概念解释的显示位置是“抽屉里”，署名“助教”）。
+ * - note：/help 返回的 note 卡片（01 §4 的位置规则：概念解释/施压拒绝/H0·H1 提示都显示在抽屉里）。
+ * 关闭规则（PR #91 审计）：请求在途（busy）时遮罩/关闭按钮/ Esc 都不关抽屉，避免结果落到已关闭的抽屉上。
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import type { AttemptMode, HelpIntent, HelpState, Note } from '@/types/attempt'
+import { SOFT_LANDING_ORDER, softLandingAvailable, softLandingLabel } from './hintPreviewCopy'
 
 const props = withDefaults(
   defineProps<{
@@ -46,20 +47,61 @@ const stuckReason = computed(() => {
   return '给一条阶梯提示；H2 起会计入透露量。'
 })
 
-/** 额度用完的软着陆出路（01 §4.4）。 */
-const SOFT_LANDING: Array<{ id: string; label: string }> = [
-  { id: 'back_to_definition', label: '回到定义' },
-  { id: 'open_lesson', label: '看讲解' },
-  { id: 'park_and_next', label: '先做下一题' },
-  { id: 'flag_teacher', label: '求助老师' },
-]
+/** 额度用完的软着陆出路（01 §4.4）：文案与预览卡共用一份（hintPreviewCopy），flag_teacher 后端未实现先禁用。 */
+const softLandingItems = SOFT_LANDING_ORDER.map((id) => ({
+  id,
+  label: softLandingLabel(id),
+  disabled: !softLandingAvailable(id),
+}))
 
 /** 常见问句（01 §4 线框里的两条示例；点一下填进输入框，学生再确认发送）。 */
 const COMMON_QUESTIONS = ['这一行在做什么？', '什么是充分条件？']
 
 const noteClass = computed(() => (props.note ? 'pg-help__note--' + props.note.kind : ''))
 
+// ---- 可访问性：模态语义 + Esc 关闭 + 焦点归还（PR #91 审计建议项） ----
+const sheetRef = ref<unknown>(null)
+let previouslyFocused: HTMLElement | null = null
+
+function resolveElement(value: unknown): HTMLElement | null {
+  const wrapper = value as { $el?: unknown } | null
+  const node = wrapper?.$el ?? value
+  return typeof HTMLElement !== 'undefined' && node instanceof HTMLElement ? node : null
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  event.stopPropagation()
+  close()
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (typeof document === 'undefined') return
+    if (open) {
+      previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      document.addEventListener('keydown', onKeydown)
+      void nextTick(() => resolveElement(sheetRef.value)?.focus?.())
+    } else {
+      document.removeEventListener('keydown', onKeydown)
+      try {
+        previouslyFocused?.focus?.()
+      } catch {
+        /* 忽略：元素可能已卸载 */
+      }
+      previouslyFocused = null
+    }
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeydown)
+})
+
+/** busy 时忽略关闭：结果不会落到已关闭的抽屉上（PR #91 审计 4）。 */
 function close() {
+  if (props.busy) return
   emit('update:open', false)
 }
 function pickIntent(intent: HelpIntent) {
@@ -83,11 +125,19 @@ function softLanding(action: string) {
 
 <template>
   <view v-if="props.open" class="pg-help__mask" @tap="close">
-    <view class="pg-help" @tap.stop>
+    <view
+      ref="sheetRef"
+      class="pg-help"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pg-help-title"
+      tabindex="-1"
+      @tap.stop
+    >
       <view class="pg-help__handle" />
 
       <view class="pg-help__head">
-        <text class="pg-help__title">你现在需要哪种帮助？</text>
+        <text id="pg-help-title" class="pg-help__title">你现在需要哪种帮助？</text>
         <button class="pg-help__close" :disabled="props.busy" @tap="close">关闭</button>
       </view>
 
@@ -96,13 +146,14 @@ function softLanding(action: string) {
         <text class="pg-help__softtitle">本题透露额度已用完，可以试试这些出路：</text>
         <view class="pg-help__softgrid">
           <button
-            v-for="s in SOFT_LANDING"
+            v-for="s in softLandingItems"
             :key="s.id"
             class="pg-help__softbtn"
-            :disabled="props.busy"
+            :class="'pg-help__softbtn--' + s.id"
+            :disabled="props.busy || s.disabled"
             @tap="softLanding(s.id)"
           >
-            {{ s.label }}
+            {{ s.label }}<text v-if="s.disabled" class="pg-help__soon">（即将上线）</text>
           </button>
         </view>
       </view>
@@ -136,7 +187,7 @@ function softLanding(action: string) {
         </button>
       </view>
 
-      <view v-if="props.note" class="pg-help__note" :class="noteClass">
+      <view v-if="props.note" class="pg-help__note" :class="noteClass" aria-live="polite">
         <text class="pg-help__notewho pg-small">{{ props.note.who }}</text>
         <MathText :text="props.note.text" block />
       </view>
@@ -165,7 +216,7 @@ function softLanding(action: string) {
         </view>
       </view>
 
-      <text v-if="props.busy" class="pg-help__busy pg-small">正在准备…</text>
+      <text v-if="props.busy" class="pg-help__busy pg-small" aria-live="polite">正在准备…</text>
     </view>
   </view>
 </template>
@@ -178,10 +229,13 @@ function softLanding(action: string) {
   z-index: 60;
   display: flex;
   align-items: flex-end;
+  justify-content: center;
   background: color-mix(in srgb, var(--ink) 35%, transparent);
 }
 .pg-help {
   width: 100%;
+  /* 桌面 1280 下不铺满整屏（02 §3.3；PR #91 审计建议） */
+  max-width: 560px;
   max-height: 88vh;
   overflow-y: auto;
   display: flex;
@@ -260,6 +314,9 @@ function softLanding(action: string) {
   grid-template-columns: 1fr 1fr;
   gap: var(--sp-2);
 }
+.pg-help__soon {
+  font-size: var(--fs-mono);
+}
 .pg-help__softbtn {
   min-height: 44px;
   padding: 0 var(--sp-2);
@@ -320,6 +377,20 @@ function softLanding(action: string) {
 .pg-help__note--hint {
   border-left-color: var(--hint);
   background: var(--hint-soft);
+}
+.pg-help__note--refusal {
+  border-left-color: var(--margin);
+  background: var(--margin-soft);
+}
+.pg-help__note--student {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pg-help__note--system,
+.pg-help__note--nudge,
+.pg-help__note--lesson {
+  border-left-color: var(--rule);
+  background: var(--paper);
 }
 .pg-help__notewho {
   display: block;
