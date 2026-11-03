@@ -103,9 +103,30 @@ async function main() {
         const clientWidth = await page.evaluate(() => document.documentElement.clientWidth)
         const bad = scrollWidth > clientWidth + 1
         if (bad) overflow++
+        // #10：三档布局 + 层导航断言（仅 practice 页）
+        let layoutBad = false
+        if (pg.name.startsWith('practice-')) {
+          const info = await page.evaluate(() => {
+            const root = document.querySelector('.pg-practice')
+            const shell = document.querySelector('.pg-practice__shell')
+            return {
+              cls: root ? root.className : '',
+              dots: document.querySelectorAll('.pg-dot').length,
+              nav: document.querySelectorAll('.pg-layernav').length,
+              cols: shell ? getComputedStyle(shell).gridTemplateColumns.split(' ').filter(Boolean).length : 1,
+            }
+          })
+          const want = vp.name === 'mobile'
+            ? { cls: 'pg-practice--mobile', nav: 0, cols: 1 }
+            : vp.name === 'tablet'
+              ? { cls: 'pg-practice--tablet', nav: 1, cols: 2 }
+              : { cls: 'pg-practice--desktop', nav: 1, cols: 3 }
+          layoutBad = !info.cls.includes(want.cls) || info.dots !== 6 || info.cols !== want.cols || info.nav < want.nav
+          if (layoutBad) overflow++
+        }
         const file = path.join(outDir, vp.name + '-' + pg.name + '.png')
         await page.screenshot({ path: file, fullPage: true })
-        results.push({ viewport: vp.name, page: pg.name, scrollWidth, clientWidth, horizontalOverflow: bad, file: path.relative(appDir, file) })
+        results.push({ viewport: vp.name, page: pg.name, scrollWidth, clientWidth, horizontalOverflow: bad, layoutBad, file: path.relative(appDir, file) })
       }
       await ctx.close()
     }
@@ -114,7 +135,7 @@ async function main() {
     await new Promise((r) => server.close(r))
   }
   fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(results, null, 2), 'utf8')
-  for (const r of results) console.log(r.viewport.padEnd(8) + ' ' + r.page.padEnd(22) + ' scroll=' + r.scrollWidth + ' client=' + r.clientWidth + (r.horizontalOverflow ? '  !! 横向溢出' : '  ok'))
+  for (const r of results) console.log(r.viewport.padEnd(8) + ' ' + r.page.padEnd(22) + ' scroll=' + r.scrollWidth + ' client=' + r.clientWidth + (r.horizontalOverflow ? '  !! 横向溢出' : '  ok') + (r.layoutBad ? '  !! 布局断言失败' : ''))
   console.log('[screens] 共 ' + results.length + ' 张；横向溢出 ' + overflow + ' 处；输出：' + outDir)
   if (overflow > 0) process.exit(1)
 }

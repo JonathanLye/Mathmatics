@@ -20,8 +20,12 @@ function readWidth(): number {
   }
 }
 
+export function layoutModeOf(px: number): LayoutMode {
+  return px >= 1024 ? 'desktop' : px >= 600 ? 'tablet' : 'mobile'
+}
+
 export function useViewport() {
-  const mode = computed<LayoutMode>(() => (width.value >= 1024 ? 'desktop' : width.value >= 600 ? 'tablet' : 'mobile'))
+  const mode = computed<LayoutMode>(() => layoutModeOf(width.value))
   const isMobile = computed(() => mode.value === 'mobile')
 
   let onResize: (() => void) | null = null
