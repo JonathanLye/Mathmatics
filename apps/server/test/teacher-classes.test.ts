@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { decryptPii, studentNoHash } from '../src/auth/crypto.ts';
 import { createTeacherAccount } from '../src/auth/teacher-login.ts';
 import { loadContract } from '../src/contract.ts';
+import { listClasses } from '../src/services/teacher/classes.ts';
 import type { Db } from '../src/db/index.ts';
 
 import {
@@ -246,4 +247,78 @@ describe('名单 CSV 导入（04 §10）', () => {
     const res = await importCsv(cookie, classId, '2026001,张三\n');
     expect(res.json()).toMatchObject({ added: 0, duplicates: 1 });
   });
+
+  it('空班级名/学期：422', async () => {
+    const cookie = await teacherLogin();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/classes',
+      headers: auth(cookie),
+      payload: { name: '   ', term: '2026 秋' },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('名单：空文件 422；前置空行后仍能识别表头', async () => {
+    const cookie = await teacherLogin();
+    const { classId } = await createClass(cookie);
+
+    const empty = await importCsv(cookie, classId, '   \n');
+    expect(empty.statusCode).toBe(422);
+    expect(empty.json().error.code).toBe('VALIDATION_FAILED');
+
+    const res = await importCsv(cookie, classId, '\n\n学号,姓名\n2026001,张三\n');
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ added: 1, duplicates: 0, invalid: [] });
+  });
+
+  it('先导学号后补姓名：重复行会把 name_enc 补上', async () => {
+    const cookie = await teacherLogin();
+    const { classId } = await createClass(cookie);
+
+    expect((await importCsv(cookie, classId, '2026001,\n')).statusCode).toBe(200);
+    const res = await importCsv(cookie, classId, '2026001,张三\n');
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ added: 0, duplicates: 1 });
+
+    const row = await db.query<{ name_enc: Buffer | null }>(
+      `select name_enc from app.roster_entries where class_id = $1`,
+      [classId],
+    );
+    expect(row.rows[0]?.name_enc).not.toBeNull();
+    expect(decryptPii(testConfig.piiKey, row.rows[0]?.name_enc as Buffer)).toBe('张三');
+  });
+
+  it('归档班级不可再导入名单/重置邀请码（404）', async () => {
+    const cookie = await teacherLogin();
+    const { classId } = await createClass(cookie);
+    await db.query(`update app.classes set archived_at = now() where id = $1`, [classId]);
+
+    const roster = await importCsv(cookie, classId, '2026001,张三\n');
+    expect(roster.statusCode).toBe(404);
+    const invite = await app.inject({
+      method: 'POST',
+      url: `/api/v1/teacher/classes/${classId}/invite-code`,
+      headers: auth(cookie),
+    });
+    expect(invite.statusCode).toBe(404);
+  });
+
+  it('管理员可以看到全部班级（04 §1），但普通教师不行', async () => {
+    const cookie = await teacherLogin();
+    await createClass(cookie, '教师自己的班');
+    await createTeacherAccount(db, { username: 'other.teacher', password: PASSWORD });
+    const otherCookie = await teacherLogin('other.teacher');
+    await createClass(otherCookie, '别人的班');
+
+    const admin = await db.query<{ id: string }>(
+      `insert into app.users (role, anon_code) values ('admin', 'A-ADMIN1') returning id`,
+    );
+    const adminId = admin.rows[0]?.id as string;
+    const all = await listClasses(db, { userId: adminId, role: 'admin', sessionId: 'test' });
+    // setupFixture 还建了一个「高数 A 班」，管理员应能看到全部三个班。
+    expect(all.map((c) => c.name).sort()).toEqual(['别人的班', '教师自己的班', '高数 A 班'].sort());
+  });
+
 });

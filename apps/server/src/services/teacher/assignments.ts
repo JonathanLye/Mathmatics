@@ -1,3 +1,4 @@
+import type { AuthContext } from '../../auth/session.ts';
 import type { Db, Queryable } from '../../db/index.ts';
 import { AppError } from '../../errors.ts';
 import { assertClassTeacher } from './auth.ts';
@@ -112,10 +113,10 @@ async function findAssignment(q: Queryable, assignmentId: string): Promise<Assig
 
 export async function createAssignment(
   db: Db,
-  teacherId: string,
+  auth: AuthContext,
   input: AssignmentInput,
 ): Promise<Record<string, unknown>> {
-  await assertClassTeacher(db, teacherId, input.classId);
+  await assertClassTeacher(db, auth, input.classId);
   const openAt = parseTime(input.openAt, '开放');
   if (openAt === null) throw new AppError('VALIDATION_FAILED', 422, '开放时间必填');
   const closeAt = parseTime(input.closeAt, '截止');
@@ -149,14 +150,14 @@ export async function createAssignment(
         openAt,
         closeAt,
         JSON.stringify(settings),
-        teacherId,
+        auth.userId,
       ],
     );
     const assignmentId = inserted.rows[0]?.id;
     if (!assignmentId) throw new Error('insert app.assignments 没有返回 id');
     await appendTeacherEvent(tx, {
       type: 't.assign',
-      teacherId,
+      teacherId: auth.userId,
       classId: input.classId,
       assignmentId,
       problemId: input.problemId,
@@ -169,12 +170,12 @@ export async function createAssignment(
 
 export async function updateAssignment(
   db: Db,
-  teacherId: string,
+  auth: AuthContext,
   assignmentId: string,
   input: AssignmentInput,
 ): Promise<Record<string, unknown>> {
   const existing = await findAssignment(db, assignmentId);
-  await assertClassTeacher(db, teacherId, existing.class_id);
+  await assertClassTeacher(db, auth, existing.class_id);
   if (input.classId !== existing.class_id) throw new AppError('NOT_FOUND', 404, '布置不存在');
 
   // 04 §7：已开始的作答固定在开题版本；已有作答时不允许更换题目/模式，避免“同一布置两种题”。
@@ -226,7 +227,7 @@ export async function updateAssignment(
     );
     await appendTeacherEvent(tx, {
       type: 't.assign',
-      teacherId,
+      teacherId: auth.userId,
       classId: existing.class_id,
       assignmentId,
       problemId: input.problemId,
@@ -240,12 +241,12 @@ export async function updateAssignment(
 // 04 §6：布置关闭后发布参考证明与讲评；A/B 两组同时发布（同一布置）。参考证明读取必须记审计（05 §7）。
 export async function publishReview(
   db: Db,
-  teacherId: string,
+  auth: AuthContext,
   assignmentId: string,
   input: PublishReviewInput,
 ): Promise<Record<string, unknown>> {
   const existing = await findAssignment(db, assignmentId);
-  await assertClassTeacher(db, teacherId, existing.class_id);
+  await assertClassTeacher(db, auth, existing.class_id);
 
   // 06 §5：是否关闭以数据库时钟为准，不用应用进程的 Date.now()。
   if (existing.status !== 'closed' && !existing.time_closed) {
@@ -276,11 +277,17 @@ export async function publishReview(
     await tx.query(
       `insert into vault.reference_access_log (user_id, problem_id, version, purpose)
        values ($1, $2, $3, 'publish')`,
-      [teacherId, existing.problem_id, existing.problem_version],
+      [auth.userId, existing.problem_id, existing.problem_version],
+    );
+    // P2-2：本轮不新增“发布选择表”（需 B 的契约/schema）；把 proofIds 选择写进 audit_log 以便追溯，
+    // 语义：P0 发布该版本全部 publishable 证明，proofIds 仅做校验与审计记录。
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'publish_review', $2, $3::jsonb)`,
+      [auth.userId, assignmentId, JSON.stringify({ proofIds })],
     );
     await appendTeacherEvent(tx, {
       type: 't.publish_review',
-      teacherId,
+      teacherId: auth.userId,
       classId: existing.class_id,
       assignmentId,
       problemId: existing.problem_id,

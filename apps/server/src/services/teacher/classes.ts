@@ -1,6 +1,9 @@
 import { randomInt } from 'node:crypto';
 
+import type { AuthContext } from '../../auth/session.ts';
 import type { Db, Queryable } from '../../db/index.ts';
+import { AppError } from '../../errors.ts';
+import { assertClassTeacher } from './auth.ts';
 import { toClassSummary, type ClassSummaryRow } from './view.ts';
 
 // 04 §10：邀请码 6 位，去掉易混字符 0/O/1/I（与学生匿名码同一套字母表）。
@@ -56,23 +59,36 @@ async function classSummaryById(q: Queryable, classId: string): Promise<Record<s
   return toClassSummary(row);
 }
 
-// 我的班级：owner 或班内教师成员；归档班级不返回（04 §1）。
-export async function listClasses(db: Queryable, teacherId: string): Promise<Record<string, unknown>[]> {
-  const rows = (
-    await db.query<ClassSummaryRow>(
-      `${CLASS_SUMMARY_SELECT}
-        where c.archived_at is null
-          and (c.owner_id = $1
-               or exists (select 1 from app.class_members m
-                          where m.class_id = c.id and m.user_id = $1 and m.role = 'teacher'))
-        order by c.created_at desc`,
-      [teacherId],
-    )
-  ).rows;
+// 我的班级（04 §1）：教师只看 owner/班内教师成员；管理员看全部未归档班级。
+export async function listClasses(db: Queryable, auth: AuthContext): Promise<Record<string, unknown>[]> {
+  const rows =
+    auth.role === 'admin'
+      ? (
+          await db.query<ClassSummaryRow>(
+            `${CLASS_SUMMARY_SELECT}
+              where c.archived_at is null
+              order by c.created_at desc`,
+          )
+        ).rows
+      : (
+          await db.query<ClassSummaryRow>(
+            `${CLASS_SUMMARY_SELECT}
+              where c.archived_at is null
+                and (c.owner_id = $1
+                     or exists (select 1 from app.class_members m
+                                where m.class_id = c.id and m.user_id = $1 and m.role = 'teacher'))
+              order by c.created_at desc`,
+            [auth.userId],
+          )
+        ).rows;
   return rows.map((row) => toClassSummary(row));
 }
 
-export async function createClass(db: Db, teacherId: string, input: CreateClassInput): Promise<Record<string, unknown>> {
+export async function createClass(db: Db, auth: AuthContext, input: CreateClassInput): Promise<Record<string, unknown>> {
+  // 契约没有 minLength；空班级名/学期没有产品意义，服务端直接 422（不新增契约字段）。
+  if (input.name.trim() === '' || input.term.trim() === '') {
+    throw new AppError('VALIDATION_FAILED', 422, '班级名和学期不能为空');
+  }
   const settings = normalizeClassSettings(input.settings);
   // invite_code 全局 unique；冲突时换一个码重试（6 位 32 字符表，冲突概率极低但必须处理）。
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -81,7 +97,7 @@ export async function createClass(db: Db, teacherId: string, input: CreateClassI
         const inserted = await tx.query<{ id: string }>(
           `insert into app.classes (name, term, owner_id, invite_code, settings)
            values ($1, $2, $3, $4, $5::jsonb) returning id`,
-          [input.name.trim(), input.term.trim(), teacherId, newInviteCode(), JSON.stringify(settings)],
+          [input.name.trim(), input.term.trim(), auth.userId, newInviteCode(), JSON.stringify(settings)],
         );
         const classId = inserted.rows[0]?.id;
         if (!classId) throw new Error('insert app.classes 没有返回 id');
@@ -89,7 +105,7 @@ export async function createClass(db: Db, teacherId: string, input: CreateClassI
         await tx.query(
           `insert into app.class_members (class_id, user_id, role) values ($1, $2, 'teacher')
            on conflict (class_id, user_id) do nothing`,
-          [classId, teacherId],
+          [classId, auth.userId],
         );
         return classSummaryById(tx, classId);
       });
@@ -104,11 +120,10 @@ export async function createClass(db: Db, teacherId: string, input: CreateClassI
 // 04 §10：重置后旧码立即失效（单列更新），已登录学生不受影响（会话独立）。
 export async function rotateInviteCode(
   db: Db,
-  teacherId: string,
+  auth: AuthContext,
   classId: string,
-  assertClassTeacher: (q: Queryable, teacherId: string, classId: string) => Promise<void>,
 ): Promise<Record<string, unknown>> {
-  await assertClassTeacher(db, teacherId, classId);
+  await assertClassTeacher(db, auth, classId);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       await db.query(`update app.classes set invite_code = $2 where id = $1`, [classId, newInviteCode()]);

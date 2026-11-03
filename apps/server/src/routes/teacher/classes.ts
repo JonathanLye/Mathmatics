@@ -15,7 +15,7 @@ export const teacherClassRoutes: FastifyPluginAsync<AuthRouteOptions> = async (a
   // 我的班级（04 §1、06 §3.6）
   app.get('/teacher/classes', async (request) => {
     const auth = await requireTeacher(db, request);
-    const classes = await listClasses(db, auth.userId);
+    const classes = await listClasses(db, auth);
     for (const item of classes) contract.validate('ClassSummary', item);
     return classes;
   });
@@ -25,7 +25,7 @@ export const teacherClassRoutes: FastifyPluginAsync<AuthRouteOptions> = async (a
     const auth = await requireTeacher(db, request);
     contract.validateRequest('/teacher/classes', 'post', request.body);
     const body = request.body as CreateClassInput;
-    const summary = await createClass(db, auth.userId, body);
+    const summary = await createClass(db, auth, body);
     contract.validate('ClassSummary', summary);
     return reply.status(201).send(summary);
   });
@@ -34,7 +34,7 @@ export const teacherClassRoutes: FastifyPluginAsync<AuthRouteOptions> = async (a
   app.post('/teacher/classes/:classId/roster', async (request) => {
     const auth = await requireTeacher(db, request);
     const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
-    await assertClassTeacher(db, auth.userId, classId);
+    await assertClassTeacher(db, auth, classId);
     if (!Buffer.isBuffer(request.body)) {
       throw new AppError('VALIDATION_FAILED', 422, '请求体必须是 CSV 文件（text/csv）');
     }
@@ -45,7 +45,7 @@ export const teacherClassRoutes: FastifyPluginAsync<AuthRouteOptions> = async (a
   app.post('/teacher/classes/:classId/invite-code', async (request) => {
     const auth = await requireTeacher(db, request);
     const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
-    const summary = await rotateInviteCode(db, auth.userId, classId, assertClassTeacher);
+    const summary = await rotateInviteCode(db, auth, classId);
     contract.validate('ClassSummary', summary);
     return summary;
   });

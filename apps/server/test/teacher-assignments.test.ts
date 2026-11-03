@@ -265,6 +265,12 @@ describe('发布讲评（#50 / 04 §6）', () => {
       [PROBLEM_ID, PROBLEM_VERSION],
     );
     expect(access.rows).toHaveLength(1);
+    // P2-2：本轮不新增发布选择表，proofIds 选择写进 audit_log 以便追溯。
+    const audit = await db.query<{ detail: { proofIds?: string[] } }>(
+      `select detail from app.audit_log where action = 'publish_review' and target = $1`,
+      [assignmentId],
+    );
+    expect(audit.rows[0]?.detail.proofIds).toEqual(['R1']);
   });
 
   it('不可发布的 proofId 422', async () => {

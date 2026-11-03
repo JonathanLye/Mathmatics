@@ -83,48 +83,72 @@ export async function importRoster(
   buffer: Buffer,
 ): Promise<RosterImportResult> {
   const { text } = decodeCsv(buffer);
+  if (text.trim() === '') throw new AppError('VALIDATION_FAILED', 422, '名单文件为空');
   const rows = parseCsv(text);
   const result: RosterImportResult = { added: 0, duplicates: 0, invalid: [] };
   const seen = new Set<string>();
 
-  for (let index = 0; index < rows.length; index += 1) {
-    const cells = rows[index];
-    if (!cells) continue;
-    const rowNo = index + 1;
-    const first = (cells[0] ?? '').trim();
-    if (cells.length === 1 && first === '') continue; // 空行
-    if (index === 0 && HEADER_CELLS.has(first.toLowerCase())) continue; // 可选表头
+  // 一次导入一个事务：避免“导一半”留下部分名单（A 复审 P3-7）。
+  return db.tx(async (tx) => {
+    let headerChecked = false;
+    let dataRows = 0;
 
-    const studentNo = normalizeStudentNo(first);
-    const name = (cells[1] ?? '').trim();
-    if (studentNo === '') {
-      result.invalid.push({ row: rowNo, reason: '学号为空' });
-      continue;
+    for (let index = 0; index < rows.length; index += 1) {
+      const cells = rows[index];
+      if (!cells) continue;
+      const rowNo = index + 1;
+      const first = (cells[0] ?? '').trim();
+      if (cells.every((cell) => cell.trim() === '')) continue; // 空行（含文件前置空行）
+
+      // 可选表头：以“第一个非空行”判断，避免前置空行把表头当成学号。
+      if (!headerChecked) {
+        headerChecked = true;
+        if (HEADER_CELLS.has(first.toLowerCase())) continue;
+      }
+      dataRows += 1;
+
+      const studentNo = normalizeStudentNo(first);
+      const name = (cells[1] ?? '').trim();
+      if (studentNo === '') {
+        result.invalid.push({ row: rowNo, reason: '学号为空' });
+        continue;
+      }
+      if (cells.length > 2) {
+        result.invalid.push({ row: rowNo, reason: '列数超过 2 列（学号,姓名）' });
+        continue;
+      }
+
+      const hash = studentNoHash(config.studentNoPepper, studentNo);
+      if (seen.has(hash)) {
+        result.duplicates += 1; // 文件内重复：合并
+        continue;
+      }
+      seen.add(hash);
+
+      const nameEnc = name === '' ? null : encryptPii(config.piiKey, name);
+      const existing = (
+        await tx.query<{ id: string; name_enc: Buffer | null }>(
+          `select id, name_enc from app.roster_entries where class_id = $1 and student_no_hash = $2`,
+          [classId, hash],
+        )
+      ).rows[0];
+
+      if (existing) {
+        result.duplicates += 1; // 库里已有：合并；先导学号后补姓名时把姓名补上（04 §10）
+        if (existing.name_enc === null && nameEnc !== null) {
+          await tx.query(`update app.roster_entries set name_enc = $2 where id = $1`, [existing.id, nameEnc]);
+        }
+        continue;
+      }
+
+      await tx.query(
+        `insert into app.roster_entries (class_id, student_no_hash, name_enc) values ($1, $2, $3)`,
+        [classId, hash, nameEnc],
+      );
+      result.added += 1;
     }
-    if (cells.length > 2) {
-      result.invalid.push({ row: rowNo, reason: '列数超过 2 列（学号,姓名）' });
-      continue;
-    }
 
-    const hash = studentNoHash(config.studentNoPepper, studentNo);
-    if (seen.has(hash)) {
-      result.duplicates += 1; // 文件内重复：合并
-      continue;
-    }
-    seen.add(hash);
-
-    const nameEnc = name === '' ? null : encryptPii(config.piiKey, name);
-    const inserted = await db.query<{ id: string }>(
-      `insert into app.roster_entries (class_id, student_no_hash, name_enc)
-       values ($1, $2, $3)
-       on conflict (class_id, student_no_hash) do nothing
-       returning id`,
-      [classId, hash, nameEnc],
-    );
-    if (inserted.rows.length > 0) result.added += 1;
-    else result.duplicates += 1; // 库里已有：合并
-  }
-
-  if (rows.length === 0) throw new AppError('VALIDATION_FAILED', 422, '名单文件为空');
-  return result;
+    if (dataRows === 0) throw new AppError('VALIDATION_FAILED', 422, '名单文件没有数据行');
+    return result;
+  });
 }
