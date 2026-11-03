@@ -2,14 +2,18 @@
 /**
  * 行编辑器（issue #12；02 §4.4）。
  *
- * 本轮先给「这一行」+「依据」两个输入区和一条常用符号快捷条：
- * - 现在就能加行、跑通 #12 的 DoD；#13 的 <MathTextEditor> + <ProofKeyboard> 落地后，
- *   把这两个 textarea 换成 MathTextEditor 即可，提交契约（LineDraft）不变。
- * - 快捷条暂时把符号追加在文本末尾；#13 键盘会按 keyboard-layout.json 处理光标与 `$…$` 包裹。
- * - 前端不做判定：只保证「这一行」非空才可提交（02 §4.4），依据可空（服务端会追问）。
- * - provenance 本轮固定 keyboard；#15 手写/识别接入后由父级按 InputProvenance 传入。
+ * 布局（PR #90 复审第 6 条决策，2026-11-03）：
+ * - 手机（<600px）从底部升起弹层；
+ * - 平板/桌面（≥600px）用居中的对话框卡片，不做"稿纸内联展开"。
+ *   决策已写进 02 §4.4 与本目录 README，组件里不再用注释代替规范。
+ *
+ * 输入：本轮先用 textarea + 常用符号快捷条（#13 的 MathTextEditor + ProofKeyboard 落地后替换输入区，
+ * 提交契约 LineDraft / InputMeta 不变）；「依据」默认键盘，依据可空（02 §4.4）。
+ *
+ * 不做判定：只保证「这一行」非空才可提交；provenance 本轮固定 keyboard（#15 接入后由父级传 ink/photo/mixed）。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { buildLineDraft } from './lineDrafts'
 import type { InputProvenance, LineDraft } from '@/types/attempt'
 
 const props = withDefaults(
@@ -30,27 +34,89 @@ const emit = defineEmits<{
 
 const statement = ref('')
 const justification = ref('')
+/** 用户是否改过这个字段：用于 #15/#16 识别确认回灌 initial* 时不覆盖学生已输入的内容。 */
+const statementDirty = ref(false)
+const justificationDirty = ref(false)
 
-/** 父级 state 是唯一真源：每次打开（或换行）时把草稿灌进来，本地只做编辑缓冲。 */
+/**
+ * draftId 生命周期（PR #90 复审第 2 条）：
+ * - 打开编辑器时生成一次：「这一行」「依据」各一个独立 id（03 §1 一个落点一个 draftId）；
+ * - 打开期间的重试/超时重发复用同一对 id；只有重新打开（或提交成功后再次打开）才换新 id。
+ */
+const statementDraftId = ref('')
+const justificationDraftId = ref('')
+
+/** draftId 只用于本地草稿/幂等标识（03 §1），不参与判定。 */
+function newDraftId(): string {
+  const c = globalThis.crypto as Crypto | undefined
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const r = (Math.random() * 16) | 0
+    const v = ch === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
+/** 父级 state 是唯一真源：只在打开编辑器时把草稿灌进来，并生成这一轮草稿的 draftId。 */
 function resetDraft() {
   statement.value = props.initialStatement ?? ''
   justification.value = props.initialJustification ?? ''
+  statementDirty.value = false
+  justificationDirty.value = false
+  statementDraftId.value = newDraftId()
+  justificationDraftId.value = newDraftId()
+}
+
+/**
+ * #15/#16 识别确认后回灌 initial*：打开期间父级更新草稿时同步，但只用没被学生改过的字段，
+ * 避免把学生正在编辑的内容清掉（02 §5：保留未提交输入）。
+ */
+watch(
+  () => props.initialStatement,
+  (value) => {
+    if (props.open && !statementDirty.value) statement.value = value ?? ''
+  },
+)
+watch(
+  () => props.initialJustification,
+  (value) => {
+    if (props.open && !justificationDirty.value) justification.value = value ?? ''
+  },
+)
+
+let previousFocus: HTMLElement | null = null
+
+function onKeydown(event: KeyboardEvent) {
+  // Esc 关闭（H5；小程序端不挂监听）
+  if (event.key === 'Escape') close()
+}
+
+function bindKeyboard(open: boolean) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  if (open) {
+    previousFocus = (document.activeElement as HTMLElement | null) ?? null
+    window.addEventListener('keydown', onKeydown)
+  } else {
+    window.removeEventListener('keydown', onKeydown)
+    // 焦点归还（a11y）：关闭后回到打开前的元素
+    if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus()
+    previousFocus = null
+  }
 }
 
 watch(
   () => props.open,
   (open) => {
+    // 只在 open 翻转时重置草稿；打开期间 lineNo / 409 静默刷新不清空学生输入（PR #90 复审建议）。
     if (open) resetDraft()
+    bindKeyboard(open)
   },
   { immediate: true },
 )
 
-watch(
-  () => props.lineNo,
-  () => {
-    if (props.open) resetDraft()
-  },
-)
+onUnmounted(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown)
+})
 
 /** 常用符号（临时）：#13 的证明键盘落地后由 ProofKeyboard 替换。 */
 const SYMBOLS: Array<{ label: string; insert: string }> = [
@@ -74,41 +140,51 @@ const SYMBOLS: Array<{ label: string; insert: string }> = [
 function insertSymbol(text: string) {
   if (props.busy) return
   statement.value = statement.value + text
+  statementDirty.value = true
+}
+
+function onStatementInput() {
+  statementDirty.value = true
+}
+
+function onJustificationInput() {
+  justificationDirty.value = true
 }
 
 const canSubmit = computed(() => statement.value.trim().length > 0 && !props.busy)
-
-/** draftId 只用于本地草稿/幂等标识（03 §1），不参与判定。 */
-function newDraftId(): string {
-  const c = globalThis.crypto as Crypto | undefined
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
-    const r = (Math.random() * 16) | 0
-    const v = ch === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
 
 function close() {
   if (props.busy) return
   emit('update:open', false)
 }
 
+/**
+ * 提交时只读取打开时生成的那一对 draftId，绝不在这里生成新 id：
+ * 重试/超时重发/409 后重点都复用同一个 draftId（PR #90 复审第 2 条）。
+ */
 function submit() {
   if (!canSubmit.value) return
-  const draft: LineDraft = {
-    statement: statement.value.trim(),
-    justification: justification.value.trim(),
-    // 本轮只有键盘输入；#15 识别确认后由父级换成为 ink/photo/mixed 并带 recogId。
-    input: { provenance: 'keyboard' as InputProvenance, draftId: newDraftId() },
-  }
+  const draft = buildLineDraft({
+    statement: statement.value,
+    justification: justification.value,
+    statementDraftId: statementDraftId.value,
+    justificationDraftId: justificationDraftId.value,
+    provenance: 'keyboard' as InputProvenance,
+  })
   emit('submit', draft)
 }
 </script>
 
 <template>
   <view v-if="props.open" class="pg-editor-mask" data-testid="editor-mask" @tap="close">
-    <view class="pg-editor" data-testid="editor-sheet" @tap.stop>
+    <view
+      class="pg-editor"
+      data-testid="editor-sheet"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="'第 ' + props.lineNo + ' 行编辑'"
+      @tap.stop
+    >
       <view class="pg-editor__handle" />
       <view class="pg-editor__head">
         <text class="pg-editor__title">第 {{ props.lineNo }} 行</text>
@@ -121,9 +197,11 @@ function submit() {
           v-model="statement"
           class="pg-editor__input"
           data-testid="editor-statement"
-          placeholder="这一行：写下结论或算式（公式用 $…$，例如 $\frac{5}{n+2}$）"
+          aria-label="这一行"
+          placeholder="这一行：写下结论或算式（公式用 $…$，例如 $rac{5}{n+2}$）"
           :disabled="props.busy"
           :maxlength="2000"
+          @input="onStatementInput"
         />
         <view class="pg-editor__symbols pg-scroll-x" data-testid="symbol-bar" aria-label="常用符号">
           <button
@@ -145,9 +223,11 @@ function submit() {
           v-model="justification"
           class="pg-editor__input pg-editor__input--just"
           data-testid="editor-justification"
+          aria-label="依据（可空）"
           placeholder="依据：这一行由哪条定义或已证结论得到？"
           :disabled="props.busy"
           :maxlength="1000"
+          @input="onJustificationInput"
         />
       </view>
 
@@ -167,6 +247,7 @@ function submit() {
 </template>
 
 <style scoped>
+/* 遮罩：用 token 混色，不写死 rgba（README 硬规则 2）。 */
 .pg-editor-mask {
   position: fixed;
   inset: 0;
@@ -174,7 +255,9 @@ function submit() {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(29, 36, 48, 0.35);
+  /* 手机软键盘：tokens.css 的 --keyboard-inset 由 visualViewport 写入（02 §6）。 */
+  padding-bottom: var(--keyboard-inset, 0px);
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
 }
 
 .pg-editor {
@@ -203,7 +286,7 @@ function submit() {
 .pg-editor__head {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--sp-2);
 }
 
 .pg-editor__title {
@@ -221,7 +304,7 @@ function submit() {
 .pg-editor__field {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--sp-2);
 }
 
 .pg-editor__label {
@@ -252,9 +335,10 @@ function submit() {
   min-height: 64px;
 }
 
+/* 相邻按钮间距 ≥ 8px（02 §2.4）。 */
 .pg-editor__symbols {
   display: flex;
-  gap: var(--sp-1);
+  gap: var(--sp-2);
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -312,7 +396,10 @@ function submit() {
   color: var(--paper);
 }
 
-/* 平板/桌面：同一定位方式，改成居中的卡片，不占满整屏（组件内 CSS 自适应）。 */
+/*
+ * 平板/桌面（≥600px）：居中的对话框卡片（不是稿纸内联展开）。
+ * 决策口径：02 §4.4 + components/README.md（PR #90 复审第 6 条选路线 ②：改文档、保留居中卡片）。
+ */
 @media (min-width: 600px) {
   .pg-editor-mask {
     align-items: center;

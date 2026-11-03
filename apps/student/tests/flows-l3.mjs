@@ -4,9 +4,13 @@
  * 用法（在 apps/student 下）：
  *   npm run build:h5
  *   npm run e2e:flows:l3
- * 依赖：playwright-core + 本机 ms-playwright 的 chromium（可用 PG_CHROMIUM 指定）。
+ * 依赖：playwright-core + 本机 ms-playwright 的 chromium（可用 PG_CHROMIUM 指定；
+ *       这里同时探测 Windows / Linux / macOS 的默认缓存路径，方便在 CI/容器里跑）。
  * 说明：与 tests/screenshots.mjs 共用同一套「静态服务器 + chromium」逻辑；
  * 进路由前先 about:blank，强制 SPA 完整重新加载（同路径不同 hash 不会重载）。
+ *
+ * PR #90 复审第 5 条：空提交断言要真的检查 disabled / aria-disabled（不能只比行数）；
+ * 并补 1280 宽「行内只标记、正文只在页边」的去重断言（复审第 4 条）。
  */
 import http from 'node:http'
 import fs from 'node:fs'
@@ -34,20 +38,32 @@ const MIME = {
   '.ttf': 'font/ttf',
 }
 
+/** 跨平台 chromium 探测：Windows / Linux / macOS 的 ms-playwright 默认缓存。 */
 function findChromium() {
   if (process.env.PG_CHROMIUM && fs.existsSync(process.env.PG_CHROMIUM)) return process.env.PG_CHROMIUM
   const candidates = [
     process.env.PLAYWRIGHT_BROWSERS_PATH,
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'ms-playwright') : null,
     process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local', 'ms-playwright') : null,
-    path.join(os.homedir(), 'AppData', 'Local', 'ms-playwright'),
+    path.join(os.homedir(), 'AppData', 'Local', 'ms-playwright'), // Windows
+    path.join(os.homedir(), '.cache', 'ms-playwright'), // Linux
+    process.env.XDG_CACHE_HOME ? path.join(process.env.XDG_CACHE_HOME, 'ms-playwright') : null,
+    path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright'), // macOS
   ].filter(Boolean)
+  const subPaths = [
+    ['chrome-win64', 'chrome.exe'],
+    ['chrome-win', 'chrome.exe'],
+    ['chrome-linux', 'chrome'],
+    ['chrome-linux64', 'chrome'],
+    ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
+    ['chrome-mac-arm64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
+  ]
   for (const base of candidates) {
     if (!fs.existsSync(base)) continue
     const dirs = fs.readdirSync(base).filter((d) => d.startsWith('chromium-')).sort().reverse()
     for (const dir of dirs) {
-      for (const sub of ['chrome-win64', 'chrome-win']) {
-        const exe = path.join(base, dir, sub, 'chrome.exe')
+      for (const sub of subPaths) {
+        const exe = path.join(base, dir, ...sub)
         if (fs.existsSync(exe)) return exe
       }
     }
@@ -116,8 +132,68 @@ async function fillTextarea(page, testId, value, fallbackIndex) {
   return false
 }
 
+/**
+ * 是否处于禁用态：uni-app 的 <button> 在 H5 是 <uni-button>，Vue 把 :disabled 渲染成
+ * disabled 属性（"true"）或 aria-disabled；同时保留 DOM 兜底避免版本差异漏判。
+ */
+async function disabledInfo(locator) {
+  return locator.evaluate((el) => {
+    const rawDisabled = el.getAttribute('disabled')
+    const signals = []
+    if (el.getAttribute('aria-disabled') === 'true') signals.push('aria-disabled')
+    if (rawDisabled !== null && rawDisabled !== 'false') signals.push('disabled=' + rawDisabled)
+    if (typeof el.disabled === 'boolean' && el.disabled) signals.push('property disabled')
+    return { disabled: signals.length > 0, signals, outer: el.outerHTML.slice(0, 400) }
+  })
+}
+
 async function bodyText(page) {
   return page.evaluate(() => document.body.innerText)
+}
+
+async function openPractice(browser, url, viewport) {
+  const context = await browser.newContext({ viewport, isMobile: viewport.width < 600, deviceScaleFactor: 1 })
+  const page = await context.newPage()
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(String(error)))
+  await page.goto('about:blank')
+  await page.goto(url, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(800)
+  return { context, page, pageErrors }
+}
+
+/**
+ * PR #90 复审第 4 条：1280 宽时同一条批注不能「行内 + 页边」各渲染全文；
+ * 行内应只剩颜色标记（data-testid=line-note-marker），正文在页边（.pg-practice__note）。
+ */
+async function checkWideDedupe(browser, url) {
+  const { context, page, pageErrors } = await openPractice(browser, url, { width: 1280, height: 800 })
+  try {
+    const lineNoteCount = await page.locator('[data-testid="line-note"]').count()
+    const markerCount = await page.locator('[data-testid="line-note-marker"]').count()
+    const asideCount = await page.locator('.pg-practice__note').count()
+    if (lineNoteCount === 0) pass('1280 宽行内不再渲染批注正文', 'line-note=0')
+    else fail('1280 宽批注去重', '行内仍有 ' + lineNoteCount + ' 条批注全文')
+    if (markerCount > 0) pass('1280 宽行内保留颜色标记', 'marker=' + markerCount)
+    else fail('1280 宽行内标记', '没有 line-note-marker')
+    if (asideCount > 0) pass('1280 宽批注正文在页边', '.pg-practice__note=' + asideCount)
+    else fail('1280 宽页边批注', '页边没有批注条目')
+    if (markerCount === asideCount) pass('1280 宽行内标记数与页边条目数一致')
+    else fail('1280 宽标记/页边数量', 'marker=' + markerCount + ' aside=' + asideCount)
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    if (overflow <= 1) pass('1280 宽无横向溢出', 'scrollWidth-clientWidth=' + overflow)
+    else fail('1280 宽横向溢出', overflow + 'px')
+
+    if (pageErrors.length === 0) pass('1280 宽无 pageerror')
+    else fail('1280 宽运行时错误', pageErrors.join(' | '))
+
+    await page.screenshot({ path: path.join(outDir, 'l3-wide.png'), fullPage: true })
+  } catch (error) {
+    fail('宽屏去重检查执行', String((error && error.stack) || error))
+  } finally {
+    await context.close()
+  }
 }
 
 async function main() {
@@ -127,24 +203,17 @@ async function main() {
   }
   const exe = findChromium()
   if (!exe) {
-    console.error('[flows-l3] 找不到 chromium，可设置 PG_CHROMIUM 指向 chrome.exe')
+    console.error('[flows-l3] 找不到 chromium：可设 PG_CHROMIUM 指向 chrome 可执行文件（Windows/Linux/macOS 路径均可）')
     process.exit(2)
   }
   fs.mkdirSync(outDir, { recursive: true })
   const server = await serve(distDir, 0)
   const port = server.address().port
+  const url = 'http://127.0.0.1:' + port + '/#/pages/practice/index?mock=l3-active'
   const browser = await chromium.launch({ executablePath: exe, headless: true })
 
   try {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, deviceScaleFactor: 1 })
-    const page = await context.newPage()
-    const pageErrors = []
-    page.on('pageerror', (error) => pageErrors.push(String(error)))
-
-    // 先 about:blank 再进目标 hash，强制 SPA 重新启动
-    await page.goto('about:blank')
-    await page.goto('http://127.0.0.1:' + port + '/#/pages/practice/index?mock=l3-active', { waitUntil: 'networkidle' })
-    await page.waitForTimeout(800)
+    const { context, page, pageErrors } = await openPractice(browser, url, { width: 390, height: 844 })
 
     const text0 = await bodyText(page)
     if (text0.includes('构造与推导')) pass('进入第 3 层（mock=l3-active）')
@@ -158,6 +227,34 @@ async function main() {
     const firstLineNotes = initialLines > 0 ? await lines.nth(0).locator('[data-testid="line-note"]').count() : 0
     if (firstLineNotes === 1) pass('既有批注挂在该行下方（第 1 行 1 条）')
     else fail('既有批注挂载', '第 1 行下方批注数 = ' + firstLineNotes)
+
+    // PR #90 复审第 3 条：annotation 一律 --margin，不再按文案（「衔接上了」）染绿色。
+    if (firstLineNotes === 1) {
+      const linkedNote = lines.nth(0).locator('[data-testid="line-note"]').first()
+      const noteInfo = await linkedNote.evaluate((el) => ({
+        text: el.innerText,
+        className: String(el.className),
+        borderColor: getComputedStyle(el).borderLeftColor,
+      }))
+      const tokenColors = await page.evaluate(() => ({
+        margin: getComputedStyle(document.documentElement).getPropertyValue('--margin').trim(),
+        ok: getComputedStyle(document.documentElement).getPropertyValue('--ok').trim(),
+      }))
+      const toRgb = (value) => {
+        let raw = String(value || '').replace('#', '')
+        if (raw.length === 3) raw = raw.split('').map((c) => c + c).join('')
+        const num = parseInt(raw, 16)
+        return 'rgb(' + ((num >> 16) & 255) + ', ' + ((num >> 8) & 255) + ', ' + (num & 255) + ')'
+      }
+      if (noteInfo.text.includes('衔接上了')) pass('批注文案仍是服务端原文（用于断言染色）')
+      else fail('批注文案', noteInfo.text.slice(0, 80))
+      if (!noteInfo.className.includes('linked')) pass('annotation 不再按文案加 linked 类')
+      else fail('文案染色', '仍在用文案决定类名：' + noteInfo.className)
+      if (noteInfo.borderColor === toRgb(tokenColors.margin)) pass('annotation 边线 = --margin（红笔提问）', noteInfo.borderColor)
+      else fail('annotation 边线颜色', '期望 --margin=' + toRgb(tokenColors.margin) + '，实际 ' + noteInfo.borderColor)
+      if (noteInfo.borderColor !== toRgb(tokenColors.ok)) pass('annotation 没有因为「衔接上了」变成 --ok 绿色')
+      else fail('文案染色', '「衔接上了」被错误染成 --ok 绿色')
+    }
 
     // 1) 「写下一行」→ 行编辑器
     const writeNext = await pick(page, 'write-next', '写下一行')
@@ -178,20 +275,27 @@ async function main() {
     if (overflow <= 1) pass('390 宽打开行编辑器无横向溢出', 'scrollWidth-clientWidth=' + overflow)
     else fail('横向溢出', '行编辑器在 390 宽溢出 ' + overflow + 'px')
 
-    // 2) 空「这一行」时点加入证明应无效（前端只做这个空值禁用，02 §4.4）
+    // 2) 空「这一行」时「加入证明」必须真的禁用（disabled / aria-disabled），且点击不会加行。
     const submit = await pick(page, 'editor-submit', '加入证明')
     if (!submit) throw new Error('找不到「加入证明」按钮')
+    const emptyState = await disabledInfo(submit)
+    if (emptyState.disabled) pass('「这一行」为空时「加入证明」禁用', emptyState.signals.join('+'))
+    else fail('空提交禁用态', '既没有 disabled 也没有 aria-disabled：' + emptyState.outer)
     await submit.click()
     await page.waitForTimeout(400)
     const afterEmptyClick = await lines.count()
-    if (afterEmptyClick === initialLines) pass('「这一行」为空时不会加行（提交禁用）')
+    if (afterEmptyClick === initialLines) pass('空提交点击不会加行（行数不变）')
     else fail('空提交', '空行也被加入了：行数 ' + afterEmptyClick)
 
-    // 3) 填写并加入证明
+    // 3) 填写并加入证明；填入「这一行」后禁用应解除（依据可空）。
     const filledStatement = await fillTextarea(page, 'editor-statement', '$|a_n-3|=\\frac{5}{n+2}$', 0)
     const filledJustification = await fillTextarea(page, 'editor-justification', '通分', 1)
     if (filledStatement && filledJustification) pass('填写「这一行」与「依据」')
     else fail('填写输入框', 'statement=' + filledStatement + ' justification=' + filledJustification)
+
+    const filledState = await disabledInfo(submit)
+    if (!filledState.disabled) pass('填入「这一行」后「加入证明」解除禁用')
+    else fail('填入后仍禁用', filledState.signals.join('+') || filledState.outer)
 
     await submit.click()
     await page.waitForTimeout(800)
@@ -217,8 +321,11 @@ async function main() {
 
     if (newNoteCount >= 1) {
       const noteText = await newNotes.first().innerText()
+      const noteKind = await newNotes.first().getAttribute('data-note-kind')
       if (noteText.includes('衔接上了')) pass('批注文案由服务端下发（…衔接上了）')
       else fail('批注文案', noteText.slice(0, 120))
+      if (noteKind === 'annotation') pass('批注类型来自服务端 note.kind', noteKind)
+      else fail('批注类型', '期望 annotation，实际 ' + noteKind)
     }
 
     // 5) 取消不会加行
@@ -237,12 +344,16 @@ async function main() {
     else fail('运行时错误', pageErrors.join(' | '))
 
     await page.screenshot({ path: path.join(outDir, 'l3-after-add.png'), fullPage: true })
+    await context.close()
   } catch (error) {
     fail('流程执行', String((error && error.stack) || error))
-  } finally {
-    await browser.close()
-    await new Promise((resolve) => server.close(resolve))
   }
+
+  // PR #90 复审第 4 条：平板/桌面批注去重
+  await checkWideDedupe(browser, url)
+
+  await browser.close()
+  await new Promise((resolve) => server.close(resolve))
 
   fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify({ results, failed }, null, 2), 'utf8')
   console.log('[flows-l3] 共 ' + results.length + ' 项，失败 ' + failed + '；报告：' + path.relative(appDir, outDir))

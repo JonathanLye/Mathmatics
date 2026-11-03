@@ -170,11 +170,20 @@ export interface AttemptState {
   serverTime: string
 }
 
+/** 一次输入的来源与草稿标识（openapi.yaml InputMeta；03 §1：一个落点一个 draftId）。 */
+export interface InputMeta {
+  provenance: InputProvenance
+  draftId: string
+  recogId?: string
+  pasteChars?: number
+}
+
 export interface LineDraft {
   statement: string
   justification?: string
-  input: { provenance: InputProvenance; draftId: string; recogId?: string; pasteChars?: number }
-  justificationInput?: { provenance: InputProvenance; draftId: string; recogId?: string; pasteChars?: number }
+  input: InputMeta
+  /** 依据是独立输入落点：依据非空时必带，并用自己的 provenance/draftId（03 §1）。 */
+  justificationInput?: InputMeta
 }
 
 export interface AttemptEnvelope<T = unknown> {

@@ -87,8 +87,10 @@ emits: {
 props: { lines: ProofLine[]; notes: Note[]; busy?: boolean }
 emits: { 'write-next': [] }
 ```
-- 依据可空；红笔批注按 `note.lineId` 挂在对应行下方（找不到行则挂在列表末尾）。
-- `note.kind === 'annotation'` 用 `--margin`，hint/concept 用各自颜色；不出现红叉/红色错误徽标。
+- 依据可空；红笔批注按 `note.lineId` 挂在对应行下方（找不到行则挂在列表末尾）；分组逻辑在 `layers/proofLines.ts`，有 vitest 单测（CI 生效）。
+- `note.kind === 'annotation'` 一律 `--margin`，hint/concept 用各自颜色；不出现红叉/红色错误徽标。
+- **颜色不读批注文案**：等 B 在契约加结构化字段（如 `note.linked` / `note.cls`）后再表达「衔接上了」的绿色；在此之前前端不解析 `note.text`（PR #90 复审第 3 条）。
+- **≥600px（平板/桌面）行内只渲染颜色标记**，批注正文由页面页边栏渲染，避免同一条批注在两处重复渲染全文（02 §3.2；PR #90 复审第 4 条）。
 
 ### `<HelpDrawer>`（#16）
 ```ts
@@ -130,12 +132,20 @@ props: {
 }
 emits: {
   'update:open': [v: boolean]
-  submit: [{ statement: string; justification: string; input: { provenance: InputProvenance; draftId: string } }]
+  submit: [{
+    statement: string
+    justification: string
+    input: InputMeta                 // { provenance, draftId, recogId?, pasteChars? }（openapi.yaml InputMeta）
+    justificationInput?: InputMeta   // 依据非空时必带：独立 provenance/draftId（03 §1）
+  }]
   'request-recognition': []    // 交给父级接 mock 识别
 }
 ```
-- 手机：底部升起弹层；平板/桌面：稿纸内展开（由父级 `layout` 决定，组件内用 CSS 自适应即可）。
+- 手机（<600px）：底部升起弹层；**平板/桌面（≥600px）：居中对话框卡片**，不做稿纸内联展开（2026-11-03 PR #90 复审路线 ②，已写进 02 §4.4）。
+- `draftId` 生命周期：打开编辑器时「这一行」「依据」各生成一次（两个独立 id），打开期间的重试/超时重发复用；重新打开才换新 id。不要在每次 submit 里重新生成（会破坏 #19 幂等；PR #90 复审第 2 条）。
 - 「这一行」默认手写/键盘，「依据」默认键盘（02 §4.4）；依据可空。
+- 本轮输入区是 textarea + 常用符号条；#13 的 `<MathTextEditor>`/`<ProofKeyboard>` 落地后替换输入区，提交契约不变。
+- 模态：`role="dialog"` + `aria-modal` + Esc 关闭 + 关闭后焦点归还；输入框有 aria-label（a11y 建议）。
 
 ## 自测约定
 - 纯逻辑放 `apps/student/tests/*.test.ts`（vitest，node 环境，不依赖 DOM）。

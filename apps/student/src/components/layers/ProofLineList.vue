@@ -4,12 +4,19 @@
  *
  * 只渲染服务端下发的 ProofLine / Note：
  * - 不做归类、不判对错。红笔批注=助教在这一行有个问题想问，不是"错误"标记（02 §2.2）；
- * - 行内批注按 note.lineId 挂到对应行下方；找不到对应行的批注按契约统一挂在列表末尾；
- * - 颜色/间距/字号只用 styles/tokens.css 里的 CSS 变量，触控目标 ≥ 44px；
+ * - 批注按 note.lineId 挂到对应行下方；找不到对应行的批注按契约统一挂在列表末尾；
+ *   分组/尾部分拣是纯函数（./proofLines.ts），有 vitest 单测进 CI；
+ * - ≥600px（平板/桌面）行内只留颜色标记，批注正文由页面页边栏（aside）渲染，
+ *   避免同一条批注在两处各渲染一遍（02 §3.2；PR #90 复审第 4 条）；
+ * - 颜色不读批注文案：annotation 一律 --margin，等 B 在契约加结构化字段（如 note.linked / note.cls）
+ *   后再染色（PR #90 复审第 3 条）；
+ * - 颜色/间距/字号只用 styles/tokens.css 的 CSS 变量，触控目标 ≥ 44px；
  * - 提交流程不在这里：本组件只 emit 'write-next'，加行由父级（practice 页）接 api。
  */
 import { computed } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import { useViewport } from '@/composables/useViewport'
+import { groupNotesByLine, notesForLine, selectTailNotes } from './proofLines'
 import type { InputProvenance, Note, ProofLine } from '@/types/attempt'
 
 const props = withDefaults(
@@ -22,6 +29,10 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ (e: 'write-next'): void }>()
 
+const { mode } = useViewport()
+/** 平板/桌面（≥600px）：行内只留标记，正文在页边（02 §3.2）。 */
+const isWide = computed(() => mode.value !== 'mobile')
+
 /** 来源徽标（02 §3.1 证明行右侧的小标签）：手写 / 键盘 / 拍照 / 粘贴。 */
 const PROVENANCE_LABEL: Record<InputProvenance, string> = {
   ink: '✍ 手写',
@@ -31,37 +42,27 @@ const PROVENANCE_LABEL: Record<InputProvenance, string> = {
   paste: '📋 粘贴',
 }
 
-const lineIds = computed(() => new Set(props.lines.map((line) => line.lineId)))
-
-/** note.lineId → 该行下方的批注（保持服务端下发的时间正序）。 */
-const notesByLine = computed(() => {
-  const map = new Map<string, Note[]>()
-  for (const note of props.notes) {
-    if (!note.lineId) continue
-    const list = map.get(note.lineId)
-    if (list) list.push(note)
-    else map.set(note.lineId, [note])
-  }
-  return map
-})
-
-/** 找不到对应行的批注（lineId 为空或该行已不在 state 里）：按契约挂在列表末尾。 */
-const tailNotes = computed(() => props.notes.filter((note) => !note.lineId || !lineIds.value.has(note.lineId)))
-
-function notesFor(lineId: string): Note[] {
-  return notesByLine.value.get(lineId) ?? []
-}
+/** note.lineId → 该行下方的批注（纯函数，见 ./proofLines.ts）。 */
+const notesByLine = computed(() => groupNotesByLine(props.notes))
+/** 找不到对应行的批注：挂在列表末尾（手机）；≥600px 正文在页边栏，不重复渲染。 */
+const tailNotes = computed(() => selectTailNotes(props.lines, props.notes))
 
 function provenanceLabel(provenance?: InputProvenance | null): string {
   return provenance ? PROVENANCE_LABEL[provenance] : ''
 }
 
 function noteClass(note: Note): string[] {
-  const classes = ['pg-lines__note', 'pg-lines__note--' + note.kind]
-  // 命中关键步骤且有依据时，服务端的说法是"…衔接上了。"（01 §3 L3）：用绿色边线（02 §3.1）。
-  // 这仍然只是助教的一句陈述，不是前端判定。
-  if (note.kind === 'annotation' && note.text.includes('衔接上了')) classes.push('pg-lines__note--linked')
-  return classes
+  return ['pg-lines__note', 'pg-lines__note--' + note.kind]
+}
+
+function markerClass(note: Note): string[] {
+  return ['pg-lines__marker', 'pg-lines__marker--' + note.kind]
+}
+
+/** 组件也兜一层 busy：不只靠按钮 :disabled（PR #90 复审建议）。 */
+function onWriteNext() {
+  if (props.busy) return
+  emit('write-next')
 }
 </script>
 
@@ -90,21 +91,34 @@ function noteClass(note: Note): string[] {
           <text v-if="provenanceLabel(line.provenance)" class="pg-lines__badge">{{ provenanceLabel(line.provenance) }}</text>
         </view>
 
-        <view
-          v-for="note in notesFor(line.lineId)"
-          :key="note.noteId"
-          :class="noteClass(note)"
-          data-testid="line-note"
-          :data-note-kind="note.kind"
-          :data-note-line-id="line.lineId"
-        >
-          <text class="pg-lines__notewho pg-small">{{ note.who }}</text>
-          <MathText class="pg-lines__notetext" :text="note.text" block />
+        <!-- 手机：行内批注全文；≥600px：只留颜色标记，正文在页边栏 -->
+        <template v-if="!isWide">
+          <view
+            v-for="note in notesForLine(notesByLine, line.lineId)"
+            :key="note.noteId"
+            :class="noteClass(note)"
+            data-testid="line-note"
+            :data-note-kind="note.kind"
+            :data-note-line-id="line.lineId"
+          >
+            <text class="pg-lines__notewho pg-small">{{ note.who }}</text>
+            <MathText class="pg-lines__notetext" :text="note.text" block />
+          </view>
+        </template>
+        <view v-else-if="notesForLine(notesByLine, line.lineId).length" class="pg-lines__markers" data-testid="line-markers" aria-hidden="true">
+          <view
+            v-for="note in notesForLine(notesByLine, line.lineId)"
+            :key="note.noteId"
+            :class="markerClass(note)"
+            data-testid="line-note-marker"
+            :data-note-kind="note.kind"
+            :data-note-line-id="line.lineId"
+          />
         </view>
       </view>
     </view>
 
-    <view v-if="tailNotes.length" class="pg-lines__tail" data-testid="tail-notes">
+    <view v-if="!isWide && tailNotes.length" class="pg-lines__tail" data-testid="tail-notes">
       <text class="pg-lines__tailtitle pg-small">更多批注</text>
       <view
         v-for="note in tailNotes"
@@ -122,7 +136,7 @@ function noteClass(note: Note): string[] {
       还没有写证明行。每次写一行：这一行（结论）+ 依据，顺序由你决定。
     </text>
 
-    <button class="pg-lines__add" data-testid="write-next" :disabled="props.busy" @tap="emit('write-next')">
+    <button class="pg-lines__add" data-testid="write-next" :disabled="props.busy" @tap="onWriteNext">
       <text class="pg-lines__addicon">＋</text>
       <text>写下一行</text>
     </button>
@@ -204,13 +218,16 @@ function noteClass(note: Note): string[] {
   border-radius: 999px;
   background: var(--paper);
   color: var(--ink-2);
-  font-size: 11px;
+  /* 元信息 12–13px（02 §2.3），用 --fs-mono=12px，不写死 11px。 */
+  font-size: var(--fs-mono);
   line-height: 1.5;
   white-space: nowrap;
 }
 
-/* 行内批注：红笔左边线 + 批注底色（02 §3.1 / §4.8）。
-   颜色只表达含义：--margin=助教提问，--ok=衔接上了，--hint=计透露量的提示，--accent=概念回答。 */
+/* 行内批注（手机）：红笔左边线 + 批注底色（02 §3.1 / §4.8）。
+   颜色只表达含义：--margin=助教提问，--hint=计透露量的提示，--accent=概念回答。
+   annotation 一律 --margin；不读 note.text 推断"衔接上了"（PR #90 复审第 3 条：
+   等 B 在契约加结构化字段 note.linked / note.cls 后再染色）。 */
 .pg-lines__note {
   margin-top: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
@@ -239,15 +256,6 @@ function noteClass(note: Note): string[] {
   color: var(--margin);
 }
 
-/* 服务端说"衔接上了"时用绿色边线（02 §3.1）；写在 --annotation 之后以覆盖红色。 */
-.pg-lines__note--linked {
-  border-left-color: var(--ok);
-  background: var(--paper);
-}
-.pg-lines__note--linked .pg-lines__notewho {
-  color: var(--ok);
-}
-
 .pg-lines__note--hint {
   border-left-color: var(--hint);
   background: var(--hint-soft);
@@ -271,6 +279,33 @@ function noteClass(note: Note): string[] {
 .pg-lines__note--student {
   border-left-color: var(--rule);
   background: var(--paper);
+}
+
+/* ≥600px 行内标记：只用一个颜色点，正文在页边栏（02 §3.2；PR #90 复审第 4 条）。 */
+.pg-lines__markers {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.pg-lines__marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-2);
+}
+
+.pg-lines__marker--annotation {
+  background: var(--margin);
+}
+
+.pg-lines__marker--hint {
+  background: var(--hint);
+}
+
+.pg-lines__marker--concept {
+  background: var(--accent);
 }
 
 .pg-lines__tail {
