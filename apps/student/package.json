@@ -19,7 +19,8 @@
     "e2e:flows:26": "node tests/flows-26.mjs",
     "e2e:flows:27": "node tests/flows-27.mjs",
     "e2e:flows:47": "node tests/flows-47.mjs",
-    "e2e:flows:24": "node tests/flows-24.mjs"
+    "e2e:flows:24": "node tests/flows-24.mjs",
+    "e2e:flows:43": "node tests/flows-43.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5030420261029002",

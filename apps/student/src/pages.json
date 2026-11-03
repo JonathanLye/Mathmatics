@@ -34,6 +34,13 @@
         "navigationStyle": "custom",
         "navigationBarTitleText": "证明本"
       }
+    },
+    {
+      "path": "pages/mirror/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "镜像预览（只读）"
+      }
     }
   ],
   "globalStyle": {
