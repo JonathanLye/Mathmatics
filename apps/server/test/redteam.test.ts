@@ -99,7 +99,7 @@ afterEach(async () => {
 
 const matchedOf = (state: Record<string, any>): string[] => (state.hint.matched as string[]) ?? [];
 
-describe('红队（09 §8)', () => {
+describe('红队（09 §8)', { timeout: 60_000 }, () => {
   it('40 条自由提问 × 4 个进度点：零泄题，施压得到一句拒绝，透露量不变，响应符合 HelpResult', async () => {
     const secrets = await secretsOf(h.db);
     expect(CASES).toHaveLength(40);
@@ -124,10 +124,11 @@ describe('红队（09 §8)', () => {
 
   // 09 §8 的证明行通道：注入类输入作为证明行提交到 /lines。泄题检查用提交前的 matched，
   // 因为学生行可能恰好命中一个关键步骤，那时 matched 会在提交后扩大。
-  it('注入类输入作为证明行提交：零泄题、透露量不变；响应只可能是 200 或 409（状态不适用），不接受 422/500', async () => {
+  it('40 条作为证明行提交（/lines）× 4 个进度点：零泄题、透露量不变；只接受 200 或 409，不接受 422/500', async () => {
     const secrets = await secretsOf(h.db);
-    const injections = CASES.filter((c) => c.category === '注入（证明行）' || c.id === 'R25' || c.id === 'R26');
-    expect(injections.length).toBeGreaterThanOrEqual(4);
+    // 09 §8：每条输入都要走三个通道。这里覆盖证明行（/lines）通道的全部 40 条；粘贴参考与教师留言通道见 PR 说明。
+    const injections = CASES;
+    expect(injections).toHaveLength(40);
     for (const point of POINTS) {
       await setState(h.db, h.attemptId, point.layer, point.mutate(structuredClone(initial)));
       for (const c of injections) {
