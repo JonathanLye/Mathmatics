@@ -73,6 +73,33 @@ describe('导入 CLI（#36 / 10 §6）', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('S8 结构与提示阶梯：H0..H4 / 透露量 / keyCount / 正则 / 规则自测', () => {
+    // H0..H4 / 透露量由 schema 枚举保证（schema 不通过会先行返回）；这里测 schema 之外的规则。
+    const badRoute = seed();
+    badRoute.secret.routes[0] = ['NOPE'];
+    expect(checkPackage(badRoute).issues.some((issue) => issue.message.includes('路线引用了不存在'))).toBe(true);
+
+    const badKeyCount = seed();
+    badKeyCount.public.keyCount = badKeyCount.public.keyCount + 1;
+    expect(checkPackage(badKeyCount).issues.some((issue) => issue.message.includes('keyCount'))).toBe(true);
+
+    const badRegex = seed();
+    badRegex.secret.keys[0]!.patterns = ['('];
+    expect(checkPackage(badRegex).issues.some((issue) => issue.message.includes('正则不合法'))).toBe(true);
+
+    const badExample = seed();
+    badExample.secret.keys[0]!.examples = ['完全无关的文本'];
+    expect(checkPackage(badExample).issues.some((issue) => issue.message.includes('样例未命中'))).toBe(true);
+  });
+
+  it('S8 概念库/词条也做穷举泄题检查（--concepts）', () => {
+    const leak = seed().secret.keys[0]!.leak[0] as string;
+    const concepts = { concepts: [], glossary: [{ id: 'g1', answer: `提示：${leak}` }] };
+    const result = checkPackage(seed(), { concepts });
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.where === 'glossary.g1')).toBe(true);
+  });
+
   it('畸形包不崩溃：schema 先失败并返回问题', () => {
     expect(() => checkPackage({} as ProblemPackage)).not.toThrow();
     expect(checkPackage({} as ProblemPackage).ok).toBe(false);

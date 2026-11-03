@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { loadConceptsFile } from './concepts.ts';
 import { twoDrafts } from './draft.ts';
 import { copyFixturePages, readOcrPages, writeOcrPages } from './ocr.ts';
 import { renderPdf } from './pdf.ts';
@@ -151,10 +152,12 @@ async function commandDraft(parsed: ParsedArgs): Promise<void> {
     throw new Error('--draft-fixture-a / --draft-fixture-b 必须成对提供（或都不提供走 DeepSeek）');
   }
 
+  const conceptsPath = optional(parsed, 'concepts');
+  const checkOptions = conceptsPath === undefined ? {} : { concepts: loadConceptsFile(conceptsPath) };
   const outputs = [];
   for (const item of selected) {
     const drafts = await twoDrafts(item, { fixtureA, fixtureB });
-    const out = writeDraftOutputs(dir, item, drafts.a, drafts.b);
+    const out = writeDraftOutputs(dir, item, drafts.a, drafts.b, checkOptions);
     outputs.push({ itemId: item.itemId, ...out, provider: drafts.provider });
     console.log(
       `- ${item.itemId} → ${out.problemId}（采用 ${out.chosen}，${out.ok ? '校验通过' : '校验未通过，见单条报告'}）`,
@@ -174,6 +177,7 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
     reviewer: required(parsed, 'reviewer'),
     minutes: intOption(parsed, 'minutes', 0, 0, 100000),
     databaseUrl: process.env.DATABASE_URL,
+    ...(optional(parsed, 'concepts') === undefined ? {} : { concepts: loadConceptsFile(optional(parsed, 'concepts') as string) }),
   });
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
@@ -185,8 +189,8 @@ function usage(): void {
 
   pnpm import:pdf --file <pdf> --pages 27-58 [--ocr-fixture <dir>|--ocr-provider simpletex|qwen] [--skip-render]
   pnpm import:items --job <jobId> [--chapter 2] [--proof-only]
-  pnpm import:draft --job <jobId> [--items id1,id2] [--max 4] [--draft-fixture-a a.json --draft-fixture-b b.json]
-  pnpm import:publish imports/<jobId>/<problemId>.json --reviewer T-01 --minutes 90
+  pnpm import:draft --job <jobId> [--items id1,id2] [--max 4] [--concepts concepts.json] [--draft-fixture-a a.json --draft-fixture-b b.json]
+  pnpm import:publish imports/<jobId>/<problemId>.json --reviewer T-01 --minutes 90 [--concepts concepts.json]
 
 仓库内自带的最小 fixtures：apps/import/fixtures/ch2（OCR）、fixtures/epsN.json 与 epsN-alt.json（两稿）。
 离线模式：OCR 用 --ocr-fixture，起草用 --draft-fixture-a/b；真实 OCR 需 SIMPLETEX_API_KEY / DASHSCOPE_API_KEY 并渲染页面；起草需 DEEPSEEK_API_KEY。`);

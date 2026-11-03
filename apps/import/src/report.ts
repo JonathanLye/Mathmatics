@@ -3,7 +3,7 @@ import { join, resolve, sep } from 'node:path';
 
 import type { ProblemPackage } from '@proof-gym/engine';
 
-import { checkPackage, type CheckIssue } from './checks.ts';
+import { checkPackage, type CheckIssue, type CheckOptions } from './checks.ts';
 import type { ImportItem } from './split.ts';
 
 export interface DraftOutput {
@@ -76,9 +76,15 @@ export function compareDrafts(a: ProblemPackage, b: ProblemPackage): { disagreem
 }
 
 // DoD：每条目输出 `<problemId>.json` 与报告；多条目不互相覆盖（A 复审 P1-1）。
-export function writeDraftOutputs(jobDir: string, item: ImportItem, a: ProblemPackage, b: ProblemPackage): DraftOutput {
-  const checksA = checkPackage(a);
-  const checksB = checkPackage(b);
+export function writeDraftOutputs(
+  jobDir: string,
+  item: ImportItem,
+  a: ProblemPackage,
+  b: ProblemPackage,
+  options: CheckOptions = {},
+): DraftOutput {
+  const checksA = checkPackage(a, options);
+  const checksB = checkPackage(b, options);
   const { disagreements, revealMismatches } = compareDrafts(a, b);
 
   let chosen: 'A' | 'B' = 'A';
