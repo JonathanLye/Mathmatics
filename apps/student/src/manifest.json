@@ -9,7 +9,7 @@
     "title": "证明陪练场",
     "router": {
       "mode": "hash",
-      "base": "./"
+      "base": "/"
     }
   },
   "vueVersion": "3"
