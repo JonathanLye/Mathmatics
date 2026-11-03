@@ -9,6 +9,7 @@ export type { Budget, HintLevel, KeyStep, ProblemPackage, Secret } from './types
 export {
   apply,
   createAttempt,
+  ENGINE_EVENT_TYPES,
   deserializeState,
   helpPreview,
   pickSelfcheck,
