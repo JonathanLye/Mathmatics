@@ -193,7 +193,7 @@ async function main() {
     // 6) 草稿回填行编辑器（沿用 EditorSheet 既有契约：initial-statement）
     await page.locator('.pg-practice__draftbtn--continue').click()
     await waitVisible(page, '.pg-editor')
-    await page.locator('.pg-editor__btn').click()
+    await page.getByTestId('editor-cancel').click()
     await waitGone(page, '.pg-editor')
     ok(true, '草稿可回填到行编辑器（EditorSheet 既有契约）')
 
