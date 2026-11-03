@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DOCS = '证明陪练场_产品设计工作区/10-开发文档';
+const B_REVIEW = '证明陪练场_产品设计工作区/12-B线代码复审';
 const errors = [];
 
 const required = [
@@ -35,6 +36,11 @@ const scan = [
   'AGENTS.md',
   ...docFiles.map((f) => `${DOCS}/${f}`),
   `${DOCS}/contracts/README.md`,
+  ...(existsSync(join(root, B_REVIEW))
+    ? readdirSync(join(root, B_REVIEW))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => `${B_REVIEW}/${f}`)
+    : []),
 ].filter((f) => existsSync(join(root, f)));
 
 const LINK = /!?\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)(?:\s+"[^"]*")?\s*\)/g;
