@@ -18,6 +18,7 @@ import Layer2Form from '@/components/layers/Layer2Form.vue'
 import ProofLineList from '@/components/layers/ProofLineList.vue'
 import SelfcheckForm from '@/components/layers/SelfcheckForm.vue'
 import TransferForm from '@/components/layers/TransferForm.vue'
+import TransferAttempt from '@/components/layers/TransferAttempt.vue'
 import SummaryForm from '@/components/layers/SummaryForm.vue'
 import MicroCourse from '@/components/MicroCourse.vue'
 import HelpDrawer from '@/components/HelpDrawer.vue'
@@ -26,17 +27,21 @@ import EditorSheet from '@/components/EditorSheet.vue'
 import { nextLineNoOf } from '@/components/layers/proofLines'
 import MathText from '@ui-math/MathText.vue'
 import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
-import { useAttempt } from '@/stores/attempt'
+import { takePendingAttempt, useAttempt } from '@/stores/attempt'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import {
   addLine,
+  addTransferLine,
   claimHint,
-  completeTransfer,
+  completeTransferParent,
+  deleteTransferLine,
+  editTransferLine,
   fetchLesson,
   finishSteps,
   recognizeInk,
+  finishTransfer,
   requestHelp,
   skipLayer,
   startTransfer,
@@ -46,7 +51,17 @@ import {
   submitSummary,
   viewFrameTemplate,
 } from '@/api/client'
-import type { HelpIntent, HintPreview, LayerId, LessonView, LineDraft, Note, Recognition } from '@/types/attempt'
+import type {
+  AttemptState,
+  HelpIntent,
+  HintPreview,
+  InputProvenance,
+  LayerId,
+  LessonView,
+  LineDraft,
+  Note,
+  Recognition,
+} from '@/types/attempt'
 
 const { state, mockKey, busy, error, setMock, apply, run } = useAttempt()
 const { mode } = useViewport()
@@ -68,6 +83,8 @@ const recogDraft = ref<{ text: string; recogId: string; at: string } | null>(nul
 /** 第 1 层微课（02 §4.9）：内容由服务端下发，这里只保存在内存里渲染。 */
 const microOpen = ref(false)
 const microLesson = ref<LessonView | null>(null)
+/** 迁移题子作答的父作答 state：子作答完成后用「回到本题完成页」恢复（mock；真接口由服务端返回父 state）。 */
+const transferParent = ref<AttemptState | null>(null)
 
 const currentLayer = computed(() => state.value.currentLayer)
 const lines = computed(() => state.value.steps?.lines ?? [])
@@ -81,6 +98,7 @@ const asideNotes = computed(() =>
 const isCompleted = computed(() => state.value.status === 'completed')
 // 契约有软删 deleteLine，行号会不连续：下一个行号取 max(n)+1，不用数组长度（PR #90 复审建议）。
 const nextLineNo = computed(() => nextLineNoOf(lines.value))
+const isTransferAttempt = computed(() => state.value.kind === 'transfer')
 const layerTitle = computed(() => state.value.layers.find((l) => l.layer === currentLayer.value)?.title ?? '')
 const layerTask = computed(() => {
   if (currentLayer.value === 'L1') return state.value.def?.task ?? ''
@@ -116,6 +134,13 @@ const initialMock = mockFromHash()
 if (initialMock) setMock(initialMock)
 
 onLoad((q) => {
+  // 证明本「稍后重做」：服务端返回的新作答 state 通过 store 跨页交接（mock；真接口按 assignmentId 创建）。
+  const pending = takePendingAttempt()
+  if (pending) {
+    transferParent.value = null
+    apply(pending)
+    return
+  }
   if (!mockEnabled) return
   const k = parseMockKey(q?.mock) ?? initialMock
   if (k) setMock(k)
@@ -179,16 +204,62 @@ async function handleSelfcheckSubmit(itemId: string, text: string) {
   if (next) apply(next)
 }
 
-/** 第 5 层：开始迁移题（创建子作答）；题面由服务端下发。 */
+/** 第 5 层：开始迁移题（服务端创建子作答，返回 kind=transfer 的子作答 state）。 */
 async function handleStartTransfer() {
-  const next = await run(() => startTransfer(state.value))
+  const parent = state.value
+  const next = await run(() => startTransfer(parent))
+  if (!next) return
+  transferParent.value = parent
+  apply(next)
+}
+
+/** 迁移题子作答的行编辑：加入 / 改写 / 删除一行（归类、批注、canFinish 都由服务端返回的 state 决定）。 */
+type TransferDraft = { statement: string; justification: string; provenance: InputProvenance }
+
+function toLineDraft(draft: TransferDraft): LineDraft {
+  return {
+    statement: draft.statement,
+    justification: draft.justification,
+    input: { provenance: draft.provenance, draftId: 'mock-' + Date.now() },
+  }
+}
+
+async function handleAddTransferLine(draft: TransferDraft) {
+  const next = await run(() => addTransferLine(state.value, toLineDraft(draft)))
   if (next) apply(next)
 }
 
-/** 第 5 层：提交迁移题 → 服务端推进到第 6 层并下发总结五问。 */
-async function handleTransferSubmit(text: string) {
-  const next = await run(() => completeTransfer(state.value, text))
+async function handleEditTransferLine(lineId: string, draft: TransferDraft) {
+  const next = await run(() => editTransferLine(state.value, lineId, toLineDraft(draft)))
   if (next) apply(next)
+}
+
+async function handleDeleteTransferLine(lineId: string) {
+  const next = await run(() => deleteTransferLine(state.value, lineId))
+  if (next) apply(next)
+}
+
+/** 迁移题「写完了」：mock reducer 判定行数/依据/关键步骤，达标才 completed。 */
+async function handleFinishTransfer() {
+  const next = await run(() => finishTransfer(state.value))
+  if (next) apply(next)
+}
+
+/** 迁移题完成 → 回到本题完成页（mock：服务端推进父作答 L5→L6；已完成的父作答原样返回）。 */
+async function handleBackToParent() {
+  const parent = transferParent.value
+  transferParent.value = null
+  if (!parent) {
+    uni.navigateTo({ url: '/pages/practice/index?mock=completed' })
+    return
+  }
+  const next = await run(() => completeTransferParent(parent))
+  apply(next ?? parent)
+}
+
+/** 完成页「再做一道迁移题」：手动发起一次迁移题子作答。 */
+async function handleMakeTransfer() {
+  await handleStartTransfer()
 }
 
 /** 第 6 层：提交五问总结 → 完成页。 */
@@ -445,7 +516,33 @@ function backHome() {
           </view>
 
           <template v-if="isCompleted">
-            <view class="pg-practice__done pg-sheet" data-testid="completion-card">
+            <!-- 迁移题子作答完成：给出回到主题作答完成页 / 加入证明本的出口（01 §L5） -->
+            <view v-if="isTransferAttempt" class="pg-practice__done pg-sheet" data-testid="transfer-complete-card">
+              <text class="pg-practice__donetitle" data-testid="transfer-complete-title">迁移题完成</text>
+              <text class="pg-practice__donebody pg-small">
+                这道迁移题独立完成：{{ state.problem.title }}。你把 ε-N 的骨架用到了 ε-δ 上。
+              </text>
+              <text class="pg-practice__donebody pg-small">
+                自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；独立度
+                {{ state.completion?.independence ?? '-' }}。
+              </text>
+              <text class="pg-practice__donebody pg-small">
+                mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}
+              </text>
+              <view class="pg-practice__donerow">
+                <button class="pg-practice__btn" role="button" data-testid="back-to-parent" @tap="handleBackToParent">回到本题完成页</button>
+                <button
+                  class="pg-practice__btn pg-practice__btn--primary"
+                  role="button"
+                  data-testid="transfer-add-to-notebook"
+                  @tap="goProofbook"
+                >
+                  加入证明本
+                </button>
+              </view>
+            </view>
+
+            <view v-else class="pg-practice__done pg-sheet" data-testid="completion-card">
               <text class="pg-practice__donetitle" data-testid="completion-title">本题完成</text>
               <text class="pg-practice__donebody pg-small">
                 自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；
@@ -467,9 +564,30 @@ function backHome() {
                 >
                   加入证明本
                 </button>
+                <button
+                  class="pg-practice__btn"
+                  role="button"
+                  data-testid="make-transfer"
+                  @tap="handleMakeTransfer"
+                >
+                  再做一道迁移题
+                </button>
               </view>
             </view>
           </template>
+
+          <TransferAttempt
+            v-else-if="isTransferAttempt"
+            :problem="state.problem"
+            :lines="lines"
+            :notes="notes"
+            :can-finish="Boolean(state.steps?.canFinish)"
+            :busy="busy"
+            @add-line="handleAddTransferLine"
+            @edit-line="handleEditTransferLine"
+            @delete-line="handleDeleteTransferLine"
+            @finish="handleFinishTransfer"
+          />
 
           <Layer1Form
             v-else-if="currentLayer === 'L1'"
@@ -534,7 +652,6 @@ function backHome() {
             :view="state.transfer ?? null"
             :busy="busy"
             @start="handleStartTransfer"
-            @submit="handleTransferSubmit"
             @skip="handleSkip"
           />
 

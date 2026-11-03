@@ -99,9 +99,14 @@ export interface CheckQuestion {
   wrong: string
 }
 
-/** 参数化图解（concept.schema.json 的 VisualSpec；前端只认这几种 type，不执行数据里的代码）。 */
+/**
+ * 参数化图解（concept.schema.json 的 VisualSpec；前端只认这几种 type，不执行数据里的代码）。
+ *
+ * 注：`abs-triangle` 是 #47 P1 接线时本地 mock 用的扩展（03 §7 的契约 type 只有前五种）；
+ * 真实接口接入（#24）时由概念库下发合法 type，或把 abs-triangle 补进契约（B 侧）。
+ */
 export interface VisualSpec {
-  type: 'seq-band' | 'partial-sums' | 'func-band' | 'monotone-steps' | 'number-line'
+  type: 'seq-band' | 'partial-sums' | 'func-band' | 'monotone-steps' | 'number-line' | 'abs-triangle'
   title?: string
   params: {
     expr?: string
@@ -119,6 +124,9 @@ export interface VisualSpec {
      * 契约 VisualSpec 只有 expr（前端不执行数据里的表达式，真实接口 #24 由服务端给出渲染参数/点位）。
      */
     points?: Array<{ n: number; a: number }>
+    /** 仅 mock 扩展（#47 图解）：abs-triangle 的 a、b。 */
+    a?: number
+    b?: number
   }
 }
 
@@ -145,10 +153,19 @@ export interface SelfcheckItem {
   question: string
   answer?: string
   status: 'open' | 'accepted' | 'followup'
+  /**
+   * 仅 mock 扩展：自检题维度（自适应选题用；契约 SelfcheckView 只下发 itemId/question/status/answer，
+   * 维度在真实接口里由服务端按 selfcheckBank 挑题时决定 —— #24 后把维度/记录收进契约或服务端完成选题）。
+   */
+  dimension?: 'basis' | 'role' | 'logic' | 'condition' | 'module' | 'transfer'
+  /** 仅 mock：本题已作答次数（自适应 maxAttempts 用）。 */
+  attempts?: number
 }
 
 export interface SelfcheckView {
   items: SelfcheckItem[]
+  /** 仅 mock：passed 记录（服务端判定结果的时间正序；真实接口由服务端下发或由 status 推导，#24）。 */
+  records?: Array<{ itemId: string; passed: boolean }>
 }
 
 export interface TransferView {
@@ -262,6 +279,15 @@ export interface NotebookCard {
   completedAt?: string
   /** 仅 mock：回到该题时加载哪份典型 state；真实接口用 attemptId 拉取。 */
   mock?: string
+  /** 以下为「稍后重做」需要的字段（对应 openapi Notebook/AssignmentCard 子集；#24 由服务端提供）。 */
+  problemId?: string
+  kind?: 'main' | 'transfer'
+  independence?: number | null
+  revealUsed?: number
+  keysTotal?: number
+  redoRecommended?: boolean
+  assignmentId?: string | null
+  problemVersion?: number
 }
 
 export interface NotebookView {

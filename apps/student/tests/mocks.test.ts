@@ -50,18 +50,20 @@ describe('典型 AttemptState（issue #9 / #26）', () => {
     expect((s.steps?.lines ?? []).length).toBeGreaterThanOrEqual(2)
   })
 
-  it('⑤ 第 4 层自检：3 道题、均为 open', () => {
+  it('⑤ 第 4 层自检：4 道题（带维度/次数）、均为 open、records 为空', () => {
     const s = createMockState('l4-active')
     expect(s.currentLayer).toBe('L4')
-    expect(s.selfcheck?.items).toHaveLength(3)
-    expect(s.selfcheck?.items.every((item) => item.status === 'open')).toBe(true)
+    expect(s.selfcheck?.items).toHaveLength(4)
+    expect(s.selfcheck?.items.every((item) => item.status === 'open' && item.attempts === 0)).toBe(true)
+    expect(s.selfcheck?.items.map((item) => item.dimension)).toEqual(['basis', 'role', 'logic', 'condition'])
+    expect(s.selfcheck?.records).toEqual([])
   })
 
-  it('⑥ 第 5 层迁移题：transfer=active 且有题面', () => {
+  it('⑥ 第 5 层迁移题：等待点「开始迁移题」创建子作答', () => {
     const s = createMockState('l5-active')
     expect(s.currentLayer).toBe('L5')
-    expect(s.transfer?.status).toBe('active')
-    expect(s.transfer?.stem).toContain('$')
+    expect(s.transfer?.status).toBe('not_started')
+    expect(s.selfcheck?.items.every((item) => item.status === 'accepted')).toBe(true)
   })
 
   it('⑦ 第 6 层总结：五问、answers 为空', () => {

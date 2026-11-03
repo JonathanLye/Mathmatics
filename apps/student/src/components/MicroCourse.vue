@@ -8,8 +8,9 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
-// #98 已提供统一的 seq-band 图解（N(ε) 只由 diagrams/seqBand.ts 计算）；这里不再保留 #26 的重复实现。
+// #98 已提供统一的图解组件（N(ε) 只由 diagrams/seqBand.ts 计算）；#26 微课 + #47 图解接线共用。
 import SeqBandDiagram from '@/components/diagrams/SeqBandDiagram.vue'
+import AbsTriangleDiagram from '@/components/diagrams/AbsTriangleDiagram.vue'
 import type { LessonStep, LessonView } from '@/types/attempt'
 
 const props = withDefaults(defineProps<{ open?: boolean; lesson?: LessonView | null; busy?: boolean }>(), {
@@ -51,12 +52,25 @@ const seqBandProps = computed(() => {
   const visual = step.value?.visual
   if (!visual || visual.type !== 'seq-band') return null
   const params = visual.params ?? {}
+  const min = Number(params.epsilon?.min)
+  const max = Number(params.epsilon?.max)
+  const stepValue = Number(params.epsilon?.step)
   return {
     points: params.points ?? [],
     A: Number.isFinite(Number(params.limit)) ? Number(params.limit) : 0,
     epsilon: Number(params.epsilon?.init ?? 0.3),
     nMax: Number(params.nMax ?? 20),
+    min: Number.isFinite(min) ? min : 0.1,
+    max: Number.isFinite(max) ? max : 2,
+    step: Number.isFinite(stepValue) && stepValue > 0 ? stepValue : 0.05,
   }
+})
+
+/** #47 图解接线：abs-triangle 步骤（mock 扩展 type）→ AbsTriangleDiagram。 */
+const absTriangle = computed(() => {
+  const visual = step.value?.visual
+  if (!visual || visual.type !== 'abs-triangle') return null
+  return { a: Number(visual.params?.a ?? 3), b: Number(visual.params?.b ?? -1) }
 })
 
 function reset() {
@@ -115,14 +129,21 @@ function close() {
           <MathText :text="step.text" serif block />
         </view>
 
-        <view v-if="seqBandProps" class="pg-micro__visual" data-testid="seq-band">
-          <MathText v-if="step.visual?.params?.exprLatex" :text="step.visual.params.exprLatex" block />
+        <view v-if="step.visual" class="pg-micro__visual" data-testid="micro-visual">
+          <MathText v-if="step.visual.params?.exprLatex" :text="step.visual.params.exprLatex" block />
           <SeqBandDiagram
+            v-if="step.visual.type === 'seq-band' && seqBandProps"
             :points="seqBandProps.points"
             :A="seqBandProps.A"
             :epsilon="seqBandProps.epsilon"
             :nMax="seqBandProps.nMax"
+            :min="seqBandProps.min"
+            :max="seqBandProps.max"
+            :step="seqBandProps.step"
           />
+          <view v-else-if="step.visual.type === 'abs-triangle' && absTriangle" data-testid="abs-triangle">
+            <AbsTriangleDiagram :a="absTriangle.a" :b="absTriangle.b" />
+          </view>
         </view>
 
         <view v-if="step.check" class="pg-micro__check" data-testid="micro-check">

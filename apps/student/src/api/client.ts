@@ -12,10 +12,25 @@ import {
   mockNotebook,
   mockSelfcheckItems,
   mockSummaryQuestions,
+  mockTransferLayers,
   mockTransferNotStarted,
+  mockTransferProblem,
   mockTransferStem,
 } from '@/mocks/laterLayers'
-import type { AttemptState, HelpIntent, HelpResult, HintPreview, LayerId, LessonView, LineDraft, NotebookView, Note, Recognition } from '@/types/attempt'
+import { SELFCHECK_ADAPTIVE_CONFIG } from '@/components/selfcheck/adaptView'
+import type {
+  AttemptState,
+  HelpIntent,
+  HelpResult,
+  HintPreview,
+  LayerId,
+  LessonView,
+  LineDraft,
+  Note,
+  NotebookView,
+  ProofLine,
+  Recognition,
+} from '@/types/attempt'
 
 const USE_MOCK = true
 const LATENCY = 160
@@ -206,7 +221,7 @@ export async function finishSteps(state: AttemptState): Promise<AttemptState> {
     l.layer === 'L3' ? { ...l, status: 'done' as const } : l.layer === 'L4' ? { ...l, status: 'active' as const } : l,
   )
   next.currentLayer = 'L4'
-  next.selfcheck = { items: mockSelfcheckItems.map((item) => ({ ...item })) }
+  next.selfcheck = { items: mockSelfcheckItems.map((item) => ({ ...item })), records: [] }
   next.serverTime = new Date().toISOString()
   return next
 }
@@ -225,58 +240,258 @@ export async function fetchLesson(state: AttemptState, conceptId?: string): Prom
 /**
  * 第 4 层：回答一道自检题（POST /attempts/{id}/selfcheck/{itemId}）。
  *
- * mock 判定口径（P0 规则兜底，01 §L4）：≥4 字即接受；不足 4 字返回 followup（只追问，不给答案）。
- * 三道全部 accepted → L4 done、L5 active，并由服务端创建迁移题子作答（not_started）。
- * TODO(#24)：接真实接口时带 Idempotency-Key，判定文案来自服务端。
+ * mock 判定口径（P0 规则兜底，01 §L4）：≥4 字即 accepted；不足 4 字 followup（只追问、不给答案）。
+ * 每次作答写入 mock 的 passed 记录（契约里由服务端判定并下发；records 是 #47 自适应接线的 mock 扩展）。
+ * 完成条件（mock reducer 判定，前端不判）：全部 accepted，或每题都用满 maxAttempts → L5 active。
+ * TODO(#24)：接真实接口时带 Idempotency-Key；判定/追问/记录都来自服务端。
  */
 export async function submitSelfcheck(state: AttemptState, itemId: string, text: string): Promise<AttemptState> {
   await sleep()
   const next = clone(state)
   if (next.currentLayer !== 'L4' || !next.selfcheck) return next
   const item = next.selfcheck.items.find((i) => i.itemId === itemId)
-  if (!item || item.status === 'accepted') return next
+  if (!item) return next
+  const maxAttempts = SELFCHECK_ADAPTIVE_CONFIG.maxAttempts ?? 2
+  if (item.status === 'accepted' || (item.attempts ?? 0) >= maxAttempts) return next
   next.stateVersion += 1
   const answer = text.trim()
+  const passed = answer.length >= 4
   item.answer = answer
-  item.status = answer.length >= 4 ? 'accepted' : 'followup'
-  if (next.selfcheck.items.every((i) => i.status === 'accepted')) {
-    next.layers = next.layers.map((l) =>
-      l.layer === 'L4' ? { ...l, status: 'done' as const } : l.layer === 'L5' ? { ...l, status: 'active' as const } : l,
-    )
-    next.currentLayer = 'L5'
-    next.transfer = clone(mockTransferNotStarted)
-  }
+  item.status = passed ? 'accepted' : 'followup'
+  item.attempts = (item.attempts ?? 0) + 1
+  next.selfcheck.records = [...(next.selfcheck.records ?? []), { itemId, passed }]
+  const finished = next.selfcheck.items.every(
+    (i) => i.status === 'accepted' || (i.attempts ?? 0) >= maxAttempts,
+  )
+  if (finished) advanceToTransferLayer(next)
   next.serverTime = new Date().toISOString()
   return next
+}
+
+/** L4 → L5：服务端在进入 L5 时准备迁移题；子作答要等学生点「开始迁移题」才创建。 */
+function advanceToTransferLayer(next: AttemptState): void {
+  next.layers = next.layers.map((l) =>
+    l.layer === 'L4' ? { ...l, status: 'done' as const } : l.layer === 'L5' ? { ...l, status: 'active' as const } : l,
+  )
+  next.currentLayer = 'L5'
+  next.transfer = clone(mockTransferNotStarted)
+}
+
+// ------------------------------------------------------------------ 第 5 层：迁移题子作答
+
+function classifyTransferKeys(statement: string): string[] {
+  const keys: string[] = []
+  if (statement.includes('|x-1|') || statement.includes('|x − 1|') || statement.includes('|x - 1|')) keys.push('K1')
+  if (statement.includes('δ') || statement.includes('delta')) keys.push('K2')
+  if (statement.includes('ε') || statement.includes('varepsilon')) keys.push('K3')
+  return keys
+}
+
+/** mock 判定「写完了」：≥2 行、每行有依据、关键步骤覆盖 ≥2 个（P0 只校齐全，不校逻辑顺序）。 */
+function transferCanFinish(lines: readonly ProofLine[]): boolean {
+  if (lines.length < 2) return false
+  if (!lines.every((line) => (line.justification ?? '').trim().length > 0)) return false
+  const keys = new Set(lines.flatMap((line) => line.keys ?? []))
+  return keys.size >= 2
+}
+
+function renumberLines(lines: ProofLine[]): ProofLine[] {
+  return lines.map((line, index) => ({ ...line, n: index + 1 }))
+}
+
+function transferNote(hasJustification: boolean, lineId: string, hasKeys: boolean): Note {
+  return {
+    noteId: mockUuid(),
+    kind: 'annotation',
+    who: '批注',
+    text: !hasJustification
+      ? '依据没写。它由哪条定义或已证结论得到？'
+      : hasKeys
+        ? '这一行和前面衔接上了。'
+        : '这一行和要证的结论是什么关系？它的依据是哪条定义或定理？',
+    lineId,
+    level: null,
+    cost: null,
+    lessonConceptId: null,
+    at: new Date().toISOString(),
+  }
 }
 
 /**
  * 第 5 层：开始迁移题（POST /attempts/{id}/transfer）。
- * mock：创建迁移题子作答（childAttemptId）并下发迁移题题面；已开始/已完成时原样返回。
+ * 契约返回的是**子作答 state**：kind=transfer、parentAttemptId=主题作答、六层只启用 L3（seed epsN-T1）。
+ * mock 在这里直接构造子作答 state；真接口由服务端创建子作答并返回。
+ * TODO(#24)：真实接口带 Idempotency-Key；题目包/预算/层配置由服务端下发。
  */
 export async function startTransfer(state: AttemptState): Promise<AttemptState> {
   await sleep()
+  const attemptId = mockUuid()
+  const now = new Date().toISOString()
+  const child: AttemptState = {
+    attemptId,
+    parentAttemptId: state.attemptId,
+    stateVersion: 1,
+    kind: 'transfer',
+    status: 'active',
+    mode: state.mode,
+    problem: clone(mockTransferProblem),
+    currentLayer: 'L3',
+    layers: mockTransferLayers(),
+    budget: { revealUsed: 0, revealMax: 1, keysOwn: 0, keysTotal: 3 },
+    steps: { lines: [], canFinish: false },
+    transfer: { childAttemptId: attemptId, stem: mockTransferStem, status: 'active' },
+    notes: [],
+    help: {
+      hintAvailable: true,
+      nextLevel: 'H2',
+      nextCost: 0.5,
+      waitSec: 0,
+      needAttempt: false,
+      rapidLockUntil: null,
+      exhausted: false,
+      flagged: false,
+      stuckOffer: false,
+    },
+    integrity: { ...state.integrity, locked: false, warnings: 0 },
+    serverTime: now,
+  }
+  return child
+}
+
+/**
+ * 第 5 层：加入一行（POST /attempts/{childAttemptId}/lines）。
+ * mock：追加行 + 近似归类 + 行内批注（依据没写/衔接/关系问句），并重算「写完了」判定。
+ * TODO(#24)：真实接口由引擎归类，批注来自题目包预写文本。
+ */
+export async function addTransferLine(state: AttemptState, draft: LineDraft): Promise<AttemptState> {
+  await sleep()
   const next = clone(state)
-  if (next.currentLayer !== 'L5') return next
-  const transfer = next.transfer ?? clone(mockTransferNotStarted)
-  if (transfer.status === 'active' || transfer.status === 'completed') return next
+  if (next.kind !== 'transfer' || next.status !== 'active' || !next.steps) return next
+  const lineId = mockUuid()
+  const line: ProofLine = {
+    lineId,
+    n: (next.steps.lines ?? []).length + 1,
+    statement: draft.statement.trim(),
+    justification: (draft.justification ?? '').trim(),
+    provenance: draft.input.provenance,
+    keys: classifyTransferKeys(draft.statement),
+    inkId: null,
+  }
+  const lines = [...(next.steps.lines ?? []), line]
+  next.steps = { lines, canFinish: transferCanFinish(lines) }
   next.stateVersion += 1
-  next.transfer = { ...transfer, childAttemptId: mockUuid(), stem: mockTransferStem, status: 'active' }
+  next.notes = [...next.notes, transferNote(Boolean(line.justification), lineId, (line.keys?.length ?? 0) > 0)]
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/** 第 5 层：修改一行（PATCH /lines/{lineId}；mock 重新归类并更新 canFinish）。 */
+export async function editTransferLine(state: AttemptState, lineId: string, draft: LineDraft): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  if (next.kind !== 'transfer' || next.status !== 'active' || !next.steps) return next
+  if (!next.steps.lines.some((line) => line.lineId === lineId)) return next
+  const lines = next.steps.lines.map((line) =>
+    line.lineId === lineId
+      ? {
+          ...line,
+          statement: draft.statement.trim(),
+          justification: (draft.justification ?? '').trim(),
+          provenance: draft.input.provenance,
+          keys: classifyTransferKeys(draft.statement),
+        }
+      : line,
+  )
+  next.steps = { lines, canFinish: transferCanFinish(lines) }
+  next.stateVersion += 1
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/** 第 5 层：删除一行（DELETE /lines/{lineId}，软删除；mock 直接移出并重排行号）。 */
+export async function deleteTransferLine(state: AttemptState, lineId: string): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  if (next.kind !== 'transfer' || next.status !== 'active' || !next.steps) return next
+  const lines = renumberLines(next.steps.lines.filter((line) => line.lineId !== lineId))
+  next.steps = { lines, canFinish: transferCanFinish(lines) }
+  next.stateVersion += 1
   next.serverTime = new Date().toISOString()
   return next
 }
 
 /**
- * 第 5 层：提交迁移题（mock：完成子作答 → L5 done、L6 active，服务端下发总结五问）。
- * 迁移题与 L3 一样是「写一行」，判定在服务端；mock 阶段只推进层状态。
- * TODO(#24)：真实接口走 /attempts/{childAttemptId}/lines + /finish。
+ * 第 5 层：写完了（POST /attempts/{childAttemptId}/finish）。
+ * mock 判定（state.steps.canFinish 由 addLine 维护）：达标 → completed；不达标 → 只追加一条批注，不给答案。
+ * TODO(#24)：真实接口由服务端判定并返回 state；不达标文案来自题目包预写文本。
  */
-export async function completeTransfer(state: AttemptState, _text: string): Promise<AttemptState> {
+export async function finishTransfer(state: AttemptState): Promise<AttemptState> {
   await sleep()
   const next = clone(state)
-  if (next.currentLayer !== 'L5' || next.transfer?.status !== 'active') return next
+  if (next.kind !== 'transfer' || next.status !== 'active' || !next.steps) return next
+  if (!next.steps.canFinish) {
+    next.notes = [
+      ...next.notes,
+      {
+        noteId: mockUuid(),
+        kind: 'annotation',
+        who: '批注',
+        text: '还有一处需要的结论没有出现。回到骨架看看：链条哪里断了？',
+        lineId: null,
+        level: null,
+        cost: null,
+        lessonConceptId: null,
+        at: new Date().toISOString(),
+      },
+    ]
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  next.status = 'completed'
+  next.layers = next.layers.map((l) => (l.layer === 'L3' ? { ...l, status: 'done' as const } : l))
+  next.budget = { ...next.budget, keysOwn: Math.max(next.budget.keysOwn, 2) }
+  next.completion = {
+    done: true,
+    independence: 0.9,
+    reviewAvailable: false,
+    leanCard: { theorems: ['Filter.Tendsto', 'Metric.tendsto_atTop'] },
+  }
   next.stateVersion += 1
-  next.transfer = { ...next.transfer, status: 'completed' }
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/**
+ * 证明本「稍后重做」：为同一道题发起一份新作答（mock POST /student/assignments/{id}/attempt）。
+ * 返回全新的 main state（从 L1 开始），由证明本页暂存后交给做题页（跨页交接见 stores/attempt.ts）。
+ * TODO(#24)：真实接口按 assignmentId/problemId 创建新作答并返回 state。
+ */
+export async function startRedo(sourceAttemptId?: string): Promise<AttemptState> {
+  await sleep()
+  const next = clone(createMockState('l1-active'))
+  next.attemptId = mockUuid()
+  next.parentAttemptId = sourceAttemptId ?? null
+  next.stateVersion = 1
+  next.status = 'active'
+  next.currentLayer = 'L1'
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+
+/**
+ * 迁移题子作答完成之后，服务端返回**父作答**的新 state：L5 done → L6 active 并下发总结五问。
+ * （openapi /transfer 只返回子作答 state；父作答状态由 /attempts/{id} 重新拉取或服务端推送，#24）
+ * mock：父作答已 completed 时原样返回（从完成页「再做一道迁移题」的场景）。
+ * TODO(#24)：真实接口在子作答 finish 后由服务端推进父作答，前端按父 state 渲染。
+ */
+export async function completeTransferParent(parent: AttemptState): Promise<AttemptState> {
+  await sleep()
+  const next = clone(parent)
+  if (next.status === 'completed') return next
+  if (next.currentLayer !== 'L5') return next
+  next.stateVersion += 1
+  next.transfer = { ...(next.transfer ?? {}), status: 'completed' }
   next.layers = next.layers.map((l) =>
     l.layer === 'L5' ? { ...l, status: 'done' as const } : l.layer === 'L6' ? { ...l, status: 'active' as const } : l,
   )
