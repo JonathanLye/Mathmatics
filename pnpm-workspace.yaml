@@ -25,6 +25,10 @@ catalog:
 
 allowBuilds:
   esbuild: true
+  core-js: true
+  core-js-pure: true
+  '@parcel/watcher': true
+  tdesign-uniapp: true
 
 minimumReleaseAgeExclude:
   - '@vitest/mocker@5.1.0'

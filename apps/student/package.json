@@ -1,0 +1,38 @@
+{
+  "name": "@proof-gym/student",
+  "version": "0.0.0",
+  "private": true,
+  "description": "证明陪练场 · 学生端（uni-app H5）— 角色 A",
+  "scripts": {
+    "dev:h5": "uni --host 0.0.0.0",
+    "build:h5": "uni build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e:screens": "node tests/screenshots.mjs"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-5030420261029002",
+    "@dcloudio/uni-components": "3.0.0-5030420261029002",
+    "@dcloudio/uni-h5": "3.0.0-5030420261029002",
+    "@proof-gym/ui-math": "workspace:*",
+    "katex": "^0.19.1",
+    "tdesign-uniapp": "^0.6.3",
+    "vue": "^3.4.21",
+    "vue-i18n": "^9.14.5"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.8",
+    "@dcloudio/uni-cli-shared": "3.0.0-5030420261029002",
+    "@dcloudio/uni-stacktracey": "3.0.0-5030420261029002",
+    "@dcloudio/vite-plugin-uni": "3.0.0-5030420261029002",
+    "@vue/tsconfig": "^0.7.0",
+    "playwright-core": "^1.49.0",
+    "sass": "^1.77.8",
+    "typescript": "5.9.3",
+    "vite": "5.2.8",
+    "vitest": "^2.1.9",
+    "vue-tsc": "^2.2.10",
+    "@types/node": "catalog:"
+  }
+}
