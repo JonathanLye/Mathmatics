@@ -1,0 +1,175 @@
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import type { ProblemPackage } from '@proof-gym/engine';
+import { describe, expect, it } from 'vitest';
+
+import { checkPackage } from '../src/checks.ts';
+import { publishPackage } from '../src/publish.ts';
+import { writeDraftOutputs } from '../src/report.ts';
+import { splitItems } from '../src/split.ts';
+import { parsePageRange } from '../src/workspace.ts';
+
+const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const FIXTURES = fileURLToPath(new URL('../fixtures', import.meta.url));
+
+function seed(): ProblemPackage {
+  const path = fileURLToPath(import.meta.resolve('@proof-gym/contracts/seed/epsN.json'));
+  return JSON.parse(readFileSync(path, 'utf8')) as ProblemPackage;
+}
+
+function tempDir(): string {
+  return mkdtempSync(join(tmpdir(), 'pg-import-'));
+}
+
+function runCli(cwd: string, args: string[]) {
+  return spawnSync(process.execPath, [CLI, ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, IMPORT_ROOT: join(cwd, 'imports') },
+  });
+}
+
+const ITEM = {
+  itemId: 'p27-i0',
+  page: 27,
+  chapter: '第二章 数列极限',
+  label: '例1',
+  body: '例1 证明 lim a_n = 3',
+  proofLike: true,
+};
+
+describe('导入 CLI（#36 / 10 §6）', () => {
+  it('页码范围解析与上限', () => {
+    expect(parsePageRange('27-30,35')).toEqual([27, 28, 29, 30, 35]);
+    expect(parsePageRange('7')).toEqual([7]);
+    expect(() => parsePageRange('0-2')).toThrow();
+    expect(() => parsePageRange('9-3')).toThrow();
+    expect(() => parsePageRange('1-2001')).toThrow();
+  });
+
+  it('按题目起始行切条目，并按章节 / 证明题过滤', () => {
+    const pages = [
+      {
+        page: 27,
+        text: '第二章 数列极限\n例1 证明 lim a_n = 3\n证明：取 ε>0。\n习题2 求下列极限。\n',
+      },
+    ];
+    const all = splitItems(pages);
+    expect(all).toHaveLength(2);
+    expect(all[0]?.chapter).toContain('第二章');
+
+    const proofs = splitItems(pages, { chapter: '2', proofOnly: true });
+    expect(proofs).toHaveLength(1);
+    expect(proofs[0]?.proofLike).toBe(true);
+  });
+
+  it('seed 题目包通过 S8 自动校验（Schema / KaTeX / 穷举泄题）', () => {
+    const result = checkPackage(seed());
+    expect(result.issues).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it('畸形包不崩溃：schema 先失败并返回问题', () => {
+    expect(() => checkPackage({} as ProblemPackage)).not.toThrow();
+    expect(checkPackage({} as ProblemPackage).ok).toBe(false);
+  });
+
+  it('两稿差异写入单条报告，不写越界路径', () => {
+    const dir = tempDir();
+    const a = seed();
+    const b = structuredClone(a);
+    b.public.title = `${b.public.title ?? ''}（B 稿）`;
+    const out = writeDraftOutputs(dir, ITEM, a, b);
+    expect(out.disagreements.length).toBeGreaterThan(0);
+    expect(out.chosen).toBe('A');
+    expect(out.jsonWritten).toBe(true);
+    const report = readFileSync(out.reportPath, 'utf8');
+    expect(report).toContain('两稿分歧与仲裁理由');
+    expect(report).toContain('题目标题不同');
+    expect(report).toContain('自动校验（S8）');
+  });
+
+  it('非法 id 退化为安全文件名，不产生路径穿越', () => {
+    const dir = tempDir();
+    const a = seed();
+    a.id = '../../evil';
+    const out = writeDraftOutputs(dir, ITEM, a, structuredClone(a));
+    expect(out.problemId.startsWith('item-')).toBe(true);
+    expect(out.jsonWritten).toBe(false); // schema 不通过：只写报告，不写 JSON
+    expect(out.reportPath.startsWith(dir)).toBe(true);
+    expect(existsSync(join(dir, '..', '..', 'evil.json'))).toBe(false);
+  });
+
+  it('import:publish 未配置 / 空 DATABASE_URL 时 dry-run', async () => {
+    const dir = tempDir();
+    const file = join(dir, 'epsN.json');
+    writeFileSync(file, JSON.stringify(seed()));
+    expect(await publishPackage(file, { reviewer: 'T-01', minutes: 90 })).toEqual({ ok: true, mode: 'dry-run', issues: [] });
+    expect(await publishPackage(file, { reviewer: 'T-01', minutes: 90, databaseUrl: '' })).toEqual({
+      ok: true,
+      mode: 'dry-run',
+      issues: [],
+    });
+  });
+
+  it(
+    '四条命令在仓库 fixtures 下端到端跑通（多条目报告不覆盖）',
+    () => {
+      const root = tempDir();
+      const pdf = join(root, 'fake.pdf');
+      writeFileSync(pdf, '%PDF-1.4\n%%EOF\n');
+
+      let res = runCli(root, [
+        'pdf',
+        '--file',
+        pdf,
+        '--pages',
+        '27-28',
+        '--skip-render',
+        '--ocr-fixture',
+        join(FIXTURES, 'ch2'),
+        '--job',
+        'e2e',
+      ]);
+      expect(res.status, res.stderr).toBe(0);
+
+      res = runCli(root, ['items', '--job', 'e2e']);
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout).toContain('条目 2 个');
+
+      res = runCli(root, [
+        'draft',
+        '--job',
+        'e2e',
+        '--max',
+        '2',
+        '--draft-fixture-a',
+        join(FIXTURES, 'epsN.json'),
+        '--draft-fixture-b',
+        join(FIXTURES, 'epsN-alt.json'),
+      ]);
+      expect(res.status, res.stderr).toBe(0);
+
+      const jobDir = join(root, 'imports', 'e2e');
+      expect(existsSync(join(jobDir, 'report.md'))).toBe(true);
+      const jobReport = readFileSync(join(jobDir, 'report.md'), 'utf8');
+      expect(jobReport).toContain('导入任务报告（2 个条目）');
+
+      const files = readdirSync(jobDir);
+      expect(files).toContain('epsN.json');
+      expect(files).toContain('epsN.report.md');
+      // 第二条目同题号：JSON 与单条报告都加 itemId 后缀，不覆盖第一条。
+      expect(files.some((name) => /^epsN-p\d+-i\d+\.json$/.test(name))).toBe(true);
+      expect(files.some((name) => /^epsN-p\d+-i\d+\.report\.md$/.test(name))).toBe(true);
+
+      res = runCli(root, ['publish', join(jobDir, 'epsN.json'), '--reviewer', 'T-01', '--minutes', '90']);
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout).toContain('"mode": "dry-run"');
+    },
+    30_000,
+  );
+});

@@ -1,0 +1,28 @@
+# apps/import · 题库导入流水线 CLI（#36 / 10 §6，角色 C）
+
+```bash
+# 0) 仓库内自带最小 fixtures（离线可复现）
+#    fixtures/ch2/page-027.md       OCR 页面（例1 证明题 + 习题2 计算题）
+#    fixtures/epsN.json             A 稿（取自项目的 epsN seed）
+#    fixtures/epsN-alt.json         B 稿（仅标题不同，用于演示仲裁与分歧）
+
+# 1) 登记 + 渲染 + OCR（本机无 poppler 时加 --skip-render）
+pnpm import:pdf --file /tmp/fake.pdf --pages 27-28 --skip-render --ocr-fixture apps/import/fixtures/ch2
+# 2) 切条目（按章节 / 只要证明题）
+pnpm import:items --job <jobId> --chapter 2 --proof-only
+# 3) 两稿起草 + 仲裁 + 校验 → imports/<jobId>/<problemId>.json、<problemId>.report.md、job 级 report.md
+pnpm import:draft --job <jobId> --max 4 \
+  --draft-fixture-a apps/import/fixtures/epsN.json --draft-fixture-b apps/import/fixtures/epsN-alt.json
+# 4) 发布（先跑 S8；DATABASE_URL 设置后才写库，否则 dry-run）
+pnpm import:publish imports/<jobId>/epsN.json --reviewer T-01 --minutes 90
+```
+
+## 说明
+
+- 产物在 `imports/`（已 gitignore）：教辅 PDF 不入库；页面图与 OCR 全文只留在本地/服务器（10 §7）。
+- `import:pdf` 的 OCR：P0 CLI 用 `--ocr-fixture`（`page-027.md`）；SimpleTex/Qwen 真实 provider 与队列属 P1（10 §2 S3）。
+- `import:draft` 的模型：配置 `DEEPSEEK_API_KEY` 时双温度调用 DeepSeek 起草（同一模型、非 10 §2 S6 的“双模型”，P1 provider issue 跟进）；离线用 `--draft-fixture-a/b`（单包 / 数组 / `{items:{...}}`）。
+- **多条目**：每条目写 `<problemId>.report.md`；同一题号复用时 JSON 自动加 `-<itemId>` 后缀；job 级 `report.md` 汇总全部条目与校验结果（不会互相覆盖）。
+- S8 自动校验：JSON Schema（contracts 的 problem-package.schema.json）、KaTeX、穷举泄题（复用 `packages/engine` 的 `leakExhaustive`；单包模式不传概念库，概念/词条泄漏由 seed 检查覆盖）。schema 不通过时不写 JSON，只写报告列出问题。
+- 安全：模型输出的 `id` 只接受 Slug，非法值退化为 `item-<itemId>`，并校验输出路径必须落在 `imports/` 内（防路径穿越）。
+- `import:publish` 设 `DATABASE_URL` 时写 `content.problems / content.problem_versions / vault.problem_secrets / vault.reference_proofs / content.review_records`；`--reviewer` 是教师匿名码（app.users.anon_code）。同一 version 已发布：内容相同→幂等跳过，内容不同→要求 bump version（07 published 不可变）。
