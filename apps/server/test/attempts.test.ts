@@ -350,6 +350,41 @@ describe('作答接口（#19）', () => {
     expect(res.json().error.code).toBe('ASSIGNMENT_CLOSED');
   });
 
+  describe.each([
+    ['教师关闭（status=closed）', `update app.assignments set status = 'closed' where id = $1`],
+    ['教师取消（status=cancelled）', `update app.assignments set status = 'cancelled' where id = $1`],
+    ['超过 close_at', `update app.assignments set close_at = now() - interval '1 minute' where id = $1`],
+  ])('布置在作答开始之后关闭：%s', (_label, closeSql) => {
+    it('所有写接口返回 409 ASSIGNMENT_CLOSED 且不写事件；读接口仍可用', async () => {
+      const { cookie, id } = await startedAttempt();
+      await db.query(closeSql, [assignmentId]);
+      const eventsBefore = (await db.query<{ n: string }>(`select count(*)::text as n from ev.events where attempt_id = $1`, [id])).rows[0]?.n;
+
+      const writes = [
+        post(cookie, `/attempts/${id}/lines`, lineBody('取 ε')),
+        post(cookie, `/attempts/${id}/finish`),
+        post(cookie, `/attempts/${id}/park`),
+        post(cookie, `/attempts/${id}/layers/L1/skip`),
+      ];
+      for (const res of await Promise.all(writes)) {
+        expect(res.statusCode, res.body).toBe(409);
+        expect(res.json().error.code).toBe('ASSIGNMENT_CLOSED');
+      }
+
+      const eventsAfter = (await db.query<{ n: string }>(`select count(*)::text as n from ev.events where attempt_id = $1`, [id])).rows[0]?.n;
+      expect(eventsAfter).toBe(eventsBefore);
+      const read = await get(cookie, `/attempts/${id}`);
+      expect(read.statusCode).toBe(200);
+      validState(read.json());
+    });
+  });
+
+  it('布置仍开放：关闭检查不影响正常写入', async () => {
+    const { cookie, id } = await startedAttempt();
+    const res = await post(cookie, `/attempts/${id}/park`);
+    expect(res.statusCode).toBe(200);
+  });
+
   it('转移题：第 5 层开始迁移题创建子作答（kind=transfer，题目为 epsN-T1），父作答仍在第 5 层', async () => {
     const { cookie, id } = await startedAttempt();
     // 白盒：把父作答的引擎状态放到第 5 层（前四层已完成），只测迁移题的创建。

@@ -111,6 +111,19 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     return r.rows[0]?.anon_code ?? 'unknown';
   }
 
+  // 06 §5：布置关闭（教师关闭、取消，或超过 close_at）后作答只读。start 里已有同样的判断；
+  // 这里补上已开始的作答，否则测验截止后学生仍能继续改答案。用数据库时钟，与 start 的 open_at/close_at 比较口径一致。
+  async function guardAssignmentOpen(tx: Queryable, row: AttemptRow): Promise<void> {
+    const closed = (
+      await tx.query<{ closed: boolean }>(
+        `select (status in ('closed', 'cancelled') or (close_at is not null and close_at <= now())) as closed
+           from app.assignments where id = $1`,
+        [row.assignment_id],
+      )
+    ).rows[0]?.closed;
+    if (closed !== false) throw new AppError('ASSIGNMENT_CLOSED', 409, '布置已关闭，作答为只读');
+  }
+
   function guardWritable(snap: Snapshot, ifMatch: number | undefined): void {
     if (snap.row.status === 'locked') throw new AppError('ATTEMPT_LOCKED', 409, '本题已锁定，请联系老师');
     if (snap.row.status !== 'active') throw new AppError('ATTEMPT_LOCKED', 409, '这次作答已搁置或已结束');
@@ -218,6 +231,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const row = await lockOwned(tx, spec.attemptId, spec.userId);
       const snap = await snapshotOf(tx, row);
       guardWritable(snap, spec.ifMatch);
+      await guardAssignmentOpen(tx, row);
       if (spec.layer !== undefined && snap.state.layer !== spec.layer) throw rejection('wrong_layer', snap);
 
       const result = step(snap.problem.ctx, snap.state, spec.build(snap.problem.ctx), snap.now);
@@ -353,6 +367,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const row = await lockOwned(tx, attemptId, userId);
       const snap = await snapshotOf(tx, row);
       guardWritable(snap, ifMatch);
+      await guardAssignmentOpen(tx, row);
       const anon = await userAnon(tx, row.user_id);
       const layer = `L${snap.state.layer}`;
       const events = [{ type: 'attempt.park', at: snap.now, payload: { layer } }];
@@ -367,6 +382,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const row = await lockOwned(tx, attemptId, userId);
       const snap = await snapshotOf(tx, row);
       guardWritable(snap, ifMatch);
+      await guardAssignmentOpen(tx, row);
       if (row.kind !== 'main' || snap.state.layer !== 5) throw rejection('wrong_layer', snap);
 
       const existing = (
