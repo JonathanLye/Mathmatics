@@ -14,6 +14,9 @@ const error = ref('');
 const nudgeText = ref('');
 const nudgeSending = ref(false);
 const resolving = ref<string | null>(null);
+const mirrorVisible = ref(false);
+const mirrorUrl = ref('');
+const mirrorLoading = ref(false);
 
 const STATUS_LABEL: Record<string, string> = {
   active: '进行中',
@@ -90,6 +93,24 @@ async function unlock(): Promise<void> {
   }
 }
 
+// 04 §5.1：取 5 分钟只读令牌，iframe 打开学生镜像页（/s/mirror，A 侧页面）。
+async function openMirror(): Promise<void> {
+  if (props.attemptId === null) return;
+  mirrorLoading.value = true;
+  try {
+    const res = await api.post<{ token: string; url: string; expiresAt: string }>(
+      `/api/v1/teacher/attempts/${props.attemptId}/mirror-token`,
+      {},
+    );
+    mirrorUrl.value = new URL(res.url, window.location.origin).toString();
+    mirrorVisible.value = true;
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    mirrorLoading.value = false;
+  }
+}
+
 async function sendNudge(): Promise<void> {
   if (props.attemptId === null || nudgeText.value.trim() === '') return;
   nudgeSending.value = true;
@@ -157,6 +178,7 @@ function lineMeta(line: TeacherLine): string {
         <t-popconfirm content="解锁后计数不清零、阈值 +1，确定解锁？" @confirm="unlock">
           <t-button size="small" :disabled="detail.status !== 'locked'">解锁</t-button>
         </t-popconfirm>
+        <t-button size="small" :loading="mirrorLoading" @click="openMirror">镜像预览</t-button>
         <div class="nudge-box">
           <t-input v-model="nudgeText" placeholder="发给学生一句话（≤200 字，过闸门）" :maxlength="200" />
           <t-button size="small" theme="primary" :loading="nudgeSending" @click="sendNudge">发送</t-button>
@@ -229,6 +251,22 @@ function lineMeta(line: TeacherLine): string {
         </div>
       </div>
     </div>
+
+    <t-dialog v-model:visible="mirrorVisible" header="镜像预览（只读）" width="900px" :footer="false">
+      <div class="page-sub" style="margin-bottom: 8px">
+        学生端镜像页（<code>/s/mirror</code>）由 A 侧提供；未上线前 iframe 会显示 404。只读由镜像页自身实现，
+        iframe 只用 <code>allow-scripts</code>，不加 <code>allow-same-origin</code>（04 §5.1 / PR #100 安全结论）。
+      </div>
+      <iframe
+        v-if="mirrorUrl"
+        :src="mirrorUrl"
+        class="mirror-frame"
+        title="学生作答镜像"
+        sandbox="allow-scripts"
+        referrerpolicy="no-referrer"
+        allow="fullscreen"
+      />
+    </t-dialog>
   </t-drawer>
 </template>
 
@@ -298,6 +336,13 @@ function lineMeta(line: TeacherLine): string {
 .timeline-time {
   color: var(--td-text-color-secondary, #5e6670);
   min-width: 72px;
+}
+.mirror-frame {
+  width: 100%;
+  height: 70vh;
+  border: 1px solid var(--td-component-border, #e3e6eb);
+  border-radius: 8px;
+  background: #fff;
 }
 .drawer-error {
   padding: 8px 0;

@@ -4,6 +4,13 @@ import { AppError } from '../../errors.ts';
 import { requireTeacher, uuidParam, loadTeacherAttempt } from '../../services/teacher/auth.ts';
 import { loadAttemptDetail, loadAttemptEvents } from '../../services/teacher/attempts.ts';
 import { nudgeStudent, unlockForTeacher } from '../../services/teacher/interventions.ts';
+import {
+  appendMirrorEvent,
+  issueMirrorToken,
+  loadAttemptMeta,
+  loadMirrorState,
+  verifyMirrorToken,
+} from '../../services/teacher/mirror.ts';
 
 import type { AuthRouteOptions } from '../auth.ts';
 
@@ -13,6 +20,9 @@ interface AttemptIdParams {
 interface EventsQuery {
   afterSeq?: string;
   limit?: string;
+}
+interface StreamQuery {
+  token?: string;
 }
 interface UnlockBody {
   grantH4?: string;
@@ -58,6 +68,92 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
     const detail = await loadAttemptDetail(db, config, auth, attemptId);
     contract.validate('AttemptDetail', detail);
     return detail;
+  });
+
+  // 04 §5.1 / 06 §6：教师端 iframe 用 5 分钟只读令牌打开镜像页。
+  app.post('/teacher/attempts/:attemptId/mirror-token', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const attemptId = uuidParam((request.params as AttemptIdParams).attemptId, '作答');
+    await loadTeacherAttempt(db, auth, attemptId);
+    return issueMirrorToken(attemptId, auth.userId, config.sessionSecret);
+  });
+
+  // 06 §6：SSE，event: state（学生视图 AttemptState）/ ping（20s）；教师 Cookie 或 mirrorToken 鉴权。
+  app.get('/teacher/attempts/:attemptId/stream', async (request, reply) => {
+    const attemptId = uuidParam((request.params as AttemptIdParams).attemptId, '作答');
+    const token = (request.query as StreamQuery).token;
+    let teacherId: string;
+    if (typeof token === 'string' && token !== '') {
+      const payload = verifyMirrorToken(token, attemptId, config.sessionSecret);
+      if (payload === null) throw new AppError('UNAUTHORIZED', 401, '镜像令牌无效或已过期');
+      teacherId = payload.u;
+    } else {
+      const auth = await requireTeacher(db, request);
+      await loadTeacherAttempt(db, auth, attemptId);
+      teacherId = auth.userId;
+    }
+
+    const meta = await loadAttemptMeta(db, attemptId);
+    await appendMirrorEvent(db, meta, teacherId, 'open');
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    });
+    let closed = false;
+    let version = meta.state_version;
+    let mutex = false;
+    const write = (chunk: string): void => {
+      if (!closed) reply.raw.write(chunk);
+    };
+    const sendState = async (): Promise<void> => {
+      const view = await loadMirrorState(db, attemptId);
+      if (closed) return;
+      write(`id: ${version}\nevent: state\ndata: ${JSON.stringify(view)}\n\n`);
+    };
+
+    const lastEventId = Number(request.headers['last-event-id']);
+    try {
+      if (!Number.isInteger(lastEventId) || lastEventId < version) await sendState();
+    } catch {
+      reply.raw.end();
+      return;
+    }
+
+    // 1s 轮询 state_version；变化才推送（P0 数据量小，够用；SSE 只推不拉学生端状态）。
+    const poll = setInterval(() => {
+      if (closed || mutex) return;
+      mutex = true;
+      void (async () => {
+        try {
+          const row = (
+            await db.query<{ state_version: number }>(`select state_version from app.attempts where id = $1`, [attemptId])
+          ).rows[0];
+          if (row !== undefined && Number(row.state_version) !== version) {
+            version = Number(row.state_version);
+            await sendState();
+          }
+        } catch {
+          // 连接已断或 DB 抖动：下一轮重试
+        } finally {
+          mutex = false;
+        }
+      })();
+    }, 1000);
+    const heartbeat = setInterval(() => write('event: ping\ndata: {}\n\n'), 20_000);
+
+    const cleanup = (): void => {
+      if (closed) return;
+      closed = true;
+      clearInterval(poll);
+      clearInterval(heartbeat);
+      void appendMirrorEvent(db, meta, teacherId, 'close').catch(() => undefined);
+    };
+    request.raw.on('close', cleanup);
+    request.raw.on('error', cleanup);
   });
 
   // 04 §6：发一句话 ≤200 字，过闸门。
