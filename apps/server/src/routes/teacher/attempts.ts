@@ -24,6 +24,12 @@ interface EventsQuery {
 interface StreamQuery {
   token?: string;
 }
+
+// 同一作答同时最多 2 条镜像 SSE（教师本人 + 一个备用）；防止 token 5 分钟内被重放刷连接（A 复审 P2-2）。
+const MAX_MIRROR_STREAMS = 2;
+// P0：每连接 1s 查一次 state_version（单班 ≤60 人、镜像连接 ≤2/作答）；量大后换 LISTEN/NOTIFY 或复用 class 快照。
+const MIRROR_POLL_MS = 1000;
+const mirrorStreams = new Map<string, number>();
 interface UnlockBody {
   grantH4?: string;
 }
@@ -79,11 +85,12 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
   });
 
   // 06 §6：SSE，event: state（学生视图 AttemptState）/ ping（20s）；教师 Cookie 或 mirrorToken 鉴权。
-  app.get('/teacher/attempts/:attemptId/stream', async (request, reply) => {
+  app.get('/teacher/attempts/:attemptId/stream', { logLevel: 'warn' }, async (request, reply) => {
     const attemptId = uuidParam((request.params as AttemptIdParams).attemptId, '作答');
     const token = (request.query as StreamQuery).token;
+    const viaToken = typeof token === 'string' && token !== '';
     let teacherId: string;
-    if (typeof token === 'string' && token !== '') {
+    if (viaToken) {
       const payload = verifyMirrorToken(token, attemptId, config.sessionSecret);
       if (payload === null) throw new AppError('UNAUTHORIZED', 401, '镜像令牌无效或已过期');
       teacherId = payload.u;
@@ -94,7 +101,21 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
     }
 
     const meta = await loadAttemptMeta(db, attemptId);
-    await appendMirrorEvent(db, meta, teacherId, 'open');
+
+    const active = mirrorStreams.get(attemptId) ?? 0;
+    if (active >= MAX_MIRROR_STREAMS) {
+      throw new AppError('RATE_LIMITED', 429, '该作答的镜像连接过多，请稍后再试');
+    }
+    mirrorStreams.set(attemptId, active + 1);
+
+    try {
+      await appendMirrorEvent(db, meta, teacherId, 'open');
+    } catch (error) {
+      const left = (mirrorStreams.get(attemptId) ?? 1) - 1;
+      if (left <= 0) mirrorStreams.delete(attemptId);
+      else mirrorStreams.set(attemptId, left);
+      throw error;
+    }
 
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -102,6 +123,9 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
       'cache-control': 'no-cache',
       connection: 'keep-alive',
       'x-accel-buffering': 'no',
+      // 沙箱 iframe 是 opaque origin（allow-scripts 无 allow-same-origin）：token 路径无 Cookie，
+      // 仅凭 token 鉴权，允许跨源读取（A 复审 P1-2 方案①；EventSource 默认 withCredentials=false）。
+      ...(viaToken ? { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET' } : {}),
     });
     let closed = false;
     let version = meta.state_version;
@@ -142,7 +166,7 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
           mutex = false;
         }
       })();
-    }, 1000);
+    }, MIRROR_POLL_MS);
     const heartbeat = setInterval(() => write('event: ping\ndata: {}\n\n'), 20_000);
 
     const cleanup = (): void => {
@@ -150,6 +174,9 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
       closed = true;
       clearInterval(poll);
       clearInterval(heartbeat);
+      const left = (mirrorStreams.get(attemptId) ?? 1) - 1;
+      if (left <= 0) mirrorStreams.delete(attemptId);
+      else mirrorStreams.set(attemptId, left);
       void appendMirrorEvent(db, meta, teacherId, 'close').catch(() => undefined);
     };
     request.raw.on('close', cleanup);

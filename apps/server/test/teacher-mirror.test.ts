@@ -51,7 +51,7 @@ async function post(cookie: string, path: string, payload?: unknown, contentType
 async function readSseEvent(
   url: string,
   headers: Record<string, string>,
-): Promise<{ event: string; data: string }> {
+): Promise<{ event: string; data: string; headers: Headers }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
@@ -72,7 +72,7 @@ async function readSseEvent(
         controller.abort();
         const event = /^event: (.+)$/m.exec(block)?.[1] ?? '';
         const data = /^data: (.+)$/m.exec(block)?.[1] ?? '';
-        return { event, data };
+        return { event, data, headers: res.headers };
       }
     }
     throw new Error('SSE 没有收到事件');
@@ -162,10 +162,11 @@ describe('镜像预览（#43 / 04 §5.1、06 §6）', () => {
   });
 
   it('SSE（教师 Cookie）：event: state 返回学生视图，不泄露 secret；连接写 t.mirror open/close', async () => {
-    const { event, data } = await readSseEvent(`${base}/api/v1/teacher/attempts/${attemptId}/stream`, {
+    const { event, data, headers } = await readSseEvent(`${base}/api/v1/teacher/attempts/${attemptId}/stream`, {
       cookie: teacherCookie,
     });
     expect(event).toBe('state');
+    expect(headers.get('access-control-allow-origin')).toBeNull();
     const state = JSON.parse(data) as Record<string, unknown>;
     expect(state.attemptId).toBe(attemptId);
     expect(state.currentLayer).toBe('L1');
@@ -175,12 +176,17 @@ describe('镜像预览（#43 / 04 §5.1、06 §6）', () => {
 
     // 断开后 write close；open/close 都应在 ev.events 里
     await new Promise((resolve) => setTimeout(resolve, 400));
-    const events = await db.query<{ payload: { action?: string } }>(
+    const events = await db.query<{ payload: { attemptId?: string; action?: string } }>(
       `select payload from ev.events where attempt_id = $1 and type = 't.mirror' order by seq`,
       [attemptId],
     );
     const actions = events.rows.map((row) => row.payload.action);
     expect(actions).toContain('open');
+    // 08 §3 / events.schema p_t_mirror：attemptId + action 均必填（A 复审 P2-1）
+    for (const row of events.rows) {
+      expect(row.payload.attemptId).toBe(attemptId);
+      expect(['open', 'close']).toContain(row.payload.action);
+    }
   });
 
   it('SSE（mirrorToken）：不带教师 Cookie 也可用；token 绑定 attempt、篡改签名 401', async () => {
@@ -192,12 +198,14 @@ describe('镜像预览（#43 / 04 §5.1、06 §6）', () => {
     });
     const token = (tokenRes.json() as { token: string }).token;
 
-    const { event, data } = await readSseEvent(
+    const { event, data, headers } = await readSseEvent(
       `${base}/api/v1/teacher/attempts/${attemptId}/stream?token=${encodeURIComponent(token)}`,
       {},
     );
     expect(event).toBe('state');
     expect((JSON.parse(data) as { attemptId: string }).attemptId).toBe(attemptId);
+    // 沙箱 iframe（opaque origin）需要 CORS；token 路径无 Cookie，ACAO * 不涉及凭据（P1-2 方案①）
+    expect(headers.get('access-control-allow-origin')).toBe('*');
 
     const tampered = `${token.slice(0, -2)}xx`;
     const bad = await fetch(`${base}/api/v1/teacher/attempts/${attemptId}/stream?token=${encodeURIComponent(tampered)}`);
@@ -223,5 +231,27 @@ describe('镜像预览（#43 / 04 §5.1、06 §6）', () => {
       `${base}/api/v1/teacher/attempts/${secondAttempt}/stream?token=${encodeURIComponent(token)}`,
     );
     expect(wrong.status).toBe(401);
+  });
+
+  it('同一作答最多 2 条镜像连接，第 3 条 429 RATE_LIMITED（A 复审 P2-2）', async () => {
+    const token = (
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/teacher/attempts/${attemptId}/mirror-token`,
+        headers: { ...WRITE_HEADERS, cookie: teacherCookie },
+        payload: {},
+      })
+    ).json().token as string;
+    const url = `${base}/api/v1/teacher/attempts/${attemptId}/stream?token=${encodeURIComponent(token)}`;
+    const first = await fetch(url);
+    const second = await fetch(url);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const third = await fetch(url);
+    expect(third.status).toBe(429);
+    expect((await third.json()).error.code).toBe('RATE_LIMITED');
+    await first.body?.cancel().catch(() => undefined);
+    await second.body?.cancel().catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 300));
   });
 });

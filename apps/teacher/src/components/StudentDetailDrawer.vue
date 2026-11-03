@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
 import type { HelpFlagItem, IntegrityItem, TeacherAttemptDetail, TeacherLine } from '../api/types.ts';
+import { MIRROR_IFRAME_SANDBOX, isMirrorPageUrl } from '../utils/mirror.ts';
 import MathTextView from './MathTextView.vue';
 
 const props = defineProps<{ visible: boolean; attemptId: string | null }>();
@@ -102,7 +103,9 @@ async function openMirror(): Promise<void> {
       `/api/v1/teacher/attempts/${props.attemptId}/mirror-token`,
       {},
     );
-    mirrorUrl.value = new URL(res.url, window.location.origin).toString();
+    const url = new URL(res.url, window.location.origin).toString();
+    if (!isMirrorPageUrl(url)) throw new Error('镜像地址不合法（必须 /s/mirror + attempt + token）');
+    mirrorUrl.value = url;
     mirrorVisible.value = true;
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
@@ -262,7 +265,7 @@ function lineMeta(line: TeacherLine): string {
         :src="mirrorUrl"
         class="mirror-frame"
         title="学生作答镜像"
-        sandbox="allow-scripts"
+        :sandbox="MIRROR_IFRAME_SANDBOX"
         referrerpolicy="no-referrer"
         allow="fullscreen"
       />

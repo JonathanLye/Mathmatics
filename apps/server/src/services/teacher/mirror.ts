@@ -129,7 +129,7 @@ export async function appendMirrorEvent(
       problemVersion: meta.problem_version,
       layer: meta.current_layer,
       mode: meta.mode,
-      payload: { action },
+      payload: { attemptId: meta.id, action },
     });
   });
 }
