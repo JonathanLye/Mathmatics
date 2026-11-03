@@ -1,0 +1,51 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "登录"
+      }
+    },
+    {
+      "path": "pages/consent/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "同意书"
+      }
+    },
+    {
+      "path": "pages/home/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "首页"
+      }
+    },
+    {
+      "path": "pages/practice/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "做题"
+      }
+    },
+    {
+      "path": "pages/proofbook/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "证明本"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "证明陪练场",
+    "navigationBarBackgroundColor": "#F7F6F2",
+    "backgroundColor": "#F7F6F2"
+  },
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^t-(.*)": "tdesign-uniapp/components/$1/$1.vue"
+    }
+  }
+}

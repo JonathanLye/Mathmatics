@@ -1,0 +1,16 @@
+{
+  "name": "证明陪练场",
+  "appid": "",
+  "description": "数学分析证明题分步引导 · 学生端（uni-app H5）",
+  "versionName": "0.1.0",
+  "versionCode": "10",
+  "transformPx": false,
+  "h5": {
+    "title": "证明陪练场",
+    "router": {
+      "mode": "hash",
+      "base": "./"
+    }
+  },
+  "vueVersion": "3"
+}
