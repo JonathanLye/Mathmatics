@@ -135,5 +135,10 @@ describe('作答汇总表 CSV（08 §5.1 字段子集）', () => {
     expect(csvField('x\ny')).toBe('"x\ny"');
     expect(csvField(null)).toBe('');
     expect(csvField(false)).toBe('false');
+    expect(csvField('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
+    expect(csvField('+1')).toBe("'+1");
+    expect(csvField('@a')).toBe("'@a");
+    expect(csvField('-x')).toBe("'-x");
+    expect(csvField(-3)).toBe('-3');
   });
 });

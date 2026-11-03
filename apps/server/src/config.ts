@@ -14,6 +14,8 @@ export interface AppConfig {
   studentNoPepper: string;
   databaseUrl?: string;
   pgliteDir: string;
+  // 每分钟、每会话的请求上限（见 routes/events.ts、routes/attempts.ts）。
+  rateLimits: { events: number; help: number };
   // 含各 provider 的密钥（见 ai/registry.ts）：不得打印或序列化。
   models: ModelRegistry;
 }
@@ -23,6 +25,13 @@ const DEV_PII_KEY = Buffer.from('proof-gym-dev-pii-key-0000000000', 'utf8');
 const DEV_STUDENT_NO_PEPPER = 'proof-gym-dev-student-no-pepper-not-for-production';
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '::1', 'localhost']);
 const MODELS_PATH = fileURLToPath(new URL('../config/models.yaml', import.meta.url));
+
+function positiveInt(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} 必须是正整数：${raw}`);
+  return value;
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const appEnv = (env.NODE_ENV ?? 'development') as AppEnv;
@@ -66,6 +75,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     studentNoPepper,
     databaseUrl: env.DATABASE_URL === undefined || env.DATABASE_URL === '' ? undefined : env.DATABASE_URL,
     pgliteDir: env.PGLITE_DIR ?? '.data/pglite',
+    rateLimits: {
+      events: positiveInt(env.RATE_LIMIT_EVENTS_PER_MIN, 120, 'RATE_LIMIT_EVENTS_PER_MIN'),
+      help: positiveInt(env.RATE_LIMIT_HELP_PER_MIN, 60, 'RATE_LIMIT_HELP_PER_MIN'),
+    },
     models: loadModelRegistry(MODELS_PATH, env),
   };
 }

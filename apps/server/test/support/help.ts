@@ -28,7 +28,8 @@ export interface HelpHarness {
 export async function startHelpHarness(problemId = 'epsN'): Promise<HelpHarness> {
   const fx = await setupFixture();
   await seedContent(fx.db);
-  const app = await buildTestApp(fx.db);
+  // 红队用例在一个会话里连发上百次求助，远超真实使用，所以关掉求助限流（限流本身在 ops-hardening.test.ts 里测）。
+  const app = await buildTestApp(fx.db, { rateLimits: { events: 120, help: 100_000 } });
   const teacherId = (await fx.db.query<{ id: string }>(`select id from app.users where role = 'teacher'`)).rows[0]?.id as string;
   const version = (
     await fx.db.query<{ version: number }>(`select max(version) as version from content.problem_versions where problem_id = $1`, [
