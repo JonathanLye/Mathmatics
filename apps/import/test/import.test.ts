@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import { checkPackage } from '../src/checks.ts';
 import { publishPackage } from '../src/publish.ts';
-import { writeDraftOutputs } from '../src/report.ts';
+import { arbitrateDrafts, revealTotal, writeDraftOutputs } from '../src/report.ts';
 import { splitItems } from '../src/split.ts';
 import { parsePageRange } from '../src/workspace.ts';
 
@@ -90,6 +90,20 @@ describe('导入 CLI（#36 / 10 §6）', () => {
     const badExample = seed();
     badExample.secret.keys[0]!.examples = ['完全无关的文本'];
     expect(checkPackage(badExample).issues.some((issue) => issue.message.includes('样例未命中'))).toBe(true);
+  });
+
+  it('S7 仲裁评分：校验问题/透露量/路线透明计分，同分默认 A', () => {
+    const a = seed();
+    const b = seed();
+    const tie = arbitrateDrafts(a, b, [], []);
+    expect(tie.chosen).toBe('A');
+    expect(tie.reasons.join(' ')).toContain('透露量');
+    expect(tie.reasons.join(' ')).toContain('校验问题');
+
+    const bWins = arbitrateDrafts(a, b, [{ where: 'x', message: '坏' }], []);
+    expect(bWins.chosen).toBe('B');
+    expect(bWins.scoreB).toBeGreaterThan(bWins.scoreA);
+    expect(revealTotal(a)).toBeGreaterThan(0);
   });
 
   it('S8 概念库/词条也做穷举泄题检查（--concepts）', () => {

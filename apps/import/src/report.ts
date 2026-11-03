@@ -76,6 +76,53 @@ export function compareDrafts(a: ProblemPackage, b: ProblemPackage): { disagreem
 }
 
 // DoD：每条目输出 `<problemId>.json` 与报告；多条目不互相覆盖（A 复审 P1-1）。
+// 10 §2 S7：仲裁评分（透明规则；LLM 仲裁器后续可替换/叠加）。
+// 评分 = -10×校验问题 - 透露量总和 + 路线数(≤3) + 关键步骤 3–6 加分 + def/frame 齐备加分。
+export interface Arbitration {
+  chosen: 'A' | 'B';
+  reasons: string[];
+  scoreA: number;
+  scoreB: number;
+}
+
+export function revealTotal(pkg: ProblemPackage): number {
+  const keys = Array.isArray(pkg?.secret?.keys) ? pkg.secret.keys : [];
+  return keys.reduce((sum, key) => sum + keyMaxCost(pkg, key.id), 0);
+}
+
+function scorePack(pkg: ProblemPackage, issues: CheckIssue[]): { score: number; detail: string } {
+  const keys = Array.isArray(pkg?.secret?.keys) ? pkg.secret.keys.length : 0;
+  const routes = Array.isArray(pkg?.secret?.routes) ? pkg.secret.routes.length : 0;
+  const reveal = revealTotal(pkg);
+  let score = -issues.length * 10 - reveal + Math.min(routes, 3);
+  if (keys >= 3 && keys <= 6) score += 1;
+  if (pkg?.public?.def !== undefined) score += 1;
+  if (pkg?.public?.frame !== undefined) score += 1;
+  const detail = `校验问题 ${issues.length}（-10/条）、透露量 ${reveal}（-1/点）、路线 ${routes}（+1，≤3）、关键步骤 ${keys}、def/frame ${pkg?.public?.def ? '有' : '无'}/${pkg?.public?.frame ? '有' : '无'}`;
+  return { score, detail };
+}
+
+export function arbitrateDrafts(
+  a: ProblemPackage,
+  b: ProblemPackage,
+  issuesA: CheckIssue[],
+  issuesB: CheckIssue[],
+): Arbitration {
+  const left = scorePack(a, issuesA);
+  const right = scorePack(b, issuesB);
+  const chosen: 'A' | 'B' = right.score > left.score ? 'B' : 'A';
+  return {
+    chosen,
+    scoreA: left.score,
+    scoreB: right.score,
+    reasons: [
+      `A 得分 ${left.score}：${left.detail}`,
+      `B 得分 ${right.score}：${right.detail}`,
+      `按分数取 ${chosen}（同分默认 A；最终以教师审核为准）`,
+    ],
+  };
+}
+
 export function writeDraftOutputs(
   jobDir: string,
   item: ImportItem,
@@ -87,17 +134,9 @@ export function writeDraftOutputs(
   const checksB = checkPackage(b, options);
   const { disagreements, revealMismatches } = compareDrafts(a, b);
 
-  let chosen: 'A' | 'B' = 'A';
-  let reason = '两稿都通过自动校验；按“双模型起草 + 仲裁”默认取 A 稿，交教师审核时再逐条对照 B。';
-  if (!checksA.ok && checksB.ok) {
-    chosen = 'B';
-    reason = 'A 稿未通过自动校验、B 稿通过，按仲裁规则取 B。';
-  } else if (checksA.ok && !checksB.ok) {
-    chosen = 'A';
-    reason = 'A 稿通过自动校验、B 稿未通过，取 A。';
-  } else if (!checksA.ok && !checksB.ok) {
-    reason = '两稿都未通过自动校验；默认保留 A 稿，report 列出全部问题，需人工修正后重跑 S8。';
-  }
+  const arbitration = arbitrateDrafts(a, b, checksA.ok ? [] : checksA.issues, checksB.ok ? [] : checksB.issues);
+  const chosen = arbitration.chosen;
+  const reason = arbitration.reasons.join('；');
 
   const pkg = chosen === 'A' ? a : b;
   const schemaOk = checksA.ok || checksB.ok;
@@ -125,6 +164,8 @@ export function writeDraftOutputs(
     `- JSON：${jsonWritten ? jsonPath : '未写入（schema 未通过，先修 report 里的问题）'}`,
     '',
     '## 两稿分歧与仲裁理由',
+    '',
+    ...arbitration.reasons.map((entry) => `- ${entry}`),
     '',
     disagreements.length === 0 ? '- 无结构性分歧。' : disagreements.map((entry) => `- ${entry}`).join('\n'),
     '',
