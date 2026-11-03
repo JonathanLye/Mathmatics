@@ -100,7 +100,8 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
   }
 
   // 06 §5：布置关闭（教师关闭、取消，或超过 close_at）后作答只读。start 里已有同样的判断；
-  // 这里补上已开始的作答，否则测验截止后学生仍能继续改答案。用数据库时钟，与 start 的 open_at/close_at 比较口径一致。
+  // 这里补上已开始的作答，否则测验截止后学生仍能继续改答案。用数据库时钟 now()；start 用应用时钟 Date.now()，
+  // 两者在 close_at 边界上可能差毫秒级（可接受，写接口一律以数据库为准）。
   async function guardAssignmentOpen(tx: Queryable, row: AttemptRow): Promise<void> {
     const closed = (
       await tx.query<{ closed: boolean }>(
