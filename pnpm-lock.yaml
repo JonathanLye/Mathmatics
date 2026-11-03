@@ -391,9 +391,15 @@ importers:
       '@proof-gym/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@proof-gym/ui-math':
+        specifier: workspace:*
+        version: link:../../packages/ui-math
       echarts:
         specifier: ^6.1.0
         version: 6.1.0
+      katex:
+        specifier: ^0.19.1
+        version: 0.19.1
       tdesign-vue-next:
         specifier: ^1.20.10
         version: 1.20.10(vue@3.5.44(typescript@5.9.3))

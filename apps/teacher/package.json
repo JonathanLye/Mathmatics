@@ -15,7 +15,9 @@
     "echarts": "^6.1.0",
     "tdesign-vue-next": "^1.20.10",
     "vue": "^3.5.44",
-    "vue-router": "^4.6.4"
+    "vue-router": "^4.6.4",
+    "@proof-gym/ui-math": "workspace:*",
+    "katex": "^0.19.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",
