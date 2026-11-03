@@ -20,12 +20,14 @@ import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
 import EditorSheet from '@/components/EditorSheet.vue'
 import { nextLineNoOf } from '@/components/layers/proofLines'
+import MathText from '@ui-math/MathText.vue'
+import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
 import { useAttempt } from '@/stores/attempt'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
-import { addLine, claimHint, finishSteps, requestHelp, skipLayer, submitDef, submitFramework, viewFrameTemplate } from '@/api/client'
-import type { HelpIntent, HintPreview, LayerId, LineDraft, Note } from '@/types/attempt'
+import { addLine, claimHint, finishSteps, recognizeInk, requestHelp, skipLayer, submitDef, submitFramework, viewFrameTemplate } from '@/api/client'
+import type { HelpIntent, HintPreview, LayerId, LineDraft, Note, Recognition } from '@/types/attempt'
 
 const { state, mockKey, busy, error, setMock, apply, run } = useAttempt()
 const { mode } = useViewport()
@@ -39,6 +41,11 @@ const helpNote = ref<Note | null>(null)
 /** 最近一次求助请求：预览卡「重新获取预览」/ dwell 归零时按原意图重放 */
 const lastHelp = ref<{ intent: HelpIntent; text: string }>({ intent: 'concept', text: '' })
 const toast = ref('')
+/** #15 拍照识别确认：识别中 → 确认面板；确认后的文本进入「草稿」并回填行编辑器 */
+const recogOpen = ref(false)
+const recogBusy = ref(false)
+const recognition = ref<Recognition | null>(null)
+const recogDraft = ref<{ text: string; recogId: string; at: string } | null>(null)
 
 const currentLayer = computed(() => state.value.currentLayer)
 const lines = computed(() => state.value.steps?.lines ?? [])
@@ -270,8 +277,64 @@ function handleKeyboard() {
   editorOpen.value = true
 }
 
+/** #15：拍照 → mock 识别 → 确认面板（真实 /recognitions/photo 接口在 #25 接入） */
+async function startPhotoRecognition() {
+  if (recogBusy.value) return
+  // 测验模式下拍照禁用（03 §3.3）
+  if (state.value.integrity.mode === 'test') {
+    show('测验模式下拍照不可用')
+    return
+  }
+  recogOpen.value = true
+  recogBusy.value = true
+  recognition.value = null
+  const result = await run(() => recognizeInk('mock-photo'))
+  recogBusy.value = false
+  if (!result) {
+    recogOpen.value = false
+    show('识别暂不可用，请用键盘')
+    return
+  }
+  recognition.value = result
+}
+
 function handlePhoto() {
-  show('拍照识别是 #25（Day2）')
+  void startPhotoRecognition()
+}
+
+/** 「重新识别」：重新跑一次 mock 识别（面板留在原处，识别中再次显示加载态） */
+async function handleRecogRewrite() {
+  recogBusy.value = true
+  recognition.value = null
+  const result = await run(() => recognizeInk('mock-photo'))
+  recogBusy.value = false
+  if (!result) {
+    recogOpen.value = false
+    show('识别暂不可用，请用键盘')
+    return
+  }
+  recognition.value = result
+}
+
+/** 确认加入：识别结果进入草稿（mock 下页面能看到结果文本），并回填行编辑器 */
+function handleRecogConfirm(text: string) {
+  const recogId = recognition.value?.recogId ?? ''
+  recogOpen.value = false
+  recognition.value = null
+  recogDraft.value = { text, recogId, at: new Date().toISOString() }
+  show('识别结果已放入草稿，继续写这一行')
+}
+
+/** 放弃重写：关掉面板，不采用这次识别 */
+function handleRecogDiscard() {
+  recogOpen.value = false
+  recognition.value = null
+  show('已放弃这次识别，可以重新写')
+}
+
+function closeRecogLoading() {
+  recogOpen.value = false
+  recognition.value = null
 }
 
 function handleBack() {
@@ -356,6 +419,20 @@ function backHome() {
           />
 
           <template v-else-if="currentLayer === 'L3'">
+            <!-- #15：拍照识别确认后的结果先作为「这一行」的草稿显示，学生确认/再改后才提交 -->
+            <view v-if="recogDraft" class="pg-practice__draft pg-sheet" :data-draft-text="recogDraft.text">
+              <view class="pg-practice__drafthead">
+                <text class="pg-practice__drafttitle">📷 识别结果（已确认）</text>
+                <text class="pg-practice__draftmeta pg-small">已放入这一行草稿</text>
+              </view>
+              <view class="pg-practice__drafttext">
+                <MathText :text="recogDraft.text" block />
+              </view>
+              <view class="pg-practice__draftrow">
+                <button class="pg-practice__btn pg-small pg-practice__draftbtn--continue" @tap="editorOpen = true">用键盘继续改</button>
+                <button class="pg-practice__btn pg-small pg-practice__draftbtn--clear" @tap="recogDraft = null">清除草稿</button>
+              </view>
+            </view>
             <ProofLineList :lines="lines" :notes="state.notes" :busy="busy" @write-next="editorOpen = true" />
             <view class="pg-practice__finishrow">
               <button
@@ -426,11 +503,28 @@ function backHome() {
     <EditorSheet
       :open="editorOpen"
       :line-no="nextLineNo"
-      :initial-statement="''"
+      :initial-statement="recogDraft?.text ?? ''"
       :initial-justification="''"
       :busy="busy"
       @update:open="editorOpen = $event"
       @submit="handleAddLine"
+    />
+
+    <!-- #15 拍照识别：识别中的占位（02 §4.5：超过 3 秒提示可先用键盘），拿到结果后进确认面板 -->
+    <view v-if="recogOpen && !recognition" class="pg-recogmask">
+      <view class="pg-recogloading pg-sheet">
+        <text class="pg-recogloading__title">识别中…</text>
+        <text class="pg-recogloading__hint pg-small">超过 3 秒可以先用键盘；识别结果要你确认后才会用。</text>
+        <button class="pg-practice__btn" @tap="closeRecogLoading">取消</button>
+      </view>
+    </view>
+    <RecognitionConfirm
+      v-if="recognition"
+      :recognition="recognition"
+      :busy="recogBusy"
+      @rewrite="handleRecogRewrite"
+      @confirm="handleRecogConfirm"
+      @discard="handleRecogDiscard"
     />
 
     <MockSwitcher v-if="mockEnabled" :model-value="mockKey" @update:model-value="onSwitchMock" />
@@ -543,6 +637,56 @@ function backHome() {
 .pg-practice__btn:disabled {
   opacity: 0.45;
 }
+/* #15 拍照识别：确认后的草稿卡 + 识别中占位（02 §4.5/§4.6） */
+.pg-practice__draft {
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border-left: 3px solid var(--accent);
+}
+.pg-practice__drafthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.pg-practice__drafttitle {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.pg-practice__draftmeta { color: var(--ink-2); }
+.pg-practice__drafttext {
+  padding: var(--sp-2);
+  border-radius: var(--radius-input);
+  background: var(--paper);
+  color: var(--ink);
+}
+.pg-practice__draftrow { display: flex; gap: var(--sp-2); }
+.pg-recogmask {
+  position: fixed;
+  inset: 0;
+  z-index: 66;
+  display: flex;
+  align-items: flex-end;
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+.pg-recogloading {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+}
+.pg-recogloading__title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+}
+.pg-recogloading__hint { color: var(--ink-2); }
 .pg-practice__placeholder { padding: var(--sp-3); }
 .pg-practice__done { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-practice__donetitle { font-family: var(--font-serif); font-size: 20px; font-weight: 600; }

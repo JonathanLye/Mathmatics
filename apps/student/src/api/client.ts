@@ -379,7 +379,7 @@ export async function claimHint(state: AttemptState, preview: HintPreview): Prom
 /** 手写识别（B 的 #21 未完成，mock 返回两路不一致的示例） */
 export async function recognizeInk(_inkJson: string): Promise<Recognition> {
   await sleep(600)
-  return clone(mockRecognition) as Recognition
+  return clone(mockRecognition)
 }
 
 let seq = 0
