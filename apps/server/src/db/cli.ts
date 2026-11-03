@@ -1,6 +1,6 @@
 import { rm } from 'node:fs/promises';
 
-import { applySchema, openDb, seedContent } from './index.ts';
+import { migrate, openDb, seedContent } from './index.ts';
 
 const [command, ...rest] = process.argv.slice(2);
 const databaseUrl = process.env.DATABASE_URL;
@@ -16,7 +16,7 @@ async function main(): Promise<void> {
     if (databaseUrl !== undefined && databaseUrl !== '') {
       if (process.env.NODE_ENV === 'production') throw new Error('拒绝在 production 重置数据库');
       const db = await openDb({ databaseUrl });
-      await db.exec('drop schema if exists app, content, vault, ev cascade');
+      await db.exec('drop schema if exists app, content, vault, ev cascade; drop table if exists public.schema_migrations');
       await db.close();
     } else if (pgliteDir !== 'memory') {
       await rm(pgliteDir, { recursive: true, force: true });
@@ -25,7 +25,10 @@ async function main(): Promise<void> {
 
   const db = await openDb({ databaseUrl, pgliteDir });
   try {
-    if (command === 'reset' || command === 'migrate') await applySchema(db);
+    if (command === 'reset' || command === 'migrate') {
+      const result = await migrate(db);
+      console.log(JSON.stringify(result));
+    }
     if (command === 'reset' || command === 'seed') {
       const summary = await seedContent(db);
       console.log(JSON.stringify(summary));

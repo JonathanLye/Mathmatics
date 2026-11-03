@@ -16,10 +16,15 @@ export interface Queryable {
   ): Promise<QueryResult<T>>;
 }
 
+// 事务里额外提供 exec：执行不带参数的多语句 SQL（迁移文件）。
+export interface TxQueryable extends Queryable {
+  exec(sql: string): Promise<void>;
+}
+
 export interface Db extends Queryable {
   readonly driver: 'pglite' | 'pg';
   exec(sql: string): Promise<void>;
-  tx<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
+  tx<T>(fn: (tx: TxQueryable) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -57,12 +62,15 @@ async function openPglite(dir: string): Promise<Db> {
     },
     async tx(fn) {
       return client.transaction((tx) =>
-        fn(
-          makeQueryable(async (sql, params) => {
+        fn({
+          ...makeQueryable(async (sql, params) => {
             const result = await tx.query(sql, params as unknown[]);
             return { rows: result.rows as unknown[], rowCount: result.affectedRows };
           }),
-        ),
+          async exec(sql) {
+            await tx.exec(sql);
+          },
+        }),
       );
     },
     async close() {
@@ -91,7 +99,12 @@ async function openPg(connectionString: string): Promise<Db> {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const result = await fn(makePgQueryable(client));
+        const result = await fn({
+          ...makePgQueryable(client),
+          async exec(sql) {
+            await client.query(sql);
+          },
+        });
         await client.query('COMMIT');
         return result;
       } catch (error) {
@@ -118,5 +131,7 @@ export async function applySchema(db: Db): Promise<void> {
   await db.exec(readFileSync(fileURLToPath(schemaUrl), 'utf8'));
 }
 
+export { migrate } from './migrate.ts';
+export type { MigrateOptions, MigrateResult } from './migrate.ts';
 export { seedContent } from './seed.ts';
 export type { SeedSummary } from './seed.ts';
