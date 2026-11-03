@@ -27,11 +27,15 @@ interface TeacherLoginBody {
   totp?: string;
 }
 
+// 一个班约 60 人同时登录，留出输错学号重试的余量。
+export const LOGIN_MAX_PER_MINUTE = 120;
+
 export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
-  // 10 次/分/IP（05 §7）。同邀请码失败 5 次锁 10 分钟：未实现，见后续 issue。
+  // 同 IP 120 次/分。05 §7 原写 10 次/分，但校园网出口共用一个 IP，一个班（≈60 人）同时登录时第 11 个人起全部 429；
+  // 这里只防整段脚本式爆破，不防单个学号被猜。同邀请码失败锁定：未实现，策略需产品确认（见复审报告 P1-5）。
   app.post(
     '/auth/student/login',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: LOGIN_MAX_PER_MINUTE, timeWindow: '1 minute' } } },
     async (request, reply) => {
       contract.validateRequest('/auth/student/login', 'post', request.body);
       const body = request.body as StudentLoginBody;
@@ -52,7 +56,7 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
     },
   );
 
-  // 与学生登录共用同一个限流规则（10 次/分/IP）。
+  // 教师登录用户少且没有共用出口问题，保持 10 次/分/IP（05 §7）。
   app.post(
     '/auth/teacher/login',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },

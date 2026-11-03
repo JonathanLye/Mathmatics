@@ -42,6 +42,15 @@ export async function createSession(db: Queryable, input: CreateSessionInput): P
   return { id, expiresAt };
 }
 
+// 限流键：已登录请求按会话 id 计，没有有效会话才退回 IP。校园网出口共用一个 IP，按 IP 计会让同班同学互相挤占额度。
+// Cookie 必须先验签并确认是服务端生成的 UUID，否则伪造值会给攻击者开新桶（把正常会话的计数挤出限流窗口）。
+export function bySession(request: FastifyRequest): string {
+  const raw = request.cookies[SESSION_COOKIE];
+  if (!raw) return request.ip;
+  const unsigned = request.unsignCookie(raw);
+  return unsigned.valid && UUID_PATTERN.test(unsigned.value) ? unsigned.value : request.ip;
+}
+
 export function setSessionCookie(reply: FastifyReply, sessionId: string, expiresAt: Date): void {
   reply.setCookie(SESSION_COOKIE, sessionId, {
     path: '/',

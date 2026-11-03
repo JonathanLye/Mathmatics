@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import { requireStudentConsent } from '../auth/consent.ts';
-import { requireAuth } from '../auth/session.ts';
+import { bySession, requireAuth } from '../auth/session.ts';
 import { addLine, createAttemptService } from '../attempts/service.ts';
 import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
 import type { RouteInput } from '../help/intent.ts';
+import { createIdempotency } from '../idempotency.ts';
 import { createHelpService } from '../help/service.ts';
 
 import type { AuthRouteOptions } from './auth.ts';
@@ -85,7 +86,14 @@ function rejectUnconfirmedInput(input: InputMeta): void {
 export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
   const svc = createAttemptService(db, contract);
   const helpSvc = createHelpService({ db, attempts: svc, secret: config.sessionSecret });
-  const writable = { preHandler: requireStudentConsent(db) };
+  // 06 §1：写接口带 Idempotency-Key 时，同键重放返回首次响应。先鉴权/同意书，再占位。
+  const idempotency = createIdempotency(db);
+  const writable = { preHandler: [requireStudentConsent(db), idempotency.preHandler], onSend: idempotency.onSend };
+  // 求助接口会触发引擎与（后续）模型调用：按会话限流，防失控重试；引擎自己的 rapid_lock 仍是产品层面的限制。
+  const helpLimited = {
+    ...writable,
+    config: { rateLimit: { max: config.rateLimits.help, timeWindow: '1 minute', keyGenerator: bySession } },
+  };
   const param = (request: FastifyRequest, name: string): string => (request.params as Record<string, string>)[name] ?? '';
   const attemptId = (request: FastifyRequest): string => uuidParam(param(request, 'attemptId'));
 
@@ -273,14 +281,14 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   // 求助（06 §4.2）：按钮意图与自由提问共用一个入口，服务端判意图。
-  app.post('/attempts/:attemptId/help', writable, async (request) => {
+  app.post('/attempts/:attemptId/help', helpLimited, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<HelpSubmission>(contract, '/attempts/{attemptId}/help', request);
     return helpSvc.help(auth.userId, attemptId(request), helpInput(body), body.lineId === undefined ? {} : { lineId: body.lineId });
   });
 
   // 领取 H2–H4 提示（06 §4.2）：必须带 /help 返回的 previewToken。
-  app.post('/attempts/:attemptId/hints/claim', writable, async (request) => {
+  app.post('/attempts/:attemptId/hints/claim', helpLimited, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<{ previewToken: string }>(contract, '/attempts/{attemptId}/hints/claim', request);
     return helpSvc.claim(auth.userId, attemptId(request), body.previewToken);

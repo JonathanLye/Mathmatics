@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { decryptPii } from '../src/auth/crypto.ts';
 import { loadContract } from '../src/contract.ts';
+import { LOGIN_MAX_PER_MINUTE } from '../src/routes/auth.ts';
 import type { Db } from '../src/db/index.ts';
 
 import {
@@ -142,8 +143,12 @@ describe('学生登录（邀请码 + 学号，认领名单）', () => {
     expect(res.json().error.code).toBe('FORBIDDEN');
   });
 
-  it('同一 IP 一分钟内第 11 次登录：429 RATE_LIMITED', async () => {
-    for (let i = 0; i < 10; i += 1) {
+  it('同一 IP（校园出口）一分钟内 60 人登录都不被限流；超过上限后 429 RATE_LIMITED', async () => {
+    for (let i = 0; i < 60; i += 1) {
+      const res = await login(loginBody());
+      expect(res.statusCode).toBe(200);
+    }
+    for (let i = 60; i < LOGIN_MAX_PER_MINUTE; i += 1) {
       const res = await login(loginBody({ inviteCode: 'ZZZZZZ' }));
       expect(res.statusCode).toBe(401);
     }

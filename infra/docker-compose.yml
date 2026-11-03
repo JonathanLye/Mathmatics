@@ -6,7 +6,8 @@ services:
     image: caddy:2
     restart: unless-stopped
     depends_on:
-      - server
+      server:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -32,6 +33,23 @@ services:
       timeout: 3s
       retries: 10
 
+  # 一次性迁移：server 启动前执行 pnpm db:migrate 的等价命令（幂等，见 apps/server/migrations/README.md）。
+  # 种子题目不在这里导入：首次部署后手动 `docker compose run --rm migrate node apps/server/src/db/cli.ts seed`。
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["node", "apps/server/src/db/cli.ts", "migrate"]
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://proof_gym:${POSTGRES_PASSWORD:?}@postgres:5432/proof_gym
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   server:
     build:
       context: ..
@@ -41,12 +59,22 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      # 容器内必须监听所有网卡，Caddy 才连得上 server:3000；端口只 expose 不 publish，外网到不了。
+      HOST: 0.0.0.0
       DATABASE_URL: postgres://proof_gym:${POSTGRES_PASSWORD:?}@postgres:5432/proof_gym
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     expose:
       - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
 
   worker:
     build:
@@ -62,6 +90,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:
