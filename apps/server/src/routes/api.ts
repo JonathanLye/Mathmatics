@@ -6,6 +6,7 @@ import { attemptRoutes } from './attempts.ts';
 import { eventRoutes } from './events.ts';
 import { authRoutes, type AuthRouteOptions } from './auth.ts';
 import { consentRoutes } from './consents.ts';
+import { teacherRoutes } from './teacher/index.ts';
 
 // 06 §1 / 05 §7：写接口必须带 X-Requested-With: proof-gym。跨站表单无法加自定义头，
 // 与 SameSite=Lax 一起挡住 CSRF；登录接口同样要求，防止登录 CSRF。
@@ -26,4 +27,6 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions> = async (api, { db,
   await api.register(consentRoutes, { db, config, contract });
   await api.register(attemptRoutes, { db, config, contract });
   await api.register(eventRoutes, { db, config, contract });
+  // C：教师端接口（/teacher/*）。本文件属 B，新增这一行注册需要 B 评审。
+  await api.register(teacherRoutes, { db, config, contract });
 };
