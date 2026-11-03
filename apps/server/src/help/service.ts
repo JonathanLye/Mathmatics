@@ -35,7 +35,8 @@ export interface HelpDeps {
 }
 
 export interface HelpService {
-  help(userId: string, attemptId: string, input: RouteInput): Promise<Record<string, unknown>>;
+  // extra.lineId：check_line 指向的行（只作记录，不参与路由）。
+  help(userId: string, attemptId: string, input: RouteInput, extra?: { lineId?: string }): Promise<Record<string, unknown>>;
   claim(userId: string, attemptId: string, previewToken: string): Promise<Record<string, unknown>>;
 }
 
@@ -145,19 +146,30 @@ export function createHelpService(deps: HelpDeps): HelpService {
   const blockedPreview = (block: Block) => ({ allowed: false, reason: block.reason, waitSec: block.waitSec });
 
   return {
-    async help(userId, attemptId, input) {
+    async help(userId, attemptId, input, extra = {}) {
       const routed = routeIntent(input);
       const owned = await loadOwned(userId, attemptId);
+      // 08 §3：每次求助先记 help.request（含施压、概念、行检查），再产生后续的 hint.* 事件，顺序与实际一致。
+      const helpId = await attempts.recordHelp(userId, attemptId, {
+        intent: input.intent,
+        routed,
+        routedBy: input.intent === 'free' ? 'rule' : 'chip',
+        ...(input.intent === 'free' ? { text: input.text } : {}),
+        ...(extra.lineId === undefined ? {} : { lineId: extra.lineId }),
+      });
       if (routed === 'pressure') {
+        await attempts.setHelpOutcome(helpId, 'refusal');
         return { routed, note: refusalNote(owned), state: await attempts.get(userId, attemptId) };
       }
       if (routed !== 'stuck') {
         return { routed, state: await attempts.get(userId, attemptId) };
       }
       if (owned.mode === 'test') {
+        await attempts.setHelpOutcome(helpId, 'denied');
         return { routed, preview: blockedPreview({ reason: 'test_mode', waitSec: null }), state: await attempts.get(userId, attemptId) };
       }
       if (owned.state.layer !== 3) {
+        await attempts.setHelpOutcome(helpId, 'denied');
         return { routed, preview: blockedPreview({ reason: 'layer', waitSec: null }), state: await attempts.get(userId, attemptId) };
       }
 
@@ -174,13 +186,18 @@ export function createHelpService(deps: HelpDeps): HelpService {
         });
         if (!out.delivered) {
           const { reason, waitSec } = denial(out.denied, now());
+          await attempts.setHelpOutcome(helpId, 'denied');
           return { routed, preview: { allowed: false, reason, waitSec }, state };
         }
+        await attempts.setHelpOutcome(helpId, 'hint');
         return { routed, note: hintNote(owned, out.delivered), state };
       }
 
       const block = blockOf(owned, preview);
-      if (block !== null) return { routed, preview: blockedPreview(block), state: await attempts.get(userId, attemptId) };
+      if (block !== null) {
+        await attempts.setHelpOutcome(helpId, 'denied');
+        return { routed, preview: blockedPreview(block), state: await attempts.get(userId, attemptId) };
+      }
 
       // H2 起：预览 + 60 秒令牌，绑定作答、层级与状态版本。领取时引擎会再查一遍。
       const previewToken = signPreview(secret, {
