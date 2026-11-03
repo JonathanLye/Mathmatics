@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { ApiError, createHttpClient, newIdempotencyKey } from '@/api/http'
+import { ApiError, createHttpClient, newIdempotencyKey, withRetry } from '@/api/http'
 
 interface Call {
   url: string
@@ -154,5 +154,62 @@ describe('http 封装（issue #24）', () => {
 
   it('newIdempotencyKey 返回 uuid', () => {
     expect(newIdempotencyKey()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  })
+
+  it('请求超时：AbortController 触发后按 NETWORK 可重试错误抛出（弱网自动重试依据）', async () => {
+    let aborted = false
+    const client = createHttpClient({
+      base: '/api/v1',
+      fetchImpl: (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal
+          signal?.addEventListener('abort', () => {
+            aborted = true
+            const error = new Error('The operation was aborted')
+            error.name = 'AbortError'
+            reject(error)
+          })
+        }),
+    })
+    const error = (await client.get('/x', { timeoutMs: 20 }).catch((reason: unknown) => reason)) as ApiError
+    expect(aborted).toBe(true)
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error.code).toBe('NETWORK')
+    expect(error.retryable).toBe(true)
+    expect(error.message).toContain('超时')
+  })
+
+  it('withRetry：只重试可重试错误，按指数退避，用尽后抛出最后一次错误', async () => {
+    vi.useFakeTimers()
+    try {
+      let attempts = 0
+      const promise = withRetry(
+        async () => {
+          attempts += 1
+          if (attempts < 3) throw new ApiError({ status: 503, code: 'INTERNAL', message: '服务暂时不可用' })
+          return 'ok'
+        },
+        { maxAttempts: 3, baseDelayMs: 10 },
+      )
+      await vi.advanceTimersByTimeAsync(1000)
+      await expect(promise).resolves.toBe('ok')
+      expect(attempts).toBe(3)
+
+      let terminalAttempts = 0
+      const terminal = withRetry(
+        async () => {
+          terminalAttempts += 1
+          throw new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: '内容不符合要求' })
+        },
+        { maxAttempts: 3, baseDelayMs: 10 },
+      )
+      // 先挂 rejection 断言，避免 fake timer 推进期间出现未处理 rejection 警告。
+      const terminalAssertion = expect(terminal).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+      await vi.advanceTimersByTimeAsync(1000)
+      await terminalAssertion
+      expect(terminalAttempts).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

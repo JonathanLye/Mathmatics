@@ -312,11 +312,13 @@ describe('真实接口客户端（issue #24）', () => {
 
     const home = await fetchHome()
     expect(home.greeting).toContain('S-TEST')
-    expect(home.weeklyOwn).toBe(2)
-    expect(home.weeklyTotal).toBe(4)
-    expect(home.ongoing[0]?.assignmentId).toBe('22222222-2222-4222-8222-222222222222')
-    expect(home.ongoing[0]?.attemptId).toBe('33333333-3333-4333-8333-333333333333')
-    expect(home.ongoing[0]?.layerTitle).toContain('第 3 层')
+    expect(home.week).toEqual({ keysOwn: 2, keysTotal: 4, problemsDone: 1 })
+    expect(home.notebook).toBeNull()
+    expect(home.inProgress[0]?.assignmentId).toBe('22222222-2222-4222-8222-222222222222')
+    expect(home.inProgress[0]?.attemptId).toBe('33333333-3333-4333-8333-333333333333')
+    expect(home.inProgress[0]?.currentLayer).toBe('L3')
+    expect(home.todo).toEqual([])
+    expect(home.done).toEqual([])
   })
 
   it('mock 模式保留：首页与状态 reducer 不发请求', async () => {
@@ -329,7 +331,11 @@ describe('真实接口客户端（issue #24）', () => {
       },
     })
     expect(isMockMode()).toBe(true)
-    expect(await fetchHome()).toEqual(mockHome)
+    const mockHomeData = await fetchHome()
+    expect(mockHomeData.inProgress[0]?.title).toBe(mockHome.inProgress[0]?.title)
+    expect(mockHomeData.todo.length).toBeGreaterThan(0)
+    expect(mockHomeData.done.some((card) => card.reviewPublished === true)).toBe(true)
+    expect(mockHomeData.notebook).toBeNull()
     const next = await submitDef(mockState(), '任取 ε>0')
     expect(next.currentLayer).toBe('L2')
     expect(called).toBe(false)

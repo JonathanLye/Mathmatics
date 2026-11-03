@@ -18,6 +18,7 @@ import {
   isApiError,
   isUuid,
   newIdempotencyKey,
+  withRetry,
   type FetchLike,
   type HttpClient,
   type HttpMethod,
@@ -67,20 +68,8 @@ const LATENCY = 160
 const sleep = (ms = LATENCY) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 
-/** 弱网重试：只重试可重试错误（NETWORK / 429 / 5xx），最多两次；同一请求的幂等键由调用方固定。 */
-async function withRetry<T>(action: () => Promise<T>, maxAttempts = 2): Promise<T> {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await action()
-    } catch (error) {
-      if (attempt < maxAttempts && isApiError(error) && error.retryable) {
-        await sleep(400)
-        continue
-      }
-      throw error
-    }
-  }
-}
+// 弱网重试（withRetry）在 http.ts 里统一实现（指数退避，只重试 NETWORK/429/5xx）；
+// 同一动作的重试必须复用同一个 Idempotency-Key / If-Match，由这里的 action 闭包固定。
 
 /** 是否 mock 模式；页面据此决定显示 MockSwitcher / 提示文案。 */
 export function isMockMode(): boolean {
@@ -244,31 +233,100 @@ export function getDeviceId(): string {
   return id
 }
 
-export interface HomeItem {
-  id: string
-  title: string
-  layerTitle: string
-  mock?: MockKey
-  assignmentId?: string
-  attemptId?: string | null
+/** 首页视图（02 §4.2）：契约 StudentHome 的 UI 映射；week / notebook 允许缺省，UI 降级。 */
+export interface HomeWeek {
+  keysOwn: number
+  keysTotal: number
+  problemsDone: number
+}
+
+export interface HomeNotebookSummary {
+  cards: number
+  toRedo: number
 }
 
 export interface HomeData {
   greeting: string
-  weeklyOwn: number
-  weeklyTotal: number
-  ongoing: HomeItem[]
-  pending: HomeItem[]
-  completed: Array<HomeItem & { independence: number | null }>
+  inProgress: AssignmentCardView[]
+  todo: AssignmentCardView[]
+  done: AssignmentCardView[]
+  week: HomeWeek | null
+  notebook: HomeNotebookSummary | null
 }
 
-export const mockHome: HomeData = {
-  greeting: '你好，S-7K2Q9M',
-  weeklyOwn: 3,
-  weeklyTotal: 4,
-  ongoing: [{ id: 'attempt-epsN', title: '数列极限 · ε-N', layerTitle: '第 3 层 · 构造与推导', mock: 'l3-active' }],
-  pending: [{ id: 'attempt-series', title: '交错级数 · 收敛性', layerTitle: '第 1 层 · 记忆核验', mock: 'l1-active' }],
-  completed: [{ id: 'attempt-epsN-done', title: '数列极限 · ε-N', layerTitle: '已完成', independence: 0.75 }],
+/**
+ * mock 模式返回的「与契约一致」的 StudentHome（openapi StudentHome/AssignmentCard）：
+ * - inProgress：有 attempt 的进行中一题；
+ * - todo：open（可开始）+ scheduled（未到时间，禁用）+ closed（已关闭，禁用）；
+ * - done：两份完成，其中一份 reviewPublished=true（讲评入口）。
+ * - week 有值；notebook 故意缺省（UI 必须能降级，不依赖 B #74 的证明本摘要）。
+ */
+export const mockHome: StudentHomeView = {
+  inProgress: [
+    {
+      assignmentId: '11111111-1111-4111-8111-111111111111',
+      title: '数列极限 · ε-N',
+      chapter: '第二章 数列极限',
+      mode: 'practice',
+      status: 'open',
+      attemptId: '11111111-1111-4111-8111-111111111112',
+      attemptStatus: 'active',
+      currentLayer: 'L3',
+      reviewPublished: false,
+    },
+  ],
+  todo: [
+    {
+      assignmentId: '22222222-2222-4222-8222-222222222222',
+      title: '交错级数 · 收敛性',
+      chapter: '第三章 级数',
+      mode: 'practice',
+      status: 'open',
+      reviewPublished: false,
+    },
+    {
+      assignmentId: '33333333-3333-4333-8333-333333333333',
+      title: '函数极限 · ε-δ',
+      chapter: '第二章 数列极限',
+      mode: 'practice',
+      status: 'scheduled',
+      openAt: '2026-11-05T01:00:00.000Z',
+      reviewPublished: false,
+    },
+    {
+      assignmentId: '44444444-4444-4444-8444-444444444444',
+      title: '单调有界 · 数列',
+      chapter: '第二章 数列极限',
+      mode: 'test',
+      status: 'closed',
+      reviewPublished: false,
+    },
+  ],
+  done: [
+    {
+      assignmentId: '55555555-5555-4555-8555-555555555555',
+      title: '数列极限 · ε-N（练习）',
+      chapter: '第二章 数列极限',
+      mode: 'practice',
+      status: 'closed',
+      attemptId: '55555555-5555-4555-8555-555555555556',
+      attemptStatus: 'completed',
+      currentLayer: 'L6',
+      reviewPublished: true,
+    },
+    {
+      assignmentId: '66666666-6666-4666-8666-666666666666',
+      title: '无穷小比较 · 练习',
+      chapter: '第二章 数列极限',
+      mode: 'practice',
+      status: 'open',
+      attemptId: '66666666-6666-4666-8666-666666666667',
+      attemptStatus: 'completed',
+      currentLayer: 'L6',
+      reviewPublished: false,
+    },
+  ],
+  week: { keysOwn: 3, keysTotal: 4, problemsDone: 1 },
 }
 
 const LAYER_LABELS: Record<LayerId, string> = {
@@ -280,38 +338,72 @@ const LAYER_LABELS: Record<LayerId, string> = {
   L6: '第 6 层 · 总结',
 }
 
-function layerTitleOf(card: AssignmentCardView): string {
-  if (card.currentLayer !== undefined && card.currentLayer !== null) return LAYER_LABELS[card.currentLayer]
+/** 首页卡片副标题：层 / 状态（scheduled/closed 由页面禁用并解释）。 */
+export function cardLayerLabel(card: AssignmentCardView): string {
+  if (card.attemptStatus === 'completed') return card.currentLayer ? `已完成 · ${LAYER_LABELS[card.currentLayer]}` : '已完成'
+  if (card.currentLayer) return LAYER_LABELS[card.currentLayer]
   if (card.status === 'scheduled') return '未开始'
-  if (card.status === 'closed') return '已关闭'
-  if (card.attemptStatus === 'completed') return '已完成'
+  if (card.status === 'closed' || card.status === 'cancelled') return '已关闭'
   return '待开始'
 }
 
-function toHomeData(home: StudentHomeView, meView: MeView): HomeData {
-  const toItem = (card: AssignmentCardView): HomeItem => ({
-    id: card.attemptId ?? card.assignmentId,
-    title: card.title,
-    layerTitle: layerTitleOf(card),
-    assignmentId: card.assignmentId,
-    attemptId: card.attemptId ?? null,
-  })
+function validArray<T>(value: T[] | undefined | null): T[] {
+  return Array.isArray(value) ? value : []
+}
+
+function toWeek(view: StudentHomeView['week']): HomeWeek | null {
+  if (!view || typeof view !== 'object') return null
+  const keysOwn = Number(view.keysOwn)
+  const keysTotal = Number(view.keysTotal)
+  if (!Number.isFinite(keysOwn) || !Number.isFinite(keysTotal)) return null
+  const problemsDone = Number(view.problemsDone)
+  return { keysOwn, keysTotal, problemsDone: Number.isFinite(problemsDone) ? problemsDone : 0 }
+}
+
+function toNotebook(view: StudentHomeView['notebook']): HomeNotebookSummary | null {
+  if (!view || typeof view !== 'object') return null
+  const cards = Number(view.cards)
+  const toRedo = Number(view.toRedo)
+  return { cards: Number.isFinite(cards) ? cards : 0, toRedo: Number.isFinite(toRedo) ? toRedo : 0 }
+}
+
+/**
+ * StudentHome + Me → 首页视图。
+ * - week / notebook 缺省（B #74 的 home.ts 未提供时）用 null，页面降级显示「暂不可用」；
+ * - greeting 优先 Me.displayName → anonCode；/me 失败时由页面自行降级（fetchHome 不因 /me 失败而整体失败）。
+ */
+export function toHomeData(home: StudentHomeView, meView: MeView | null): HomeData {
+  const displayName = meView?.displayName ?? meView?.anonCode ?? ''
   return {
-    greeting: `你好，${meView.displayName ?? meView.anonCode}`,
-    weeklyOwn: home.week?.keysOwn ?? 0,
-    weeklyTotal: home.week?.keysTotal ?? 0,
-    ongoing: home.inProgress.map(toItem),
-    pending: home.todo.map(toItem),
-    completed: home.done.map((card) => ({ ...toItem(card), independence: null })),
+    greeting: displayName ? `你好，${displayName}` : '同学，你好',
+    inProgress: validArray(home?.inProgress),
+    todo: validArray(home?.todo),
+    done: validArray(home?.done),
+    week: toWeek(home?.week),
+    notebook: toNotebook(home?.notebook),
   }
 }
 
+/**
+ * GET /student/home（真实模式）+ GET /me（只用于问候语，失败不阻塞首页）。
+ * GET 是幂等的，弱网下自动重试一次（http.ts withRetry 指数退避）；页面失败态可手动重试。
+ */
 export async function fetchHome(): Promise<HomeData> {
   if (USE_MOCK) {
-  await sleep()
-  return clone(mockHome)
+    await sleep()
+    return toHomeData(clone(mockHome), clone(mockMe))
   }
-  const [home, meView] = await Promise.all([activeHttp.get<StudentHomeView>('/student/home'), getMe()])
+  const home = await withRetry(() => activeHttp.get<StudentHomeView>('/student/home'))
+  if (home === null || typeof home !== 'object') {
+    throw new ApiError({ status: 200, code: 'INTERNAL', message: '首页数据格式不正确，请稍后重试' })
+  }
+  let meView: MeView | null = null
+  try {
+    meView = await withRetry(() => getMe())
+  } catch {
+    // /me 只影响问候语：失败时首页仍要展示（不阻塞、不提示整页错误）。
+    meView = null
+  }
   return toHomeData(home, meView)
 }
 
