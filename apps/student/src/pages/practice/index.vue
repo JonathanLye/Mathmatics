@@ -23,7 +23,7 @@ import { useAttempt } from '@/stores/attempt'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import { addLine, claimHint, finishSteps, requestHelp, skipLayer, submitDef, submitFramework, viewFrameTemplate } from '@/api/client'
-import type { HelpIntent, HintPreview, LayerId, LineDraft } from '@/types/attempt'
+import type { HelpIntent, HintPreview, LayerId, LineDraft, Note } from '@/types/attempt'
 
 const { state, mockKey, busy, setMock, apply, run } = useAttempt()
 const { mode } = useViewport()
@@ -32,6 +32,8 @@ const layersOpen = ref(false)
 const editorOpen = ref(false)
 const helpOpen = ref(false)
 const hintPreview = ref<HintPreview | null>(null)
+/** /help 返回的概念说明：抽屉里展示「助教」卡片（01 §4） */
+const helpNote = ref<Note | null>(null)
 const toast = ref('')
 
 const currentLayer = computed(() => state.value.currentLayer)
@@ -85,6 +87,7 @@ onLoad((q) => {
 function onSwitchMock(k: MockKey) {
   setMock(k)
   hintPreview.value = null
+  helpNote.value = null
   editorOpen.value = false
   helpOpen.value = false
 }
@@ -140,29 +143,58 @@ function openHelp() {
 
 function handleHelpOpen(v: boolean) {
   helpOpen.value = v
+  if (!v) helpNote.value = null
 }
 
-async function handleIntent(intent: HelpIntent) {
-  const res = await run(() => requestHelp(state.value, intent))
+/** 取 /help 返回 state 里最新一条 note（mock 的 requestHelp 只回 state，不回 note 字段）。 */
+function latestNote(notes: Note[] | undefined): Note | null {
+  if (!notes || notes.length === 0) return null
+  return notes[notes.length - 1] ?? null
+}
+
+/**
+ * 三种意图 / 自由提问的统一出口（#16）：
+ * - 返回 preview（H2 起）→ 抽屉收起，页面弹提示预览卡；
+ * - 概念说明 → 01 §4 规定显示在抽屉里，抽屉保持打开，把 note 传给 HelpDrawer；
+ * - 行检查 → 批注锚到行内（行下列表/页边），抽屉收起。
+ * 这里只搬运服务端结果，不判定门槛与预算。
+ */
+async function runHelp(intent: HelpIntent, text = '') {
+  const res = await run(() => requestHelp(state.value, intent, text))
   if (!res) return
   apply(res.state)
   if (res.preview) {
+    helpNote.value = null
     hintPreview.value = res.preview
     helpOpen.value = false
-  } else {
-    helpOpen.value = false
-    show(res.routed === 'concept' ? '概念说明已放到页边' : '批注已放到这一行下方')
+    return
   }
+  const note = res.note ?? latestNote(res.state.notes)
+  if (res.routed === 'concept') {
+    helpNote.value = note
+    return
+  }
+  helpNote.value = null
+  helpOpen.value = false
+  show(res.routed === 'check_line' ? '批注已放到这一行下方' : '已收到你的问题')
 }
 
-async function handleSend(text: string) {
-  if (!text.trim()) { show('先写一句你卡在哪'); return }
-  await handleIntent('concept')
+function handleIntent(intent: HelpIntent) {
+  void runHelp(intent)
+}
+
+function handleSend(text: string) {
+  if (!text.trim()) {
+    show('先写一句你卡在哪')
+    return
+  }
+  void runHelp('concept', text.trim())
 }
 
 async function handleClaim() {
-  if (!hintPreview.value) return
-  const next = await run(() => claimHint(state.value, hintPreview.value!))
+  const preview = hintPreview.value
+  if (!preview) return
+  const next = await run(() => claimHint(state.value, preview))
   if (next) {
     apply(next)
     hintPreview.value = null
@@ -174,9 +206,18 @@ function handleDecline() {
   hintPreview.value = null
 }
 
+/** 软着陆四个出路的展示名（01 §4.4；页面只显示选择，不实现微课跳转）。 */
+const SOFT_LANDING_LABEL: Record<string, string> = {
+  back_to_definition: '回到定义',
+  open_lesson: '打开讲解',
+  park_and_next: '先做下一题再回来',
+  flag_teacher: '求助老师',
+}
+
 function handleSoftLanding(action: string) {
   helpOpen.value = false
-  show('软着陆出口：' + action + '（#26 接入微课/下一题）')
+  helpNote.value = null
+  show('已选「' + (SOFT_LANDING_LABEL[action] ?? action) + '」；微课/下一题入口在 #26 接入')
 }
 
 function handleInk() {
@@ -321,6 +362,7 @@ function backHome() {
       :help="state.help"
       :mode="state.mode"
       :busy="busy"
+      :note="helpNote"
       @update:open="handleHelpOpen"
       @intent="handleIntent"
       @send="handleSend"
@@ -329,7 +371,14 @@ function backHome() {
       @soft-landing="handleSoftLanding"
     />
 
-    <HintPreviewCard v-if="hintPreview" :preview="hintPreview" :busy="busy" @claim="handleClaim" @decline="handleDecline" />
+    <HintPreviewCard
+      v-if="hintPreview"
+      :preview="hintPreview"
+      :budget="state.budget"
+      :busy="busy"
+      @claim="handleClaim"
+      @decline="handleDecline"
+    />
 
     <EditorSheet
       :open="editorOpen"
