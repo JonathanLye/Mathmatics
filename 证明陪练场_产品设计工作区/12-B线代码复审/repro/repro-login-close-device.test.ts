@@ -24,15 +24,17 @@ afterEach(async () => { await app.close(); await fx.close(); });
 
 const login = (payload: object) => app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload });
 
+// 一次性复现，不进 CI 套件。R1/R3/R5 断言“缺陷存在”（修复后应翻红）；R2/R4 断言“修复后行为”。
+// 验收只用 R2/R4；回归在 apps/server/test/ 里，不要把这些断言当回归测试。
 describe('REPRO', () => {
-  it('R1 同一出口 IP 第 11 次登录被限流（校园 NAT 下一个班同时登录）', async () => {
+  it('R1（修复前缺陷）同一出口 IP 第 11 次登录被限流（校园 NAT 下一个班同时登录）', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 12; i += 1) codes.push((await login(loginBody())).statusCode);
     console.log('R1 status codes', codes.join(','));
     expect(codes.filter((c) => c === 429).length).toBeGreaterThan(0);
   });
 
-  it('R2 布置关闭后，作答写接口是否仍可写（06 §5 ASSIGNMENT_CLOSED=只读）', async () => {
+  it('R2（修复后预期 409）布置关闭后，作答写接口只读（06 §5 ASSIGNMENT_CLOSED）', async () => {
     const res = await login(loginBody());
     const cookie = cookieFrom(res.headers['set-cookie']);
     await app.inject({ method: 'POST', url: '/api/v1/consents', headers: { cookie, ...WRITE_HEADERS }, payload: { version: 'p0-v1', items: ALL } });
@@ -44,7 +46,7 @@ describe('REPRO', () => {
     expect(park.statusCode).toBe(409);
   });
 
-  it('R3 同一 deviceId 被第二个学生登录后，设备行改归第二个学生', async () => {
+  it('R3（未修缺陷）同一 deviceId 被第二个学生登录后，设备行改归第二个学生', async () => {
     await db.query(`insert into app.roster_entries (class_id, student_no_hash) values ($1,$2)`, [fx.classId, studentNoHash(testConfig.studentNoPepper, '2026002')]);
     await login(loginBody());
     await login(loginBody({ studentNo: '2026002' }));
@@ -56,7 +58,7 @@ describe('REPRO', () => {
     expect(owner).toBe(b);
   });
 
-  it('R4 同一 POST /lines 重放两次（无 If-Match / 无 Idempotency-Key）会入库几行', async () => {
+  it('R4（修复后预期 1 行）同一 POST /lines 重放两次（无 If-Match / 无 Idempotency-Key）', async () => {
     const cookie = cookieFrom((await login(loginBody())).headers['set-cookie']);
     await app.inject({ method: 'POST', url: '/api/v1/consents', headers: { cookie, ...WRITE_HEADERS }, payload: { version: 'p0-v1', items: ALL } });
     const start = await app.inject({ method: 'POST', url: `/api/v1/student/assignments/${assignmentId}/attempt`, headers: { cookie, ...WRITE_HEADERS } });
