@@ -84,6 +84,19 @@ describe('help.request（08 §3）：每次求助都留痕', () => {
     expect((await rows())[0]?.line_id).toBeNull();
   });
 
+  it('check_line：自己的行 id 会被记录（正向用例）', async () => {
+    await layer3();
+    const lineId = '00000000-0000-4000-8000-0000000000aa';
+    await h.db.query(
+      `insert into app.attempt_lines (id, attempt_id, layer, role, idx, statement, statement_canon, provenance)
+       values ($1, $2, 'L3', 'step', 1, '取 $\\varepsilon>0$', '取 \\varepsilon>0', 'keyboard')`,
+      [lineId, h.attemptId],
+    );
+    const res = await postHelp(h, { intent: 'check_line', lineId });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await rows())[0]?.line_id).toBe(lineId);
+  });
+
   it('seq 与 last_event_seq 保持一致，且 state_version 不因记录求助而变化', async () => {
     await layer3();
     const before = (await h.db.query<{ state_version: number }>(`select state_version from app.attempts where id = $1`, [h.attemptId])).rows[0]?.state_version;

@@ -205,6 +205,7 @@ export function createHelpService(deps: HelpDeps): HelpService {
         level: String(preview.nextLevel),
         stateVersion: owned.stateVersion,
         expiresAt: now() + PREVIEW_TTL_MS,
+        ...(helpId === null ? {} : { helpId }),
       });
       return {
         routed,
@@ -242,8 +243,12 @@ export function createHelpService(deps: HelpDeps): HelpService {
         if (error instanceof AppError && error.code === 'STATE_STALE') throw previewExpired();
         throw error;
       }
-      if (!out.delivered) throw claimFailure(out.denied, now());
+      if (!out.delivered) {
+        if (claims.helpId) await attempts.setHelpOutcome(claims.helpId, 'denied');
+        throw claimFailure(out.denied, now());
+      }
       if (out.delivered.payload.level !== claims.level) throw previewExpired();
+      if (claims.helpId) await attempts.setHelpOutcome(claims.helpId, 'hint');
       return { routed: 'stuck', note: hintNote(owned, out.delivered), state };
     },
   };

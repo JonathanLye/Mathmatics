@@ -68,7 +68,8 @@ export interface HelpRecordInput {
 
 export interface AttemptService {
   // 08 §3 的服务端事件 help.request + app.help_requests 一行；返回 helpId。每次 /help 都要记，不论结果。
-  // 作答不可写（锁定/搁置/已结束）或布置已关闭时不记录，返回 null：这些状态不接受任何写入（11 §5.2、06 §5）。
+  // 作答不可写（锁定/搁置/已结束）或布置已关闭时不记录，返回 null：这些状态不接受任何写入
+  // （作答状态由 schema status CHECK 与 guardWritable 约束；布置关闭见 06 §5 ASSIGNMENT_CLOSED；测验锁定见 11 §5.2）。
   recordHelp(userId: string, attemptId: string, input: HelpRecordInput): Promise<string | null>;
   setHelpOutcome(helpId: string | null, outcome: 'hint' | 'concept' | 'annotation' | 'refusal' | 'denied'): Promise<void>;
   start(userId: string, assignmentId: string): Promise<Record<string, unknown>>;
@@ -359,7 +360,12 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     });
   }
 
-  async function setHelpOutcome(helpId: string | null, outcome: string): Promise<void> {
+  // 行与事件已在 recordHelp 的事务里提交；这里是一次独立 UPDATE。两步之间崩溃会让 outcome 留在 NULL，
+  // 语义上可接受（不丢求助记录，只是缺结果），不为此把 service 边界改成跨事务。
+  async function setHelpOutcome(
+    helpId: string | null,
+    outcome: 'hint' | 'concept' | 'annotation' | 'refusal' | 'denied',
+  ): Promise<void> {
     if (helpId === null) return;
     await db.query(`update app.help_requests set outcome = $2 where id = $1`, [helpId, outcome]);
   }
