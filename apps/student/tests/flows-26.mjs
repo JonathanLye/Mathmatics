@@ -114,11 +114,11 @@ async function waitEnabled(page, testId, timeout = 8000) {
   }, testId, { timeout })
 }
 
-/** 读 #98 seq-band 组件的 ε/N 读数（N(ε) 由 diagrams/seqBand.ts 的 minN 计算）。 */
+/** 读 #98 seq-band 组件的 N 读数（N(ε) 由 diagrams/seqBand.ts 的 minN 计算；组件渲染为「N = 3」）。 */
 async function readSeqBandN(page) {
   return page.evaluate(() => {
-    const el = document.querySelector('[data-testid="seq-band-readout"]')
-    const match = (el?.textContent || '').match(/N\(ε\)\s*=\s*(\d+|—)/)
+    const el = document.querySelector('[data-testid="seq-band-n"]')
+    const match = (el?.textContent || '').match(/N\s*(?:\(ε\))?\s*=\s*(\d+|—)/)
     if (!match) return null
     return match[1] === '—' ? null : Number(match[1])
   })
@@ -127,8 +127,8 @@ async function readSeqBandN(page) {
 async function waitSeqBandNChanged(page, previous) {
   await page.waitForFunction(
     (prev) => {
-      const el = document.querySelector('[data-testid="seq-band-readout"]')
-      const match = (el?.textContent || '').match(/N\(ε\)\s*=\s*(\d+|—)/)
+      const el = document.querySelector('[data-testid="seq-band-n"]')
+      const match = (el?.textContent || '').match(/N\s*(?:\(ε\))?\s*=\s*(\d+|—)/)
       if (!match) return false
       const value = match[1] === '—' ? null : Number(match[1])
       return value !== null && value !== prev
@@ -195,10 +195,12 @@ async function main() {
     check('微课正文由 MathText 渲染（KaTeX）', (await page.getByTestId('micro-course').locator('.katex').count()) > 0)
 
     await waitTestId(page, 'seq-band')
-    check('微课含 #98 seq-band 图解（.pg-seq 渲染）', (await page.getByTestId('seq-band').locator('.pg-seq').count()) === 1)
+    check('微课含 #98 seq-band 图解（.pg-seq 渲染）', (await countTestId(page, 'seq-band')) === 1 && (await page.getByTestId('seq-band').locator('svg').count()) === 1)
     check('seq-band 画出序列点（60 个点）', (await page.getByTestId('seq-band').locator('svg circle').count()) === 60)
+    check('seq-band 坐标/阈值标注可读（HTML 叠层，H5 不渲染 SVG 内文字）', (await page.getByTestId('seq-band').locator('.pg-svg__label').count()) >= 5)
+    check('seq-band 读数可见（ε=0.30）', (await page.getByTestId('seq-band-eps').innerText()).includes('0.30'))
     const initialN = await readSeqBandN(page)
-    check('seq-band 按微课例子读数（ε=0.3 → N(ε)=3，N 由 diagrams/seqBand.ts 计算）', initialN === 3, 'N=' + initialN)
+    check('seq-band 按微课例子读数（ε=0.3 → N=3，N 由 diagrams/seqBand.ts 计算）', initialN === 3, 'N=' + initialN)
 
     // 「拖动 ε 看 N 变化」：uni <slider> 点击轨道按比例设值（H5 可交互）
     check('图解含可拖动的 ε 滑块', (await countTestId(page, 'seq-band-slider')) === 1)
@@ -264,46 +266,45 @@ async function main() {
     await tap(page, 'finish-steps', '写完了')
     await waitTestId(page, 'selfcheck-form')
 
-    check('进入第 4 层自检：3 道题', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('第 4 层 · 自检'))
+    check('进入第 4 层自检（自适应出题）', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('第 4 层 · 自检'))
     check('自检页只读展示自己写的证明', (await countTestId(page, 'selfcheck-proof')) === 1)
 
-    // SC1 先答太短 → followup，再补一句 → accepted
+    // 第 1 题答太短 → 服务端记录 failed；自适应提示「先做下一题」并换题（retryGap）
     await fillTestId(page, 'selfcheck-input-SC1', '不知道')
     await waitEnabled(page, 'selfcheck-submit-SC1')
     await tap(page, 'selfcheck-submit-SC1', '提交 SC1（太短）')
-    await waitTestId(page, 'selfcheck-followup-SC1')
-    check('自检回答太短 → 只追问一句、不给讲解', (await page.getByTestId('selfcheck-followup-SC1').innerText()).includes('再具体'))
+    await waitTestId(page, 'selfcheck-item-SC2')
+    await page.waitForFunction(() => (document.querySelector('[data-testid="selfcheck-hint"]')?.textContent || '').includes('先做下一题'))
+    check('自检答错：提示先做下一题（retryGap）', true)
+    check('答错后自适应换到下一道没做过的题', (await countTestId(page, 'selfcheck-item-SC2')) === 1)
+
+    // SC2 通过 → 隔一道题后回来重试 SC1
+    await fillTestId(page, 'selfcheck-input-SC2', 'N 只依赖 ε，与 n 无关。')
+    await waitEnabled(page, 'selfcheck-submit-SC2')
+    await tap(page, 'selfcheck-submit-SC2', '提交 SC2')
+    await page.waitForFunction(() => Boolean(document.querySelector('[data-testid="selfcheck-retry-SC1"]')))
+    check('隔一道题后回来重试答错题', (await page.getByTestId('selfcheck-hint').innerText()).includes('再试一次'))
     await fillTestId(page, 'selfcheck-input-SC1', '第 1 行通分以后得到的。')
     await waitEnabled(page, 'selfcheck-submit-SC1')
-    await tap(page, 'selfcheck-submit-SC1', '提交 SC1')
-    await page.waitForFunction(() => (document.querySelector('[data-testid="selfcheck-status-SC1"]')?.textContent || '').includes('已通过'))
-    check('自检回答合格 → 显示已通过', true)
+    await tap(page, 'selfcheck-submit-SC1', '重试提交 SC1')
+    await waitTestId(page, 'selfcheck-item-SC3')
+    check('重试通过后继续下一题', (await countTestId(page, 'selfcheck-item-SC3')) === 1)
 
-    for (const itemId of ['SC2', 'SC3']) {
-      await fillTestId(page, 'selfcheck-input-' + itemId, 'N 只依赖 ε，与 n 无关。')
-      await waitEnabled(page, 'selfcheck-submit-' + itemId)
-      await tap(page, 'selfcheck-submit-' + itemId, '提交 ' + itemId)
-      if (itemId === 'SC3') {
-        // 最后一题通过后服务端直接推进到第 5 层，自检表单会卸载，不能再等状态标记。
-        await waitTestId(page, 'transfer-form')
-      } else {
-        await page.waitForFunction(
-          (id) => (document.querySelector('[data-testid="selfcheck-status-' + id + '"]')?.textContent || '').includes('已通过'),
-          itemId,
-        )
-      }
-    }
-    await page.screenshot({ path: path.join(outDir, '4-自检通过.png'), fullPage: true })
-    check('三道自检全通过后自动进入第 5 层', (await countTestId(page, 'selfcheck-form')) === 0)
+    await fillTestId(page, 'selfcheck-input-SC3', '第 2 行会因为 n>N 换成 n≥1 而断。')
+    await waitEnabled(page, 'selfcheck-submit-SC3')
+    await tap(page, 'selfcheck-submit-SC3', '提交 SC3')
+    await waitTestId(page, 'selfcheck-item-SC5')
+    await fillTestId(page, 'selfcheck-input-SC5', '用到了 n 是正整数（n+2>n>0）。')
+    await waitEnabled(page, 'selfcheck-submit-SC5')
+    await tap(page, 'selfcheck-submit-SC5', '提交 SC5')
     await waitTestId(page, 'transfer-form')
-    check('三道自检全通过 → 第 5 层迁移题', (await bodyText(page)).includes('第 5 层 · 迁移题'))
-    await tap(page, 'transfer-start', '开始迁移题')
-    await waitTestId(page, 'transfer-task')
-    check('开始迁移题后下发题面并用 MathText 渲染', (await katexCount(page, 'transfer-task')) > 0)
-    await fillTestId(page, 'transfer-input', '任取 ε>0，取 δ=ε/2。当 0<|x-1|<δ 时，|f(x)-3|<ε。')
-    await waitEnabled(page, 'transfer-submit')
-    await page.screenshot({ path: path.join(outDir, '5-迁移题.png'), fullPage: true })
-    await tap(page, 'transfer-submit', '提交迁移题')
+    await page.screenshot({ path: path.join(outDir, '4-自检通过.png'), fullPage: true })
+    check('四道自检完成（含一次重试）后自动进入第 5 层', (await countTestId(page, 'selfcheck-form')) === 0)
+    check('进入第 5 层迁移题入口', (await bodyText(page)).includes('第 5 层 · 迁移题'))
+    check('迁移题入口含 #47 思路对照图', (await countTestId(page, 'transfer-outline-preview')) === 1)
+
+    // #47 的迁移题「完整作答」流程由 flows-47 覆盖；本流程验证 L5 → L6 跳层后继续总结 → 完成页
+    await tap(page, 'transfer-skip', '跳过迁移题')
 
     await waitTestId(page, 'summary-form')
     check('进入第 6 层总结：五问', (await countTestId(page, 'summary-item-4')) === 1)

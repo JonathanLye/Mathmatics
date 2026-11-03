@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 证明本「稍后重做」纯逻辑（issue #47 P1-2）。
  *
  * 输入：已完成作答的卡片（学生端本地 / GET /student/notebook 的 completed 列表的字段子集，

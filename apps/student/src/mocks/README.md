@@ -11,13 +11,25 @@
 | `l3-active` | 第 3 层进行中（2 行 + 行内批注） | 行列表、红笔批注、canFinish=false |
 | `l3-exhausted` | 透露额度用尽 + 长时间卡住 | 软着陆四出路、琥珀色提示、`help.exhausted` |
 | `l3-ready` | 第 3 层可点「写完了」（#26 全流程起点） | 行列表、canFinish=true |
-| `l4-active` | 第 4 层自检（3 道题待答） | 自检列表、只读证明、追问态 |
-| `l5-active` | 第 5 层迁移题（子作答已创建） | 迁移题题面、输入区 |
+| `l4-active` | 第 4 层自检（4 道题、带维度/次数） | 自适应选题、只读证明、追问/次数用尽 |
+| `l5-active` | 第 5 层迁移题入口（等待「开始迁移题」） | 迁移题入口、#47 思路对照图 |
 | `l6-active` | 第 6 层总结（五问待答） | 总结表单 |
 | `completed` | 本题完成（第 6 层） | 完成卡片、独立度、leanCard、证明本入口 |
 
 第 1 层微课、自检题、迁移题面、总结五问、证明本列表的内容在 `src/mocks/laterLayers.ts`（取自
 `contracts/seed/concepts.json` / `epsN.json` / `epsN-T1.json` 与 01/02 文档），真实接口接入后由服务端下发（#24）。
+
+## #47 接线带来的 mock 扩展（真实接口前）
+
+- **迁移题完整流程**：`startTransfer` 返回 kind=transfer 的子作答 state（parentAttemptId、六层只启用 L3、预算 1）；
+  `addTransferLine / editTransferLine / deleteTransferLine / finishTransfer` 由 mock reducer 近似归类 + 判定 canFinish；
+  子作答完成后 `completeTransferParent` 推进父作答 L5→L6。真实接口对应 `/transfer`、`/lines`、`/finish`（#24）。
+- **自检自适应**：`SelfcheckItem.dimension/attempts` 与 `SelfcheckView.records` 是 mock 扩展字段，
+  用于 `components/selfcheck/adaptive.ts` 选题；契约里的真源是服务端判定 + 下发（#24）。
+- **证明本稍后重做**：`NotebookCard` 增加 independence/redoRecommended/completedAt/problemId 等字段，
+  供 `components/proofbook/redo.ts` 分档排序；真实数据来自 `GET /student/notebook`（#74/#24）。
+- **图解**：微课 VisualSpec 的 `abs-triangle` 是 mock 扩展 type（03 §7 契约 type 只有五种），
+  真实接口前由本地 mock 提供；`seq-band` 仍用契约 type（expr→序列点，不出现本题的数列）。
 
 做题页切换方式：
 1. 页面底部右下角的 `mock: …` 悬浮按钮（`MockSwitcher.vue`）；

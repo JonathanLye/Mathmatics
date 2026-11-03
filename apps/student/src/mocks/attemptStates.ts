@@ -182,7 +182,7 @@ function l4Active(): AttemptState {
   s.stateVersion = 14
   s.currentLayer = 'L4'
   s.layers = layers('L4', { L1: 'done', L2: 'done', L3: 'done', L4: 'active' })
-  s.selfcheck = { items: mockSelfcheckItems.map((item) => ({ ...item })) }
+  s.selfcheck = { items: mockSelfcheckItems.map((item) => ({ ...item })), records: [] }
   return s
 }
 
@@ -193,9 +193,16 @@ function l5Active(): AttemptState {
   s.currentLayer = 'L5'
   s.layers = layers('L5', { L1: 'done', L2: 'done', L3: 'done', L4: 'done', L5: 'active' })
   s.selfcheck = {
-    items: (s.selfcheck?.items ?? []).map((item) => ({ ...item, status: 'accepted' as const, answer: '（mock：已通过）' })),
+    items: (s.selfcheck?.items ?? []).map((item) => ({
+      ...item,
+      status: 'accepted' as const,
+      attempts: 1,
+      answer: '（mock：已通过）',
+    })),
+    records: (s.selfcheck?.items ?? []).map((item) => ({ itemId: item.itemId, passed: true })),
   }
-  s.transfer = { childAttemptId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', stem: mockTransferStem, status: 'active' }
+  // 父作答的 L5：迁移题尚未开始（点「开始迁移题」后由服务端创建子作答并返回子作答 state）。
+  s.transfer = { childAttemptId: null, stem: null, status: 'not_started' }
   return s
 }
 
@@ -221,8 +228,10 @@ function completed(): AttemptState {
     items: mockSelfcheckItems.map((item, i) => ({
       ...item,
       status: 'accepted' as const,
-      answer: ['第 1 行通分得到的。', 'N 只依赖 ε。', '第 2 行会断。'][i],
+      attempts: 1,
+      answer: ['第 1 行通分得到的。', 'N 只依赖 ε。', '第 2 行会断。', '用到了 n 是正整数（n+2>n>0）。'][i],
     })),
+    records: mockSelfcheckItems.map((item) => ({ itemId: item.itemId, passed: true })),
   }
   s.transfer = { childAttemptId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', stem: mockTransferStem, status: 'completed' }
   s.summary = {

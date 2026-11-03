@@ -13,6 +13,21 @@ const error = ref<string | null>(null)
 
 const canFinish = computed(() => Boolean(state.value.steps?.canFinish))
 
+/**
+ * 跨页交接的「下一份作答」：证明本「稍后重做」用 MockSwitcher 之外的方式发起新作答，
+ * 在跳转做题页前把服务端返回的 state 暂存到这里，由做题页 onLoad 取走（仅 mock 阶段需要）。 */
+let pendingAttempt: AttemptState | null = null
+
+export function setPendingAttempt(next: AttemptState): void {
+  pendingAttempt = next
+}
+
+export function takePendingAttempt(): AttemptState | null {
+  const next = pendingAttempt
+  pendingAttempt = null
+  return next
+}
+
 function setMock(key: MockKey) {
   // 非法键（如 ?mock=constructor 绕过旧校验）回退默认状态，保证 state 永远可渲染。
   const safe = isMockKey(key) ? key : DEFAULT_MOCK
