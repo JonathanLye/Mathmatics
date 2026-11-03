@@ -182,6 +182,14 @@ describe('导入 CLI（#36 / 10 §6）', () => {
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain('条目 2 个');
 
+      // CLI 参数校验：非法 jobId / --max 非整数都要退出非 0 且信息明确
+      const badJob = runCli(root, ['items', '--job', '../escape']);
+      expect(badJob.status).toBe(1);
+      expect(badJob.stderr).toContain('jobId 不合法');
+      const badMax = runCli(root, ['draft', '--job', 'e2e', '--max', 'abc']);
+      expect(badMax.status).toBe(1);
+      expect(badMax.stderr).toContain('--max');
+
       res = runCli(root, [
         'draft',
         '--job',
