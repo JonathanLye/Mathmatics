@@ -19,6 +19,14 @@ afterEach(async () => {
 
 const write = (name: string, sql: string) => writeFileSync(join(dir, name), sql);
 const versions = async () => (await db.query<{ version: string }>('select version from public.schema_migrations order by version')).rows.map((r) => r.version);
+const hashes = async () =>
+  Object.fromEntries(
+    (
+      await db.query<{ version: string; sha256: string | null }>(
+        'select version, sha256 from public.schema_migrations order by version',
+      )
+    ).rows.map((r) => [r.version, r.sha256] as const),
+  );
 const hasTable = async (name: string) => (await db.query<{ t: string | null }>('select to_regclass($1)::text as t', [name])).rows[0]?.t !== null;
 
 describe('版本化迁移（07 §8）', () => {
@@ -87,5 +95,27 @@ describe('版本化迁移（07 §8）', () => {
     write('add_column.sql', 'select 1;');
     await expect(migrate(db, { migrationsDir: dir })).rejects.toThrow('迁移文件名不合法');
     expect(await hasTable('app.users')).toBe(false);
+  });
+
+  it('新库把已有迁移的 sha256 记下来；已记录文件被改后拒绝执行', async () => {
+    write('0001_probe.sql', 'create table app.probe_hash (id int);');
+    await migrate(db, { migrationsDir: dir });
+    const before = await hashes();
+    expect(before['0001_probe.sql']).toMatch(/^[0-9a-f]{64}$/);
+    expect(before['0000_init']).toBeNull();
+
+    write('0001_probe.sql', 'create table app.probe_hash (id int, extra int);');
+    await expect(migrate(db, { migrationsDir: dir })).rejects.toThrow('迁移文件已被修改');
+  });
+
+  it('旧版版本表没有 sha256：第一次遇到补写 hash，不改已执行的文件', async () => {
+    await migrate(db, { migrationsDir: dir });
+    write('0001_probe.sql', 'create table app.probe_legacy (id int);');
+    expect((await migrate(db, { migrationsDir: dir })).applied).toEqual(['0001_probe.sql']);
+
+    // 模拟旧执行器留下的记录（只有 version）。
+    await db.query(`update public.schema_migrations set sha256 = null where version = '0001_probe.sql'`);
+    expect((await migrate(db, { migrationsDir: dir })).applied).toEqual([]);
+    expect((await hashes())['0001_probe.sql']).toMatch(/^[0-9a-f]{64}$/);
   });
 });
