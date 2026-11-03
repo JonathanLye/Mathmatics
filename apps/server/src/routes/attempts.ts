@@ -8,6 +8,7 @@ import { addLine, createAttemptService } from '../attempts/service.ts';
 import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
 import type { RouteInput } from '../help/intent.ts';
+import { createIdempotency } from '../idempotency.ts';
 import { createHelpService } from '../help/service.ts';
 
 import type { AuthRouteOptions } from './auth.ts';
@@ -85,7 +86,9 @@ function rejectUnconfirmedInput(input: InputMeta): void {
 export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
   const svc = createAttemptService(db, contract);
   const helpSvc = createHelpService({ db, attempts: svc, secret: config.sessionSecret });
-  const writable = { preHandler: requireStudentConsent(db) };
+  // 06 §1：写接口带 Idempotency-Key 时，同键重放返回首次响应。先鉴权/同意书，再占位。
+  const idempotency = createIdempotency(db);
+  const writable = { preHandler: [requireStudentConsent(db), idempotency.preHandler], onSend: idempotency.onSend };
   const param = (request: FastifyRequest, name: string): string => (request.params as Record<string, string>)[name] ?? '';
   const attemptId = (request: FastifyRequest): string => uuidParam(param(request, 'attemptId'));
 
