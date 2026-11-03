@@ -1,10 +1,16 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { studentNoHash } from '../src/auth/crypto.ts';
 import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
-import { KEY_TTL_HOURS, REPLAY_HEADER, STALE_CLAIM_SECONDS } from '../src/idempotency.ts';
+import {
+  cleanupExpiredIdempotencyKeys,
+  KEY_TTL_HOURS,
+  REPLAY_HEADER,
+  requestHash,
+  STALE_CLAIM_SECONDS,
+} from '../src/idempotency.ts';
 
 import { buildTestApp, cookieFrom, loginBody, setupFixture, testConfig, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
 
@@ -153,10 +159,10 @@ describe('Idempotency-Key（06 §1）', () => {
     expect(await stepCount(attemptId)).toBe(2);
   });
 
-  it('处理中的占位超过 STALE_CLAIM_SECONDS 视为遗弃，可以接管', async () => {
+  it('处理中的占位超过 STALE_CLAIM_SECONDS 视为遗弃，同一个请求可以接管', async () => {
     const { cookie, attemptId } = await atLayer3();
     const userId = (await db.query<{ id: string }>(`select id from app.users where role = 'student'`)).rows[0]?.id;
-    const hash = 'x';
+    const hash = requestHash({ method: 'POST', url: `/api/v1/attempts/${attemptId}/lines`, body: line } as FastifyRequest);
     await db.query(
       `insert into app.idempotency_keys (user_id, key, request_hash, created_at) values ($1, $2, $3, now() - make_interval(secs => $4))`,
       [userId, KEY_B, hash, STALE_CLAIM_SECONDS + 5],
@@ -164,6 +170,87 @@ describe('Idempotency-Key（06 §1）', () => {
     const res = await post(cookie, `/attempts/${attemptId}/lines`, line, { 'idempotency-key': KEY_B });
     expect(res.statusCode).toBe(200);
     expect(await stepCount(attemptId)).toBe(1);
+  });
+
+  it('遗弃占位但请求体不同：422，不接管、不执行', async () => {
+    const { cookie, attemptId } = await atLayer3();
+    const userId = (await db.query<{ id: string }>(`select id from app.users where role = 'student'`)).rows[0]?.id;
+    await db.query(
+      `insert into app.idempotency_keys (user_id, key, request_hash, created_at) values ($1, $2, 'x', now() - make_interval(secs => $3))`,
+      [userId, KEY_B, STALE_CLAIM_SECONDS + 5],
+    );
+    const res = await post(cookie, `/attempts/${attemptId}/lines`, line, { 'idempotency-key': KEY_B });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.detail.reason).toBe('idempotency_key_reused');
+    expect(await stepCount(attemptId)).toBe(0);
+  });
+
+  it('请求体键序不同但逻辑相同：视为同一个请求，重放而不是 422', async () => {
+    const { cookie, attemptId } = await atLayer3();
+    const reordered = { input: line.input, justification: line.justification, statement: line.statement };
+    const first = await post(cookie, `/attempts/${attemptId}/lines`, line, { 'idempotency-key': KEY_A });
+    const again = await post(cookie, `/attempts/${attemptId}/lines`, reordered, { 'idempotency-key': KEY_A });
+    expect(first.statusCode).toBe(200);
+    expect(again.statusCode).toBe(200);
+    expect(again.headers[REPLAY_HEADER]).toBe('true');
+    expect(await stepCount(attemptId)).toBe(1);
+  });
+
+  it('上一次仍在处理：等待上限后 429（detail.waitSec）', async () => {
+    const { cookie, attemptId } = await student();
+    const userId = (await db.query<{ id: string }>(`select id from app.users where role = 'student'`)).rows[0]?.id;
+    const hash = requestHash({ method: 'POST', url: `/api/v1/attempts/${attemptId}/park`, body: undefined } as FastifyRequest);
+    await db.query(
+      `insert into app.idempotency_keys (user_id, key, request_hash) values ($1, $2, $3)`,
+      [userId, KEY_B, hash],
+    );
+    const res = await post(cookie, `/attempts/${attemptId}/park`, undefined, { 'idempotency-key': KEY_B });
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error.detail.waitSec).toBe(1);
+  });
+
+  it('重复 Idempotency-Key 头（Fastify 合并成字符串）不是合法 uuid：422', async () => {
+    const { cookie, attemptId } = await atLayer3();
+    const res = await post(cookie, `/attempts/${attemptId}/park`, undefined, {
+      'idempotency-key': `${KEY_A}, ${KEY_B}`,
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it('start 带键：重放返回首次响应，不重复创建作答；重放快照不是最新 state', async () => {
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/student/login',
+      headers: WRITE_HEADERS,
+      payload: loginBody({ studentNo: '2026001' }),
+    });
+    const cookie = cookieFrom(login.headers['set-cookie']);
+    await post(cookie, '/consents', { version: 'p0-v1', items: CONSENT });
+    const first = await post(cookie, `/student/assignments/${assignmentId}/attempt`, undefined, { 'idempotency-key': KEY_A });
+    const attemptId = first.json().state.attemptId as string;
+    await post(cookie, `/attempts/${attemptId}/layers/L1/skip`);
+
+    const again = await post(cookie, `/student/assignments/${assignmentId}/attempt`, undefined, { 'idempotency-key': KEY_A });
+    expect(again.statusCode).toBe(200);
+    expect(again.headers[REPLAY_HEADER]).toBe('true');
+    expect(again.body).toBe(first.body);
+    expect(again.json().state.attemptId).toBe(attemptId);
+    // 重放的是首次响应快照；skip 已把库里的 stateVersion 推高，客户端不能拿它覆盖本地 state。
+    const current = (
+      await db.query<{ state_version: number }>(`select state_version from app.attempts where id = $1`, [attemptId])
+    ).rows[0]?.state_version;
+    expect(Number(current)).toBeGreaterThan(again.json().state.stateVersion as number);
+    const count = (await db.query<{ n: string }>(`select count(*)::text n from app.attempts where user_id = (select id from app.users where role = 'student' limit 1)`)).rows[0]?.n;
+    expect(count).toBe('1');
+  });
+
+  it('定时清理：只删超过 24h 的键', async () => {
+    const { cookie, attemptId } = await atLayer3();
+    await post(cookie, `/attempts/${attemptId}/lines`, line, { 'idempotency-key': KEY_A });
+    await db.query(`insert into app.idempotency_keys (user_id, key, request_hash, created_at) values ((select id from app.users where role = 'student' limit 1), $1, 'old', now() - interval '25 hours')`, [KEY_B]);
+    const removed = await cleanupExpiredIdempotencyKeys(db);
+    expect(removed).toBe(1);
+    expect((await db.query(`select 1 from app.idempotency_keys`)).rows).toHaveLength(1);
   });
 
   it('复审 R4：同一 POST /lines 带同一键发两次，库里只有一行', async () => {

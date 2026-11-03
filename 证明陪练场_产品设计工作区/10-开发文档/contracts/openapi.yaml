@@ -182,9 +182,11 @@ paths:
       tags: [attempt]
       summary: 开始或恢复本题作答（幂等：已有作答则返回它）
       operationId: startAttempt
-      parameters: [{ $ref: '#/components/parameters/assignmentId' }]
+      parameters: [{ $ref: '#/components/parameters/assignmentId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       responses:
-        '200': { $ref: '#/components/responses/State' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/StateReplay' }
         '403': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
   /student/notebook:
@@ -224,23 +226,27 @@ paths:
       tags: [attempt]
       summary: 跳过某层（受跳过规则约束）
       operationId: skipLayer
-      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/layer' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/layer' }, { $ref: '#/components/parameters/idempotencyKey' }]
       responses:
-        '200': { $ref: '#/components/responses/State' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/StateReplay' }
         '409': { $ref: '#/components/responses/Error' }
   /attempts/{attemptId}/definition:
     post:
       tags: [attempt]
       summary: 第 1 层：提交定义（自然语言或符号）
       operationId: submitDefinition
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/TextSubmission' }
       responses:
-        '200': { $ref: '#/components/responses/State' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/StateReplay' }
         '409': { $ref: '#/components/responses/Error' }
   /attempts/{attemptId}/lesson/{conceptId}:
     get:
@@ -291,38 +297,45 @@ paths:
       tags: [attempt]
       summary: 第 2 层：提交证明骨架
       operationId: submitFramework
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/TextSubmission' }
       responses:
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '200': { $ref: '#/components/responses/State' }
+        '200': { $ref: '#/components/responses/StateReplay' }
   /attempts/{attemptId}/framework/template:
     post:
       tags: [attempt]
       summary: 第 2 层：查看通用骨架模板（形式部分，不计透露量）
       operationId: viewFrameTemplate
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       responses:
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '200': { $ref: '#/components/responses/State' }
+        '200': { $ref: '#/components/responses/StateReplay' }
   /attempts/{attemptId}/lines:
     post:
       tags: [attempt]
       summary: 第 3 层（含迁移题）：加入一行证明
       description: 服务端归类（规则为主，Jev 影子），在 `state.notes` 里追加锚定本行的批注。手写/拍照来源必须带已确认的 `recogId`。
       operationId: addLine
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/LineSubmission' }
       responses:
-        '200': { $ref: '#/components/responses/State' }
+        '429': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/StateReplay' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
   /attempts/{attemptId}/lines/{lineId}:
@@ -352,39 +365,47 @@ paths:
       tags: [attempt]
       summary: 第 3 层：点"写完了"
       operationId: finishProof
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       responses:
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '200': { $ref: '#/components/responses/State' }
+        '200': { $ref: '#/components/responses/StateReplay' }
   /attempts/{attemptId}/selfcheck/{itemId}:
     post:
       tags: [attempt]
       summary: 第 4 层：回答一道自检题
       operationId: answerSelfcheck
-      parameters: [{ $ref: '#/components/parameters/attemptId' }, { name: itemId, in: path, required: true, schema: { type: string } }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { name: itemId, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/TextSubmission' }
       responses:
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '200': { $ref: '#/components/responses/State' }
+        '200': { $ref: '#/components/responses/StateReplay' }
   /attempts/{attemptId}/transfer:
     post:
       tags: [attempt]
       summary: 第 5 层：开始迁移题（创建子作答，返回子作答的 state）
       operationId: startTransfer
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       responses:
-        '200': { $ref: '#/components/responses/State' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/StateReplay' }
         '409': { $ref: '#/components/responses/Error' }
   /attempts/{attemptId}/summary:
     post:
       tags: [attempt]
       summary: 第 6 层：提交五问总结
       operationId: submitSummary
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
         required: true
         content:
@@ -400,17 +421,23 @@ paths:
                   items: { $ref: '#/components/schemas/MathText' }
                 input: { $ref: '#/components/schemas/InputMeta' }
       responses:
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '200': { $ref: '#/components/responses/State' }
+        '200': { $ref: '#/components/responses/StateReplay' }
   /attempts/{attemptId}/park:
     post:
       tags: [attempt]
       summary: 先搁置本题
       operationId: parkAttempt
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       responses:
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '200': { $ref: '#/components/responses/State' }
+        '200': { $ref: '#/components/responses/StateReplay' }
   /attempts/{attemptId}/draft:
     put:
       tags: [attempt]
@@ -545,7 +572,7 @@ paths:
         - `check_line`：对指定行（缺省最新一行）给批注。
         - `free`：自由提问，服务端判意图后按上面三类处理；索要答案/施压一句拒绝 + H0。
       operationId: requestHelp
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
         required: true
         content:
@@ -558,9 +585,14 @@ paths:
                 text: { type: string, maxLength: 300 }
                 lineId: { type: string, format: uuid }
       responses:
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '200':
           description: 求助结果
+          headers:
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HelpResult' }
@@ -570,7 +602,7 @@ paths:
       summary: 确认领取一条计透露量的提示（H2–H4）
       description: 必须带 `/help` 返回的 `previewToken`（60 秒有效）。服务端重新检查门槛（再写一行、停留 20 秒、连点锁、额度），不读学生文本。
       operationId: claimHint
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
         required: true
         content:
@@ -581,8 +613,11 @@ paths:
               properties:
                 previewToken: { type: string }
       responses:
+        '422': { $ref: '#/components/responses/Error' }
         '200':
           description: 提示已下发
+          headers:
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HelpResult' }
@@ -618,6 +653,7 @@ paths:
                   maxItems: 100
                   items: { $ref: './events.schema.json#/$defs/ClientEvent' }
       responses:
+        '429': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '200':
           description: 入库结果
@@ -1145,6 +1181,16 @@ components:
     lineId: { name: lineId, in: path, required: true, schema: { type: string, format: uuid } }
     conceptId: { name: conceptId, in: path, required: true, schema: { type: string } }
     layer: { name: layer, in: path, required: true, schema: { $ref: '#/components/schemas/LayerId' } }
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: '写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。'
+      schema: { type: string, format: uuid }
+  headers:
+    IdempotentReplayed:
+      description: 仅当本次请求是同一 Idempotency-Key 的重放时返回 "true"；首次响应不返回该头。
+      schema: { type: string, enum: ['true'] }
   responses:
     Error:
       description: 错误
@@ -1153,6 +1199,17 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     State:
       description: 最新作答状态
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [state]
+            properties:
+              state: { $ref: '#/components/schemas/AttemptState' }
+    StateReplay:
+      description: 最新作答状态（写接口；重放时带 Idempotent-Replayed 响应头）
+      headers:
+        Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
       content:
         application/json:
           schema:
