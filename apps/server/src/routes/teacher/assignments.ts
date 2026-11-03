@@ -40,6 +40,8 @@ export const teacherAssignmentRoutes: FastifyPluginAsync<AuthRouteOptions> = asy
     const auth = await requireTeacher(db, request);
     const assignmentId = uuidParam((request.params as AssignmentIdParams).assignmentId, '布置');
     const body = (request.body ?? {}) as PublishReviewInput;
+    // 契约的 body 可选；畸形 proofIds（非字符串数组）必须 422，不能让新 Set(...) 抛成 500。
+    contract.validateRequest('/teacher/assignments/{assignmentId}/publish-review', 'post', body);
     const card = await publishReview(db, auth.userId, assignmentId, body);
     contract.validate('AssignmentCard', card);
     return card;

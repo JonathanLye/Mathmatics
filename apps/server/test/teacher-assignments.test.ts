@@ -180,6 +180,38 @@ describe('布置练习（#50）', () => {
     expect(row.rows[0]?.settings.revealBudget).toBe(1);
     expect(row.rows[0]?.close_at).not.toBeNull();
   });
+
+  it('测验必须设置截止时间（04 §7：开放/截止都必填）', async () => {
+    const cookie = await teacherLogin();
+    const classId = await createClass(cookie);
+
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/assignments',
+      headers: auth(cookie),
+      payload: assignmentBody(classId, { mode: 'test' }),
+    });
+    expect(missing.statusCode, missing.body).toBe(422);
+    expect(missing.json().error.code).toBe('VALIDATION_FAILED');
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/assignments',
+      headers: auth(cookie),
+      payload: assignmentBody(classId, { mode: 'test', closeAt: iso(3600_000) }),
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json().mode).toBe('test');
+
+    // PATCH 是全量 body：改成测验同样必须带截止时间。
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/teacher/assignments/${created.json().assignmentId}`,
+      headers: auth(cookie),
+      payload: assignmentBody(classId, { mode: 'test' }),
+    });
+    expect(patch.statusCode, patch.body).toBe(422);
+  });
 });
 
 describe('发布讲评（#50 / 04 §6）', () => {
@@ -252,5 +284,55 @@ describe('发布讲评（#50 / 04 §6）', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('畸形请求体返回 422（不是 500）', async () => {
+    const cookie = await teacherLogin();
+    const classId = await createClass(cookie);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/assignments',
+      headers: auth(cookie),
+      payload: assignmentBody(classId, { openAt: iso(-7_200_000), closeAt: iso(-3_600_000) }),
+    });
+    const url = `/api/v1/teacher/assignments/${created.json().assignmentId}/publish-review`;
+    for (const payload of [{ proofIds: 1 }, { proofIds: [123] }, { proofIds: 'R1' }, { note: 123 }]) {
+      const res = await app.inject({ method: 'POST', url, headers: auth(cookie), payload });
+      expect(res.statusCode, `${JSON.stringify(payload)}: ${res.body}`).toBe(422);
+      expect(res.json().error.code).toBe('VALIDATION_FAILED');
+    }
+  });
+
+  it('close_at 已过（没有调度器）时：读取推导为 closed，并可按数据库时钟发布', async () => {
+    const cookie = await teacherLogin();
+    const classId = await createClass(cookie);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/assignments',
+      headers: auth(cookie),
+      payload: assignmentBody(classId, { closeAt: iso(3_600_000) }),
+    });
+    expect(created.json().status).toBe('open');
+    const assignmentId = created.json().assignmentId as string;
+
+    // 模拟时间流逝但调度器尚未把 status 从 open 改成 closed：只把 close_at 拨到过去。
+    await db.query(`update app.assignments set close_at = $2 where id = $1`, [
+      assignmentId,
+      new Date(Date.now() - 60_000),
+    ]);
+    const stored = await db.query<{ status: string }>(`select status from app.assignments where id = $1`, [
+      assignmentId,
+    ]);
+    expect(stored.rows[0]?.status).toBe('open');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/teacher/assignments/${assignmentId}/publish-review`,
+      headers: auth(cookie),
+      payload: { proofIds: ['R1'] },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().status).toBe('closed');
+    expect(res.json().reviewPublished).toBe(true);
   });
 });

@@ -60,18 +60,21 @@ async function loadPublishedProblem(db: Queryable, problemId: string, version: n
   }
 }
 
-// 布置状态由时间推导。注意：当前没有 scheduled → open 的调度器（worker 属于 B），
-// 所以“未来开放”的布置暂时永远不会开；Day3 只使用立即开放的布置（已在 #50 评论里记录）。
-function computeStatus(openAt: Date, closeAt: Date | null, now = Date.now()): 'scheduled' | 'open' | 'closed' {
-  if (closeAt !== null && now >= closeAt.getTime()) return 'closed';
-  if (now >= openAt.getTime()) return 'open';
-  return 'scheduled';
-}
+// 06 §5：布置状态一律按数据库时钟推导。当前没有 scheduled → open 的调度器（worker 属 B），
+// 所以“未来开放”的布置暂时永远不会自动开；但 close_at 已过的布置必须在读取时就返回 closed。
+const DERIVED_STATUS_SQL = `
+  case
+    when a.status = 'cancelled' then 'cancelled'
+    when a.close_at is not null and a.close_at <= now() then 'closed'
+    when a.open_at <= now() then 'open'
+    else 'scheduled'
+  end`;
 
 async function assignmentCardById(q: Queryable, assignmentId: string): Promise<Record<string, unknown>> {
   const row = (
     await q.query<AssignmentCardRow>(
-      `select a.id, pv.public, a.mode, a.status, a.open_at, a.close_at, a.review_published_at
+      `select a.id, pv.public, a.mode, ${DERIVED_STATUS_SQL} as status,
+              a.open_at, a.close_at, a.review_published_at
          from app.assignments a
          join content.problem_versions pv
            on pv.problem_id = a.problem_id and pv.version = a.problem_version
@@ -90,12 +93,15 @@ type AssignmentOwnerRow = {
   mode: string;
   status: string;
   close_at: Date | string | null;
+  // 06 §5：关闭判定用数据库时钟，不用应用进程的 Date.now()。
+  time_closed: boolean;
 }
 
 async function findAssignment(q: Queryable, assignmentId: string): Promise<AssignmentOwnerRow> {
   const row = (
     await q.query<AssignmentOwnerRow>(
-      `select class_id, problem_id, problem_version, mode, status, close_at
+      `select class_id, problem_id, problem_version, mode, status, close_at,
+              (close_at is not null and close_at <= now()) as time_closed
          from app.assignments where id = $1`,
       [assignmentId],
     )
@@ -116,15 +122,24 @@ export async function createAssignment(
   if (closeAt !== null && closeAt.getTime() <= openAt.getTime()) {
     throw new AppError('VALIDATION_FAILED', 422, '截止时间必须晚于开放时间');
   }
+  // 04 §7：测验的开放与截止都必填；练习允许不设截止。
+  if (input.mode === 'test' && closeAt === null) {
+    throw new AppError('VALIDATION_FAILED', 422, '测验必须设置截止时间');
+  }
   await loadPublishedProblem(db, input.problemId, input.version);
   const settings = normalizeAssignmentSettings(input.settings);
-  const status = computeStatus(openAt, closeAt);
 
   return db.tx(async (tx) => {
     const inserted = await tx.query<{ id: string }>(
       `insert into app.assignments
          (class_id, problem_id, problem_version, mode, open_at, close_at, settings, status, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb,
+               case
+                 when $6::timestamptz is not null and $6::timestamptz <= now() then 'closed'
+                 when $5::timestamptz <= now() then 'open'
+                 else 'scheduled'
+               end,
+               $8)
        returning id`,
       [
         input.classId,
@@ -134,7 +149,6 @@ export async function createAssignment(
         openAt,
         closeAt,
         JSON.stringify(settings),
-        status,
         teacherId,
       ],
     );
@@ -183,15 +197,22 @@ export async function updateAssignment(
   if (closeAt !== null && closeAt.getTime() <= openAt.getTime()) {
     throw new AppError('VALIDATION_FAILED', 422, '截止时间必须晚于开放时间');
   }
+  if (input.mode === 'test' && closeAt === null) {
+    throw new AppError('VALIDATION_FAILED', 422, '测验必须设置截止时间');
+  }
   await loadPublishedProblem(db, input.problemId, input.version);
   const settings = normalizeAssignmentSettings(input.settings);
-  const status = computeStatus(openAt, closeAt);
 
   return db.tx(async (tx) => {
     await tx.query(
       `update app.assignments
           set problem_id = $2, problem_version = $3, mode = $4, open_at = $5, close_at = $6,
-              settings = $7::jsonb, status = $8
+              settings = $7::jsonb,
+              status = case
+                when $6::timestamptz is not null and $6::timestamptz <= now() then 'closed'
+                when $5::timestamptz <= now() then 'open'
+                else 'scheduled'
+              end
         where id = $1`,
       [
         assignmentId,
@@ -201,7 +222,6 @@ export async function updateAssignment(
         openAt,
         closeAt,
         JSON.stringify(settings),
-        status,
       ],
     );
     await appendTeacherEvent(tx, {
@@ -227,10 +247,10 @@ export async function publishReview(
   const existing = await findAssignment(db, assignmentId);
   await assertClassTeacher(db, teacherId, existing.class_id);
 
-  const closed =
-    existing.status === 'closed' ||
-    (existing.close_at !== null && new Date(existing.close_at).getTime() <= Date.now());
-  if (!closed) throw new AppError('VALIDATION_FAILED', 409, '布置尚未关闭，不能发布讲评');
+  // 06 §5：是否关闭以数据库时钟为准，不用应用进程的 Date.now()。
+  if (existing.status !== 'closed' && !existing.time_closed) {
+    throw new AppError('VALIDATION_FAILED', 409, '布置尚未关闭，不能发布讲评');
+  }
 
   const proofIds = [...new Set(input.proofIds ?? [])];
   if (proofIds.length > 0) {
