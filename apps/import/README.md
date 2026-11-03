@@ -6,7 +6,7 @@
 #    fixtures/epsN.json             A 稿（取自项目的 epsN seed）
 #    fixtures/epsN-alt.json         B 稿（仅标题不同，用于演示仲裁与分歧）
 
-# 1) 登记 + 渲染 + OCR（本机无 poppler 时加 --skip-render）
+# 1) 登记 + 渲染 + OCR（离线 fixture；真实 OCR 用 --ocr-provider simpletex|qwen，见下）
 pnpm import:pdf --file /tmp/fake.pdf --pages 27-28 --skip-render --ocr-fixture apps/import/fixtures/ch2
 # 2) 切条目（按章节 / 只要证明题）
 pnpm import:items --job <jobId> --chapter 2 --proof-only
@@ -20,8 +20,14 @@ pnpm import:publish imports/<jobId>/epsN.json --reviewer T-01 --minutes 90
 ## 说明
 
 - 产物在 `imports/`（已 gitignore）：教辅 PDF 不入库；页面图与 OCR 全文只留在本地/服务器（10 §7）。
-- `import:pdf` 的 OCR：P0 CLI 用 `--ocr-fixture`（`page-027.md`）；SimpleTex/Qwen 真实 provider 与队列属 P1（10 §2 S3）。
-- `import:draft` 的模型：配置 `DEEPSEEK_API_KEY` 时双温度调用 DeepSeek 起草（同一模型、非 10 §2 S6 的“双模型”，P1 provider issue 跟进）；离线用 `--draft-fixture-a/b`（单包 / 数组 / `{items:{...}}`）。
+- `import:pdf` 的 OCR：
+  - 离线：`--ocr-fixture`（`page-027.md`）；
+  - 真实：`--ocr-provider simpletex`（需 `SIMPLETEX_API_KEY`，通用 OCR 端点 `<dir>/pages/page-*.png`）或
+    `--ocr-provider qwen`（需 `DASHSCOPE_API_KEY`，DashScope OpenAI 兼容，`QWEN_VL_MODEL` 可覆盖）；
+  - 真实 OCR 必须渲染页面（不能 `--skip-render`）。**未用真实 key 验证**：响应形状/SDK 字段以官方文档为准，
+    适配器可注入 `fetch`，测试用 mock 覆盖请求形状与错误路径（`test/providers.test.ts`）。
+- `import:draft` 的模型：配置 `DEEPSEEK_API_KEY` 时双温度调用 DeepSeek 起草（同一模型、非 10 §2 S6 的“双模型”，P1 provider issue 跟进）；
+  `response_format: json_object` + prompt 含 json；离线用 `--draft-fixture-a/b`（单包 / 数组 / `{items:{...}}`）。
 - **多条目**：每条目写 `<problemId>.report.md`；同一题号复用时 JSON 自动加 `-<itemId>` 后缀；job 级 `report.md` 汇总全部条目与校验结果（不会互相覆盖）。
 - S8 自动校验：JSON Schema（contracts 的 problem-package.schema.json）、KaTeX、穷举泄题（复用 `packages/engine` 的 `leakExhaustive`；单包模式不传概念库，概念/词条泄漏由 seed 检查覆盖）。schema 不通过时不写 JSON，只写报告列出问题。
 - 安全：模型输出的 `id` 只接受 Slug，非法值退化为 `item-<itemId>`，并校验输出路径必须落在 `imports/` 内（防路径穿越）。

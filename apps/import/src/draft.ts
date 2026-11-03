@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import type { ProblemPackage } from '@proof-gym/engine';
 
+import { createDeepSeekDraftProvider } from './providers/deepseek.ts';
+import type { DraftProvider } from './providers/types.ts';
 import type { ImportItem } from './split.ts';
 
 export interface DraftPair {
@@ -40,45 +42,24 @@ function pick(map: FixturePackages, itemId: string): ProblemPackage {
   return structuredClone(direct);
 }
 
-async function callDeepSeek(prompt: string, temperature: number): Promise<ProblemPackage> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (apiKey === undefined || apiKey === '') {
-    throw new Error('未配置 DEEPSEEK_API_KEY；离线请提供 --draft-fixture-a / --draft-fixture-b（10 §6 的 P1 provider 接口）');
-  }
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
-      temperature,
-      messages: [
-        { role: 'system', content: '你是数学分析题目包起草助手。只输出严格 JSON，符合 problem-package.schema.json（schemaVersion=1.0）。' },
-        { role: 'user', content: prompt },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`DeepSeek 调用失败：HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = body.choices?.[0]?.message?.content ?? '';
-  const json = text.replace(/^```(?:json)?/m, '').replace(/```\s*$/m, '').trim();
-  return JSON.parse(json) as ProblemPackage;
+export interface TwoDraftsOptions {
+  fixtureA?: string;
+  fixtureB?: string;
+  draftProvider?: DraftProvider;
 }
 
-export async function twoDrafts(
-  item: ImportItem,
-  options: { fixtureA?: string; fixtureB?: string },
-): Promise<DraftPair> {
+export async function twoDrafts(item: ImportItem, options: TwoDraftsOptions): Promise<DraftPair> {
   if (options.fixtureA !== undefined && options.fixtureB !== undefined) {
     const a = pick(loadFixturePackages(options.fixtureA), item.itemId);
     const b = pick(loadFixturePackages(options.fixtureB), item.itemId);
     return { a, b, provider: 'fixture' };
   }
-  const prompt = [
-    '为下面的题干起草完整的题目包（public + secret）：',
-    item.body,
-    '要求：关键步骤 ≤6、多条路线、H0–H4 与 leak、定义成分、框架检查、自检题、参考证明。',
-  ].join('\n');
-  const a = await callDeepSeek(prompt, 0.2);
-  const b = await callDeepSeek(prompt, 0.8);
-  return { a, b, provider: 'deepseek' };
+  const provider =
+    options.draftProvider ??
+    createDeepSeekDraftProvider({
+      apiKey: process.env.DEEPSEEK_API_KEY ?? '',
+      model: process.env.DEEPSEEK_MODEL,
+    });
+  const pair = await provider.twoDrafts({ itemId: item.itemId, body: item.body });
+  return { ...pair, provider: 'deepseek' };
 }

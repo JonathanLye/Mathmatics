@@ -1,11 +1,13 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { twoDrafts } from './draft.ts';
-import { copyFixturePages, readOcrPages } from './ocr.ts';
+import { copyFixturePages, readOcrPages, writeOcrPages } from './ocr.ts';
 import { renderPdf } from './pdf.ts';
 import { writeDraftOutputs, writeJobReport } from './report.ts';
+import { createQwenOcrProvider } from './providers/qwen.ts';
+import { createSimpleTexOcrProvider } from './providers/simpletex.ts';
 import { splitItems, type ImportItem } from './split.ts';
 import { assertJobId, jobDir, newJobId, parsePageRange, readJob, sha256File, writeJob, type JobManifest } from './workspace.ts';
 import { publishPackage } from './publish.ts';
@@ -81,13 +83,37 @@ async function commandPdf(parsed: ParsedArgs): Promise<void> {
     if (render.reason !== undefined) manifest.stages.renderNote = render.reason;
   }
 
-  const fixture = optional(parsed, 'ocr-fixture');
-  if (fixture === undefined) {
-    throw new Error('P0 CLI 的 OCR 目前只支持离线 fixture（--ocr-fixture <dir>）；真实 SimpleTex/Qwen provider 属 P1，见 10 §2 S3 / 09 §2');
+  const provider = optional(parsed, 'ocr-provider') ?? 'fixture';
+  if (provider === 'fixture') {
+    const fixture = optional(parsed, 'ocr-fixture');
+    if (fixture === undefined) {
+      throw new Error('fixture OCR 需要 --ocr-fixture <dir>；真实 OCR 用 --ocr-provider simpletex|qwen');
+    }
+    copyFixturePages(dir, fixture);
+    manifest.stages.ocr = true;
+    manifest.stages.ocrProvider = 'fixture';
+  } else if (provider === 'simpletex' || provider === 'qwen') {
+    if (parsed.flags.has('skip-render') === true) {
+      throw new Error(`${provider} OCR 需要渲染后的页面图（不能 --skip-render）`);
+    }
+    const pagesDir = join(dir, 'pages');
+    const images = readdirSync(pagesDir)
+      .map((name) => /^page-(\d+)(?:-\d+)?\.png$/.exec(name))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .map((match) => ({ page: Number(match[1]), file: join(pagesDir, match[0]) }))
+      .sort((a, b) => a.page - b.page);
+    if (images.length === 0) throw new Error(`没有找到渲染页面（${pagesDir}/page-*.png）`);
+    const ocrProvider =
+      provider === 'simpletex'
+        ? createSimpleTexOcrProvider({ apiKey: process.env.SIMPLETEX_API_KEY ?? '' })
+        : createQwenOcrProvider({ apiKey: process.env.DASHSCOPE_API_KEY ?? '' });
+    const ocrPages = await ocrProvider.recognize(images);
+    writeOcrPages(dir, ocrPages);
+    manifest.stages.ocr = true;
+    manifest.stages.ocrProvider = provider;
+  } else {
+    throw new Error(`未知 OCR provider：${provider}（fixture | simpletex | qwen）`);
   }
-  copyFixturePages(dir, fixture);
-  manifest.stages.ocr = true;
-  manifest.stages.ocrProvider = 'fixture';
   writeJob(manifest);
   console.log(JSON.stringify({ jobId, dir, pages: pages.length, stages: manifest.stages }, null, 2));
 }
@@ -157,13 +183,13 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
 function usage(): void {
   console.log(`证明陪练场 · 题库导入 CLI（10 §6）
 
-  pnpm import:pdf --file <pdf> --pages 27-58 [--ocr-fixture <dir>] [--skip-render]
+  pnpm import:pdf --file <pdf> --pages 27-58 [--ocr-fixture <dir>|--ocr-provider simpletex|qwen] [--skip-render]
   pnpm import:items --job <jobId> [--chapter 2] [--proof-only]
   pnpm import:draft --job <jobId> [--items id1,id2] [--max 4] [--draft-fixture-a a.json --draft-fixture-b b.json]
   pnpm import:publish imports/<jobId>/<problemId>.json --reviewer T-01 --minutes 90
 
 仓库内自带的最小 fixtures：apps/import/fixtures/ch2（OCR）、fixtures/epsN.json 与 epsN-alt.json（两稿）。
-离线模式：OCR 用 --ocr-fixture，起草用 --draft-fixture-a/b；真实 OCR 与 DeepSeek 起草为 P1 provider 接口。`);
+离线模式：OCR 用 --ocr-fixture，起草用 --draft-fixture-a/b；真实 OCR 需 SIMPLETEX_API_KEY / DASHSCOPE_API_KEY 并渲染页面；起草需 DEEPSEEK_API_KEY。`);
 }
 
 export async function run(argv: string[]): Promise<void> {
