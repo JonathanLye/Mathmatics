@@ -67,10 +67,10 @@ const PAGES = [
   { name: 'login', hash: '#/pages/login/index' },
   { name: 'consent', hash: '#/pages/consent/index' },
   { name: 'home', hash: '#/pages/home/index' },
-  { name: 'practice-l1', hash: '#/pages/practice/index?mock=l1-active' },
-  { name: 'practice-l3', hash: '#/pages/practice/index?mock=l3-active' },
-  { name: 'practice-exhausted', hash: '#/pages/practice/index?mock=l3-exhausted' },
-  { name: 'practice-completed', hash: '#/pages/practice/index?mock=completed' },
+  { name: 'practice-l1', hash: '#/pages/practice/index?mock=l1-active', expectText: '记忆核验' },
+  { name: 'practice-l3', hash: '#/pages/practice/index?mock=l3-active', expectText: '构造与推导' },
+  { name: 'practice-exhausted', hash: '#/pages/practice/index?mock=l3-exhausted', expectText: '透露额度用尽' },
+  { name: 'practice-completed', hash: '#/pages/practice/index?mock=completed', expectText: '本题完成' },
   { name: 'proofbook', hash: '#/pages/proofbook/index' },
 ]
 const VIEWPORTS = [
@@ -97,6 +97,8 @@ async function main() {
       const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, isMobile: vp.isMobile, deviceScaleFactor: 1 })
       const page = await ctx.newPage()
       for (const pg of PAGES) {
+        // 先 about:blank 再进入目标 hash，强制 SPA 重新启动（同路径不同 hash 不会完整加载）
+        await page.goto('about:blank')
         await page.goto('http://127.0.0.1:' + port + '/' + pg.hash, { waitUntil: 'networkidle' })
         await page.waitForTimeout(500)
         const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
@@ -124,9 +126,15 @@ async function main() {
           layoutBad = !info.cls.includes(want.cls) || info.dots !== 6 || info.cols !== want.cols || info.nav < want.nav
           if (layoutBad) overflow++
         }
+        let markerMissing = false
+        if (pg.expectText) {
+          const text = await page.evaluate(() => document.body.innerText)
+          markerMissing = !text.includes(pg.expectText)
+          if (markerMissing) overflow++
+        }
         const file = path.join(outDir, vp.name + '-' + pg.name + '.png')
         await page.screenshot({ path: file, fullPage: true })
-        results.push({ viewport: vp.name, page: pg.name, scrollWidth, clientWidth, horizontalOverflow: bad, layoutBad, file: path.relative(appDir, file) })
+        results.push({ viewport: vp.name, page: pg.name, scrollWidth, clientWidth, horizontalOverflow: bad, markerMissing, layoutBad, file: path.relative(appDir, file) })
       }
       await ctx.close()
     }
@@ -135,7 +143,7 @@ async function main() {
     await new Promise((r) => server.close(r))
   }
   fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(results, null, 2), 'utf8')
-  for (const r of results) console.log(r.viewport.padEnd(8) + ' ' + r.page.padEnd(22) + ' scroll=' + r.scrollWidth + ' client=' + r.clientWidth + (r.horizontalOverflow ? '  !! 横向溢出' : '  ok') + (r.layoutBad ? '  !! 布局断言失败' : ''))
+  for (const r of results) console.log(r.viewport.padEnd(8) + ' ' + r.page.padEnd(22) + ' scroll=' + r.scrollWidth + ' client=' + r.clientWidth + (r.horizontalOverflow ? '  !! 横向溢出' : '  ok') + (r.markerMissing ? '  !! mock 状态标记缺失' : '') + (r.layoutBad ? '  !! 布局断言失败' : ''))
   console.log('[screens] 共 ' + results.length + ' 张；横向溢出 ' + overflow + ' 处；输出：' + outDir)
   if (overflow > 0) process.exit(1)
 }

@@ -56,8 +56,25 @@ function show(msg: string) {
   setTimeout(() => { toast.value = '' }, 2400)
 }
 
+/**
+ * 从 URL hash 读取 mock 状态（H5 截图/演示用）：
+ * 例如 #/pages/practice/index?mock=l3-active。
+ * onLoad 收到的 options 在部分 H5 路由模式下只含 hash 前的查询，这里补一条兜底。
+ */
+function mockFromHash(): MockKey | null {
+  if (typeof window === 'undefined') return null
+  const hash = window.location.hash
+  const i = hash.indexOf('?')
+  if (i === -1) return null
+  const k = new URLSearchParams(hash.slice(i + 1)).get('mock')
+  return k !== null && k in MOCK_LABELS ? (k as MockKey) : null
+}
+
+const initialMock = mockFromHash()
+if (initialMock) setMock(initialMock)
+
 onLoad((q) => {
-  const k = q?.mock as MockKey | undefined
+  const k = (q?.mock as MockKey | undefined) ?? initialMock ?? undefined
   if (k && k in MOCK_LABELS) setMock(k)
 })
 
