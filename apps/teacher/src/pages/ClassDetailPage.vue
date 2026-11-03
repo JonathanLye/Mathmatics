@@ -74,6 +74,7 @@ const liveColumns = [
   { colKey: 'stuckSec', title: '无进展' },
   { colKey: 'flags', title: '标记' },
   { colKey: 'lastActiveAt', title: '最近活动' },
+  { colKey: 'actions', title: '操作', width: 90 },
 ];
 
 const stats = computed(() => {
@@ -261,7 +262,7 @@ onBeforeUnmount(() => {
           :loading="liveLoading"
           size="small"
           hover
-          @row-click="(row: LiveRow) => openAttempt(row)"
+          @row-click="(ctx: { row: LiveRow }) => openAttempt(ctx.row)"
         >
           <template #status="{ row }">
             <t-tag :theme="row.status === 'completed' ? 'success' : row.status === 'locked' ? 'danger' : 'default'">
@@ -278,6 +279,9 @@ onBeforeUnmount(() => {
           </template>
           <template #lastActiveAt="{ row }">
             <span>{{ row.lastActiveAt ? new Date(row.lastActiveAt).toLocaleTimeString('zh-CN') : '—' }}</span>
+          </template>
+          <template #actions="{ row }">
+            <t-link theme="primary" :disabled="!row.attemptId" @click.stop="openAttempt(row)">详情</t-link>
           </template>
           <template #empty>
             <div class="empty">
