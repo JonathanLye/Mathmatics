@@ -355,7 +355,7 @@ describe('作答接口（#19）', () => {
     ['教师取消（status=cancelled）', `update app.assignments set status = 'cancelled' where id = $1`],
     ['超过 close_at', `update app.assignments set close_at = now() - interval '1 minute' where id = $1`],
   ])('布置在作答开始之后关闭：%s', (_label, closeSql) => {
-    it('所有写接口返回 409 ASSIGNMENT_CLOSED 且不写事件；读接口仍可用', async () => {
+    it('主要写接口（command/park/transfer）返回 409 ASSIGNMENT_CLOSED 且不写事件；读接口仍可用', async () => {
       const { cookie, id } = await startedAttempt();
       await db.query(closeSql, [assignmentId]);
       const eventsBefore = (await db.query<{ n: string }>(`select count(*)::text as n from ev.events where attempt_id = $1`, [id])).rows[0]?.n;
@@ -365,6 +365,8 @@ describe('作答接口（#19）', () => {
         post(cookie, `/attempts/${id}/finish`),
         post(cookie, `/attempts/${id}/park`),
         post(cookie, `/attempts/${id}/layers/L1/skip`),
+        // transfer 是独立实现，最容易漏 guard；L1 时 guard 先于层检查，仍应返回 ASSIGNMENT_CLOSED。
+        post(cookie, `/attempts/${id}/transfer`),
       ];
       for (const res of await Promise.all(writes)) {
         expect(res.statusCode, res.body).toBe(409);
