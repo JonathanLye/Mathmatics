@@ -1,11 +1,13 @@
 import { EventEmitter } from 'node:events';
 
-import type { FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import pino from 'pino';
 
 import Fastify from 'fastify';
 
-import { trustNearestProxy } from '../src/app.ts';
+import { buildApp, trustNearestProxy } from '../src/app.ts';
+import { bySession, SESSION_COOKIE } from '../src/auth/session.ts';
 import type { Pool } from 'pg';
 
 import { createPgPool, pgDbFromPool, PG_POOL_SETTINGS } from '../src/db/index.ts';
@@ -66,6 +68,36 @@ describe('会话级限流', () => {
   });
 });
 
+describe('会话级限流键', () => {
+  const fakeRequest = (raw: string, valid: boolean, value: string): FastifyRequest =>
+    ({
+      cookies: { [SESSION_COOKIE]: raw },
+      unsignCookie: () => ({ valid, value, renew: false }),
+      ip: '203.0.113.5',
+    }) as unknown as FastifyRequest;
+
+  it('未签名或非 UUID 的 Cookie 回退到 IP，避免伪造 Cookie 单独开桶', () => {
+    expect(bySession(fakeRequest('forged', false, 'forged'))).toBe('203.0.113.5');
+    expect(bySession(fakeRequest('', false, ''))).toBe('203.0.113.5');
+  });
+
+  it('签名有效且是 UUID 的会话用自己的会话 id 作为键', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    expect(bySession(fakeRequest(`signed.${id}`, true, id))).toBe(id);
+  });
+});
+
+describe('构建 app 时复用外部 logger', () => {
+  it('传入 loggerInstance 后 Fastify 用它的 child 作为 app.log（池错误等日志能进同一 pino）', async () => {
+    const logger = pino({ level: 'silent' });
+    const childSpy = vi.spyOn(logger, 'child');
+    const app = await buildApp({ config: testConfig, loggerInstance: logger });
+    expect(childSpy).toHaveBeenCalled();
+    expect(app.log.level).toBe('silent');
+    await app.close();
+  });
+});
+
 describe('trustProxy（生产只信任最近一跳）', () => {
   it('客户端自己塞进 X-Forwarded-For 的地址不会成为 request.ip', async () => {
     const app = Fastify({ trustProxy: trustNearestProxy });
@@ -78,6 +110,19 @@ describe('trustProxy（生产只信任最近一跳）', () => {
       headers: { 'x-forwarded-for': '1.1.1.1, 2.2.2.2, 203.0.113.9' },
     });
     expect(res.json().ip).toBe('203.0.113.9');
+    await app.close();
+  });
+
+  it('端口被直接暴露时，单条 XFF 仍会被信任（记录该限制；主防线是 compose 只 expose 不 publish）', async () => {
+    const app = Fastify({ trustProxy: trustNearestProxy });
+    app.get('/ip', async (request) => ({ ip: request.ip }));
+    const res = await app.inject({
+      method: 'GET',
+      url: '/ip',
+      remoteAddress: '198.51.100.7',
+      headers: { 'x-forwarded-for': '203.0.113.99' },
+    });
+    expect(res.json().ip).toBe('203.0.113.99');
     await app.close();
   });
 });
