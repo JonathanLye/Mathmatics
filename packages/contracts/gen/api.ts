@@ -4439,6 +4439,18 @@ export interface components {
                 };
             };
         };
+        /** @description 最新作答状态（写接口；重放时带 Idempotent-Replayed 响应头） */
+        StateReplay: {
+            headers: {
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    state: components["schemas"]["AttemptState"];
+                };
+            };
+        };
     };
     parameters: {
         attemptId: string;
@@ -4447,9 +4459,14 @@ export interface components {
         lineId: string;
         conceptId: string;
         layer: components["schemas"]["LayerId"];
+        /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+        idempotencyKey: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description 仅当本次请求是同一 Idempotency-Key 的重放时返回 "true"；首次响应不返回该头。 */
+        IdempotentReplayed: "true";
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -4653,7 +4670,10 @@ export interface operations {
     startAttempt: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 assignmentId: components["parameters"]["assignmentId"];
             };
@@ -4661,9 +4681,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             403: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     getNotebook: {
@@ -4721,7 +4743,10 @@ export interface operations {
     skipLayer: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
                 layer: components["parameters"]["layer"];
@@ -4730,14 +4755,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     submitDefinition: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4749,8 +4779,10 @@ export interface operations {
             };
         };
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     getLesson: {
@@ -4816,7 +4848,10 @@ export interface operations {
     submitFramework: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4828,14 +4863,20 @@ export interface operations {
             };
         };
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     viewFrameTemplate: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4843,14 +4884,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     addLine: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4862,9 +4909,10 @@ export interface operations {
             };
         };
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     deleteLine: {
@@ -4906,7 +4954,10 @@ export interface operations {
     finishProof: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4914,14 +4965,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     answerSelfcheck: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
                 itemId: string;
@@ -4934,14 +4991,20 @@ export interface operations {
             };
         };
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     startTransfer: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4949,14 +5012,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     submitSummary: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4971,14 +5039,20 @@ export interface operations {
             };
         };
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     parkAttempt: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -4986,8 +5060,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     putDraft: {
@@ -5159,7 +5236,10 @@ export interface operations {
     requestHelp: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -5180,6 +5260,7 @@ export interface operations {
             /** @description 求助结果 */
             200: {
                 headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -5187,12 +5268,18 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     claimHint: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -5209,6 +5296,7 @@ export interface operations {
             /** @description 提示已下发 */
             200: {
                 headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -5216,6 +5304,7 @@ export interface operations {
                 };
             };
             409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
         };
     };
@@ -5267,6 +5356,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     listClasses: {

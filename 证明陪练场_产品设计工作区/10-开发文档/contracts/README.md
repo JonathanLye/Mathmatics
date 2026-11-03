@@ -8,7 +8,7 @@
 | `events.schema.json` | 事件信封与 78 种事件的 payload（由 `tools/events-catalog.mjs` 生成，勿手改） | 三端；导出与研究 |
 | `problem-package.schema.json` | 题目包（public / secret 两部分） | 服务端引擎、导入流水线、教师审核界面 |
 | `concept.schema.json` | 概念库：定义卡、分步微课、图解、术语词条 | 服务端、学生端微课页 |
-| `schema.sql` | PostgreSQL DDL（48 张表含分区） | 服务端 |
+| `schema.sql` | PostgreSQL DDL（49 张表含分区） | 服务端 |
 | `keyboard-layout.json` | 证明键盘布局 | 学生端 |
 | `seed/*.json` | v3 的两道题 + 两道迁移题 + 概念库 + 事件样例 | mock、测试基线、上线首批内容 |
 | `tools/canon.mjs` | `canon()` 参考实现（公式规范化） | 服务端 `packages/engine/canon` 必须与它结果一致 |

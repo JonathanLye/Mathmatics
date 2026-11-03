@@ -351,16 +351,25 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/assignmentId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "403": {
             "$ref": "#/components/responses/Error"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -450,13 +459,22 @@
           },
           {
             "$ref": "#/components/parameters/layer"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -472,6 +490,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "requestBody": {
@@ -486,9 +507,15 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -614,6 +641,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "requestBody": {
@@ -628,9 +658,18 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -646,13 +685,25 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -669,6 +720,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "requestBody": {
@@ -683,12 +737,15 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "409": {
             "$ref": "#/components/responses/Error"
           },
           "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -762,13 +819,25 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -792,6 +861,9 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "requestBody": {
@@ -806,9 +878,18 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -824,13 +905,22 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -846,6 +936,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "requestBody": {
@@ -877,9 +970,18 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -895,13 +997,25 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1218,6 +1332,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "requestBody": {
@@ -1255,6 +1372,11 @@
         "responses": {
           "200": {
             "description": "求助结果",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1264,6 +1386,15 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1280,6 +1411,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "requestBody": {
@@ -1303,6 +1437,11 @@
         "responses": {
           "200": {
             "description": "提示已下发",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1312,6 +1451,9 @@
             }
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           },
           "429": {
@@ -1414,6 +1556,9 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -2717,6 +2862,27 @@
         "schema": {
           "$ref": "#/components/schemas/LayerId"
         }
+      },
+      "idempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "headers": {
+      "IdempotentReplayed": {
+        "description": "仅当本次请求是同一 Idempotency-Key 的重放时返回 \"true\"；首次响应不返回该头。",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "true"
+          ]
+        }
       }
     },
     "responses": {
@@ -2732,6 +2898,29 @@
       },
       "State": {
         "description": "最新作答状态",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "state"
+              ],
+              "properties": {
+                "state": {
+                  "$ref": "#/components/schemas/AttemptState"
+                }
+              }
+            }
+          }
+        }
+      },
+      "StateReplay": {
+        "description": "最新作答状态（写接口；重放时带 Idempotent-Replayed 响应头）",
+        "headers": {
+          "Idempotent-Replayed": {
+            "$ref": "#/components/headers/IdempotentReplayed"
+          }
+        },
         "content": {
           "application/json": {
             "schema": {

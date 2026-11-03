@@ -108,7 +108,21 @@ CREATE TABLE app.auth_sessions (
   revoked_at  timestamptz,
   ip_masked   text
 );
+
 CREATE INDEX auth_sessions_user ON app.auth_sessions (user_id) WHERE revoked_at IS NULL;
+
+-- 写接口幂等（06 §1）：同一用户同一 Idempotency-Key 24 小时内重放返回首次响应。
+-- 先占位（response_status 为空 = 处理中），处理完成后写入响应；失败的请求释放占位，允许重试。
+CREATE TABLE app.idempotency_keys (
+  user_id          uuid NOT NULL REFERENCES app.users(id),
+  key              uuid NOT NULL,                      -- 客户端的 Idempotency-Key
+  request_hash     text NOT NULL,                      -- 方法 + 路径 + 请求体的 SHA-256；同键不同请求会被拒绝
+  response_status  integer,                            -- 空 = 处理中
+  response_body    text,                               -- 首次响应原文（JSON 字符串）
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, key)
+);
+CREATE INDEX idempotency_keys_created ON app.idempotency_keys (created_at);
 
 -- =====================================================================
 -- 2. 题库源与导入流水线
