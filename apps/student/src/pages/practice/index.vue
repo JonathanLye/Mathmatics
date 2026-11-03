@@ -19,6 +19,7 @@ import ProofLineList from '@/components/layers/ProofLineList.vue'
 import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
 import EditorSheet from '@/components/EditorSheet.vue'
+import { nextLineNoOf } from '@/components/layers/proofLines'
 import { useAttempt } from '@/stores/attempt'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { useViewport } from '@/composables/useViewport'
@@ -49,7 +50,8 @@ const asideNotes = computed(() =>
     .reverse(),
 )
 const isCompleted = computed(() => state.value.status === 'completed')
-const nextLineNo = computed(() => lines.value.length + 1)
+// 契约有软删 deleteLine，行号会不连续：下一个行号取 max(n)+1，不用数组长度（PR #90 复审建议）。
+const nextLineNo = computed(() => nextLineNoOf(lines.value))
 const layerTitle = computed(() => state.value.layers.find((l) => l.layer === currentLayer.value)?.title ?? '')
 const layerTask = computed(() => {
   if (currentLayer.value === 'L1') return state.value.def?.task ?? ''
@@ -136,6 +138,9 @@ async function handleAddLine(draft: LineDraft) {
   if (next) {
     apply(next)
     editorOpen.value = false
+  } else {
+    // 失败不关编辑器：本地草稿与 draftId 保留，重试复用（PR #90 复审建议）。
+    show(error.value || '加入证明失败，请重试；你写的内容还在编辑器里')
   }
 }
 
