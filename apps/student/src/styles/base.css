@@ -1,0 +1,114 @@
+/**
+ * 基础排版与布局工具。设计口径见 02 §2.3/§2.4、§3、§6。
+ */
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+page,
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* 纸面：页面默认背景 */
+.pg-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--paper);
+  padding-left: max(var(--sp-4), var(--safe-left));
+  padding-right: max(var(--sp-4), var(--safe-right));
+}
+
+/* 稿纸/卡片 */
+.pg-sheet {
+  background: var(--sheet);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--rule);
+}
+
+/* 题面等长文本：衬线、17px */
+.pg-serif {
+  font-family: var(--font-serif);
+  font-size: var(--fs-stem);
+  line-height: 1.5;
+}
+
+.pg-secondary {
+  color: var(--ink-2);
+}
+
+.pg-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-small {
+  font-size: var(--fs-small);
+}
+
+/* 触控目标 ≥ 44×44（02 §2.4） */
+.pg-tap {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 焦点环 2px（键盘可达性） */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 文本不可选中（除可编辑区域） */
+.pg-noselect {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* KaTeX 行内公式跟随字号 */
+.katex {
+  font-size: 1.05em;
+}
+
+/* 减少动效偏好：关闭所有过渡（02 §2.4） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 隐藏滚动条但保留滚动（横向导航等） */
+.pg-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pg-scroll-x::-webkit-scrollbar {
+  display: none;
+}
