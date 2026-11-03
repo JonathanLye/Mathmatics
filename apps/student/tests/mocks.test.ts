@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createMockState, DEFAULT_MOCK, MOCK_LABELS, type MockKey } from '@/mocks/attemptStates'
+import { createMockState, DEFAULT_MOCK, isMockKey, MOCK_LABELS, parseMockKey, type MockKey } from '@/mocks/attemptStates'
+import { useAttempt } from '@/stores/attempt'
 
 // #9 DoD：4 份典型 AttemptState 必须存在，且结构符合学生端渲染需要。
 const KEYS: MockKey[] = ['l1-active', 'l3-active', 'l3-exhausted', 'completed']
@@ -45,5 +46,43 @@ describe('典型 AttemptState（issue #9）', () => {
     const s = createMockState('completed')
     expect(s.status).toBe('completed')
     expect(s.completion?.done).toBe(true)
+  })
+})
+
+// PR #87 审计回归：?mock=constructor / toString 曾绕过 `in` 校验 → createMockState(undefined) → 白屏。
+describe('非法 mock 键不命中 Object.prototype（PR #87 回归）', () => {
+  const BAD_KEYS = ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf', 'prototype']
+
+  it.each(BAD_KEYS)('isMockKey / parseMockKey 拒绝 %s', (key) => {
+    expect(isMockKey(key)).toBe(false)
+    expect(parseMockKey(key)).toBeNull()
+    expect(parseMockKey([key])).toBeNull()
+  })
+
+  it('createMockState 收到非法键也返回可渲染状态（不抛错、不 undefined）', () => {
+    for (const key of BAD_KEYS) {
+      const s = createMockState(key as MockKey)
+      expect(s).toBeTruthy()
+      expect(s.problem?.title).toBeTruthy()
+      expect(s.layers).toHaveLength(6)
+    }
+  })
+
+  it('setMock 收到非法键回退 DEFAULT_MOCK，再切回合法键正常', () => {
+    const { state, mockKey, setMock } = useAttempt()
+    setMock('toString' as MockKey)
+    expect(mockKey.value).toBe(DEFAULT_MOCK)
+    expect(state.value.problem?.title).toBeTruthy()
+    setMock('completed')
+    expect(mockKey.value).toBe('completed')
+    expect(state.value.status).toBe('completed')
+  })
+
+  it('parseMockKey 接受合法键 / 数组首值 / 空值', () => {
+    expect(parseMockKey('l3-active')).toBe('l3-active')
+    expect(parseMockKey(['completed', 'l1-active'])).toBe('completed')
+    expect(parseMockKey(undefined)).toBeNull()
+    expect(parseMockKey(null)).toBeNull()
+    expect(parseMockKey(42)).toBeNull()
   })
 })

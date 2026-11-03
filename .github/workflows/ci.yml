@@ -145,6 +145,44 @@ jobs:
           await client.end();
           NODE
 
+  # 学生端 e2e（可选，**不进 ci-gate**）：真实浏览器跑 3 档布局截图 + mock 状态 DOM 断言。
+  # 用 continue-on-error：e2e 失败只给信号、不拖挂必过门禁；稳定后再考虑并入 ci-gate。
+  # PR #87 审计：此前 e2e 只认 Windows 本机浏览器、且不进 CI，Linux 上直接 exit=2。
+  student-e2e:
+    name: student-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Setup pnpm and Node
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          runtime: node@24
+          cache: true
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build student H5 (mock build for state screenshots)
+        run: pnpm --filter @proof-gym/student build:mock
+      - name: Install Chromium (match playwright-core)
+        working-directory: apps/student
+        run: npx --yes playwright@$(node -p "require('playwright-core/package.json').version") install --with-deps chromium
+      - name: Screens + mock 状态断言（390/768/1280）
+        run: pnpm --filter @proof-gym/student run e2e:screens
+      - name: Flows（本分支有脚本才跑；#88/#89 等后续 PR 接入）
+        run: |
+          node -e "const s=require('./apps/student/package.json').scripts||{};process.stdout.write(Object.keys(s).filter(k=>k.startsWith('e2e:flows')).join(' '))" > /tmp/e2e-flows.txt
+          if [ -s /tmp/e2e-flows.txt ]; then
+            for script in $(cat /tmp/e2e-flows.txt); do pnpm --filter @proof-gym/student run "$script"; done
+          else
+            echo "本分支没有 e2e:flows 脚本，跳过"
+          fi
+
   # 唯一 required status check：子 job 跳过也算过，真实失败才红。
   ci-gate:
     name: ci-gate

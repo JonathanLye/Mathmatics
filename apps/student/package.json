@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e:screens": "node tests/screenshots.mjs",
-    "mock:contracts": "prism mock ../../packages/contracts/openapi.yaml -p 4010"
+    "mock:contracts": "prism mock ../../packages/contracts/openapi.yaml -p 4010",
+    "build:mock": "uni build --mode mock"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5030420261029002",
@@ -35,6 +36,6 @@
     "vitest": "^2.1.9",
     "vue-tsc": "^2.2.10",
     "@types/node": "catalog:",
-    "@stoplight/prism-cli": "^5.14.2"
+    "@stoplight/prism-cli": "5.16.0"
   }
 }

@@ -21,7 +21,7 @@ import HintPreviewCard from '@/components/HintPreviewCard.vue'
 import EditorSheet from '@/components/EditorSheet.vue'
 import { useAttempt } from '@/stores/attempt'
 import { useViewport } from '@/composables/useViewport'
-import { MOCK_LABELS, type MockKey } from '@/mocks/attemptStates'
+import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import { addLine, claimHint, finishSteps, requestHelp, submitDef, submitFramework } from '@/api/client'
 import type { HelpIntent, HintPreview, LayerId, LineDraft } from '@/types/attempt'
 
@@ -56,26 +56,30 @@ function show(msg: string) {
   setTimeout(() => { toast.value = '' }, 2400)
 }
 
+/** 开发期 mock 开关（PR #87 审计）：生产构建不允许用 ?mock= 切到假状态。 */
+const mockEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === '1'
+
 /**
  * 从 URL hash 读取 mock 状态（H5 截图/演示用）：
  * 例如 #/pages/practice/index?mock=l3-active。
  * onLoad 收到的 options 在部分 H5 路由模式下只含 hash 前的查询，这里补一条兜底。
+ * 用 parseMockKey（Object.hasOwn）校验：`in` 会命中 Object.prototype（constructor 等）→ 白屏。
  */
 function mockFromHash(): MockKey | null {
-  if (typeof window === 'undefined') return null
+  if (!mockEnabled || typeof window === 'undefined') return null
   const hash = window.location.hash
   const i = hash.indexOf('?')
   if (i === -1) return null
-  const k = new URLSearchParams(hash.slice(i + 1)).get('mock')
-  return k !== null && k in MOCK_LABELS ? (k as MockKey) : null
+  return parseMockKey(new URLSearchParams(hash.slice(i + 1)).get('mock'))
 }
 
 const initialMock = mockFromHash()
 if (initialMock) setMock(initialMock)
 
 onLoad((q) => {
-  const k = (q?.mock as MockKey | undefined) ?? initialMock ?? undefined
-  if (k && k in MOCK_LABELS) setMock(k)
+  if (!mockEnabled) return
+  const k = parseMockKey(q?.mock) ?? initialMock
+  if (k) setMock(k)
 })
 
 function onSwitchMock(k: MockKey) {
@@ -320,7 +324,7 @@ function backHome() {
       @submit="handleAddLine"
     />
 
-    <MockSwitcher :model-value="mockKey" @update:model-value="onSwitchMock" />
+    <MockSwitcher v-if="mockEnabled" :model-value="mockKey" @update:model-value="onSwitchMock" />
 
     <view v-if="toast" class="pg-toast pg-small">{{ toast }}</view>
   </view>

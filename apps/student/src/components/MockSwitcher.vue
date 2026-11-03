@@ -7,10 +7,12 @@ const props = defineProps<{ modelValue: MockKey }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: MockKey): void }>()
 const open = ref(false)
 const keys = Object.keys(MOCK_LABELS) as MockKey[]
+// PR #87 审计：只允许开发/测试构建出现调试控件，生产构建（uni build）里 H5 学生看不到。
+const isDev = import.meta.env.DEV
 </script>
 
 <template>
-  <view class="pg-mock">
+  <view v-if="isDev" class="pg-mock">
     <button class="pg-mock__pill pg-small" @tap="open = !open">mock: {{ MOCK_LABELS[props.modelValue] }}</button>
     <view v-if="open" class="pg-mock__menu">
       <view v-for="k in keys" :key="k" class="pg-mock__item pg-small" @tap="emit('update:modelValue', k); open = false">
