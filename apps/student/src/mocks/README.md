@@ -22,7 +22,7 @@
 # 在 apps/student 下：
 npm run mock:contracts
 # 等价于：
-npx prism mock "../../证明陪练场_产品设计工作区/10-开发文档/contracts/openapi.yaml" -p 4010
+npx prism mock ../../packages/contracts/openapi.yaml -p 4010
 ```
 
 用途：给「按 OpenAPI 校验请求/响应」的联调阶段用（issue #24 接真实 API 时）。

@@ -192,12 +192,31 @@ export const MOCK_LABELS: Record<MockKey, string> = {
   completed: '④ 本题完成',
 }
 
+/**
+ * 是否是合法的 mock 键。
+ * 必须用 Object.hasOwn（own property）而不是 `k in MOCK_LABELS`：`in` 会命中
+ * Object.prototype 上的 constructor / toString / hasOwnProperty / __proto__ 等，
+ * 让 ?mock=constructor 通过校验（PR #87 审计：会白屏）。
+ */
+export function isMockKey(value: unknown): value is MockKey {
+  return typeof value === 'string' && Object.hasOwn(MOCK_LABELS, value)
+}
+
+/** 从 URL / onLoad options 等不可信来源解析 mock 键；非法一律返回 null。 */
+export function parseMockKey(value: unknown): MockKey | null {
+  const raw = Array.isArray(value) ? value[0] : value
+  return isMockKey(raw) ? raw : null
+}
+
 export function createMockState(key: MockKey): AttemptState {
   switch (key) {
     case 'l1-active': return l1Active()
     case 'l3-active': return l3Active()
     case 'l3-exhausted': return l3Exhausted()
     case 'completed': return completed()
+    // 运行时兜底：类型层已穷尽，但 URL/存储等不可信输入可能把非法键传进来；
+    // 返回默认状态而不是 undefined，避免 state.value 为空导致整页渲染抛错（PR #87 审计）。
+    default: return l3Active()
   }
 }
 

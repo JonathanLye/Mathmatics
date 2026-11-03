@@ -3,7 +3,7 @@
  * 只保存服务端下发的 state；所有变更都由 api/client.ts 的 mock/真实接口返回新 state。
  */
 import { computed, ref } from 'vue'
-import { createMockState, DEFAULT_MOCK, MOCK_LABELS, type MockKey } from '@/mocks/attemptStates'
+import { createMockState, DEFAULT_MOCK, isMockKey, MOCK_LABELS, type MockKey } from '@/mocks/attemptStates'
 import type { AttemptState } from '@/types/attempt'
 
 const state = ref<AttemptState>(createMockState(DEFAULT_MOCK))
@@ -14,8 +14,10 @@ const error = ref<string | null>(null)
 const canFinish = computed(() => Boolean(state.value.steps?.canFinish))
 
 function setMock(key: MockKey) {
-  mockKey.value = key
-  state.value = createMockState(key)
+  // 非法键（如 ?mock=constructor 绕过旧校验）回退默认状态，保证 state 永远可渲染。
+  const safe = isMockKey(key) ? key : DEFAULT_MOCK
+  mockKey.value = safe
+  state.value = createMockState(safe)
 }
 
 function apply(next: AttemptState) {
