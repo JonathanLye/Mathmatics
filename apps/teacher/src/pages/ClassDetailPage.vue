@@ -117,7 +117,9 @@ async function loadLive(): Promise<void> {
     liveError.value =
       caught instanceof ApiError && (caught.status === 404 || caught.status === 501)
         ? '实时看板接口尚未上线（#51），上线后自动生效。'
-        : messageOf(caught);
+        : caught instanceof ApiError
+          ? caught.message
+          : '看板加载失败，请检查网络后重试';
   } finally {
     liveLoading.value = false;
   }
@@ -285,7 +287,7 @@ onBeforeUnmount(() => {
           </template>
           <template #empty>
             <div class="empty">
-              {{ liveError ? '看板接口待上线。' : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
+              {{ liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
             </div>
           </template>
         </t-table>

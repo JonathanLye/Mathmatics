@@ -229,3 +229,8 @@ body {
 .math-text .math-tex .katex {
   font-size: 1em;
 }
+
+.offline-banner {
+  margin: 0;
+  border-radius: 0;
+}
