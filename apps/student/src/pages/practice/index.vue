@@ -217,7 +217,11 @@ function backHome() {
         <view class="pg-practice__content">
           <view class="pg-practice__head">
             <text class="pg-practice__layertitle">{{ layerTitle }}</text>
-            <text v-if="layerTask" class="pg-practice__layertask pg-small">{{ layerTask }}</text>
+            <!-- #11：L1/L2 的任务说明由表单用 MathText 渲染，这里不再显示纯文本（避免露出 LaTeX 源码）。 -->
+            <text
+              v-if="layerTask && currentLayer !== 'L1' && currentLayer !== 'L2'"
+              class="pg-practice__layertask pg-small"
+            >{{ layerTask }}</text>
           </view>
 
           <template v-if="isCompleted">

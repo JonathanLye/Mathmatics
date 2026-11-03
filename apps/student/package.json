@@ -10,8 +10,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e:screens": "node tests/screenshots.mjs",
+<<<<<<< HEAD
     "mock:contracts": "prism mock ../../packages/contracts/openapi.yaml -p 4010",
     "build:mock": "uni build --mode mock"
+=======
+    "e2e:flows": "node tests/flows.mjs",
+    "mock:contracts": "prism mock ../../packages/contracts/openapi.yaml -p 4010"
+>>>>>>> 7a55fae (feat(student): 第 1、2 层表单与 L1→L2→L3 流程 (#11))
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5030420261029002",
