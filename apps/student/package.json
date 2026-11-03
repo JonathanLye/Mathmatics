@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "e2e:screens": "node tests/screenshots.mjs",
     "mock:contracts": "prism mock ../../packages/contracts/openapi.yaml -p 4010",
-    "build:mock": "uni build --mode mock"
+    "build:mock": "uni build --mode mock",
+    "e2e:flows": "node tests/flows.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5030420261029002",

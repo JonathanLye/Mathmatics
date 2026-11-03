@@ -22,7 +22,7 @@ import EditorSheet from '@/components/EditorSheet.vue'
 import { useAttempt } from '@/stores/attempt'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
-import { addLine, claimHint, finishSteps, requestHelp, submitDef, submitFramework } from '@/api/client'
+import { addLine, claimHint, finishSteps, requestHelp, skipLayer, submitDef, submitFramework, viewFrameTemplate } from '@/api/client'
 import type { HelpIntent, HintPreview, LayerId, LineDraft } from '@/types/attempt'
 
 const { state, mockKey, busy, setMock, apply, run } = useAttempt()
@@ -100,12 +100,25 @@ async function handleSubmit(text: string) {
   if (next) apply(next)
 }
 
-function handleLesson() {
+/**
+ * 第 1 层「看不懂」→ 微课入口（#26 接内容）；
+ * 第 2 层「看通用骨架」→ 契约的 POST /framework/template，由服务端返回 templateShown=true 的 state。
+ */
+async function handleLesson() {
+  if (currentLayer.value === 'L2') {
+    const next = await run(() => viewFrameTemplate(state.value))
+    if (next) apply(next)
+    return
+  }
   show('微课/图解是 #26（第二轮 Day2）的内容；本轮先把入口留好')
 }
 
-function handleSkip() {
-  handleSubmit('已掌握，跳过')
+/** 跳层是独立操作（POST /layers/{L}/skip）：不把「已掌握，跳过」当文本提交，也不写 def/frame.last。 */
+async function handleSkip() {
+  const layer = currentLayer.value
+  if (layer !== 'L1' && layer !== 'L2') return
+  const next = await run(() => skipLayer(state.value, layer))
+  if (next) apply(next)
 }
 
 async function handleAddLine(draft: LineDraft) {
@@ -217,7 +230,11 @@ function backHome() {
         <view class="pg-practice__content">
           <view class="pg-practice__head">
             <text class="pg-practice__layertitle">{{ layerTitle }}</text>
-            <text v-if="layerTask" class="pg-practice__layertask pg-small">{{ layerTask }}</text>
+            <!-- #11：L1/L2 的任务说明由表单用 MathText 渲染，这里不再显示纯文本（避免露出 LaTeX 源码）。 -->
+            <text
+              v-if="layerTask && currentLayer !== 'L1' && currentLayer !== 'L2'"
+              class="pg-practice__layertask pg-small"
+            >{{ layerTask }}</text>
           </view>
 
           <template v-if="isCompleted">

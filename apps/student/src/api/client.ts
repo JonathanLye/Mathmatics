@@ -7,7 +7,7 @@
  * - 前端永远不做判定：这里只模拟「服务端会返回什么 state」，不实现层/预算/门槛逻辑。
  */
 import { createMockState, DEFAULT_MOCK, mockRecognition, type MockKey } from '@/mocks/attemptStates'
-import type { AttemptState, HelpIntent, HelpResult, HintPreview, LineDraft, Recognition } from '@/types/attempt'
+import type { AttemptState, HelpIntent, HelpResult, HintPreview, LayerId, LineDraft, Recognition } from '@/types/attempt'
 
 const USE_MOCK = true
 const LATENCY = 160
@@ -67,6 +67,54 @@ export async function submitFramework(state: AttemptState, text: string): Promis
     l.layer === 'L3' ? { ...l, status: 'active' as const } : l,
   )
   next.currentLayer = 'L3'
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/**
+ * 跳层：POST /attempts/{id}/layers/{L}/skip（06 §3.2 · openapi.yaml skipLayer）。
+ *
+ * 跳层是独立操作，不是「把已掌握，跳过当文本提交」：不写 def.last / frame.last，也不增加提交计数。
+ * mock：把该层标为 skipped（openapi LayerStatus 有独立状态）、下一层置为 active 并切过去。
+ * TODO(#24)：接真实接口时改为 POST /attempts/{id}/layers/{layer}/skip，带 Idempotency-Key；
+ * 409 STATE_STALE 用响应里的 state 覆盖，422/429 的错误文案直接展示服务端 message。
+ */
+export async function skipLayer(state: AttemptState, layer: LayerId): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  // 只处理当前层；重复点/过期请求不推进（真实接口由幂等键与服务端判定兜底）。
+  if (next.currentLayer !== layer) return next
+  const idx = next.layers.findIndex((l) => l.layer === layer)
+  if (idx === -1) return next
+  const nextLayer = next.layers[idx + 1]
+  next.stateVersion += 1
+  next.layers = next.layers.map((l) =>
+    l.layer === layer
+      ? { ...l, status: 'skipped' as const }
+      : nextLayer && l.layer === nextLayer.layer
+        ? { ...l, status: 'active' as const }
+        : l,
+  )
+  if (nextLayer) next.currentLayer = nextLayer.layer
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/**
+ * 看通用骨架：POST /attempts/{id}/framework/template（06 §3.2 · openapi.yaml viewFrameTemplate）。
+ *
+ * 通用骨架属于形式部分，不计透露量；服务端记录「看过模板」并返回 frame.templateShown=true 的新 state。
+ * 前端不自己置 templateShown —— 模板是否展开只看服务端下发的 state（刷新/重连后仍保持）。
+ * TODO(#24)：接真实接口时改为 POST /attempts/{id}/framework/template，带 Idempotency-Key；
+ * 409 STATE_STALE 用响应里的 state 覆盖。
+ */
+export async function viewFrameTemplate(state: AttemptState): Promise<AttemptState> {
+  await sleep()
+  const next = clone(state)
+  // 只有第 2 层能看通用骨架；其他层原样返回（真实接口返回 409 WRONG_LAYER）。
+  if (next.currentLayer !== 'L2') return next
+  next.stateVersion += 1
+  next.frame = { ...(next.frame ?? {}), templateShown: true }
   next.serverTime = new Date().toISOString()
   return next
 }
