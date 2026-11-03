@@ -4,6 +4,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import { requireStudentConsent } from '../auth/consent.ts';
 import { bySession, requireAuth } from '../auth/session.ts';
+import { studentHome } from '../attempts/home.ts';
 import { addLine, createAttemptService } from '../attempts/service.ts';
 import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
@@ -96,6 +97,12 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   };
   const param = (request: FastifyRequest, name: string): string => (request.params as Record<string, string>)[name] ?? '';
   const attemptId = (request: FastifyRequest): string => uuidParam(param(request, 'attemptId'));
+
+  // 学生首页（06 §3.1）：只读聚合，不要求同意书（未签同意也能先看到作业列表）。
+  app.get('/student/home', async (request) => {
+    const auth = await requireAuth(db, request);
+    return studentHome(db, contract, auth.userId);
+  });
 
   app.post('/student/assignments/:assignmentId/attempt', writable, async (request) => {
     const auth = await requireAuth(db, request);
