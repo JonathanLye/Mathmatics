@@ -4,17 +4,21 @@
  *
  * 只读 iframe 打开学生 H5 的 /s/mirror?attempt=…&token=…：
  * - 真正的只读（禁用输入/按钮、顶部标「只读」）在学生端镜像页面内实现，本组件只负责安全装载 + 状态；
- * - sandbox 最小权限：allow-scripts + allow-same-origin（镜像页是学生 H5 同源应用，需要脚本与同源存储/SSE），
- *   不开放表单、弹窗、顶层跳转；允许全屏（04 §5.1 教师可能需放大看）；
+ * - sandbox 采用评审方案 b：只保留 MIRROR_IFRAME_SANDBOX（allow-scripts），**不含 allow-same-origin**。
+ *   镜像页与学生 H5 同源，同源且同时开放 allow-scripts + allow-same-origin 时，嵌入页可以直接移除
+ *   自己的 sandbox 并重载，等于完全跳出沙箱（WHATWG HTML / MDN 明确警告）——学生可控内容里注入的脚本
+ *   会以教师控制台身份行动。因此镜像页**不得**依赖 iframe 同源页面直接取数：必须用 04 §5.1 的
+ *   mirrorToken 经 CORS/令牌接口取数据（SSE 用同一令牌），接口由 B 提供；
+ * - 不开放表单、弹窗、顶层跳转；允许全屏（04 §5.1 教师可能需放大看）；
  * - referrerpolicy="no-referrer"：避免 token 通过 Referer 头泄露到第三方资源；
  * - token 只存在于 iframe 的 src 查询参数（功能必需），不在可见文本 / 错误文案 / 日志里出现；
  * - 拒绝非 http(s)、缺 attempt/token、以及 https 页面加载 http 的混合内容。
  *
  * emits 是本组件的扩展（契约文档见 ./README.md）：load 表示 iframe 触发 load，error 表示装载失败。
- * 组件本轮不接线（build 不打包），后续由教师端 #51/C 接入。
+ * 组件本轮不接线（build 不打包）；**C #51 在 B/A/C 定稿 mirrorToken + CORS/SSE 接口前不得接线**。
  */
 import { computed, ref, watch } from 'vue'
-import { isMirrorPageUrl, isMixedContent } from './mirror'
+import { MIRROR_IFRAME_SANDBOX, isMirrorPageUrl, isMixedContent } from './mirror'
 
 const props = withDefaults(
   defineProps<{
@@ -49,9 +53,12 @@ const isLoading = computed(() => props.loading || status.value === 'loading')
 const errorMessage = computed(() => props.error || internalError.value)
 const showFrame = computed(() => status.value === 'loading' || status.value === 'ready')
 
-/** iframe 安全属性集中声明（不写进模板，避免误加 allow-forms / allow-popups 等）。 */
+/**
+ * iframe 安全属性集中声明（不写进模板，避免误加 allow-forms / allow-popups 等）。
+ * sandbox 值来自 mirror.ts 的 MIRROR_IFRAME_SANDBOX（='allow-scripts'）；不要在此处再拼 allow-same-origin。
+ */
 const iframeAttrs: Record<string, string> = {
-  sandbox: 'allow-scripts allow-same-origin',
+  sandbox: MIRROR_IFRAME_SANDBOX,
   referrerpolicy: 'no-referrer',
   allow: 'fullscreen',
   allowfullscreen: '',
@@ -75,7 +82,7 @@ function evaluate() {
   }
   if (isMixedContent(raw)) {
     status.value = 'error'
-    internalError.value = '镜像地址是 http，而教师端是 https，浏览器会拦截混合内容；请让服务端提供 https 的镜像地址，或与学生端同源部署。'
+    internalError.value = '镜像地址是 http，而教师端是 https，浏览器会拦截混合内容；请让服务端提供 https 的镜像地址。'
     return
   }
   status.value = 'loading'

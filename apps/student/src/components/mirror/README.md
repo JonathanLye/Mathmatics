@@ -30,10 +30,17 @@ emits: {
 安全约定：
 
 - 只渲染通过 `isMirrorPageUrl` 校验的 `http(s)` 地址；拒绝 `javascript:`/`data:`、缺 attempt/token 的 URL。
-- `sandbox="allow-scripts allow-same-origin"`：镜像页是学生 H5 同源应用，需要脚本与同源存储/SSE；不开放 `allow-forms`/`allow-popups`/`allow-top-navigation`。只读由镜像页自身实现（04 §5.1），**不要**通过放开 sandbox 换取功能。
+- `sandbox="allow-scripts"`（常量 `MIRROR_IFRAME_SANDBOX`）：**不含 `allow-same-origin`**，不开放 `allow-forms`/`allow-popups`/`allow-top-navigation`。只读由镜像页自身实现（04 §5.1），**不要**通过放开 sandbox 换取功能。
 - `referrerpolicy="no-referrer"`：防止 token 经 Referer 泄露；允许全屏（`allow="fullscreen"` + `allowfullscreen`）。
 - **token 只出现在 iframe 的 src 查询参数里**（功能必需）；不在可见文本/错误文案/console 中出现。需要打日志时用 `sanitizeMirrorUrlForLog` / `redactMirrorToken`。
 - 教师端 https 加载 http 镜像时浏览器会按混合内容拦截：组件在渲染前用 `isMixedContent` 拦截并给出人话提示。
+
+### iframe 隔离（PR #100 评审结论：采用方案 b）
+
+- **问题**：镜像页是学生 H5 的同源页面。iframe 同源且同时拥有 `allow-scripts` + `allow-same-origin` 时，嵌入页可以直接移除自己的 sandbox 并重载，等于完全跳出沙箱（WHATWG HTML 规范与 MDN 均明确警告）；学生可控内容（文本、KaTeX、批注）里注入的脚本会以教师控制台的同源身份行动（教师会话 Cookie / 接口权限）。
+- **定案**：去掉 `allow-same-origin`，只保留 `allow-scripts`；`MirrorFrame` 的 sandbox 统一取 `MIRROR_IFRAME_SANDBOX`（`mirror.ts`），并用 `isSafeMirrorSandbox` 守卫/单测断言禁止 token 列表。
+- **数据通路约束**：镜像页**不得**由 iframe 直接打开学生端同源页面并自行读同源接口/存储；必须使用 04 §5.1 的 mirrorToken 经 B 提供的 CORS/令牌接口取数据，SSE（`event: state` / `ping`）使用同一令牌（06 §6）。在 B/A/C 定稿这组接口前，C #51 **不得接线**本组件。
+- 攻击面提示：任何后续给 sandbox 加白名单（如表单、下载）都必须先过 B/A/C 安全评审；`allow-same-origin` 永远不允许出现在镜像 iframe 上。
 
 ## `<PlaybackSlider>`
 
@@ -58,10 +65,11 @@ emits: {
 
 ## 后续接线点（C / B）
 
-1. 教师端 #51 学生详情抽屉：`const token = await POST /teacher/attempts/{id}/mirror-token`；`const src = buildMirrorUrl(studentH5Base, attemptId, token.token)`；`<MirrorFrame :src="src" :loading="loading" :error="error" @load @error />`。
-2. 打开/关闭镜像写 `t.mirror` 事件（04 §5.1 / 08 §3：payload `attemptId`, `action=open|close`）——由教师端上报，不在本组件内。
-3. 回放：事件来自 `GET /teacher/attempts/{id}/events?afterSeq=`（06 §6）；`const timeline = buildTimeline(events)`；`<PlaybackSlider v-model="at" v-model:playing="playing" :timeline="timeline" @seek="rebuild" />`；`rebuild` 调 B 侧 `packages/engine` 的 `replay(events, uptoSeq)`（08 §6）后把 `AttemptState` 灌给镜像页。
-4. 镜像实时推送：`GET /teacher/attempts/{id}/stream?token=…`，`event: state`（data=AttemptState）、`ping`；解析可用 `parseSseFrames` + `parseSseData`（帧解析已单测）。
-5. P2 实时笔迹（每秒增量笔画）不在本组件范围（04 §5.1）。
+1. **前置条件（PR #100 定案）**：B 提供 mirrorToken 签发 + 镜像页数据/SSE 的 CORS 令牌接口，A/B/C 确认方案 b 后才可接线；C #51 在此之前不得引用本组件。
+2. 教师端 #51 学生详情抽屉：`const token = await POST /teacher/attempts/{id}/mirror-token`；`const src = buildMirrorUrl(studentH5Base, attemptId, token.token)`；`<MirrorFrame :src="src" :loading="loading" :error="error" @load @error />`（镜像页内用 token 调 B 的 CORS/SSE 接口取数，不依赖同源）。
+3. 打开/关闭镜像写 `t.mirror` 事件（04 §5.1 / 08 §3：payload `attemptId`, `action=open|close`）——由教师端上报，不在本组件内。
+4. 回放：事件来自 `GET /teacher/attempts/{id}/events?afterSeq=`（06 §6）；`const timeline = buildTimeline(events)`；`<PlaybackSlider v-model="at" v-model:playing="playing" :timeline="timeline" @seek="rebuild" />`；`rebuild` 调 B 侧 `packages/engine` 的 `replay(events, uptoSeq)`（08 §6）后把 `AttemptState` 灌给镜像页。
+5. 镜像实时推送：`GET /teacher/attempts/{id}/stream?token=…`，`event: state`（data=AttemptState）、`ping`；解析可用 `parseSseFrames` + `parseSseData`（帧解析已单测）。
+6. P2 实时笔迹（每秒增量笔画）不在本组件范围（04 §5.1）。
 
-本轮不修改 contracts；需要 B 提供 mirrorToken 签发（#23/#51 相关）与 SSE/事件来源（#32/#51）。
+本轮不修改 contracts；需要 B 提供 mirrorToken 签发 + 镜像页 CORS/SSE 接口（#23/#51 相关）与事件来源（#32/#51）。**在这些接口与隔离方案 A/B/C 定稿前，C #51 不接线。**

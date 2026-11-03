@@ -12,6 +12,50 @@
  * 不要把 token 原样写进 console 或可见文本。
  */
 
+/**
+ * 镜像 iframe 的 sandbox 策略（issue #43；PR #100 评审后采用方案 b）。
+ *
+ * 只保留 `allow-scripts`，**禁止**再加 `allow-same-origin`：
+ * - 镜像页与学生 H5 同源；iframe 同源且同时拥有 allow-scripts 与 allow-same-origin 时，
+ *   嵌入页可以直接移除自己的 sandbox 属性并重载，等于完全跳出沙箱（WHATWG HTML / MDN 均明确警告），
+ *   学生可控内容里注入的脚本就能以教师控制台身份行动（教师会话 Cookie / 接口权限）。
+ * - 因此镜像页不得依赖「同源页面直接取数据」：必须用 04 §5.1 的 mirrorToken 经 CORS/令牌接口
+ *   取数据（SSE 用同一令牌）；具体接口由 B 提供，C #51 在 B/A/C 定案前不得接线本组件。
+ */
+export const MIRROR_IFRAME_SANDBOX = 'allow-scripts'
+
+/** 镜像 iframe sandbox 允许的 token（如需表单/下载等能力，必须在 B/A/C 安全评审后单独加）。 */
+export const MIRROR_ALLOWED_SANDBOX_TOKENS: readonly string[] = ['allow-scripts']
+
+/**
+ * 镜像 iframe sandbox 禁止出现的 token：
+ * `allow-same-origin` 会导致同源逃逸（见上）；其余是给镜像页扩权的高风险能力，默认不开。
+ */
+export const MIRROR_FORBIDDEN_SANDBOX_TOKENS: readonly string[] = [
+  'allow-same-origin',
+  'allow-forms',
+  'allow-popups',
+  'allow-top-navigation',
+  'allow-top-navigation-by-user-activation',
+  'allow-modals',
+  'allow-downloads',
+]
+
+/**
+ * 校验一个 sandbox 值是否满足镜像页隔离要求（纯函数，组件/测试/C 接线前都可用）：
+ * - 非空字符串、token 全部在允许列表内、且包含 allow-scripts；
+ * - 任何禁止 token（尤其 allow-same-origin）直接判不安全。
+ */
+export function isSafeMirrorSandbox(sandbox: unknown): boolean {
+  if (typeof sandbox !== 'string') return false
+  const tokens = sandbox.trim().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return false
+  if (!tokens.includes('allow-scripts')) return false
+  return tokens.every(
+    (token) => !MIRROR_FORBIDDEN_SANDBOX_TOKENS.includes(token) && MIRROR_ALLOWED_SANDBOX_TOKENS.includes(token),
+  )
+}
+
 /** 时间轴标记的颜色语义（对应 tokens.css，02 §2.2）：accent=层/页面，ok=提交，hint=提示/离开，margin=批注，muted=其它。 */
 export type MarkerTone = 'accent' | 'ok' | 'hint' | 'margin' | 'muted'
 

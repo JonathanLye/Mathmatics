@@ -4,6 +4,9 @@ import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
+  MIRROR_ALLOWED_SANDBOX_TOKENS,
+  MIRROR_FORBIDDEN_SANDBOX_TOKENS,
+  MIRROR_IFRAME_SANDBOX,
   buildMirrorUrl,
   buildTimeline,
   clamp,
@@ -11,6 +14,7 @@ import {
   isMarkerType,
   isMirrorPageUrl,
   isMixedContent,
+  isSafeMirrorSandbox,
   isValidAttemptId,
   isValidMirrorToken,
   markerLabel,
@@ -120,6 +124,34 @@ describe('isValidMirrorToken / isValidAttemptId', () => {
     expect(isValidAttemptId('a\u0000b')).toBe(false)
     expect(isValidAttemptId('x'.repeat(129))).toBe(false)
     expect(isValidAttemptId('a?b')).toBe(false)
+  })
+})
+
+describe('iframe sandbox 隔离（PR #100 评审方案 b：去掉 allow-same-origin）', () => {
+  it('MIRROR_IFRAME_SANDBOX 只含 allow-scripts，不含 allow-same-origin 或其它扩权 token', () => {
+    expect(MIRROR_IFRAME_SANDBOX).toBe('allow-scripts')
+    expect(MIRROR_IFRAME_SANDBOX.split(' ')).toEqual(['allow-scripts'])
+    expect(MIRROR_IFRAME_SANDBOX).not.toContain('allow-same-origin')
+    expect(MIRROR_ALLOWED_SANDBOX_TOKENS).toEqual(['allow-scripts'])
+  })
+
+  it('禁止 token 列表含 allow-same-origin（回归防线）', () => {
+    expect(MIRROR_FORBIDDEN_SANDBOX_TOKENS).toContain('allow-same-origin')
+    expect(MIRROR_FORBIDDEN_SANDBOX_TOKENS).toContain('allow-top-navigation')
+  })
+
+  it('isSafeMirrorSandbox：只接受 allow-scripts；allow-same-origin 及扩权 token 一律拒绝', () => {
+    expect(isSafeMirrorSandbox(MIRROR_IFRAME_SANDBOX)).toBe(true)
+    expect(isSafeMirrorSandbox('  allow-scripts  ')).toBe(true)
+    expect(isSafeMirrorSandbox('allow-scripts allow-same-origin')).toBe(false)
+    expect(isSafeMirrorSandbox('allow-same-origin')).toBe(false)
+    expect(isSafeMirrorSandbox('allow-scripts allow-forms')).toBe(false)
+    expect(isSafeMirrorSandbox('allow-scripts allow-popups')).toBe(false)
+    expect(isSafeMirrorSandbox('allow-popups')).toBe(false)
+    expect(isSafeMirrorSandbox('')).toBe(false)
+    expect(isSafeMirrorSandbox(null)).toBe(false)
+    expect(isSafeMirrorSandbox(undefined)).toBe(false)
+    expect(isSafeMirrorSandbox(42)).toBe(false)
   })
 })
 
@@ -539,15 +571,23 @@ describe('mirror 组件 SFC 编译检查（@vue/compiler-sfc）', () => {
     expect(readSfc(file)).not.toMatch(/console\./)
   })
 
-  it('MirrorFrame 带最小 sandbox 与 no-referrer（04 §5.1 安全约定）', () => {
+  it('MirrorFrame 的 sandbox 取 MIRROR_IFRAME_SANDBOX 且不含 allow-same-origin（PR #100 方案 b）', () => {
     const source = readSfc('MirrorFrame.vue')
     expect(source).toContain('no-referrer')
-    const sandboxLine = source.split('\n').find((line) => line.includes('sandbox:')) ?? ''
-    expect(sandboxLine).toContain('allow-scripts')
-    expect(sandboxLine).toContain('allow-same-origin')
-    expect(sandboxLine).not.toContain('allow-forms')
-    expect(sandboxLine).not.toContain('allow-popups')
-    expect(sandboxLine).not.toContain('allow-top-navigation')
-    expect(sandboxLine).not.toContain('allow-modals')
+    expect(source).toContain('MIRROR_IFRAME_SANDBOX')
+    // sandbox 的值必须是常量引用，不能是字面量（防止后续误加 allow-same-origin）
+    const sandboxLines = source.split('\n').filter((line) => line.includes('sandbox:'))
+    expect(sandboxLines.length).toBeGreaterThan(0)
+    for (const line of sandboxLines) {
+      expect(line).toContain('MIRROR_IFRAME_SANDBOX')
+      expect(line).not.toContain('allow-same-origin')
+      expect(line).not.toContain('allow-forms')
+      expect(line).not.toContain('allow-popups')
+      expect(line).not.toContain('allow-top-navigation')
+      expect(line).not.toContain('allow-modals')
+    }
+    // 全文件不允许把 allow-same-origin 写进任何 sandbox 赋值
+    expect(source).not.toMatch(/sandbox\s*:\s*['"][^'"]*allow-same-origin/)
+    expect(isSafeMirrorSandbox(MIRROR_IFRAME_SANDBOX)).toBe(true)
   })
 })
