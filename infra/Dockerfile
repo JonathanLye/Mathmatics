@@ -12,4 +12,6 @@ RUN pnpm install --frozen-lockfile --prod
 
 ENV NODE_ENV=production
 EXPOSE 3000
+# 运行时不需要写 /app；用 node 镜像自带的非 root 用户。
+USER node
 CMD ["node", "apps/server/src/server.ts"]

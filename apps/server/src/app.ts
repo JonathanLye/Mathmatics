@@ -17,11 +17,16 @@ export interface BuildAppOptions {
   db?: Db;
 }
 
+// 只信任最近的一跳（hop 0 = 与服务直接相连的 Caddy）；更远的 X-Forwarded-For 条目一律不信。
+export const trustNearestProxy = (_address: string, hop: number): boolean => hop < 1;
+
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
   const app = Fastify({
     logger: options.logger === false ? false : { level: config.logLevel },
-    trustProxy: config.env === 'production',
+    // 生产只经过 Caddy 一跳（infra/Caddyfile），所以只信任最近的一跳（hop 0）。不用 true：true 会信任任意长度的 X-Forwarded-For，
+    // 一旦端口被直接暴露或前面再加一层代理，客户端就能伪造 IP 绕过限流。
+    trustProxy: config.env === 'production' ? trustNearestProxy : false,
   });
 
   registerErrorHandler(app);

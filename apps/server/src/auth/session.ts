@@ -42,6 +42,12 @@ export async function createSession(db: Queryable, input: CreateSessionInput): P
   return { id, expiresAt };
 }
 
+// 限流键：已登录请求按会话 Cookie 计，没有 Cookie 才退回 IP。校园网出口共用一个 IP，按 IP 计会让同班同学互相挤占额度。
+// Cookie 值未验签：伪造的值只会得到 401，绕过限流没有收益。
+export function bySession(request: FastifyRequest): string {
+  return request.cookies[SESSION_COOKIE] ?? request.ip;
+}
+
 export function setSessionCookie(reply: FastifyReply, sessionId: string, expiresAt: Date): void {
   reply.setCookie(SESSION_COOKIE, sessionId, {
     path: '/',
