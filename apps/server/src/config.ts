@@ -1,3 +1,6 @@
+// 配置加载（05 §8）。生产必须提供真实密钥：SESSION_SECRET / PII_KEY / STUDENT_NO_PEPPER。
+// 下面的 DEV_* 是开发/测试用的写死密钥，只允许本机回环使用，**禁止用于部署**；
+// NODE_ENV 未设（默认 development）又监听非回环地址时启动即失败。
 import { fileURLToPath } from 'node:url';
 
 import { loadModelRegistry, type ModelRegistry } from './ai/registry.ts';

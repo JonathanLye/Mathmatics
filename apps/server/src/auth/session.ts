@@ -51,19 +51,30 @@ export function bySession(request: FastifyRequest): string {
   return unsigned.valid && UUID_PATTERN.test(unsigned.value) ? unsigned.value : request.ip;
 }
 
-export function setSessionCookie(reply: FastifyReply, sessionId: string, expiresAt: Date): void {
+// 生产/测试强制 Secure；开发环境（http://内网 IP 演示）由调用方放开（#67-1 / #58 评审 P2-2）。
+export function setSessionCookie(
+  reply: FastifyReply,
+  sessionId: string,
+  expiresAt: Date,
+  options: { secure?: boolean } = {},
+): void {
   reply.setCookie(SESSION_COOKIE, sessionId, {
     path: '/',
     httpOnly: true,
-    secure: true,
+    secure: options.secure ?? true,
     sameSite: 'lax',
     signed: true,
     expires: expiresAt,
   });
 }
 
-export function clearSessionCookie(reply: FastifyReply): void {
-  reply.clearCookie(SESSION_COOKIE, { path: '/', httpOnly: true, secure: true, sameSite: 'lax' });
+export function clearSessionCookie(reply: FastifyReply, options: { secure?: boolean } = {}): void {
+  reply.clearCookie(SESSION_COOKIE, {
+    path: '/',
+    httpOnly: true,
+    secure: options.secure ?? true,
+    sameSite: 'lax',
+  });
 }
 
 export async function revokeSession(db: Queryable, sessionId: string): Promise<void> {
