@@ -126,6 +126,17 @@ async function main() {
   await page.locator('tbody tr').first().click();
   await page.getByText('学生作答详情').waitFor({ timeout: 10000 });
   await shot('03-student-detail-1280');
+  // 引擎状态级回放（#143）：打开回放并断言 engine 卡片
+  await page.getByRole('button', { name: '回放' }).click();
+  await page.getByText('回放（引擎状态级）').waitFor({ timeout: 15000 });
+  await page.getByText('已提交行').first().waitFor({ timeout: 15000 });
+  const replayText = await page.locator('body').innerText();
+  assert(!replayText.includes('题目包加载失败'), '引擎回放回退到事件级（题目包加载失败）');
+  assert(replayText.includes('engine replay'), '回放弹窗缺少引擎状态级说明');
+  assert(replayText.includes('已提交行'), '回放弹窗缺少 engine 卡片');
+  await shot('03b-replay-engine-1280');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
   await page.keyboard.press('Escape');
   await page.getByText('指标', { exact: true }).click();
   await page.getByText('完成率').waitFor({ timeout: 10000 });
