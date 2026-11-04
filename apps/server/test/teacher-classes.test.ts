@@ -77,7 +77,7 @@ async function createClass(cookie: string, name = '数分 1 班'): Promise<{ cla
   expect(body.inviteCode).toMatch(INVITE_PATTERN);
   expect(body.students).toBe(0);
   expect(body.claimed).toBe(0);
-  expect(body.settings).toMatchObject({ photoEnabled: true, revealBudget: 2, testMaxSwitches: 3 });
+  expect(body.settings).toMatchObject({ photoEnabled: true, lessonGenerated: false, revealBudget: 2, testMaxSwitches: 3 });
   return { classId: body.classId as string, inviteCode: body.inviteCode as string };
 }
 

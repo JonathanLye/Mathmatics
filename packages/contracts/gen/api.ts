@@ -1362,12 +1362,26 @@ export interface components {
             note?: components["schemas"]["Note"];
             state: components["schemas"]["AttemptState"];
         };
+        /** @description 审核屏读取的题目包视图：结构同 problem-package.schema.json，但 secret 不含 referenceProofs（单独存放，读它须记审计）。 */
+        ProblemPackageView: {
+            /** @constant */
+            schemaVersion: "1.0";
+            id: string;
+            version: number;
+            /** @enum {string} */
+            kind?: "main" | "transfer";
+            public: components["schemas"]["PublicPart"];
+            /** @description SecretPart 去掉 referenceProofs；教师/审核角色可见，学生接口不得返回 */
+            secret: Record<string, never>;
+            review: components["schemas"]["Review"];
+            provenance?: components["schemas"]["Provenance"];
+        };
         ClassSettings: {
             /** @default true */
             photoEnabled: boolean;
             /**
-             * @description 第 1–2 层是否允许按学生原话生成补充讲解
-             * @default true
+             * @description 第 1–2 层是否允许按学生原话生成补充讲解；P0 默认关（fail-closed，09 §2）
+             * @default false
              */
             lessonGenerated: boolean;
             /** @default 2 */
@@ -4006,6 +4020,100 @@ export interface components {
              */
             skipRule: "none" | "self" | "pretest" | "history";
         };
+        PublicPart: {
+            title: string;
+            stem: components["schemas"]["MathText"];
+            source?: {
+                book?: string;
+                /** @enum {unknown} */
+                volume?: "上" | "下";
+                chapter?: number;
+                section?: string;
+                /** @enum {unknown} */
+                itemType?: "example" | "exam" | "exercise" | "authored";
+                itemNo?: string;
+                pages?: number[];
+                /** @description 考研真题出处，如 北京大学 2003 */
+                examSource?: string;
+            };
+            /** @description 显示用，如 第二章 数列极限 */
+            chapter: string;
+            tags?: string[];
+            difficulty: number;
+            /**
+             * @description 必做 / 选练 / 测试卷 / 备用
+             * @enum {unknown}
+             */
+            role: "required" | "optional" | "test" | "spare";
+            /** @description 第 1 层引用的概念 ID（见 concept.schema.json） */
+            concepts?: components["schemas"]["Slug"][];
+            layers: {
+                L1: components["schemas"]["LayerCfg"];
+                L2: components["schemas"]["LayerCfg"];
+                L3: components["schemas"]["LayerCfg"];
+                L4: components["schemas"]["LayerCfg"];
+                L5: components["schemas"]["LayerCfg"];
+                L6: components["schemas"]["LayerCfg"];
+            };
+            /** @description 第 1 层配置；L1 启用时必填（引擎加载时校验） */
+            def?: {
+                task: components["schemas"]["MathText"];
+                conceptId: components["schemas"]["Slug"];
+            };
+            /** @description 第 2 层配置；L2 启用时必填（引擎加载时校验） */
+            frame?: {
+                task: components["schemas"]["MathText"];
+                /** @description 通用骨架模板，属于形式部分，不计透露量 */
+                template: components["schemas"]["MathText"];
+                /** @description 证明骨架微课（概念库里的 frame-* 条目） */
+                lessonId?: components["schemas"]["Slug"];
+            };
+            /** @default 3 */
+            selfcheckCount: number;
+            transferProblemId?: components["schemas"]["Slug"];
+            askChips?: string[];
+            /** @description 关键步骤数，学生可见（进度显示 已自己写出 x / keyCount） */
+            keyCount: number;
+            budget: {
+                /** @description 每题透露量上限，默认 2；迁移题默认 1 */
+                reveal: number;
+                /** @default 20 */
+                dwellSec: number;
+                /** @default 30 */
+                rapidWindowSec: number;
+                /** @default 3 */
+                rapidCount: number;
+                /** @default 60 */
+                rapidLockSec: number;
+                /** @default 180000 */
+                stuckMs: number;
+            };
+        };
+        Review: {
+            /** @enum {unknown} */
+            status: "draft" | "pending" | "returned" | "published" | "retired";
+            reviewer?: string;
+            /** Format: date-time */
+            reviewedAt?: string;
+            comments?: string;
+            autoChecks?: {
+                schema?: boolean;
+                katex?: boolean;
+                leakExhaustive?: boolean;
+                patternSelfTest?: boolean;
+                /** @enum {unknown} */
+                lean?: "ok" | "sorry" | "fail" | "skipped";
+            };
+        };
+        Provenance: {
+            importJobId?: string;
+            /** @description 起草模型 ID 列表 */
+            draftedBy?: string[];
+            arbiter?: string;
+            promptVersion?: string;
+            /** @description 如 08-重构原型/index.html PKG.epsN */
+            portedFrom?: string;
+        };
         /** @description 作用在 canon(text) 上的 JS 正则（u 标志） */
         CanonPattern: string;
         DefComponent: {
@@ -4108,75 +4216,6 @@ export interface components {
             map?: string[][];
             code?: string;
         };
-        PublicPart: {
-            title: string;
-            stem: components["schemas"]["MathText"];
-            source?: {
-                book?: string;
-                /** @enum {unknown} */
-                volume?: "上" | "下";
-                chapter?: number;
-                section?: string;
-                /** @enum {unknown} */
-                itemType?: "example" | "exam" | "exercise" | "authored";
-                itemNo?: string;
-                pages?: number[];
-                /** @description 考研真题出处，如 北京大学 2003 */
-                examSource?: string;
-            };
-            /** @description 显示用，如 第二章 数列极限 */
-            chapter: string;
-            tags?: string[];
-            difficulty: number;
-            /**
-             * @description 必做 / 选练 / 测试卷 / 备用
-             * @enum {unknown}
-             */
-            role: "required" | "optional" | "test" | "spare";
-            /** @description 第 1 层引用的概念 ID（见 concept.schema.json） */
-            concepts?: components["schemas"]["Slug"][];
-            layers: {
-                L1: components["schemas"]["LayerCfg"];
-                L2: components["schemas"]["LayerCfg"];
-                L3: components["schemas"]["LayerCfg"];
-                L4: components["schemas"]["LayerCfg"];
-                L5: components["schemas"]["LayerCfg"];
-                L6: components["schemas"]["LayerCfg"];
-            };
-            /** @description 第 1 层配置；L1 启用时必填（引擎加载时校验） */
-            def?: {
-                task: components["schemas"]["MathText"];
-                conceptId: components["schemas"]["Slug"];
-            };
-            /** @description 第 2 层配置；L2 启用时必填（引擎加载时校验） */
-            frame?: {
-                task: components["schemas"]["MathText"];
-                /** @description 通用骨架模板，属于形式部分，不计透露量 */
-                template: components["schemas"]["MathText"];
-                /** @description 证明骨架微课（概念库里的 frame-* 条目） */
-                lessonId?: components["schemas"]["Slug"];
-            };
-            /** @default 3 */
-            selfcheckCount: number;
-            transferProblemId?: components["schemas"]["Slug"];
-            askChips?: string[];
-            /** @description 关键步骤数，学生可见（进度显示 已自己写出 x / keyCount） */
-            keyCount: number;
-            budget: {
-                /** @description 每题透露量上限，默认 2；迁移题默认 1 */
-                reveal: number;
-                /** @default 20 */
-                dwellSec: number;
-                /** @default 30 */
-                rapidWindowSec: number;
-                /** @default 3 */
-                rapidCount: number;
-                /** @default 60 */
-                rapidLockSec: number;
-                /** @default 180000 */
-                stuckMs: number;
-            };
-        };
         SecretPart: {
             def?: {
                 components: components["schemas"]["DefComponent"][];
@@ -4197,31 +4236,6 @@ export interface components {
             summaryPoints: components["schemas"]["SummaryPoint"][];
             referenceProofs: components["schemas"]["ReferenceProof"][];
             lean?: components["schemas"]["LeanInfo"];
-        };
-        Review: {
-            /** @enum {unknown} */
-            status: "draft" | "pending" | "returned" | "published" | "retired";
-            reviewer?: string;
-            /** Format: date-time */
-            reviewedAt?: string;
-            comments?: string;
-            autoChecks?: {
-                schema?: boolean;
-                katex?: boolean;
-                leakExhaustive?: boolean;
-                patternSelfTest?: boolean;
-                /** @enum {unknown} */
-                lean?: "ok" | "sorry" | "fail" | "skipped";
-            };
-        };
-        Provenance: {
-            importJobId?: string;
-            /** @description 起草模型 ID 列表 */
-            draftedBy?: string[];
-            arbiter?: string;
-            promptVersion?: string;
-            /** @description 如 08-重构原型/index.html PKG.epsN */
-            portedFrom?: string;
         };
         /**
          * 题目包 ProblemPackage v1
@@ -5960,6 +5974,8 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     getProblemVersion: {
@@ -5974,16 +5990,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 题目包 */
+            /** @description 题目包（不含 referenceProofs：参考证明单独存放在 vault.reference_proofs，pg_app 不可读） */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["problem-package.schema"];
+                    "application/json": components["schemas"]["ProblemPackageView"];
                 };
             };
             401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     reviewProblem: {

@@ -13,7 +13,7 @@ const INVITE_LENGTH = 6;
 // openapi ClassSettings 的五个键；只存白名单，避免把客户端塞进来的任意 JSON 写进 classes.settings。
 const SETTINGS_DEFAULTS = {
   photoEnabled: true,
-  lessonGenerated: true,
+  lessonGenerated: false, // 09 §2：P0 默认关（fail-closed）
   revealBudget: 2,
   integrityPractice: 'log_and_notice',
   testMaxSwitches: 3,
