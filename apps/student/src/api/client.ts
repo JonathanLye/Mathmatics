@@ -999,18 +999,23 @@ export async function requestHelp(
   }
 
   if (intent === 'check_line') {
+    // #151 / #141：与真服务端一致——行批注只在 HelpResult.note 里返回，不写 state.notes。
+    // （B 落库 state.notes/annotation 事件前，A 端用本地 overlay 渲染到对应行，刷新后依赖 B 落库。）
+    // lineId 参数供多行场景/e2e 指定行；缺省按 B 的约定批注最新一行。
+    const lines = next.steps?.lines ?? []
+    const targetLineId =
+      lineId && lines.some((line) => line.lineId === lineId) ? lineId : lines[lines.length - 1]?.lineId ?? null
     const note: Note = {
       noteId: mockUuid(),
       kind: 'annotation',
       who: '批注',
       text: '你这一行的依据写的是哪条？试着把「由什么得到」写清楚。',
-      lineId: next.steps?.lines?.[next.steps.lines.length - 1]?.lineId ?? null,
+      lineId: targetLineId,
       level: null,
       cost: null,
       lessonConceptId: null,
       at: new Date().toISOString(),
     }
-    next.notes = [...next.notes, note]
     return { routed: 'check_line', note, state: next }
   }
   // concept：mock 给一张概念卡片（正式实现由 B 的 /help 返回；#26 微课再展开）

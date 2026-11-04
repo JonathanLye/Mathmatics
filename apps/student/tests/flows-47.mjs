@@ -198,6 +198,15 @@ async function main() {
     await addTransferLine(page, '当 0<|x-1|<δ 时，', '由 |x-1| 的定义，x 进入去心邻域')
     await waitTestId(page, 'transfer-line-1')
     check('加入第 1 行：行内批注 + 来源徽标', (await countTestId(page, 'transfer-note-1')) === 1 && (await bodyText(page)).includes('键盘'))
+
+    // #153：迁移题批注卡片与 L3 一致（署名/时间/关闭），关闭只影响本页展示（不回写服务端）
+    check(
+      '迁移题批注卡片可关闭（#153）',
+      (await countTestId(page, 'transfer-note-time-1')) === 1 && (await countTestId(page, 'transfer-note-dismiss-1')) === 1,
+    )
+    await tap(page, 'transfer-note-dismiss-1', '关闭迁移题批注')
+    await waitGoneTestId(page, 'transfer-note-1')
+    check('关闭迁移题批注后本页不再显示该条', (await countTestId(page, 'transfer-note-1')) === 0)
     await addTransferLine(page, '|f(x)-3|=2|x-1|<2δ=ε', '放大后取 δ=ε/2')
     await waitTestId(page, 'transfer-line-2')
     await waitEnabled(page, 'transfer-finish')

@@ -14,6 +14,7 @@
     "build:mock": "uni build --mode mock",
     "e2e:flows": "node tests/flows.mjs",
     "e2e:flows:help": "node tests/flows-help.mjs",
+    "e2e:flows:note": "node tests/flows-note.mjs",
     "e2e:flows:l3": "node tests/flows-l3.mjs",
     "e2e:flows:recog": "node tests/flows-recog.mjs",
     "e2e:flows:26": "node tests/flows-26.mjs",

@@ -52,7 +52,7 @@ import { installExamMockHook } from '@/mocks/examSim'
 import { useSession } from '@/stores/session'
 import { initIntegrity } from '@/integrity/sdk'
 import { getDraftStore } from '@/storage/drafts'
-import { nextLineNoOf } from '@/components/layers/proofLines'
+import { filterDismissedNotes, formatNoteTime, mergeNotes, nextLineNoOf, parseNote } from '@/components/layers/proofLines'
 import MathText from '@ui-math/MathText.vue'
 import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
@@ -108,6 +108,16 @@ const helpOpen = ref(false)
 const hintPreview = ref<HintPreview | null>(null)
 /** /help 返回的 note 卡片（H0/H1 提示、概念解释、施压拒绝、off_topic 都在抽屉里，01 §4） */
 const helpNote = ref<Note | null>(null)
+/**
+ * #151（#141 P2-1 A 侧）：check_line 的行批注本地渲染。
+ *
+ * B 的 #141 目前只在 HelpResult 里返回 res.note、不写 state.notes（落库/事件由 B 侧跟进）。
+ * 前端把本次会话拿到的行批注放这里，和 state.notes（刷新/重连后由服务端下发）按 noteId 去重合并后渲染；
+ * 关闭只影响本页展示，不回写服务端（不伪造持久化）。B 落库后刷新即可由 state.notes 恢复。
+ */
+const sessionLineNotes = ref<Note[]>([])
+/** 学生手动关闭的批注 id（只影响本页展示；刷新后以服务端 state 为准）。 */
+const dismissedNoteIds = ref<Set<string>>(new Set())
 /** 最近一次求助请求：预览卡「重新获取预览」/ dwell 归零时按原意图重放 */
 const lastHelp = ref<{ intent: HelpIntent; text: string }>({ intent: 'concept', text: '' })
 const toast = ref('')
@@ -170,8 +180,12 @@ const offlineRetrying = ref(false)
 const currentLayer = computed(() => state.value.currentLayer)
 const lines = computed(() => state.value.steps?.lines ?? [])
 const notes = computed(() => state.value.notes ?? [])
+/** 实际渲染的批注：state.notes（服务端）+ 本次会话 check_line 返回的 res.note，按 noteId 去重并去掉已关闭的。 */
+const visibleNotes = computed(() =>
+  filterDismissedNotes(mergeNotes(notes.value, sessionLineNotes.value), dismissedNoteIds.value),
+)
 const asideNotes = computed(() =>
-  notes.value
+  visibleNotes.value
     .filter((n) => n.kind === 'annotation' || n.kind === 'hint' || n.kind === 'concept' || n.kind === 'refusal' || n.kind === 'student')
     .slice(-8)
     .reverse(),
@@ -532,6 +546,7 @@ onUnmounted(cleanupExam)
 
 function onSwitchMock(k: MockKey) {
   setMock(k)
+  resetLineNoteState()
   hintPreview.value = null
   helpNote.value = null
   lastHelp.value = { intent: 'concept', text: '' }
@@ -740,24 +755,31 @@ async function runHelp(intent: HelpIntent, text = '') {
     return
   }
 
+  const routed = res.routed
+  const note = res.note ?? null
+
+  // #151 / #141：行检查的批注显示位置是行内（01 §4），不依赖抽屉是否还开着。
+  // 先把 res.note 记到本次会话的本地 overlay（与 state.notes 去重合并后挂到对应 lineId 下方）；
+  // 即使请求途中抽屉被关掉，批注也不会像从前的 check_line 分支那样只 toast 不落位。
+  if (note && routed === 'check_line') {
+    const lineNote = parseNote(note)
+    if (lineNote) sessionLineNotes.value = mergeNotes(sessionLineNotes.value, [lineNote])
+    hintPreview.value = null
+    helpNote.value = null
+    helpOpen.value = false
+    show('批注已放到这一行下方')
+    return
+  }
+
   // 请求在途时抽屉已被关掉（正常关闭在 busy 时已被 HelpDrawer 拦住，这里是兜底）：
-  // 只更新 state，不设置 note，避免重开抽屉时冒出陈旧卡片（PR #91 审计 4）。
+  // 只更新 state，不设置抽屉 note，避免重开抽屉时冒出陈旧卡片（PR #91 审计 4）。
   if (!helpOpen.value) {
     helpNote.value = null
     return
   }
 
-  const routed = res.routed
-  const note = res.note ?? null
   if (note) {
     hintPreview.value = null
-    if (routed === 'check_line') {
-      // 行检查的显示位置是行内（01 §4）：抽屉收起，批注由 state.notes 渲染到该行下方
-      helpNote.value = null
-      helpOpen.value = false
-      show('批注已放到这一行下方')
-      return
-    }
     // H0/H1 提示、概念解释、施压拒绝、off_topic：01 §4 规定显示在抽屉里
     helpNote.value = note
     return
@@ -817,6 +839,24 @@ function handleSoftLanding(action: string) {
   hintPreview.value = null
   show('已选「' + softLandingLabel(action) + '」；微课/下一题入口在 #26 接入')
 }
+
+/** #151：关闭一条批注（只影响本页展示，不回写服务端；刷新后以服务端 state 为准）。 */
+function handleDismissNote(noteId: string): void {
+  if (!noteId) return
+  dismissedNoteIds.value = new Set([...dismissedNoteIds.value, noteId])
+}
+
+/** 切换 mock/作答时清掉本地行批注（避免把上一份状态的行批注带到新状态上）。 */
+function resetLineNoteState(): void {
+  sessionLineNotes.value = []
+  dismissedNoteIds.value = new Set()
+}
+
+// 作答切换（真实模式重连/换题）时，本地 overlay 只对当前作答有效。
+watch(
+  () => state.value.attemptId,
+  () => resetLineNoteState(),
+)
 
 function handleInk() {
   editorOpen.value = true
@@ -1021,13 +1061,14 @@ function backHome() {
             v-else-if="isTransferAttempt"
             :problem="state.problem"
             :lines="lines"
-            :notes="notes"
+            :notes="visibleNotes"
             :can-finish="Boolean(state.steps?.canFinish)"
             :busy="busy"
             @add-line="handleAddTransferLine"
             @edit-line="handleEditTransferLine"
             @delete-line="handleDeleteTransferLine"
             @finish="handleFinishTransfer"
+            @dismiss-note="handleDismissNote"
           />
 
           <Layer1Form
@@ -1067,7 +1108,13 @@ function backHome() {
                 <button class="pg-practice__btn pg-small pg-practice__draftbtn--clear" @tap="recogDraft = null">清除草稿</button>
               </view>
             </view>
-            <ProofLineList :lines="lines" :notes="state.notes" :busy="busy" @write-next="editorOpen = true" />
+            <ProofLineList
+              :lines="lines"
+              :notes="visibleNotes"
+              :busy="busy"
+              @write-next="editorOpen = true"
+              @dismiss-note="handleDismissNote"
+            />
             <view class="pg-practice__finishrow">
               <button
                 class="pg-practice__btn pg-practice__btn--primary"
@@ -1109,8 +1156,30 @@ function backHome() {
 
       <view v-if="mode !== 'mobile'" class="pg-practice__aside">
         <text class="pg-practice__asidetitle">页边</text>
-        <view v-for="n in asideNotes" :key="n.noteId" class="pg-practice__note pg-sheet" :class="'pg-practice__note--' + n.kind">
-          <text class="pg-practice__notewho pg-small">{{ n.who }}</text>
+        <view
+          v-for="n in asideNotes"
+          :key="n.noteId"
+          class="pg-practice__note pg-sheet"
+          :class="'pg-practice__note--' + n.kind"
+          role="note"
+          :aria-label="n.who + '：' + n.text"
+        >
+          <view class="pg-practice__notehead">
+            <text class="pg-practice__notewho pg-small">{{ n.who }}</text>
+            <text
+              v-if="formatNoteTime(n.at)"
+              class="pg-practice__notetime pg-small"
+              data-testid="aside-note-time"
+            >{{ formatNoteTime(n.at) }}</text>
+            <button
+              class="pg-practice__notedismiss"
+              role="button"
+              aria-label="关闭这条批注"
+              data-testid="aside-note-dismiss"
+              :data-note-id="n.noteId"
+              @tap.stop="handleDismissNote(n.noteId)"
+            >×</button>
+          </view>
           <text class="pg-practice__notetext pg-small">{{ n.text }}</text>
         </view>
         <text v-if="asideNotes.length === 0" class="pg-practice__empty pg-small">还没有批注。写完一行，红笔会出现在这一行旁边。</text>
@@ -1398,7 +1467,25 @@ function backHome() {
 .pg-practice__note--annotation { border-left-color: var(--margin); background: var(--margin-soft); }
 .pg-practice__note--hint { border-left-color: var(--hint); background: var(--hint-soft); }
 .pg-practice__note--concept { border-left-color: var(--accent); background: var(--accent-soft); }
+.pg-practice__notehead { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 2px; }
 .pg-practice__notewho { display: block; color: var(--ink-2); }
+.pg-practice__notetime { color: var(--ink-2); font-family: var(--font-mono); font-size: var(--fs-mono); }
+/* 关闭批注（#151）：触控目标 ≥44px，不额外撑高页边卡片。 */
+.pg-practice__notedismiss {
+  flex: 0 0 auto;
+  margin-left: auto;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: calc(-1 * var(--sp-2));
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 18px;
+  line-height: 1;
+}
+.pg-practice__notedismiss::after { border: 0; }
 .pg-practice__notetext { display: block; margin-top: 2px; color: var(--ink); }
 .pg-practice__empty { color: var(--ink-2); }
 .pg-practice__asidehelp { margin-top: var(--sp-3); }

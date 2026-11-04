@@ -16,7 +16,7 @@
 import { computed } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import { useViewport } from '@/composables/useViewport'
-import { groupNotesByLine, notesForLine, selectTailNotes } from './proofLines'
+import { formatNoteTime, groupNotesByLine, notesForLine, selectTailNotes } from './proofLines'
 import type { InputProvenance, Note, ProofLine } from '@/types/attempt'
 
 const props = withDefaults(
@@ -29,7 +29,11 @@ const props = withDefaults(
   }>(),
   { lines: () => [], notes: () => [], busy: false, readonly: false },
 )
-const emit = defineEmits<{ (e: 'write-next'): void }>()
+const emit = defineEmits<{
+  (e: 'write-next'): void
+  /** 学生手动关闭某条批注（#151）：只影响本页展示，由父级决定是否记入 dismissed 集合。 */
+  (e: 'dismiss-note', noteId: string): void
+}>()
 
 const { mode } = useViewport()
 /** 平板/桌面（≥600px）：行内只留标记，正文在页边（02 §3.2）。 */
@@ -66,6 +70,17 @@ function onWriteNext() {
   if (props.busy) return
   emit('write-next')
 }
+
+/** 批注卡片的无障碍说明（#151）：署名 + 时间 + 正文，交给读屏。 */
+function noteAria(note: Note): string {
+  const time = formatNoteTime(note.at)
+  const meta = time ? note.who + '，' + time : note.who
+  return meta + '：' + note.text
+}
+
+function onDismissNote(note: Note): void {
+  emit('dismiss-note', note.noteId)
+}
 </script>
 
 <template>
@@ -99,11 +114,29 @@ function onWriteNext() {
             v-for="note in notesForLine(notesByLine, line.lineId)"
             :key="note.noteId"
             :class="noteClass(note)"
+            role="note"
+            :aria-label="noteAria(note)"
             data-testid="line-note"
             :data-note-kind="note.kind"
             :data-note-line-id="line.lineId"
           >
-            <text class="pg-lines__notewho pg-small">{{ note.who }}</text>
+            <view class="pg-lines__notehead">
+              <text class="pg-lines__notewho pg-small">{{ note.who }}</text>
+              <text
+                v-if="formatNoteTime(note.at)"
+                class="pg-lines__notetime pg-small"
+                data-testid="line-note-time"
+              >{{ formatNoteTime(note.at) }}</text>
+              <button
+                v-if="!props.readonly"
+                class="pg-lines__notedismiss"
+                role="button"
+                aria-label="关闭这条批注"
+                data-testid="line-note-dismiss"
+                :data-note-id="note.noteId"
+                @tap.stop="onDismissNote(note)"
+              >×</button>
+            </view>
             <MathText class="pg-lines__notetext" :text="note.text" block />
           </view>
         </template>
@@ -126,10 +159,26 @@ function onWriteNext() {
         v-for="note in tailNotes"
         :key="note.noteId"
         :class="noteClass(note)"
+        role="note"
+        :aria-label="noteAria(note)"
         data-testid="line-note"
         :data-note-kind="note.kind"
       >
-        <text class="pg-lines__notewho pg-small">{{ note.who }}</text>
+        <view class="pg-lines__notehead">
+          <text class="pg-lines__notewho pg-small">{{ note.who }}</text>
+          <text v-if="formatNoteTime(note.at)" class="pg-lines__notetime pg-small" data-testid="line-note-time">
+            {{ formatNoteTime(note.at) }}
+          </text>
+          <button
+            v-if="!props.readonly"
+            class="pg-lines__notedismiss"
+            role="button"
+            aria-label="关闭这条批注"
+            data-testid="line-note-dismiss"
+            :data-note-id="note.noteId"
+            @tap.stop="onDismissNote(note)"
+          >×</button>
+        </view>
         <MathText class="pg-lines__notetext" :text="note.text" block />
       </view>
     </view>
@@ -240,10 +289,41 @@ function onWriteNext() {
   animation: pg-note-in var(--dur-fast) ease-out;
 }
 
-.pg-lines__notewho {
-  display: block;
+.pg-lines__notehead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   margin-bottom: 2px;
+}
+
+.pg-lines__notewho {
   color: var(--ink-2);
+}
+
+.pg-lines__notetime {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+/* 关闭批注（#151）：触控目标 ≥44px；不额外撑高卡片（用负外边距抵消）。 */
+.pg-lines__notedismiss {
+  flex: 0 0 auto;
+  margin-left: auto;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: calc(-1 * var(--sp-2));
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.pg-lines__notedismiss::after {
+  border: 0;
 }
 
 .pg-lines__notetext {
