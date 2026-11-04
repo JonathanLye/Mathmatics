@@ -87,8 +87,17 @@ export async function ingestBatch(db: Db, actor: Actor, events: readonly unknown
   }
 
   return db.tx(async (tx) => {
-    // 2. 作答归属：学生只能上报自己的作答；教师与管理员只检查作答存在（班级范围的检查属于教师端的后续工作）。
+    // 2. 作答归属：学生只能上报自己的作答；教师/管理员只能上报自己有权查看的班级的作答
+    //    （P1-8：否则教师可以给任意作答上报 t.view、推进它的 last_event_seq）。不满足一律按不存在拒绝，不泄露存在性。
     const attempts = await loadAttempts(tx, candidates);
+    const classScope = new Map<string, boolean>();
+    const checkClass = async (classId: string): Promise<boolean> => {
+      const cached = classScope.get(classId);
+      if (cached !== undefined) return cached;
+      const visible = await classVisibleTo(tx, actor, classId);
+      classScope.set(classId, visible);
+      return visible;
+    };
     const owned: Candidate[] = [];
     for (const c of candidates) {
       if (c.attemptId === null) {
@@ -97,6 +106,10 @@ export async function ingestBatch(db: Db, actor: Actor, events: readonly unknown
       }
       const attempt = attempts.get(c.attemptId);
       if (!attempt || (actor.role === 'student' && attempt.user_id !== actor.userId)) {
+        rejected.push({ id: c.id, reason: 'attempt_not_found' });
+        continue;
+      }
+      if (actor.role !== 'student' && !(await checkClass(attempt.class_id))) {
         rejected.push({ id: c.id, reason: 'attempt_not_found' });
         continue;
       }
@@ -154,6 +167,25 @@ export async function ingestBatch(db: Db, actor: Actor, events: readonly unknown
 
     return { accepted: fresh.length, duplicates, rejected };
   });
+}
+
+// 教师：自己拥有的班或班内教师；管理员：任意未归档班（与 services/teacher/auth.ts 的 assertClassTeacher 同口径，
+// 但这里在事件入库事务内用最小查询，避免 events 模块反向依赖教师服务）。
+async function classVisibleTo(q: Queryable, actor: Actor, classId: string): Promise<boolean> {
+  if (actor.role === 'admin') {
+    const row = await q.query(`select 1 from app.classes where id = $1 and archived_at is null`, [classId]);
+    return row.rows.length > 0;
+  }
+  if (actor.role !== 'teacher') return false;
+  const row = await q.query(
+    `select 1 from app.classes c
+      where c.id = $1 and c.archived_at is null
+        and (c.owner_id = $2
+          or exists (select 1 from app.class_members m
+                      where m.class_id = c.id and m.user_id = $2 and m.role = 'teacher'))`,
+    [classId, actor.userId],
+  );
+  return row.rows.length > 0;
 }
 
 async function loadAttempts(q: Queryable, candidates: readonly Candidate[]): Promise<Map<string, AttemptContext>> {

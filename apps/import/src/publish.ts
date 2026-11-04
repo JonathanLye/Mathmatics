@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { ProblemPackage } from '@proof-gym/engine';
 import { Client } from 'pg';
 
-import { checkPackage, type CheckIssue, type CheckOptions } from './checks.ts';
+import { checkCategories, type CheckIssue, type CheckOptions } from './checks.ts';
 
 export interface PublishResult {
   ok: boolean;
@@ -32,7 +32,7 @@ export async function publishPackage(
   options: { reviewer: string; minutes: number; databaseUrl?: string } & CheckOptions,
 ): Promise<PublishResult> {
   const pkg = JSON.parse(readFileSync(file, 'utf8')) as ProblemPackage;
-  const checks = checkPackage(pkg, { concepts: options.concepts });
+  const checks = checkCategories(pkg, { concepts: options.concepts });
   const databaseUrl = options.databaseUrl?.trim();
   const mode: PublishResult['mode'] = databaseUrl === undefined || databaseUrl === '' ? 'dry-run' : 'db';
   if (!checks.ok) return { ok: false, mode, issues: checks.issues };
@@ -85,7 +85,8 @@ export async function publishPackage(
 
     if (already === undefined) {
       const provenance = (pkg as { provenance?: unknown }).provenance ?? {};
-      const autoChecks = { passed: true, checkedAt: new Date().toISOString(), issues: [] };
+      // 与审核屏 #128 的 approve 门禁一致：四项布尔（schema/katex/leakExhaustive/patternSelfTest）。
+      const autoChecks = checks.categories;
       await client.query(
         `insert into content.problem_versions
            (problem_id, version, public, review_status, auto_checks, provenance, reviewed_by, reviewed_at, published_at)

@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { api, ApiError } from '../api/client.ts';
 import type { StoredEvent } from '../api/types.ts';
 import { buildFrames, buildMarkers, frameAt, type ReplayFrame } from '../utils/replay.ts';
+import { buildEngineFrames, engineStateAt, type EngineFrame } from '../utils/replayEngine.ts';
+import type { ProblemPackage } from '@proof-gym/engine';
 
 const props = defineProps<{ visible: boolean; attemptId: string | null }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
@@ -10,6 +12,8 @@ const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 const frames = ref<ReplayFrame[]>([]);
 const loading = ref(false);
 const error = ref('');
+const engineError = ref('');
+const engineFrames = ref<EngineFrame[]>([]);
 const seq = ref(0);
 const playing = ref(false);
 const speed = ref(4);
@@ -17,6 +21,7 @@ let timer: number | undefined;
 
 const markers = computed(() => (frames.value.length > 0 ? buildMarkers(frames.value) : []));
 const current = computed(() => frameAt(frames.value, seq.value));
+const engineState = computed(() => (engineFrames.value.length > 0 ? engineStateAt(engineFrames.value, seq.value) : null));
 const lastSeq = computed(() => frames.value.at(-1)?.seq ?? 0);
 const maxSeq = computed(() => Math.max(lastSeq.value, 1));
 
@@ -48,6 +53,20 @@ async function load(): Promise<void> {
     }
     frames.value = buildFrames(all);
     seq.value = lastSeq.value;
+
+    // 引擎状态级回放：题目包（教师权限、读审计）+ 同一批事件 → engine replay
+    try {
+      const detail = await api.get<{ problem: { problemId: string; version: number } }>(
+        `/api/v1/teacher/attempts/${attemptId}`,
+      );
+      const pkg = await api.get<ProblemPackage>(
+        `/api/v1/teacher/problems/${detail.problem.problemId}/versions/${detail.problem.version}`,
+      );
+      engineFrames.value = buildEngineFrames(all, pkg);
+    } catch (caught) {
+      engineFrames.value = [];
+      engineError.value = caught instanceof ApiError ? caught.message : '题目包加载失败，仅事件级回放';
+    }
   } catch (caught) {
     frames.value = [];
     error.value = messageOf(caught);
@@ -101,16 +120,17 @@ const TONE_LABEL: Record<string, string> = {
 </script>
 
 <template>
-  <t-dialog :visible="visible" header="回放（事件级）" width="860px" :footer="false" @close="close">
+  <t-dialog :visible="visible" header="回放（引擎状态级）" width="860px" :footer="false" @close="close">
     <div v-if="error" style="padding: 8px 0">
       <t-alert theme="error" :message="error" />
     </div>
     <t-loading v-else-if="loading" />
     <div v-else>
       <div class="replay-cards">
-        <div class="replay-card"><b>{{ current?.layer ?? '—' }}</b><span>层</span></div>
-        <div class="replay-card"><b>{{ current?.lines ?? 0 }}</b><span>已提交行</span></div>
-        <div class="replay-card"><b>{{ current?.keys ?? 0 }}</b><span>关键步骤</span></div>
+        <div class="replay-card"><b>{{ engineState ? `L${engineState.layer}` : (current?.layer ?? '—') }}</b><span>层</span></div>
+        <div class="replay-card"><b>{{ engineState?.lines ?? current?.lines ?? 0 }}</b><span>已提交行</span></div>
+        <div class="replay-card"><b>{{ engineState ? engineState.hint.matched.size : (current?.keys ?? 0) }}</b><span>关键步骤</span></div>
+        <div class="replay-card"><b>{{ engineState?.hint.reveal ?? 0 }}</b><span>透露量</span></div>
         <div class="replay-card"><b>{{ current?.hints ?? 0 }}</b><span>提示</span></div>
         <div class="replay-card"><b>{{ current?.notes ?? 0 }}</b><span>批注</span></div>
         <div class="replay-card"><b>{{ Math.round((current?.awayMs ?? 0) / 1000) }}s</b><span>离开时长</span></div>
@@ -121,6 +141,7 @@ const TONE_LABEL: Record<string, string> = {
         <t-select v-model="speed" :options="speedOptions" size="small" style="width: 92px" />
         <span class="page-sub">事件 {{ seq }} / {{ lastSeq }}</span>
         <span v-if="current?.away" class="replay-away">离开中</span>
+        <span v-if="engineState?.done" class="page-sub">已完成</span>
         <span v-if="current" class="page-sub">{{ new Date(current.at).toLocaleTimeString('zh-CN') }} · {{ current.label }}</span>
       </div>
 
@@ -141,7 +162,9 @@ const TONE_LABEL: Record<string, string> = {
       </div>
 
       <div class="page-sub" style="margin-top: 10px">
-        事件级回放：层/提交/提示/批注/离开可还原；引擎 AttemptState 级重放需要 `/teacher/problems` 或服务端回放接口（契约缺口，待 B 补）。
+        引擎状态级回放（engine replay）：层/已提交行/关键步骤/透露量/完成状态来自 `packages/engine` 重放；
+        提示/批注/离开来自事件（标题/时间线仍为事件级）。题目包读取会记 `read_problem` 审计。
+        <template v-if="engineError"> 题目包加载失败（{{ engineError }}），当前仅事件级回放。</template>
       </div>
     </div>
   </t-dialog>
@@ -150,7 +173,7 @@ const TONE_LABEL: Record<string, string> = {
 <style scoped>
 .replay-cards {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }

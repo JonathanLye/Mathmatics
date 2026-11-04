@@ -105,13 +105,14 @@ describe('教师密码登录', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('开启了 TOTP 的账号：拒绝登录（第二因素未实现，不能忽略）', async () => {
+  it('开启了 TOTP 但密文无法解密：拒绝登录（不能绕过第二因素）', async () => {
     await db.query(`update app.teacher_accounts set totp_secret_enc = $1`, [Buffer.from('placeholder')]);
 
     const res = await login({ username: USERNAME, password: PASSWORD });
 
+    // #60 实现后，TOTP 流程见 teacher-totp.test.ts；这里只验证损坏密文不会放行。
     expect(res.statusCode).toBe(401);
-    expect(res.json().error.message).toContain('两步验证');
+    expect(res.json().error.code).toBe('UNAUTHORIZED');
   });
 
   it('缺少密码字段：422 VALIDATION_FAILED', async () => {

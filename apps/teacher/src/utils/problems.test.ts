@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { autoChecksSummary, statusLabel, statusTheme } from './problems.ts';
+import { autoChecksSummary, canReviewStatus, statusLabel, statusTheme } from './problems.ts';
 
 describe('题库/审核展示（04 §8）', () => {
   it('审核状态中文与主题', () => {
@@ -9,6 +9,15 @@ describe('题库/审核展示（04 §8）', () => {
     expect(statusLabel('published')).toBe('已发布');
     expect(statusTheme('published')).toBe('success');
     expect(statusTheme('returned')).toBe('warning');
+  });
+
+  it('只有 draft/pending/returned 可写审核结论', () => {
+    expect(canReviewStatus('draft')).toBe(true);
+    expect(canReviewStatus('pending')).toBe(true);
+    expect(canReviewStatus('returned')).toBe(true);
+    expect(canReviewStatus('published')).toBe(false);
+    expect(canReviewStatus('retired')).toBe(false);
+    expect(canReviewStatus(undefined)).toBe(false);
   });
 
   it('自动校验摘要：只统计布尔项，失败项列出', () => {
