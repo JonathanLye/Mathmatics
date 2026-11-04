@@ -123,6 +123,8 @@ async function main() {
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(6500);
   await shot('02-live-1280');
+  // #48 C 侧：看板 SSE 应已连接（页面底部提示）
+  await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
   await page.getByText('学生作答详情').waitFor({ timeout: 10000 });
   await shot('03-student-detail-1280');

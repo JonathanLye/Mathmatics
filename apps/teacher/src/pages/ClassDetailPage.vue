@@ -30,6 +30,8 @@ const live = ref<LiveSnapshot | null>(null);
 const liveError = ref('');
 const liveLoading = ref(false);
 let pollTimer: number | undefined;
+let stream: EventSource | undefined;
+const streamConnected = ref(false);
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -105,6 +107,59 @@ async function loadClassInfo(): Promise<void> {
   } catch (caught) {
     pageError.value = messageOf(caught);
   }
+}
+
+// #48 C 侧：看板 SSE（06 §6 row/flag/ping）；失败时保留 5s 轮询兜底。
+function mergeLiveRow(row: LiveRow): void {
+  const current = live.value;
+  if (current === null) return;
+  const rows = [...current.rows];
+  const index = rows.findIndex((item) => item.anonCode === row.anonCode);
+  if (index >= 0) rows[index] = row;
+  else rows.push(row);
+  const summary = {
+    ...current.summary,
+    online: rows.filter((item) => item.status === 'active').length,
+    started: rows.filter((item) => item.attemptId !== null).length,
+    completed: rows.filter((item) => item.status === 'completed').length,
+    stuck: rows.filter((item) => (item.stuckSec ?? 0) >= 180).length,
+    flagged: rows.filter((item) => (item.flags?.length ?? 0) > 0).length,
+  };
+  live.value = { ...current, rows, summary };
+}
+
+function connectStream(): void {
+  if (typeof EventSource === 'undefined' || classId.value === '') return;
+  stream?.close();
+  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream`);
+  stream.onopen = () => {
+    streamConnected.value = true;
+  };
+  stream.addEventListener('row', (event) => {
+    try {
+      mergeLiveRow(JSON.parse((event as MessageEvent).data) as LiveRow);
+    } catch {
+      // 忽略坏帧，轮询会补齐
+    }
+  });
+  stream.addEventListener('flag', (event) => {
+    try {
+      const flag = JSON.parse((event as MessageEvent).data) as { type: string; anonCode: string };
+      MessagePlugin.warning(`${flag.anonCode}：${FLAG_LABEL[flag.type] ?? flag.type}标记`);
+    } catch {
+      // ignore
+    }
+  });
+  stream.onerror = () => {
+    streamConnected.value = false;
+    // EventSource 会自动重连；同时 5s 轮询仍在兜底
+  };
+}
+
+function disconnectStream(): void {
+  stream?.close();
+  stream = undefined;
+  streamConnected.value = false;
 }
 
 async function loadLive(): Promise<void> {
@@ -223,6 +278,7 @@ function flagLabel(flag: string): string {
 onMounted(async () => {
   await loadClassInfo();
   await loadLive();
+  connectStream();
   startPolling();
 });
 
@@ -233,6 +289,7 @@ function onVisibility(): void {
 document.addEventListener('visibilitychange', onVisibility);
 
 onBeforeUnmount(() => {
+  disconnectStream();
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibility);
 });
@@ -291,7 +348,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </t-table>
-        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。</div>
+        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。{{ streamConnected ? ' SSE 已连接。' : '' }}</div>
       </t-tab-panel>
 
       <t-tab-panel value="roster" label="名单">
