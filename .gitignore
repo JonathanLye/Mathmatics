@@ -33,3 +33,6 @@ infra/backups/
 
 # 题库导入本地产物（教辅 PDF / 页面图 / OCR 全文不入库，10 §7）
 imports/
+
+# 教师端 E2E 产物（截图/results，不入库）
+apps/teacher/tests/.artifacts/
