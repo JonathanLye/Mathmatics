@@ -26,6 +26,11 @@ export interface IntegritySdk {
   flush(reason?: FlushReason): Promise<void>
   /** 页面隐藏/卸载时立即发（keepalive fetch 优先，sendBeacon 兜底）。 */
   flushBeacon(): Promise<void>
+  /**
+   * #46 严格测验：作答中拦截复制/剪切/粘贴/右键菜单并上报 blocked。
+   * 页面按「mode=test 且已开始且未完成」切换；真实判定仍在服务端。
+   */
+  setClipboardBlocked(blocked: boolean): void
   /** 练习模式第一次切回来时提醒一次；返回取消订阅函数。 */
   onFirstReturn(callback: (awayMs: number) => void): () => void
   size(): number
@@ -46,6 +51,7 @@ function createNoopSdk(): IntegritySdk {
     setContext() {},
     async flush() {},
     async flushBeacon() {},
+    setClipboardBlocked() {},
     onFirstReturn() {
       return () => {}
     },
@@ -73,6 +79,8 @@ export function initIntegrity(options: IntegritySdkOptions = {}): IntegritySdk {
   const storage = options.storage ?? resolveStorage()
   const queue = new EventQueue({ transport, store: storage })
   const firstReturnListeners = new Set<(awayMs: number) => void>()
+  /** #46 严格测验：采集器每次事件时读取这个开关（false=练习/说明页，不拦截）。 */
+  let clipboardBlocked = false
 
   function report(type: IntegrityEventType, payload: Record<string, unknown> = {}): void {
     queue.enqueue(reporter(type, payload))
@@ -102,6 +110,7 @@ export function initIntegrity(options: IntegritySdkOptions = {}): IntegritySdk {
     onNetworkChange: (online) => {
       queue.setOnline(online)
     },
+    shouldBlockClipboard: () => clipboardBlocked,
   })
 
   // 初始网络状态也记一条（教师看板可区分「开始时就离线」与「中途断网」）。
@@ -120,6 +129,9 @@ export function initIntegrity(options: IntegritySdkOptions = {}): IntegritySdk {
     },
     flushBeacon() {
       return queue.flushBeacon()
+    },
+    setClipboardBlocked(blocked: boolean) {
+      clipboardBlocked = blocked === true
     },
     onFirstReturn(callback) {
       firstReturnListeners.add(callback)

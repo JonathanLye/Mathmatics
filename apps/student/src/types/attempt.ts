@@ -202,6 +202,27 @@ export interface IntegrityView {
 }
 
 /**
+ * 测验模式扩展（#46 A 侧）。
+ *
+ * ⚠️ 仅 mock/前端扩展：openapi.yaml 的 AttemptState 目前**没有**限时截止/求助配置字段
+ * （B 侧服务端只下发 integrity.mode / integrity.locked；warnings/maxWarnings 在契约里是可选但未填）。
+ * 真实接口接入前，A 侧只读渲染下面字段；若服务端未下发，倒计时显示「—」，规则文案用默认值。
+ * 需要 B 补的 state 字段（见 PR 汇报）：
+ * - exam.deadlineAt：本次测验截止时间（ISO）；或 assignment.closeAt（服务端计时为准）
+ * - exam.allowedHelp：'off' | 'concept'（04 §7「求助：关（可只开概念）」）
+ * - integrity.warnings / maxWarnings：切出累计次数与锁定阈值（契约已有，服务端未填）
+ * - integrity.watermark / notice：水印文字与提醒（契约已有，服务端未填）
+ */
+export interface ExamView {
+  /** 截止时间（ISO；服务端计时为准，前端只格式化显示）。 */
+  deadlineAt?: string | null
+  /** 测验模式允许的求助：off=完全关闭；concept=只留概念解释。 */
+  allowedHelp?: 'off' | 'concept'
+  /** 水印用的匿名码/文字（也可用 integrity.watermark；缺省用 Me.anonCode）。 */
+  watermark?: string | null
+}
+
+/**
  * 提示预览。字段全部可选：契约（openapi.yaml / packages/contracts/gen/api.ts）
  * 没有 required；服务端 blocked preview 只返回 { allowed:false, reason, waitSec }，
  * 没有 level/cost（06 §3.4「不能领取时 preview.allowed=false」）。
@@ -256,6 +277,8 @@ export interface AttemptState {
   notes: Note[]
   help: HelpState
   integrity: IntegrityView
+  /** 测验模式扩展（仅 mock/待 B 补契约；练习模式不会有）。 */
+  exam?: ExamView
   completion?: CompletionView
   serverTime: string
 }
