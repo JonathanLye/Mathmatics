@@ -27,11 +27,11 @@ async function logout(): Promise<void> {
 <template>
   <div>
     <div class="page-head"><h1>设置</h1></div>
-    <div class="page-sub">账号信息与默认策略说明（04 §1）。默认策略目前按班级设置，在「布置」时随作业提交；管理员审批与 TOTP 待服务端接口。</div>
+    <div class="page-sub">账号信息与默认策略说明（04 §1）。默认策略目前按班级设置，在「布置」时随作业提交。</div>
 
     <h4 style="margin-top: 18px">账号</h4>
     <t-table
-      :data="me ? [{ key: '角色', value: me.role }, { key: '匿名码', value: me.anonCode }, { key: '显示名', value: me.displayName ?? '—' }] : []"
+      :data="me ? [{ key: '角色', value: me.role === 'admin' ? '管理员' : me.role === 'teacher' ? '教师' : me.role }, { key: '匿名码', value: me.anonCode }, { key: '显示名', value: me.displayName ?? '—' }] : []"
       :columns="[{ colKey: 'key', title: '项' }, { colKey: 'value', title: '值' }]"
       row-key="key"
       size="small"
