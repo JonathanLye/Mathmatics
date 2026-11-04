@@ -3,13 +3,14 @@ import { readFileSync } from 'node:fs';
 import type { ProblemPackage } from '@proof-gym/engine';
 
 import { createDeepSeekDraftProvider } from './providers/deepseek.ts';
+import { createQwenDraftProvider } from './providers/qwen-draft.ts';
 import type { DraftProvider } from './providers/types.ts';
 import type { ImportItem } from './split.ts';
 
 export interface DraftPair {
   a: ProblemPackage;
   b: ProblemPackage;
-  provider: 'fixture' | 'deepseek';
+  provider: 'fixture' | 'deepseek' | 'multi';
 }
 
 export type FixturePackages = Map<string, ProblemPackage>;
@@ -46,6 +47,7 @@ export interface TwoDraftsOptions {
   fixtureA?: string;
   fixtureB?: string;
   draftProvider?: DraftProvider;
+  draftProviderB?: DraftProvider;
 }
 
 export async function twoDrafts(item: ImportItem, options: TwoDraftsOptions): Promise<DraftPair> {
@@ -54,12 +56,27 @@ export async function twoDrafts(item: ImportItem, options: TwoDraftsOptions): Pr
     const b = pick(loadFixturePackages(options.fixtureB), item.itemId);
     return { a, b, provider: 'fixture' };
   }
-  const provider =
+
+  // S7 双模型：A=DeepSeek，B=Qwen（有 DASHSCOPE_API_KEY 时）；否则退回同一模型双温度并在报告注明。
+  const deepseek =
     options.draftProvider ??
     createDeepSeekDraftProvider({
       apiKey: process.env.DEEPSEEK_API_KEY ?? '',
       model: process.env.DEEPSEEK_MODEL,
     });
-  const pair = await provider.twoDrafts({ itemId: item.itemId, body: item.body });
+  const qwen =
+    options.draftProviderB ??
+    (process.env.DASHSCOPE_API_KEY ? createQwenDraftProvider({ apiKey: process.env.DASHSCOPE_API_KEY }) : null);
+
+  if (qwen !== null) {
+    const input = { itemId: item.itemId, body: item.body };
+    const [a, b] = await Promise.all([
+      deepseek.draftOnce ? deepseek.draftOnce(input) : deepseek.twoDrafts(input).then((pair) => pair.a),
+      qwen.draftOnce ? qwen.draftOnce(input) : qwen.twoDrafts(input).then((pair) => pair.a),
+    ]);
+    return { a, b, provider: 'multi' };
+  }
+
+  const pair = await deepseek.twoDrafts({ itemId: item.itemId, body: item.body });
   return { ...pair, provider: 'deepseek' };
 }

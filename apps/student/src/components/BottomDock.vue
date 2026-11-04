@@ -6,7 +6,14 @@ const emit = defineEmits<{
   (e: 'photo'): void
   (e: 'help'): void
 }>()
-defineProps<{ inkActive?: boolean; helpBusy?: boolean }>()
+defineProps<{
+  inkActive?: boolean
+  helpBusy?: boolean
+  /** #46 测验模式：拍照关闭（disabled，点击不会触发识别）。 */
+  photoDisabled?: boolean
+  /** #46 测验模式：求助入口关闭（布置配置 allowedHelp=off 时）。 */
+  helpDisabled?: boolean
+}>()
 </script>
 
 <template>
@@ -19,11 +26,23 @@ defineProps<{ inkActive?: boolean; helpBusy?: boolean }>()
       <text class="pg-dock__icon">⌨</text>
       <text class="pg-dock__label">键盘</text>
     </button>
-    <button class="pg-dock__btn pg-dock__btn--photo" @tap="emit('photo')">
+    <button
+      class="pg-dock__btn pg-dock__btn--photo"
+      :class="{ 'pg-dock__btn--disabled': photoDisabled }"
+      data-testid="dock-photo"
+      :disabled="photoDisabled"
+      @tap="emit('photo')"
+    >
       <text class="pg-dock__icon">📷</text>
       <text class="pg-dock__label">拍照</text>
     </button>
-    <button class="pg-dock__btn pg-dock__btn--help" :disabled="helpBusy" @tap="emit('help')">
+    <button
+      class="pg-dock__btn pg-dock__btn--help"
+      :class="{ 'pg-dock__btn--disabled': helpBusy || helpDisabled }"
+      data-testid="dock-help"
+      :disabled="helpBusy || helpDisabled"
+      @tap="emit('help')"
+    >
       <text class="pg-dock__icon">?</text>
       <text class="pg-dock__label">求助</text>
     </button>
@@ -62,6 +81,7 @@ defineProps<{ inkActive?: boolean; helpBusy?: boolean }>()
 }
 .pg-dock__btn--active { color: var(--accent); background: var(--accent-soft); }
 .pg-dock__btn--help { color: var(--accent); }
+.pg-dock__btn--disabled { opacity: 0.4; }
 .pg-dock__icon { font-size: 18px; line-height: 1; }
 .pg-dock__label { font-size: 12px; line-height: 1.2; }
 </style>

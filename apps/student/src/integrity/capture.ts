@@ -21,6 +21,11 @@ export interface IntegrityCaptureOptions {
   /** 练习模式：本次会话第一次切回来时轻提醒一次（11 §5.1）。 */
   onFirstReturn?: (awayMs: number) => void
   onNetworkChange?: (online: boolean) => void
+  /**
+   * #46 严格测验：答题中拦截复制/剪切/粘贴/右键菜单（preventDefault）并上报 blocked。
+   * 由 SDK 的运行时开关提供（页面按 mode=test + 已开始 + 未完成切换），采集器每次事件时读取。
+   */
+  shouldBlockClipboard?: () => boolean
 }
 
 /** 选中文字长度：优先选区，其次 input/textarea 的 selection。 */
@@ -79,6 +84,20 @@ export function attachIntegrityCapture(options: IntegrityCaptureOptions): () => 
   let blurAt: number | null = null
   let firstReturnSeen = false
 
+  /** 当前是否处于「测验作答中」的剪贴板拦截状态；回调异常时不拦截（不阻塞学生）。 */
+  function clipboardBlocked(): boolean {
+    try {
+      return options.shouldBlockClipboard?.() === true
+    } catch {
+      return false
+    }
+  }
+
+  function prevent(event: unknown): void {
+    const target = event as { preventDefault?: () => void } | undefined
+    target?.preventDefault?.()
+  }
+
   function markHidden(): void {
     if (hiddenAt !== null) return
     hiddenAt = now()
@@ -119,15 +138,44 @@ export function attachIntegrityCapture(options: IntegrityCaptureOptions): () => 
     options.report('integ.fullscreen', { state: doc.fullscreenElement ? 'enter' : 'exit' })
   }
 
-  const onCopy = (): void => options.report('integ.copy', { chars: selectionChars(doc) })
-  const onCut = (): void => options.report('integ.cut', { chars: selectionChars(doc) })
+  const onCopy = (event?: Event): void => {
+    const chars = selectionChars(doc)
+    if (clipboardBlocked()) {
+      prevent(event)
+      // p_integ_copy 的契约字段只有 chars；blocked 由 additionalProperties 允许，测验模式用来标记拦截。
+      options.report('integ.copy', { chars, blocked: true })
+      return
+    }
+    options.report('integ.copy', { chars })
+  }
+  const onCut = (event?: Event): void => {
+    const chars = selectionChars(doc)
+    if (clipboardBlocked()) {
+      prevent(event)
+      options.report('integ.cut', { chars, blocked: true })
+      return
+    }
+    options.report('integ.cut', { chars })
+  }
 
   const onPaste = (event: ClipboardEvent): void => {
     const chars = event.clipboardData?.getData('text')?.length ?? 0
-    options.report('paste', { target: targetOf(doc), chars, blocked: false })
+    const blocked = clipboardBlocked()
+    if (blocked) prevent(event)
+    // p_paste 契约里有 blocked 字段（11 §3：禁止复制粘贴：可拦截并记录）。
+    options.report('paste', { target: targetOf(doc), chars, blocked })
   }
 
-  const onContextMenu = (): void => options.report('integ.contextmenu', {})
+  const onContextMenu = (event?: Event): void => {
+    const blocked = clipboardBlocked()
+    if (blocked) prevent(event)
+    options.report('integ.contextmenu', blocked ? { blocked: true } : {})
+  }
+
+  /** 测验模式：题面/证明行禁止选中（配合页面 user-select:none，双击/拖选也不出选区）。 */
+  const onSelectStart = (event?: Event): void => {
+    if (clipboardBlocked()) prevent(event)
+  }
 
   const onKeyDown = (event: KeyboardEvent): void => {
     const combo = shortcutCombo(event)
@@ -153,6 +201,8 @@ export function attachIntegrityCapture(options: IntegrityCaptureOptions): () => 
   doc.addEventListener('cut', onCut)
   doc.addEventListener('paste', onPaste as EventListener)
   doc.addEventListener('contextmenu', onContextMenu)
+  doc.addEventListener('selectstart', onSelectStart)
+  doc.addEventListener('selectstart', onSelectStart)
   win.addEventListener('keydown', onKeyDown)
   win.addEventListener('online', onOnline)
   win.addEventListener('offline', onOffline)
@@ -170,6 +220,8 @@ export function attachIntegrityCapture(options: IntegrityCaptureOptions): () => 
     doc.removeEventListener('cut', onCut)
     doc.removeEventListener('paste', onPaste as EventListener)
     doc.removeEventListener('contextmenu', onContextMenu)
+    doc.removeEventListener('selectstart', onSelectStart)
+    doc.removeEventListener('selectstart', onSelectStart)
     win.removeEventListener('keydown', onKeyDown)
     win.removeEventListener('online', onOnline)
     win.removeEventListener('offline', onOffline)

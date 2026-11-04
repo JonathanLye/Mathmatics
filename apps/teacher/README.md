@@ -49,3 +49,15 @@ pnpm --filter @proof-gym/teacher build       # vite build（产物在 dist/，�
 - `/live`、`/teacher/attempts/{id}`、`/events`、`/flags`、`/nudge`、`/metrics` 属 **#51**；接口未上线时页面显示“待上线”，不伪造数据。
 - 指标页、标记处理、解锁、导出页属 **#35**。
 - 契约缺 `GET roster` / `GET /teacher/assignments` 列表 / `GET /teacher/classes/{id}`，见 #50 PR 的缺口清单；补齐前列表数据只能用创建返回值。
+
+## E2E（教师端）
+
+```bash
+# 前置：API server（127.0.0.1:3000）+ 教师 dev（127.0.0.1:5174，/api 代理）
+PG_TEACHER_USER=<测试教师> PG_TEACHER_PASSWORD=<密码> pnpm --filter @proof-gym/teacher e2e:teacher
+```
+
+覆盖：登录 → 建班/名单/布置（浏览器 Cookie 复用）→ 学生作答（独立 request context）→ 看板 →
+学生详情 → 指标 → 导出 → 题库/审核 → 390/768/1280 → 深色；断言无 pageerror、关键数据一致。
+截图与 results.json 在 `tests/.artifacts/e2e-teacher/`（gitignore，不入库）。
+`PG_CHROMIUM` 可指定 Chromium/headless-shell 可执行文件路径。
