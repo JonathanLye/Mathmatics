@@ -23,6 +23,7 @@ import {
 } from '@/api/client'
 import type { AssignmentCardView } from '@/types/attempt'
 import OfflineBar from '@/components/OfflineBar.vue'
+import WechatHint from '@/components/WechatHint.vue'
 import { initIntegrity } from '@/integrity/sdk'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { maskStudentNo, useSession } from '@/stores/session'
@@ -147,6 +148,8 @@ function addToNotebook(card: AssignmentCardView): void {
   <view class="pg-page pg-home" data-testid="home-page">
     <!-- #27 离线提示条：正常文档流，不遮 44px 操作区 -->
     <OfflineBar @retry="handleOfflineRetry" />
+    <!-- #37 微信内打开提示：非阻塞横条，非微信 UA 不渲染 -->
+    <WechatHint />
     <view class="pg-home__head">
       <text class="pg-home__hello" data-testid="home-greeting">{{ greeting }}</text>
       <text v-if="home?.week" class="pg-home__stat pg-small" data-testid="home-week">
