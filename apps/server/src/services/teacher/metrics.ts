@@ -98,7 +98,7 @@ export async function buildClassMetrics(
   const eventStats = attemptIds.length
     ? (
         await db.query<{ attempt_id: string; hidden: number }>(
-          `select attempt_id, count(*) filter (where type = 'integ.visibility' and payload->>'state' = 'hidden')::int as hidden
+          `select attempt_id, count(*) filter (where type = 'integ.visibility' and payload->>'state' = 'visible' and coalesce((payload->>'awayMs')::bigint, 0) >= 2000)::int as hidden
              from ev.events where attempt_id = any($1::uuid[]) group by attempt_id`,
           [attemptIds],
         )
