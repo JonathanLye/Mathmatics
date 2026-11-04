@@ -11,6 +11,10 @@ import MathText from '@ui-math/MathText.vue'
 // #98 已提供统一的图解组件（N(ε) 只由 diagrams/seqBand.ts 计算）；#26 微课 + #47 图解接线共用。
 import SeqBandDiagram from '@/components/diagrams/SeqBandDiagram.vue'
 import AbsTriangleDiagram from '@/components/diagrams/AbsTriangleDiagram.vue'
+// #47 剩余图解模板（03 §7）：partial-sums / func-band / monotone-steps；表达式由受限解析器求值。
+import PartialSumsDiagram from '@/components/diagrams/PartialSumsDiagram.vue'
+import FuncBandDiagram from '@/components/diagrams/FuncBandDiagram.vue'
+import MonotoneStepsDiagram from '@/components/diagrams/MonotoneStepsDiagram.vue'
 import type { LessonStep, LessonView } from '@/types/attempt'
 
 const props = withDefaults(defineProps<{ open?: boolean; lesson?: LessonView | null; busy?: boolean }>(), {
@@ -144,6 +148,12 @@ function close() {
           <view v-else-if="step.visual.type === 'abs-triangle' && absTriangle" data-testid="abs-triangle">
             <AbsTriangleDiagram :a="absTriangle.a" :b="absTriangle.b" />
           </view>
+          <PartialSumsDiagram v-else-if="step.visual.type === 'partial-sums'" :spec="step.visual" />
+          <FuncBandDiagram v-else-if="step.visual.type === 'func-band'" :spec="step.visual" />
+          <MonotoneStepsDiagram v-else-if="step.visual.type === 'monotone-steps'" :spec="step.visual" />
+          <text v-else class="pg-micro__visualunknown pg-small" data-testid="micro-visual-unknown">
+            图解类型「{{ step.visual.type }}」暂不支持展示，先看上面的文字说明。
+          </text>
         </view>
 
         <view v-if="step.check" class="pg-micro__check" data-testid="micro-check">
@@ -252,6 +262,7 @@ function close() {
 .pg-micro__kind { color: var(--ink-2); }
 .pg-micro__text { font-family: var(--font-serif); font-size: 16px; line-height: 1.65; color: var(--ink); }
 .pg-micro__visual { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pg-micro__visualunknown { color: var(--ink-2); }
 .pg-micro__check { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px dashed var(--rule); }
 .pg-micro__options { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-micro__option {
