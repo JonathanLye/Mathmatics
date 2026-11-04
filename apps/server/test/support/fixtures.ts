@@ -52,3 +52,22 @@ export function cookieFrom(setCookie: string | string[] | number | undefined): s
   const raw = Array.isArray(setCookie) ? setCookie[0] : setCookie;
   return String(raw ?? '').split(';')[0] ?? '';
 }
+
+export type TestAgeBand = 'lt14' | '14to17' | 'ge18';
+
+// #64：学生写接口要求年龄分档非空且 ≥14；测试默认 ge18（真实流程由学生在首页自选）。
+export async function setStudentAgeBand(
+  app: Awaited<ReturnType<typeof buildTestApp>>,
+  cookie: string,
+  band: TestAgeBand = 'ge18',
+): Promise<void> {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/student/age-band',
+    headers: { cookie, ...WRITE_HEADERS },
+    payload: { ageBand: band },
+  });
+  // 409 AGE_BAND_LOCKED = 该学生已分档（同一学生重复登录的测试会走到），视为成功。
+  if (res.statusCode === 200 || res.statusCode === 409) return;
+  throw new Error(`设置年龄分档失败：${res.statusCode} ${res.body}`);
+}

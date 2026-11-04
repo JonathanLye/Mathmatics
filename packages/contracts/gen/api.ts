@@ -24,6 +24,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/student/age-band": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 学生自选年龄段（13 §4；未分档的学生在开始练习前必须选择）
+         * @description ≥18 / 14–17 / <14 三档，记录到 `app.student_profiles.age_band`。**只能设置一次**：
+         *     已记录时返回 409 `AGE_BAND_LOCKED`，防止 <14 学生通过重新提交自我解锁（13 §4 的"不开通"是硬约束）；
+         *     需要修改请联系教师（教师端改档为后续工作）。
+         *     `<14` 记录后仍返回 200 + Me（ageBand=lt14），但学生写接口（作答/求助等）返回 403 `AGE_RESTRICTED`，
+         *     `POST /consents` 与 `POST /events/batch` 同样拒绝。
+         *     14–17 的 `GET /consents` 会附加「建议告知监护人」段（key=guardianNotice，非必选、不签署）。
+         *     名单导入暂不支持年龄段（后续补）；未带时由本接口让学生自选。
+         */
+        post: operations["setStudentAgeBand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/teacher/login": {
         parameters: {
             query?: never;
@@ -1030,7 +1056,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL";
+                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "AGE_BAND_REQUIRED" | "AGE_RESTRICTED" | "AGE_BAND_LOCKED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL";
                 /** @description 可直接展示给用户的中文 */
                 message: string;
                 /** @description 如 { waitSec, softLanding: [...], state } */
@@ -1056,6 +1082,11 @@ export interface components {
                 name?: string;
             }[];
             consentRequired: boolean;
+            /**
+             * @description 年龄分档（13 §4）；学生必返。null=尚未选择，需先调 POST /auth/student/age-band；lt14 不开通（写接口 403 AGE_RESTRICTED）
+             * @enum {string|null}
+             */
+            ageBand?: "lt14" | "14to17" | "ge18" | null;
             /** @description 功能开关：photo, lessonGenerated, mirror, testMode … */
             features?: {
                 [key: string]: boolean;
@@ -1077,7 +1108,7 @@ export interface components {
             version: string;
             sections: {
                 /** @enum {string} */
-                key: "service" | "crossBorderHosting" | "crossBorderModel" | "monitoring" | "research";
+                key: "service" | "crossBorderHosting" | "crossBorderModel" | "monitoring" | "research" | "guardianNotice";
                 title: string;
                 body: string;
                 required: boolean;
@@ -4576,6 +4607,37 @@ export interface operations {
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             429: components["responses"]["Error"];
+        };
+    };
+    setStudentAgeBand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    ageBand: "lt14" | "14to17" | "ge18";
+                };
+            };
+        };
+        responses: {
+            /** @description 已记录，返回最新 Me */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     teacherLogin: {

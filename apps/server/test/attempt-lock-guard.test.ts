@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
 
-import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
+import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, setStudentAgeBand, type Fixture } from './support/fixtures.ts';
 
 // 测验模式锁定（11 §5.2）：锁定后，每一条写接口都必须返回 409 ATTEMPT_LOCKED。
 // 断言的是精确的 409 与错误码，不接受 422：请求体不合法时会先于守卫失败，那样的"通过"没有意义。
@@ -58,6 +58,7 @@ afterEach(async () => {
 async function lockedAttempt(): Promise<{ cookie: string; id: string }> {
   const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
   const cookie = cookieFrom(login.headers['set-cookie']);
+  await setStudentAgeBand(app, cookie);
   await app.inject({
     method: 'POST',
     url: '/api/v1/consents',

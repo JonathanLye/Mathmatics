@@ -1,9 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { maskIp, sha256Hex } from '../auth/crypto.ts';
+import { getAgeBand } from '../auth/age-band.ts';
 import {
   CONSENT_SECTIONS,
   CONSENT_VERSION,
+  GUARDIAN_NOTICE_SECTION,
   latestSignedConsent,
   missingRequiredConsent,
   recordConsent,
@@ -23,9 +25,12 @@ interface ConsentBody {
 export const consentRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, contract }) => {
   app.get('/consents', async (request) => {
     const auth = await requireAuth(db, request);
+    // 13 §4：14–17 岁的同意书多一段「建议告知监护人」（非必选、不签署）。
+    const ageBand = auth.role === 'student' ? await getAgeBand(db, auth.userId) : null;
+    const sections = ageBand === '14to17' ? [...CONSENT_SECTIONS, GUARDIAN_NOTICE_SECTION] : CONSENT_SECTIONS;
     const doc = {
       version: CONSENT_VERSION,
-      sections: CONSENT_SECTIONS,
+      sections,
       signed: await latestSignedConsent(db, auth.userId),
     };
     contract.validate('ConsentDoc', doc);
@@ -35,6 +40,10 @@ export const consentRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/consents', async (request) => {
     const auth = await requireAuth(db, request);
     if (auth.role !== 'student') throw new AppError('FORBIDDEN', 403, '只有学生需要签署知情同意书');
+    // 13 §4：先分档再签同意书（14–17 的文本多一段；<14 不产生同意书与任何签署记录）。
+    const ageBand = await getAgeBand(db, auth.userId);
+    if (ageBand === null) throw new AppError('AGE_BAND_REQUIRED', 409, '请先选择年龄段');
+    if (ageBand === 'lt14') throw new AppError('AGE_RESTRICTED', 403, '本服务暂未向 14 岁以下学生开放');
 
     contract.validateRequest('/consents', 'post', request.body);
     const body = request.body as ConsentBody;

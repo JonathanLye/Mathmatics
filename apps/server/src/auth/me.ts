@@ -1,5 +1,6 @@
 import type { Queryable } from '../db/index.ts';
 
+import { getAgeBand, type AgeBand } from './age-band.ts';
 import { hasValidConsent } from './consent.ts';
 import type { AuthContext } from './session.ts';
 
@@ -11,6 +12,8 @@ export interface MeView {
   displayName: string | null;
   classes: Array<{ id: string; name: string }>;
   consentRequired: boolean;
+  /** 13 §4：null=尚未选择年龄段（需先调 POST /auth/student/age-band）；仅学生返回。 */
+  ageBand?: AgeBand | null;
   features: Record<string, boolean>;
 }
 
@@ -32,6 +35,7 @@ export async function buildMe(db: Queryable, auth: AuthContext): Promise<MeView>
   );
 
   const consentRequired = auth.role === 'student' ? !(await hasValidConsent(db, auth.userId)) : false;
+  const ageBand = auth.role === 'student' ? await getAgeBand(db, auth.userId) : null;
 
   return {
     userId: auth.userId,
@@ -40,6 +44,7 @@ export async function buildMe(db: Queryable, auth: AuthContext): Promise<MeView>
     displayName: row.display_name,
     classes: classes.rows,
     consentRequired,
+    ...(auth.role === 'student' ? { ageBand } : {}),
     features: {},
   };
 }
