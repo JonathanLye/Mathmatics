@@ -19,6 +19,7 @@ import {
   loginBody,
   setupFixture,
   WRITE_HEADERS,
+  setStudentAgeBand,
   type Fixture,
 } from './support/fixtures.ts';
 
@@ -61,6 +62,8 @@ async function studentCookie(): Promise<string> {
 }
 
 async function signConsent(cookie: string): Promise<void> {
+  // #64：写接口要求年龄分档；测试默认 ge18。
+  await setStudentAgeBand(app, cookie);
   await app.inject({
     method: 'POST',
     url: '/api/v1/consents',

@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 
+import { setAgeBandOnce, type AgeBand } from '../auth/age-band.ts';
 import { maskIp, normalizeStudentNo, sha256Hex, studentNoHash } from '../auth/crypto.ts';
 import { createLoginThrottle } from '../auth/login-throttle.ts';
 import { buildMe } from '../auth/me.ts';
@@ -80,6 +81,18 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
       return me;
     },
   );
+
+  // 13 §4：学生自选年龄段（名单未带时）。<14 也记录并返回 Me，但写接口守卫会 403 AGE_RESTRICTED。
+  app.post('/auth/student/age-band', async (request) => {
+    const auth = await requireAuth(db, request);
+    if (auth.role !== 'student') throw new AppError('FORBIDDEN', 403, '只有学生需要选择年龄段');
+    contract.validateRequest('/auth/student/age-band', 'post', request.body);
+    const body = request.body as { ageBand: AgeBand };
+    await setAgeBandOnce(db, auth.userId, body.ageBand);
+    const me = await buildMe(db, auth);
+    contract.validate('Me', me);
+    return me;
+  });
 
   // 教师登录用户少且没有共用出口问题，保持 10 次/分/IP（05 §7）。
   app.post(

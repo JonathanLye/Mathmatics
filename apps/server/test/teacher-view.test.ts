@@ -13,6 +13,7 @@ import {
   loginBody,
   setupFixture,
   WRITE_HEADERS,
+  setStudentAgeBand,
   type Fixture,
 } from './support/fixtures.ts';
 
@@ -98,6 +99,8 @@ beforeEach(async () => {
   });
   expect(login.statusCode, login.body).toBe(200);
   studentCookie = cookieFrom(login.headers['set-cookie']);
+  // #64：写接口要求年龄分档。
+  await setStudentAgeBand(app, studentCookie);
 
   await post(studentCookie, '/consents', { version: 'p0-v1', items: ALL_REQUIRED });
 

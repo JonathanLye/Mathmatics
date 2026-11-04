@@ -6,7 +6,7 @@ import { loadContract } from '../../src/contract.ts';
 import { seedContent } from '../../src/db/seed.ts';
 import type { Db } from '../../src/db/index.ts';
 
-import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS } from './fixtures.ts';
+import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, setStudentAgeBand } from './fixtures.ts';
 
 const ALL_REQUIRED = {
   service: true,
@@ -44,6 +44,7 @@ export async function startHelpHarness(problemId = 'epsN'): Promise<HelpHarness>
   );
   const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
   const cookie = cookieFrom(login.headers['set-cookie']);
+  await setStudentAgeBand(app, cookie);
   const consent = await app.inject({
     method: 'POST',
     url: '/api/v1/consents',
