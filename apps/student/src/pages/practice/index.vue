@@ -1064,6 +1064,7 @@ function backHome() {
             @edit-line="handleEditTransferLine"
             @delete-line="handleDeleteTransferLine"
             @finish="handleFinishTransfer"
+            @dismiss-note="handleDismissNote"
           />
 
           <Layer1Form
