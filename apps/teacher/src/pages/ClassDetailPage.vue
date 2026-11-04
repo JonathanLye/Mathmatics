@@ -31,7 +31,10 @@ const liveError = ref('');
 const liveLoading = ref(false);
 let pollTimer: number | undefined;
 let stream: EventSource | undefined;
+let retryTimer: number | undefined;
+let retryDelay = 1000;
 const streamConnected = ref(false);
+const streamError = ref('');
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -128,12 +131,27 @@ function mergeLiveRow(row: LiveRow): void {
   live.value = { ...current, rows, summary };
 }
 
+function scheduleRetry(): void {
+  if (retryTimer !== undefined || document.hidden || !navigator.onLine) return;
+  retryTimer = window.setTimeout(() => {
+    retryTimer = undefined;
+    connectStream();
+  }, retryDelay);
+  retryDelay = Math.min(30_000, retryDelay * 2);
+}
+
 function connectStream(): void {
-  if (typeof EventSource === 'undefined' || classId.value === '') return;
+  if (typeof EventSource === 'undefined' || classId.value === '' || document.hidden) return;
+  if (retryTimer !== undefined) {
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
   stream?.close();
   stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream`);
   stream.onopen = () => {
     streamConnected.value = true;
+    streamError.value = '';
+    retryDelay = 1000;
   };
   stream.addEventListener('row', (event) => {
     try {
@@ -152,11 +170,18 @@ function connectStream(): void {
   });
   stream.onerror = () => {
     streamConnected.value = false;
-    // EventSource 会自动重连；同时 5s 轮询仍在兜底
+    streamError.value = '实时连接断开，已回退 5s 轮询，正在重连…';
+    stream?.close();
+    stream = undefined;
+    scheduleRetry();
   };
 }
 
 function disconnectStream(): void {
+  if (retryTimer !== undefined) {
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
   stream?.close();
   stream = undefined;
   streamConnected.value = false;
@@ -288,7 +313,24 @@ function onVisibility(): void {
 
 document.addEventListener('visibilitychange', onVisibility);
 
+function onVisibilityChange(): void {
+  if (document.hidden) disconnectStream();
+  else if (stream === undefined) connectStream();
+}
+
+function onOnline(): void {
+  retryDelay = 1000;
+  if (stream === undefined) connectStream();
+}
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('online', onOnline);
+});
+
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  window.removeEventListener('online', onOnline);
   disconnectStream();
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibility);
@@ -348,7 +390,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </t-table>
-        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。{{ streamConnected ? ' SSE 已连接。' : '' }}</div>
+        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。{{ streamConnected ? ' SSE 已连接。' : '' }}{{ streamError ? ` ${streamError}` : '' }}</div>
       </t-tab-panel>
 
       <t-tab-panel value="roster" label="名单">

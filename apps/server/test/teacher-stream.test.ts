@@ -21,6 +21,7 @@ let base: string;
 let teacherCookie: string;
 let studentCookie: string;
 let classId: string;
+let assignmentId: string;
 
 async function teacherLogin(username = USERNAME): Promise<string> {
   const res = await app.inject({
@@ -96,6 +97,7 @@ beforeEach(async () => {
     openAt: new Date(Date.now() - 60_000).toISOString(),
   });
   expect(assignment.statusCode, assignment.body).toBe(201);
+  assignmentId = assignment.json().assignmentId as string;
 
   const login = await app.inject({
     method: 'POST',
@@ -124,6 +126,41 @@ describe('班级看板 SSE（#48 C 侧 / 06 §6）', () => {
     expect(row.status).toBe('active');
     expect(row.layer).toBe('L1');
     expect(row.keysTotal).toBeGreaterThan(0);
+  });
+
+  it('assignmentId 过滤参数生效（契约参数）', async () => {
+    const { event, data } = await readSse(
+      `${base}/api/v1/teacher/classes/${classId}/stream?assignmentId=${assignmentId}`,
+      teacherCookie,
+    );
+    expect(event).toBe('row');
+    expect((JSON.parse(data) as { attemptId: string }).attemptId).toBeTruthy();
+  });
+
+  it('20s ping（测试注入更短间隔）', async () => {
+    process.env.TEACHER_SSE_PING_MS = '80';
+    const controller = new AbortController();
+    try {
+      const res = await fetch(`${base}/api/v1/teacher/classes/${classId}/stream`, {
+        headers: { cookie: teacherCookie },
+        signal: controller.signal,
+      });
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let sawPing = false;
+      while (!sawPing) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        if (buffer.includes('event: ping')) sawPing = true;
+      }
+      await reader.cancel().catch(() => undefined);
+      expect(sawPing).toBe(true);
+    } finally {
+      delete process.env.TEACHER_SSE_PING_MS;
+      controller.abort();
+    }
   });
 
   it('学生 403；非本班教师 404', async () => {

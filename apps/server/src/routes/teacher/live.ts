@@ -64,9 +64,20 @@ export const teacherLiveRoutes: FastifyPluginAsync<AuthRouteOptions> = async (ap
     let closed = false;
     let busy = false;
     let seq = 0;
+    let poll: NodeJS.Timeout | undefined;
+    let heartbeat: NodeJS.Timeout | undefined;
+    let lastWarn = 0;
     const last = new Map<string, string>();
-    const write = (chunk: string): void => {
-      if (!closed) reply.raw.write(chunk);
+    const write = (chunk: string): boolean => {
+      if (closed || reply.raw.destroyed) return false;
+      const ok = reply.raw.write(chunk);
+      if (ok === false) {
+        // 慢客户端/缓冲满：主动断开，交给浏览器重连 + 轮询兜底，避免服务端累积。
+        cleanup();
+        reply.raw.end();
+        return false;
+      }
+      return true;
     };
     const pump = async (): Promise<void> => {
       if (closed || busy) return;
@@ -74,41 +85,62 @@ export const teacherLiveRoutes: FastifyPluginAsync<AuthRouteOptions> = async (ap
       try {
         const snapshot = await buildLiveSnapshot(db, config, auth, classId, assignmentId);
         for (const row of snapshot.rows) {
+          if (closed) return;
           const json = JSON.stringify(row);
           const previous = last.get(row.anonCode);
           if (previous === json) continue;
           last.set(row.anonCode, json);
           seq += 1;
-          write(`id: ${seq}\nevent: row\ndata: ${json}\n\n`);
+          if (!write(`id: ${seq}\nevent: row\ndata: ${json}\n\n`)) return;
           if (previous !== undefined) {
             const before = JSON.parse(previous) as { flags?: string[] };
             const added = row.flags.filter((flag) => !(before.flags ?? []).includes(flag));
             for (const type of added) {
-              write(
-                `event: flag\ndata: ${JSON.stringify({ type, attemptId: row.attemptId, anonCode: row.anonCode, at: snapshot.at })}\n\n`,
-              );
+              if (
+                !write(
+                  `event: flag\ndata: ${JSON.stringify({ type, attemptId: row.attemptId, anonCode: row.anonCode, at: snapshot.at })}\n\n`,
+                )
+              ) {
+                return;
+              }
             }
           }
         }
-      } catch {
-        // DB 抖动：下一轮重试；连接保持
+      } catch (error) {
+        // DB 抖动：连接保持、下一轮重试；日志限频（10s 最多一次）。
+        const now = Date.now();
+        if (now - lastWarn > 10_000) {
+          lastWarn = now;
+          request.log.warn({ err: error, classId }, 'class stream pump failed');
+        }
       } finally {
         busy = false;
       }
     };
 
-    await pump();
-    const poll = setInterval(() => {
-      void pump();
-    }, 1000);
-    const heartbeat = setInterval(() => write('event: ping\ndata: {}\n\n'), 20_000);
+    // 先注册清理（首帧期间客户端也可能断开），再开始 pump / interval。
     const cleanup = (): void => {
       if (closed) return;
       closed = true;
-      clearInterval(poll);
-      clearInterval(heartbeat);
+      if (poll !== undefined) clearInterval(poll);
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      poll = undefined;
+      heartbeat = undefined;
     };
     request.raw.on('close', cleanup);
     request.raw.on('error', cleanup);
+
+    await pump();
+    if (closed || reply.raw.destroyed) {
+      cleanup();
+      return;
+    }
+    const pingMs = Number(process.env.TEACHER_SSE_PING_MS ?? 20_000);
+    poll = setInterval(() => {
+      void pump();
+    }, 1000);
+    heartbeat = setInterval(() => {
+      if (!write('event: ping\ndata: {}\n\n')) cleanup();
+    }, Number.isFinite(pingMs) && pingMs > 0 ? pingMs : 20_000);
   });
 };
