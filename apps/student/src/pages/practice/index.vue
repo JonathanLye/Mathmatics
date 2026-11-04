@@ -1365,7 +1365,7 @@ function backHome() {
   border-radius: var(--radius-input);
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .pg-practice__shell {
   display: block;
@@ -1519,7 +1519,7 @@ function backHome() {
 }
 .pg-practice__btn--primary {
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
 }
 .pg-practice__btn:disabled,
@@ -1597,6 +1597,7 @@ function backHome() {
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-input);
   background: rgba(29, 36, 48, 0.92);
+  /* 深色遮罩上的提示文字固定白色：不是主色按钮，不随深浅主题变（D3 审计列的 14 处中第 14 处，实际应保留）。 */
   color: #fff;
   text-align: center;
 }

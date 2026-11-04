@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e:screens": "node tests/screenshots.mjs",
+    "e2e:screens:dark": "node tests/screenshots.mjs --dark",
     "mock:contracts": "prism mock ../../packages/contracts/openapi.yaml -p 4010",
     "build:mock": "uni build --mode mock",
     "e2e:flows": "node tests/flows.mjs",

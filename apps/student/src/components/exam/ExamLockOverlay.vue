@@ -62,7 +62,7 @@ const title = computed(() => examLockedText())
   border-radius: var(--radius-input);
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .pg-locked__btn:disabled { opacity: 0.45; }
 </style>
