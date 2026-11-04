@@ -9,6 +9,7 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: () => import('./pages/LoginPage.vue'), meta: { public: true } },
     { path: '/classes', name: 'classes', component: () => import('./pages/ClassesPage.vue') },
     { path: '/classes/:classId', name: 'class-detail', component: () => import('./pages/ClassDetailPage.vue') },
+    { path: '/problems', name: 'problems', component: () => import('./pages/ProblemsPage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/classes' },
   ],
 });
