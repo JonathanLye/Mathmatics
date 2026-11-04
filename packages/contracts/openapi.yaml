@@ -799,9 +799,11 @@ paths:
     get:
       tags: [teacher]
       summary: 实时看板推送（SSE）
-      description: '事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线后用 `Last-Event-ID` 续传。'
+      description: '事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线重连后重推当前快照；前端另有 5s 轮询兜底。'
       operationId: streamLive
-      parameters: [{ $ref: '#/components/parameters/classId' }]
+      parameters:
+        - { $ref: '#/components/parameters/classId' }
+        - { name: assignmentId, in: query, schema: { type: string, format: uuid }, description: 缺省为最近开放的布置 }
       responses:
         '401': { $ref: '#/components/responses/Error' }
         '200':
