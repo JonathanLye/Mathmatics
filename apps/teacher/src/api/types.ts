@@ -89,3 +89,14 @@ export interface TeacherAttemptDetail {
 
 export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
 export type ExportTable = 'attempts' | 'lines' | 'hints' | 'help' | 'recognitions' | 'integrity' | 'events';
+
+// GET /teacher/attempts/{id}/events 的一页（08 §2/§6）；回放只用 seq/type/layer/payload。
+export interface StoredEvent {
+  id: string;
+  seq: number;
+  type: string;
+  source: string;
+  tsServer: string;
+  layer?: string | null;
+  payload: Record<string, unknown>;
+}
