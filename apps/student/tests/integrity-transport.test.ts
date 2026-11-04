@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createFetchTransport, EVENT_REQUEST_HEADERS, type FetchLike } from '@/integrity/transport'
 import type { ClientEvent } from '@/integrity/events'
 
@@ -50,46 +50,38 @@ describe('#27 传输层（POST /api/v1/events/batch）', () => {
     expect(await createFetchTransport({ fetchImpl: networkError }).send([event(1)])).toMatchObject({ ok: false, retryable: true })
   })
 
-  it('beacon 路径优先 fetch keepalive（能带 CSRF 头）', async () => {
+  it('隐藏/卸载时优先 keepalive fetch（能带 CSRF 头）', async () => {
     const calls: Call[] = []
     const fetchImpl: FetchLike = async (url, init) => {
       calls.push({ url, init })
       return { ok: true, status: 200 }
     }
-    let beaconCalls = 0
-    const transport = createFetchTransport({ fetchImpl, beaconImpl: () => { beaconCalls += 1; return true } })
+    const transport = createFetchTransport({ fetchImpl })
     const outcome = await transport.send([event(1)], { beacon: true })
     expect(outcome.ok).toBe(true)
-    expect(beaconCalls).toBe(0)
     expect(calls[0]?.init?.keepalive).toBe(true)
     expect(calls[0]?.init?.headers?.['X-Requested-With']).toBe('proof-gym')
   })
 
-  it('keepalive fetch 失败时退回 sendBeacon（JSON Blob；注释说明无 CSRF 头）', async () => {
+  it('keepalive fetch 失败时不回退 sendBeacon（无 CSRF 头会被 403），返回可重试、事件保留', async () => {
     const fetchImpl: FetchLike = async () => {
       throw new Error('page unloading')
     }
-    const beaconArgs: Array<{ url: string; data?: Blob | string }> = []
-    const transport = createFetchTransport({
-      fetchImpl,
-      beaconImpl: (url, data) => {
-        beaconArgs.push({ url, data })
-        return true
-      },
-    })
+    const transport = createFetchTransport({ fetchImpl })
     const outcome = await transport.send([event(1)], { beacon: true })
-    expect(outcome.ok).toBe(true)
-    expect(beaconArgs).toHaveLength(1)
-    expect(beaconArgs[0]?.url).toBe('/api/v1/events/batch')
-    expect(beaconArgs[0]?.data).toBeInstanceOf(Blob)
-    expect((beaconArgs[0]?.data as Blob).type).toBe('application/json')
+    expect(outcome.ok).toBe(false)
+    expect(outcome.retryable).toBe(true)
   })
 
-  it('sendBeacon 返回 false / 不可用 → 可重试（事件留队列下次补发）', async () => {
-    const fetchImpl: FetchLike = async () => {
-      throw new Error('no fetch on unload')
-    }
-    expect(await createFetchTransport({ fetchImpl, beaconImpl: () => false }).send([event(1)], { beacon: true })).toMatchObject({ ok: false, retryable: true })
-    expect(await createFetchTransport({ fetchImpl, beaconImpl: null }).send([event(1)], { beacon: true })).toMatchObject({ ok: false, retryable: true })
+  it('隐藏时 keepalive 返回 4xx（如 403/422）→ 不可重试，不因此无限保留毒事件', async () => {
+    const fetchImpl: FetchLike = async () => ({ ok: false, status: 403 })
+    const outcome = await createFetchTransport({ fetchImpl }).send([event(1)], { beacon: true })
+    expect(outcome).toMatchObject({ ok: false, retryable: false })
+  })
+
+  it('隐藏时 keepalive 返回 503 → 可重试', async () => {
+    const fetchImpl: FetchLike = async () => ({ ok: false, status: 503 })
+    const outcome = await createFetchTransport({ fetchImpl }).send([event(1)], { beacon: true })
+    expect(outcome).toMatchObject({ ok: false, retryable: true })
   })
 })
