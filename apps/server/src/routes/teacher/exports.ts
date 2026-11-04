@@ -24,6 +24,7 @@ export const teacherExportRoutes: FastifyPluginAsync<AuthRouteOptions> = async (
   // 06 §3 / 04 §9：创建匿名导出；实名导出进入 pending_approval（管理员审批后才会生成）。
   app.post('/teacher/exports', async (request, reply) => {
     const auth = await requireTeacher(db, request);
+    contract.validateRequest('/teacher/exports', 'post', request.body);
     const input = parseCreateExport(request.body);
     await assertClassTeacher(db, auth, input.classId);
     const job = await createExport(db, auth.userId, auth.role, input);

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import JSZip from 'jszip';
 
 import { AppError } from '../../errors.ts';
 import type { Db, Queryable } from '../../db/index.ts';
+import { computeAttemptMetrics } from '../../metrics/attempt.ts';
 import { csvField } from '../../export/attempts-csv.ts';
 
 export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
@@ -50,7 +51,9 @@ export function classCodeOf(classId: string): string {
 export function parseCreateExport(body: unknown): CreateExportInput {
   if (body === null || typeof body !== 'object') throw new AppError('VALIDATION_FAILED', 422, '导出请求体不合法');
   const raw = body as Record<string, unknown>;
-  if (typeof raw.classId !== 'string') throw new AppError('VALIDATION_FAILED', 422, 'classId 必填');
+  if (typeof raw.classId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw.classId)) {
+    throw new AppError('VALIDATION_FAILED', 422, 'classId 必须是 UUID');
+  }
   if (typeof raw.format !== 'string' || !FORMATS.includes(raw.format as ExportFormat)) {
     throw new AppError('VALIDATION_FAILED', 422, 'format 必须是 csv/xlsx/jsonl');
   }
@@ -65,7 +68,12 @@ export function parseCreateExport(body: unknown): CreateExportInput {
     if (!tables.includes(table as ExportTable)) tables.push(table as ExportTable);
   }
   const assignmentIds = Array.isArray(raw.assignmentIds)
-    ? raw.assignmentIds.filter((id): id is string => typeof id === 'string')
+    ? raw.assignmentIds.map((id) => {
+        if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+          throw new AppError('VALIDATION_FAILED', 422, 'assignmentIds 含非法 UUID');
+        }
+        return id;
+      })
     : undefined;
   return {
     classId: raw.classId,
@@ -79,9 +87,15 @@ export function parseCreateExport(body: unknown): CreateExportInput {
 // 08 §5 字段字典（导出列名）；与 SQL 的 select 别名一一对应，缺数据的列导出为空而不是伪造。
 const DICTIONARY: Record<ExportTable, string[]> = {
   attempts: [
-    'anon_id', 'class_code', 'arm', 'arm_order', 'problem_id', 'problem_version', 'mode', 'kind',
-    'started_at', 'completed_at', 'duration_s', 'lines', 'keys_total', 'reveal', 'independence',
-    'away_count', 'away_s', 'integrity_max_score', 'integrity_signals', 'completed',
+    'anon_id', 'class_code', 'arm', 'arm_order', 'grade', 'problem_id', 'problem_version', 'chapter', 'tags',
+    'difficulty', 'role', 'mode', 'kind', 'parent_attempt_id', 'started_at', 'completed_at', 'duration_s',
+    'active_s', 'submissions', 'layers_done', 'layers_skipped', 'def_attempts', 'lesson_opened', 'lines',
+    'keys_total', 'keys_own', 'keys_autonomous', 'reveal', 'independence', 'hints_total', 'hint_max_level',
+    'first_error', 'first_help_latency_s', 'post_hint_dwell_med_s', 'rapid_locks', 'stuck_offers',
+    'pressure_count', 'help_stuck', 'help_concept', 'help_check', 'help_free', 'input_ink', 'input_kbd',
+    'input_photo', 'input_paste', 'recog_requests', 'recog_edit_rate', 'recog_disagree_rate', 'away_count',
+    'away_s', 'integrity_max_score', 'integrity_signals', 'completed', 'summary_missing_points',
+    'model_versions', 'prompt_version',
   ],
   lines: [
     'anon_id', 'attempt_id', 'layer', 'role', 'idx', 'slot', 'statement', 'justification',
@@ -95,7 +109,11 @@ const DICTIONARY: Record<ExportTable, string[]> = {
     'latency_ms', 'queue_ms', 'status', 'edited', 'edit_distance', 'cost_cny', 'created_at',
   ],
   integrity: ['anon_id', 'attempt_id', 'signal', 'score', 'evidence', 'source', 'disposition', 'created_at'],
-  events: [],
+  events: [
+    'id', 'seq', 'type', 'source', 'ts_server', 'ts_client', 'session_id', 'device_id', 'client_seq',
+    'user_anon', 'role', 'class_id', 'assignment_id', 'attempt_id', 'problem_id', 'problem_version', 'layer',
+    'mode', 'arm', 'app_version', 'platform', 'prompt_version', 'model_versions', 'payload',
+  ],
 };
 
 type Row = Record<string, unknown>;
@@ -111,48 +129,103 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
     left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id`;
   const where = `where asg.class_id = $1 ${scopeClause}`;
   switch (table) {
-    case 'attempts':
-      return (await db.query<Row>(
+    case 'attempts': {
+      const rows = (await db.query<Row>(
         `select u.anon_code as anon_id, t.id as attempt_id, asg.class_id,
-                m.arm, m.arm_order, t.problem_id, t.problem_version, t.mode, t.kind,
+                m.arm, m.arm_order, sp.grade,
+                t.problem_id, t.problem_version, pv.public,
+                t.mode, t.kind, t.parent_attempt_id,
                 t.started_at, t.completed_at, t.reveal, t.keys_own, t.keys_total, t.independence,
                 t.active_ms, t.status
            from app.attempts t
            join app.assignments asg on asg.id = t.assignment_id
            join app.users u on u.id = t.user_id
+           left join app.student_profiles sp on sp.user_id = t.user_id
            left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
+           left join content.problem_versions pv on pv.problem_id = t.problem_id and pv.version = t.problem_version
           where asg.class_id = $1 ${scopeClause}
           order by t.started_at, t.id`,
         params,
-      )).rows.map((row) => {
-        const completed = row.status === 'completed';
-        const activeMs = Number(row.active_ms ?? 0);
+      )).rows;
+      const result: Row[] = [];
+      for (const row of rows) {
+        const metrics = await computeAttemptMetrics(db, String(row.attempt_id));
+        const away = (
+          await db.query<{ away_count: string; away_ms: string | null }>(
+            `select count(*) filter (
+                      where payload->>'state' = 'visible' and coalesce((payload->>'awayMs')::bigint, 0) >= 2000
+                    )::text as away_count,
+                    coalesce(sum(case when payload->>'state' = 'visible' then coalesce((payload->>'awayMs')::bigint, 0) end), 0)::text as away_ms
+               from ev.events where attempt_id = $1 and type = 'integ.visibility'`,
+            [row.attempt_id],
+          )
+        ).rows[0];
+        const pub = (row.public ?? {}) as Record<string, unknown>;
         const startedAt = row.started_at as Date | null;
         const completedAt = row.completed_at as Date | null;
-        const durationS = completedAt !== null && startedAt !== null ? Math.round((completedAt.getTime() - startedAt.getTime()) / 1000) : null;
-        return {
+        const durationS =
+          completedAt !== null && startedAt !== null ? Math.round((completedAt.getTime() - startedAt.getTime()) / 1000) : null;
+        result.push({
           anon_id: row.anon_id,
           class_code: classCodeOf(classId),
           arm: row.arm,
           arm_order: row.arm_order,
+          grade: row.grade,
           problem_id: row.problem_id,
           problem_version: row.problem_version,
+          chapter: pub.chapter ?? null,
+          tags: Array.isArray(pub.tags) ? (pub.tags as unknown[]).join(';') : null,
+          difficulty: pub.difficulty ?? null,
+          role: null,
           mode: row.mode === 'test' ? '测验' : '练习',
           kind: row.kind,
+          parent_attempt_id: row.parent_attempt_id,
           started_at: startedAt,
           completed_at: completedAt,
           duration_s: durationS,
-          lines: null,
+          active_s: Math.round(Number(row.active_ms ?? 0) / 1000),
+          submissions: null,
+          layers_done: null,
+          layers_skipped: null,
+          def_attempts: metrics.defAttempts,
+          lesson_opened: metrics.lessonOpened,
+          lines: metrics.lines,
           keys_total: row.keys_total,
+          keys_own: row.keys_own,
+          keys_autonomous: null,
           reveal: row.reveal,
           independence: row.independence,
-          away_count: null,
-          away_s: activeMs === 0 ? null : Math.round(activeMs / 1000),
-          integrity_max_score: null,
-          integrity_signals: null,
-          completed,
-        };
-      });
+          hints_total: null,
+          hint_max_level: null,
+          first_error: null,
+          first_help_latency_s: null,
+          post_hint_dwell_med_s: null,
+          rapid_locks: null,
+          stuck_offers: null,
+          pressure_count: null,
+          help_stuck: null,
+          help_concept: null,
+          help_check: null,
+          help_free: null,
+          input_ink: metrics.provenance.ink ?? null,
+          input_kbd: metrics.provenance.keyboard ?? null,
+          input_photo: metrics.provenance.photo ?? null,
+          input_paste: metrics.provenance.paste ?? null,
+          recog_requests: null,
+          recog_edit_rate: null,
+          recog_disagree_rate: null,
+          away_count: Number(away?.away_count ?? 0),
+          away_s: Math.round(Number(away?.away_ms ?? 0) / 1000),
+          integrity_max_score: metrics.integrityMaxScore,
+          integrity_signals: Object.keys(metrics.integrityFlags).sort().join(';'),
+          completed: metrics.completed,
+          summary_missing_points: null,
+          model_versions: null,
+          prompt_version: null,
+        });
+      }
+      return result;
+    }
     case 'lines':
       return (await db.query<Row>(
         `select u.anon_code as anon_id, t.id as attempt_id, l.layer, l.role, l.idx, l.slot,
@@ -207,8 +280,10 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
       )).rows;
     case 'events':
       return (await db.query<Row>(
-        `select e.seq, e.type, e.source, e.ts_server, e.user_anon as anon_id, e.attempt_id,
-                e.layer, e.payload
+        `select e.id, e.seq, e.type, e.source, e.ts_server, e.ts_client, e.session_id, e.device_id,
+                e.client_seq, e.user_anon, e.role, e.class_id, e.assignment_id, e.attempt_id, e.problem_id,
+                e.problem_version, e.layer, e.mode, e.arm, e.app_version, e.platform, e.prompt_version,
+                e.model_versions, e.payload
            ${baseFrom}
            join ev.events e on e.attempt_id = t.id
            ${where}
@@ -245,8 +320,9 @@ async function writeCsvZip(id: string, format: ExportFormat, tables: ExportTable
         ? toCsv(DICTIONARY[table], tableRows)
         : tableRows.map((row) => JSON.stringify(row)).join('\n') + (tableRows.length > 0 ? '\n' : '');
     zip.file(`${table}.${ext}`, body);
-    if (ext === 'csv') zip.file(`${table}.dictionary.csv`, dictionaryCsv([table]));
+    zip.file(`${table}.dictionary.csv`, dictionaryCsv([table]));
   }
+  zip.file('dictionary.csv', dictionaryCsv(tables));
   zip.file('README.txt', '默认匿名导出；字段字典见 *.dictionary.csv（Excel 为“字段字典”工作表）。口径 08 §5。\n');
   const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   await writeFile(path.join(FILE_DIR, `${id}.${FILE_EXT[format]}`), buffer);
@@ -353,7 +429,9 @@ export async function exportFilePath(db: Db, actorId: string, role: string, expo
   if (row.requested_by !== actorId && role !== 'admin') throw new AppError('NOT_FOUND', 404, '导出任务不存在');
   if (row.status !== 'done' || row.file_key === null) throw new AppError('NOT_FOUND', 404, '导出文件尚未就绪');
   mkdirSync(FILE_DIR, { recursive: true });
-  return path.join(FILE_DIR, row.file_key);
+  const file = path.join(FILE_DIR, row.file_key);
+  if (!existsSync(file)) throw new AppError('NOT_FOUND', 404, '导出文件已过期或被清理');
+  return file;
 }
 
 export function contentTypeFor(format: ExportFormat): string {

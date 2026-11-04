@@ -1,5 +1,7 @@
 import type { AddressInfo } from 'node:net';
 
+import JSZip from 'jszip';
+
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -115,6 +117,23 @@ describe('导出任务（#35 / 04 §9 / 08 §5）', () => {
     expect(download.headers.get('content-type')).toContain('zip');
     const body = Buffer.from(await download.arrayBuffer());
     expect(body.subarray(0, 2).toString()).toBe('PK');
+
+    // 内容与字典：events.csv 非空、每表字典 + 汇总字典、attempts 含 08 §5 关键列/away 口径。
+    const zip = await JSZip.loadAsync(body);
+    const eventsCsv = await zip.file('events.csv')?.async('string');
+    expect(eventsCsv).toBeTruthy();
+    expect(eventsCsv?.split('\r\n')[0]).toContain('attempt_id');
+    expect(eventsCsv?.trim().split('\r\n').length).toBeGreaterThan(1);
+    expect(zip.file('attempts.dictionary.csv')).toBeTruthy();
+    expect(zip.file('dictionary.csv')).toBeTruthy();
+    const attemptsCsv = (await zip.file('attempts.csv')?.async('string')) ?? '';
+    const header = attemptsCsv.split('\r\n')[0] ?? '';
+    expect(header).toContain('away_count');
+    expect(header).toContain('away_s');
+    expect(header).toContain('chapter');
+
+    const audits = await db.query(`select action from app.audit_log where target = $1 order by at`, [job.exportId]);
+    expect(audits.rows.map((row) => row.action)).toEqual(['export_create', 'export_download']);
   });
 
   it('实名导出 → pending_approval，不生成文件；未知表 422', async () => {
@@ -132,6 +151,9 @@ describe('导出任务（#35 / 04 §9 / 08 §5）', () => {
 
     const bad = await post(teacherCookie, '/teacher/exports', { classId, format: 'csv', tables: ['nope'] });
     expect(bad.statusCode, bad.body).toBe(422);
+
+    const badUuid = await post(teacherCookie, '/teacher/exports', { classId: 'not-a-uuid', format: 'csv', tables: ['attempts'] });
+    expect(badUuid.statusCode, badUuid.body).toBe(422);
   });
 
   it('非本班教师 404；其他教师看不到他人导出', async () => {

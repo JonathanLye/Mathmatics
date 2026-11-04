@@ -17,7 +17,7 @@ let timer: number | undefined;
 const formatOptions = [
   { label: 'CSV（UTF-8 BOM）', value: 'csv' },
   { label: 'Excel（.xlsx）', value: 'xlsx' },
-  { label: 'JSONL（事件）', value: 'jsonl' },
+  { label: 'JSONL（每表 .jsonl）', value: 'jsonl' },
 ];
 // 08 §5 字段字典（与 server 导出列一致）；页面展示，便于教师核对下载内容。
 const FIELD_DICT: Record<ExportTable, string[]> = {
@@ -58,7 +58,7 @@ async function submit(): Promise<void> {
     startPolling();
   } catch (caught) {
     if (caught instanceof ApiError && caught.status === 404) {
-      error.value = '导出接口尚未上线（B 的 #32）；页面与请求体已按契约（06 §3.6 / 08 §5）就绪。';
+      error.value = '导出接口不可用（404）：请确认 server 版本包含 /teacher/exports。';
     } else {
       error.value = caught instanceof ApiError ? caught.message : '导出失败';
     }
@@ -74,7 +74,7 @@ function startPolling(): void {
     if (current === null) return;
     try {
       job.value = await api.get<ExportJob>(`/api/v1/teacher/exports/${current.exportId}`);
-      if (['done', 'failed', 'expired'].includes(job.value.status)) stopPolling();
+      if (['done', 'failed', 'expired', 'pending_approval'].includes(job.value.status)) stopPolling();
     } catch {
       stopPolling();
     }
@@ -123,7 +123,7 @@ onBeforeUnmount(stopPolling);
       <div>任务 <span class="mono">{{ job.exportId }}</span>：状态 <b>{{ job.status }}</b></div>
       <div v-if="job.rows !== null && job.rows !== undefined">行数：{{ job.rows }}</div>
       <t-link v-if="job.url" theme="primary" :href="job.url" target="_blank">下载</t-link>
-      <div v-else-if="job.status === 'pending_approval'" class="page-sub">实名导出等待管理员审批。</div>
+      <div v-else-if="job.status === 'pending_approval'" class="page-sub">实名导出等待管理员审批（审批接口尚未实现，可由 Lead/管理员离线处理）。</div>
     </div>
     <div class="page-sub">说明：导出字段字典随文件提供（Excel 第二工作表 / CSV 同名 .dictionary.csv）。</div>
     <h4 style="margin: 18px 0 6px">字段字典（08 §5）</h4>
