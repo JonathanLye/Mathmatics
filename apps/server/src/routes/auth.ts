@@ -69,6 +69,8 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
       const session = await teacherLogin(db, {
         username: body.username,
         password: body.password,
+        ...(body.totp === undefined ? {} : { totp: body.totp }),
+        piiKey: config.piiKey,
         ipMasked: maskIp(request.ip),
       });
       setSessionCookie(reply, session.sessionId, session.expiresAt, { secure: secureCookie });
