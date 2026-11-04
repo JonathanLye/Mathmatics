@@ -103,6 +103,8 @@ async function main() {
   // 3) 学生作答（独立 request context，不共享教师 Cookie）
   const studentCtx = await request.newContext({ baseURL: BASE });
   await must(await studentCtx.post(`${BASE}/api/v1/auth/student/login`, { data: { inviteCode: cls.inviteCode, studentNo: '2026999', deviceId: '00000000-0000-4000-8000-0000000000e2' }, headers: WRITE }), 'student login');
+  // #64/#152：学生写接口前先选年龄段（<14 关闭）。
+  await must(await studentCtx.post('/api/v1/auth/student/age-band', { data: { ageBand: 'ge18' }, headers: WRITE }), 'age band');
   await must(await studentCtx.post(`${BASE}/api/v1/consents`, { data: { version: 'p0-v1', items: REQUIRED }, headers: WRITE }), 'consent');
   const started = await must(await studentCtx.post(`${BASE}/api/v1/student/assignments/${assignment.assignmentId}/attempt`, { headers: WRITE }), 'start');
   await must(await studentCtx.post(`/api/v1/attempts/${started.state.attemptId}/layers/L1/skip`, { data: {}, headers: WRITE }), 'skip L1');
@@ -144,6 +146,10 @@ async function main() {
   await page.getByText('完成率').waitFor({ timeout: 10000 });
   await shot('04-metrics-1280');
   await page.getByText('导出', { exact: true }).click();
+  await page.getByText('字段字典（08 §5）').waitFor({ timeout: 10000 });
+  await page.getByRole('button', { name: '创建导出任务' }).click();
+  await page.getByText('任务', { exact: false }).first().waitFor({ timeout: 10000 });
+  await page.getByRole('link', { name: '下载' }).waitFor({ timeout: 15000 });
   await shot('05-export-1280');
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
