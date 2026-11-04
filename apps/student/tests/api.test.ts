@@ -61,6 +61,7 @@ const ME: MeView = {
   displayName: null,
   classes: [],
   consentRequired: true,
+  ageBand: 'ge18',
   features: {},
 }
 
