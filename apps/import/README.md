@@ -8,6 +8,11 @@
 
 # 1) 登记 + 渲染 + OCR（离线 fixture；真实 OCR 用 --ocr-provider simpletex|qwen，见下）
 pnpm import:pdf --file /tmp/fake.pdf --pages 27-28 --skip-render --ocr-fixture apps/import/fixtures/ch2
+# 0) 或一条龙：登记/渲染/OCR → 切条目 → 起草/仲裁/校验（--submit 时再暂存 DB）
+pnpm import:run --file /tmp/fake.pdf --pages 27-28 --skip-render \
+  --ocr-fixture apps/import/fixtures/ch2 --max 4 \
+  --draft-fixture-a apps/import/fixtures/epsN.json --draft-fixture-b apps/import/fixtures/epsN-alt.json
+
 # 2) 切条目（按章节 / 只要证明题）
 pnpm import:items --job <jobId> --chapter 2 --proof-only
 # 3) 两稿起草 + 仲裁 + 校验 → imports/<jobId>/<problemId>.json、<problemId>.report.md、job 级 report.md
