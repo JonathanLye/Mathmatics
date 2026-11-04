@@ -5,6 +5,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { isMockMode } from '@/api/client'
 import { ageGateFor } from '@/auth/ageBand'
 import { useSession } from '@/stores/session'
+import WechatHint from '@/components/WechatHint.vue'
 
 const session = useSession()
 const loading = session.loading
@@ -43,6 +44,7 @@ async function submit() {
 
 <template>
   <view class="pg-page pg-login">
+    <WechatHint />
     <view class="pg-login__brand">
       <text class="pg-login__title">证明陪练场</text>
       <text class="pg-login__sub pg-small">一张稿纸，一支红笔。写证明，不抄答案。</text>

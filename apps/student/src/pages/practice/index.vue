@@ -25,6 +25,7 @@ import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
 import EditorSheet from '@/components/EditorSheet.vue'
 import OfflineBar from '@/components/OfflineBar.vue'
+import WechatHint from '@/components/WechatHint.vue'
 // #46 严格测验模式（11 §5.2/5.3）：说明页、水印、切出警告、锁定遮罩
 import ExamIntro from '@/components/exam/ExamIntro.vue'
 import ExamWatermark from '@/components/exam/ExamWatermark.vue'
@@ -948,6 +949,8 @@ function backHome() {
 
     <!-- #27 离线提示条：正常文档流 + sticky，不覆盖 44px 操作区/BottomDock -->
     <OfflineBar :retrying="offlineRetrying" @retry="handleOfflineRetry" />
+    <!-- #37 微信内打开提示：非阻塞横条，非微信 UA 不渲染 -->
+    <WechatHint />
 
     <!-- #46 测验模式：倒计时以服务端 state.serverTime/截止时间为准；到点不在本地结束 -->
     <view v-if="strictExamActive && !examIsLocked" class="pg-exambar" data-testid="exam-bar">

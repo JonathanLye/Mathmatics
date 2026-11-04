@@ -24,6 +24,7 @@
     "e2e:flows:46": "node tests/flows-46.mjs",
     "e2e:flows:24": "node tests/flows-24.mjs",
 "e2e:flows:43": "node tests/flows-43.mjs",
+    "e2e:flows:wechat": "node tests/flows-wechat.mjs",
     "e2e:matrix:28": "node tests/matrix-28.mjs"
   },
   "dependencies": {
