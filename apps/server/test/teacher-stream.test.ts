@@ -7,7 +7,7 @@ import { createTeacherAccount } from '../src/auth/teacher-login.ts';
 import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
 
-import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
+import { buildTestApp, cookieFrom, loginBody, setStudentAgeBand, setupFixture, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
 
 const USERNAME = 'stream.teacher';
 const PASSWORD = 'correct horse battery';
@@ -107,6 +107,8 @@ beforeEach(async () => {
   });
   expect(login.statusCode, login.body).toBe(200);
   studentCookie = cookieFrom(login.headers['set-cookie']);
+  // #64/#152：学生写接口前必须先选年龄段（<14 会 403）。
+  await setStudentAgeBand(app, studentCookie);
   await post(studentCookie, '/consents', { version: 'p0-v1', items: REQUIRED });
   const started = await post(studentCookie, `/student/assignments/${assignment.json().assignmentId as string}/attempt`);
   expect(started.statusCode, started.body).toBe(200);
