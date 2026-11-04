@@ -24,8 +24,10 @@ const props = withDefaults(
     lines?: ProofLine[]
     notes?: Note[]
     busy?: boolean
+    /** #43 镜像页：只读渲染，不显示「写下一行」等输入入口。 */
+    readonly?: boolean
   }>(),
-  { lines: () => [], notes: () => [], busy: false },
+  { lines: () => [], notes: () => [], busy: false, readonly: false },
 )
 const emit = defineEmits<{ (e: 'write-next'): void }>()
 
@@ -136,7 +138,7 @@ function onWriteNext() {
       还没有写证明行。每次写一行：这一行（结论）+ 依据，顺序由你决定。
     </text>
 
-    <button class="pg-lines__add" data-testid="write-next" :disabled="props.busy" @tap="onWriteNext">
+    <button v-if="!props.readonly" class="pg-lines__add" data-testid="write-next" :disabled="props.busy" @tap="onWriteNext">
       <text class="pg-lines__addicon">＋</text>
       <text>写下一行</text>
     </button>
