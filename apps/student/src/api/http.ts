@@ -117,6 +117,33 @@ export interface RequestOptions {
   idempotencyKey?: string
   headers?: Record<string, string>
   signal?: AbortSignal
+  /** 单次请求超时（毫秒，默认 15s）；弱网/3G 下超时按 NETWORK 可重试错误处理。 */
+  timeoutMs?: number
+}
+
+/** 默认超时：弱网下 15 秒足够慢请求完成，又不至于让学生无限等。 */
+export const DEFAULT_TIMEOUT_MS = 15_000
+
+/** 重试退避：只重试可重试错误（NETWORK / 429 / 5xx），指数退避；同一动作的重试必须复用幂等键。 */
+export interface RetryOptions {
+  maxAttempts?: number
+  baseDelayMs?: number
+}
+
+export async function withRetry<T>(action: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+  const maxAttempts = options.maxAttempts ?? 2
+  const baseDelayMs = options.baseDelayMs ?? 400
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await action()
+    } catch (error) {
+      if (attempt < maxAttempts && error instanceof ApiError && error.retryable) {
+        await new Promise<void>((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)))
+        continue
+      }
+      throw error
+    }
+  }
 }
 
 export interface HttpResult<T> {
@@ -246,6 +273,11 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
       headers['Idempotency-Key'] = requestOptions.idempotencyKey
     }
 
+    // 超时：外部未提供 signal 时用 AbortController 控制；超时与网络失败一样按 NETWORK 可重试处理。
+    const timeoutMs = requestOptions.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    const controller = !requestOptions.signal && typeof AbortController === 'function' ? new AbortController() : null
+    const timer = controller !== null ? setTimeout(() => controller.abort(), timeoutMs) : null
+
     let response: Response
     try {
       response = await fetchImpl(joinUrl(base, path), {
@@ -253,15 +285,18 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
         credentials: 'include',
         headers,
         body: requestOptions.body === undefined ? undefined : JSON.stringify(requestOptions.body),
-        signal: requestOptions.signal,
+        signal: requestOptions.signal ?? controller?.signal,
       })
     } catch (cause) {
+      const aborted = controller !== null && controller.signal.aborted
       throw new ApiError({
         status: 0,
         code: 'NETWORK',
-        message: '网络连接失败，检查网络后重试（内容已保存在本地草稿）',
-        detail: { cause: cause instanceof Error ? cause.message : String(cause) },
+        message: aborted ? '请求超时，已为你自动重试（内容已保存在本地草稿）' : '网络连接失败，检查网络后重试（内容已保存在本地草稿）',
+        detail: { cause: cause instanceof Error ? cause.message : String(cause), timeoutMs: aborted ? timeoutMs : undefined },
       })
+    } finally {
+      if (timer !== null) clearTimeout(timer)
     }
 
     const replayed = response.headers.get('idempotent-replayed') === 'true'
