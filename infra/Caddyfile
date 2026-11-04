@@ -9,5 +9,18 @@
 		reverse_proxy server:3000
 	}
 
-	respond "proof-gym" 200
+	# 教师端：vite base='/t/'（资源与路由都带前缀）；handle_path 去掉 /t/ 后从 /srv/teacher 取。
+	# 静态产物由 infra/Dockerfile 的 web-builder 阶段生成并 COPY 进镜像。
+	handle_path /t/* {
+		root * /srv/teacher
+		try_files {path} /index.html
+		file_server
+	}
+
+	# 学生端 H5（uni-app：index.html + assets）。根路径兜底给 SPA。
+	handle {
+		root * /srv/student
+		try_files {path} /index.html
+		file_server
+	}
 }

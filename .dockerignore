@@ -1,10 +1,17 @@
 .git
 node_modules
+**/node_modules
 work
 .data
 coverage
 dist
+**/dist
 infra/backups
 证明陪练场_产品设计工作区
 research_notes
 智能体回答思路设计
+# 本机/其他 agent 的工作目录（不进镜像，避免 build context 过大）
+.review
+.npm-cache
+.local-backup
+.deps
