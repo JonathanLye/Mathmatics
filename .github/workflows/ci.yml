@@ -195,10 +195,33 @@ jobs:
           fi
 
   # 唯一 required status check：子 job 跳过也算过，真实失败才红。
+  # #135 P0 拦截：compose 的 build target 缺失（server/worker/migrate 会构建成 caddy 镜像）或
+  # runtime 镜像起不来时，CI 直接失败；web 阶段的前端构建由 workspace 的 Build web 步骤验证命令。
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Compose config 校验
+        working-directory: infra
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml config -q
+      - name: Build runtime image
+        run: docker build -f infra/Dockerfile --target runtime -t proof-gym-runtime:ci .
+      - name: Runtime image smoke
+        run: docker run --rm proof-gym-runtime:ci node -v
+
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [contracts, docs, workspace]
+    needs: [contracts, docs, workspace, docker]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -208,9 +231,10 @@ jobs:
           CONTRACTS: ${{ needs.contracts.result }}
           DOCS: ${{ needs.docs.result }}
           WORKSPACE: ${{ needs.workspace.result }}
+          DOCKER: ${{ needs.docker.result }}
         run: |
-          echo "contracts=$CONTRACTS docs=$DOCS workspace=$WORKSPACE"
-          if [ "$CONTRACTS" = "failure" ] || [ "$CONTRACTS" = "cancelled" ] || [ "$DOCS" = "failure" ] || [ "$DOCS" = "cancelled" ] || [ "$WORKSPACE" = "failure" ] || [ "$WORKSPACE" = "cancelled" ]; then
+          echo "contracts=$CONTRACTS docs=$DOCS workspace=$WORKSPACE docker=$DOCKER"
+          if [ "$CONTRACTS" = "failure" ] || [ "$CONTRACTS" = "cancelled" ] || [ "$DOCS" = "failure" ] || [ "$DOCS" = "cancelled" ] || [ "$WORKSPACE" = "failure" ] || [ "$WORKSPACE" = "cancelled" ] || [ "$DOCKER" = "failure" ] || [ "$DOCKER" = "cancelled" ]; then
             echo "::error::One or more required jobs failed or were cancelled"
             exit 1
           fi

@@ -1,6 +1,19 @@
 {$PUBLIC_ORIGIN:localhost} {
 	encode gzip
 
+	# 安全头（05 §7）。CSP：学生端 H5 的 index.html 有 uni-app 的内联 script（viewport document.write），
+	# 因此 script-src 必须保留 'unsafe-inline'；外链仍被 default-src/connect-src 限制在 'self'。
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+	}
+
+	# /t（无尾斜杠）不匹配下面的 /t/*，会落到学生端 catch-all；显式重定向到 /t/。
+	redir /t /t/ 308
+
 	handle /api/* {
 		reverse_proxy server:3000
 	}

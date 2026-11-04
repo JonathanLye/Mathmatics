@@ -19,24 +19,24 @@ if [ "$confirm" != "RESTORE" ]; then
   exit 1
 fi
 
-COMPOSE="docker compose -f $COMPOSE_DIR/docker-compose.yml"
-$COMPOSE stop server worker caddy
+COMPOSE=(docker compose -f "$COMPOSE_DIR/docker-compose.yml")
+"${COMPOSE[@]}" stop server worker caddy
 
 echo "恢复中..."
-$COMPOSE exec -T postgres \
+"${COMPOSE[@]}" exec -T postgres \
   pg_restore -U proof_gym -d proof_gym --clean --if-exists --no-owner < "$DUMP"
 
 echo "恢复完成，启动服务..."
-$COMPOSE start server worker caddy
+"${COMPOSE[@]}" start server worker caddy
 
 # 等 server 健康后自检；失败则提示人工排查。
 for _ in $(seq 1 30); do
-  if $COMPOSE exec -T caddy wget -q -O /dev/null "http://server:3000/health" 2>/dev/null; then
+  if "${COMPOSE[@]}" exec -T caddy wget -q -O /dev/null "http://server:3000/health" 2>/dev/null; then
     echo "restore done: $DUMP；/health 正常。"
     exit 0
   fi
   sleep 2
 done
 
-echo "恢复完成但 /health 未就绪，请人工检查：$COMPOSE logs server caddy" >&2
+echo "恢复完成但 /health 未就绪，请人工检查：docker compose -f "$COMPOSE_DIR/docker-compose.yml" logs server caddy" >&2
 exit 1

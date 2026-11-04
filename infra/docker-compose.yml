@@ -43,6 +43,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      target: runtime
     command: ["node", "apps/server/src/db/cli.ts", "migrate"]
     restart: "no"
     env_file:
@@ -58,6 +59,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      target: runtime
     restart: unless-stopped
     env_file:
       - .env
@@ -84,6 +86,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      target: runtime
     command: ["node", "apps/worker/src/main.ts"]
     restart: unless-stopped
     env_file:
