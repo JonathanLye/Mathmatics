@@ -1,3 +1,6 @@
+import { checkCategories } from '@proof-gym/content-checks';
+import type { ProblemPackage } from '@proof-gym/engine';
+
 import type { Queryable } from '../../db/index.ts';
 import { AppError } from '../../errors.ts';
 
@@ -146,7 +149,8 @@ export async function reviewProblem(
   if (!row) throw new AppError('NOT_FOUND', 404, '题目版本不存在');
 
   if (input.decision === 'edit') {
-    throw new AppError('VALIDATION_FAILED', 422, 'edit 尚未实现：需要 S8 复跑后写入新版本（#42 后续）');
+    if (input.edited === undefined) throw new AppError('VALIDATION_FAILED', 422, 'edit 需要 edited 题目包');
+    return stageEditedVersion(db, actorId, problemId, version, input as EditedInput);
   }
 
   if (input.decision === 'approve') {
@@ -203,5 +207,102 @@ export async function reviewProblem(
     version: item.version,
     status: item.review_status,
     autoChecks: item.auto_checks ?? {},
+  };
+}
+
+
+interface EditedInput extends ReviewInput {
+  edited: Record<string, unknown>;
+}
+
+// 04 §8.2 的 edit：教师在审核屏直接改题目包 → 服务端重跑 S8（与 CLI 同一实现）→ 全绿才发布为新版本。
+async function stageEditedVersion(
+  db: Queryable,
+  actorId: string,
+  problemId: string,
+  sourceVersion: number,
+  input: EditedInput,
+): Promise<ProblemListItemDto> {
+  const editedInput = input.edited as unknown as ProblemPackage;
+  if (editedInput.id !== problemId) {
+    throw new AppError('VALIDATION_FAILED', 422, `edited.id（${String(editedInput.id)}）与题目 ID 不一致`);
+  }
+  // GET 的 ProblemPackageView 不含 referenceProofs（vault 单独存）；编辑回传时补空数组再跑 S8。
+  const rawSecret = { ...(editedInput.secret as unknown as Record<string, unknown>) };
+  // ProblemPackageView 的 secret 不含 referenceProofs；编辑未提供时沿用源版本（参考证明不随标题等编辑丢失）。
+  if (!Array.isArray(rawSecret.referenceProofs) || rawSecret.referenceProofs.length === 0) {
+    const sourceProofs = (
+      await db.query<{ proof_id: string; route: number | null; text: string; publishable: boolean }>(
+        `select proof_id, route, text, publishable from vault.reference_proofs where problem_id = $1 and version = $2 order by proof_id`,
+        [problemId, sourceVersion],
+      )
+    ).rows;
+    rawSecret.referenceProofs = sourceProofs.map((proof) => ({
+      id: proof.proof_id,
+      ...(proof.route === null ? {} : { route: proof.route }),
+      text: proof.text,
+      publishable: proof.publishable,
+    }));
+  }
+  if (!Array.isArray(rawSecret.referenceProofs) || rawSecret.referenceProofs.length === 0) {
+    throw new AppError('VALIDATION_FAILED', 422, '编辑未提供参考证明，且源版本没有可沿用的参考证明');
+  }
+  const edited = { ...editedInput, secret: rawSecret } as unknown as ProblemPackage;
+  const checks = checkCategories(edited);
+  if (!checks.ok) {
+    throw new AppError('VALIDATION_FAILED', 422, '修改后的题目包未通过 S8 校验', { issues: checks.issues });
+  }
+
+  const maxRow = await db.query<{ max: number | null }>(
+    `select max(version) as max from content.problem_versions where problem_id = $1`,
+    [problemId],
+  );
+  const nextVersion = Number(maxRow.rows[0]?.max ?? 0) + 1;
+  const publicPart = edited.public as unknown as Record<string, unknown>;
+  const secret: Record<string, unknown> = { ...(edited.secret as unknown as Record<string, unknown>) };
+  const proofs = Array.isArray(secret.referenceProofs)
+    ? (secret.referenceProofs as Array<{ id: string; route?: number; text: string; publishable?: boolean }>)
+    : [];
+  delete secret.referenceProofs;
+
+  await db.query(
+    `insert into content.problem_versions
+       (problem_id, version, public, review_status, auto_checks, provenance, reviewed_by, reviewed_at, published_at)
+     values ($1, $2, $3::jsonb, 'published', $4::jsonb, $5::jsonb, $6, now(), now())`,
+    [problemId, nextVersion, JSON.stringify(publicPart), JSON.stringify(checks.categories), JSON.stringify({ source: 'teacher-edit', fromVersion: sourceVersion }), actorId],
+  );
+  await db.query(
+    `update content.problems set current_version = greatest(coalesce(current_version, 0), $2) where id = $1`,
+    [problemId, nextVersion],
+  );
+  await db.query(
+    `insert into vault.problem_secrets (problem_id, version, secret) values ($1, $2, $3::jsonb)`,
+    [problemId, nextVersion, JSON.stringify(secret)],
+  );
+  for (const proof of proofs) {
+    await db.query(
+      `insert into vault.reference_proofs (problem_id, version, proof_id, route, text, publishable)
+       values ($1, $2, $3, $4, $5, $6)`,
+      [problemId, nextVersion, proof.id, proof.route ?? null, proof.text, proof.publishable ?? true],
+    );
+  }
+  await db.query(
+    `insert into content.review_records (problem_id, version, reviewer_id, decision, comments, minutes_spent)
+     values ($1, $2, $3, 'edit', $4, $5)`,
+    [problemId, nextVersion, actorId, input.comments ?? null, input.minutes ?? 0],
+  );
+  await db.query(
+    `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'review_problem', $2, $3::jsonb)`,
+    [actorId, `${problemId}@v${nextVersion}`, JSON.stringify({ decision: 'edit', fromVersion: sourceVersion })],
+  );
+
+  return {
+    problemId,
+    title: String(publicPart.title ?? problemId),
+    ...(typeof publicPart.chapter === 'string' ? { chapter: publicPart.chapter } : {}),
+    kind: (edited.kind ?? 'main') as ProblemListItemDto['kind'],
+    version: nextVersion,
+    status: 'published',
+    autoChecks: { ...checks.categories },
   };
 }

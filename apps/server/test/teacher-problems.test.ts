@@ -121,6 +121,42 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
     expect(edit.statusCode).toBe(422);
   });
 
+  it('POST review edit：服务端重跑 S8 全绿后发布为新版本；失败 422', async () => {
+    const current = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems/epsN/versions/1', headers: { cookie } });
+    expect(current.statusCode, current.body).toBe(200);
+    const pkg = current.json() as Record<string, unknown> & { public: Record<string, unknown>; secret: Record<string, unknown> };
+    pkg.public.title = '数列极限 · ε-N（教师修改）';
+
+    const edited = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/problems/epsN/versions/1/review',
+      headers: { ...WRITE_HEADERS, cookie },
+      payload: { decision: 'edit', edited: pkg, comments: '改标题', minutes: 5 },
+    });
+    expect(edited.statusCode, edited.body).toBe(200);
+    const item = edited.json() as { version: number; status: string; title: string };
+    expect(item.version).toBe(2);
+    expect(item.status).toBe('published');
+    expect(item.title).toContain('教师修改');
+    const problems = await db.query(`select current_version from content.problems where id='epsN'`);
+    expect(Number(problems.rows[0]?.current_version)).toBe(2);
+    const record = await db.query(`select decision from content.review_records where problem_id='epsN' and version=2`);
+    expect(record.rows[0]?.decision).toBe('edit');
+    const secret = await db.query(`select 1 from vault.problem_secrets where problem_id='epsN' and version=2`);
+    expect(secret.rows.length).toBe(1);
+
+    // 结构不合法 → 422，不写新版本
+    const bad = structuredClone(pkg);
+    (bad.public as Record<string, unknown>).keyCount = Number((bad.public as Record<string, unknown>).keyCount) + 1;
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/problems/epsN/versions/1/review',
+      headers: { ...WRITE_HEADERS, cookie },
+      payload: { decision: 'edit', edited: bad },
+    });
+    expect(rejected.statusCode, rejected.body).toBe(422);
+  });
+
   it('GET 完整题目包：含 secret，读操作写 audit_log；404/422', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems/epsN/versions/1', headers: { cookie } });
     expect(res.statusCode, res.body).toBe(200);
