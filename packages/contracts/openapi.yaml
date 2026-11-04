@@ -1054,6 +1054,23 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ExportJob' }
 
+  /teacher/exports/{exportId}/download:
+    get:
+      tags: [teacher]
+      summary: 下载导出文件（同源教师 Cookie；仅创建者或管理员）
+      operationId: downloadExport
+      parameters: [{ name: exportId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 文件流（csv/jsonl 为 zip；xlsx 为 Excel）
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+
   # ------------------------------------------------------------------ content
   /teacher/problems:
     get:
