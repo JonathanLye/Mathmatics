@@ -428,6 +428,9 @@ importers:
       '@proof-gym/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@proof-gym/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@proof-gym/ui-math':
         specifier: workspace:*
         version: link:../../packages/ui-math
