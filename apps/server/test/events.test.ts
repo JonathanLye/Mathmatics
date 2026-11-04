@@ -182,6 +182,33 @@ describe('事件入库 /events/batch（#20）', () => {
     expect(await countEvents(`id = $1`, [e.id])).toBe(0);
   });
 
+  it('非本班教师上报 t.view 被拒：不能推进别的班作答的事件 seq（P1-8）', async () => {
+    const cookie = await studentCookie();
+    await signConsent(cookie);
+    const attemptId = await startAttempt(cookie);
+    const beforeSeq = (
+      await db.query<{ last_event_seq: string | number }>(`select last_event_seq from app.attempts where id = $1`, [attemptId])
+    ).rows[0]?.last_event_seq;
+
+    // 另一个教师（不拥有/不在 fixture 班的班级里）。
+    const other = await db.query<{ id: string }>(
+      `insert into app.users (role, anon_code) values ('teacher', 'T-OTHER1') returning id`,
+    );
+    const otherId = other.rows[0]?.id as string;
+    await db.query(`insert into app.devices (id, user_id) values ($1, $2)`, [DEVICE_B, otherId]);
+    const session = await createSession(db, { userId: otherId, deviceId: DEVICE_B, ip: null, ttlMs: STUDENT_SESSION_MS });
+    const otherCookie = `${SESSION_COOKIE}=${app.signCookie(session.id)}`;
+
+    const e = event({ type: 't.view', attemptId, payload: { page: 'attempt' } });
+    const res = await postBatch(otherCookie, [e]);
+    expect(res.json().rejected).toEqual([{ id: e.id, reason: 'attempt_not_found' }]);
+    expect(await countEvents(`id = $1`, [e.id])).toBe(0);
+    const afterSeq = (
+      await db.query<{ last_event_seq: string | number }>(`select last_event_seq from app.attempts where id = $1`, [attemptId])
+    ).rows[0]?.last_event_seq;
+    expect(Number(afterSeq)).toBe(Number(beforeSeq));
+  });
+
   it('结构不合法被拒：payload 缺必填字段（app.open 缺 entry）；信封里带服务端字段（source、seq、userAnon）', async () => {
     const cookie = await studentCookie();
     const noEntry = event({ payload: {} });
