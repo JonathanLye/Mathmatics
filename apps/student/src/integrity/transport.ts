@@ -1,13 +1,12 @@
-﻿/**
+/**
  * 事件批量上报的传输层（11 §3）。
  *
  * - 正常：POST /api/v1/events/batch（openapi servers 基路径 /api/v1），带 JSON 与 CSRF 兼容头
  *   X-Requested-With: proof-gym（06 §1 写接口要求）+ credentials include（HttpOnly Cookie pg_sid）。
- * - 页面隐藏/卸载：优先 fetch(keepalive:true)（能带 CSRF 头与 Cookie）；浏览器不支持/已失败时退回
- *   navigator.sendBeacon。注意：**sendBeacon 无法自定义请求头**，带不上 X-Requested-With；
- *   但 11 §3 要求隐藏时立即发，所以保留 beacon 兜底，发送失败的事件仍留在 IndexedDB 队列里，
- *   下次上报（带正确头）补发；服务端按事件 id 去重。真实接口联调时需确认服务端接受 beacon 变体
- *   （#24/#20 对齐；本 issue 不改契约）。
+ * - 页面隐藏/卸载：优先 fetch(keepalive:true)（能带 CSRF 头与 Cookie）。
+ *   **不使用 navigator.sendBeacon 兜底**：服务端 CSRF 中间件要求 X-Requested-With，而 sendBeacon
+ *   无法自定义请求头，发出会被 403；浏览器仍返回"已排队"，若按成功处理会丢事件（PR #119 复审 P2）。
+ *   keepalive fetch 失败时返回 retryable，由队列持久化到 IndexedDB，下次带正确头补发。
  */
 import { EVENTS_BATCH_PATH, type ClientEvent } from './events'
 
@@ -40,12 +39,9 @@ export type FetchLike = (
   },
 ) => Promise<{ ok: boolean; status: number }>
 
-export type BeaconLike = (url: string, data?: Blob | string) => boolean
-
 export interface FetchTransportOptions {
   url?: string
   fetchImpl?: FetchLike
-  beaconImpl?: BeaconLike | null
   headers?: Record<string, string>
   credentials?: 'include' | 'same-origin' | 'omit'
 }
@@ -63,13 +59,6 @@ export function createFetchTransport(options: FetchTransportOptions = {}): Event
   const resolveFetch = (): FetchLike | null => {
     if (options.fetchImpl) return options.fetchImpl
     return typeof fetch === 'function' ? (fetch as unknown as FetchLike) : null
-  }
-  const resolveBeacon = (): BeaconLike | null => {
-    if (options.beaconImpl !== undefined) return options.beaconImpl
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      return (target, data) => navigator.sendBeacon(target, data)
-    }
-    return null
   }
 
   async function post(events: ClientEvent[], keepalive: boolean): Promise<SendOutcome> {
@@ -94,21 +83,14 @@ export function createFetchTransport(options: FetchTransportOptions = {}): Event
   return {
     async send(events, opts = {}) {
       if (!opts.beacon) return post(events, false)
-      // 卸载/隐藏时优先 keepalive fetch（能带 CSRF 头）；若已被浏览器中断再退回 sendBeacon。
-      if (resolveFetch()) {
-        const viaFetch = await post(events, true)
-        if (viaFetch.ok || !viaFetch.retryable) return viaFetch
-      }
-      const beacon = resolveBeacon()
-      if (!beacon) return { ok: false, retryable: true, detail: 'beacon unavailable' }
-      try {
-        const blob = new Blob([JSON.stringify({ events })], { type: 'application/json' })
-        const queued = beacon(url, blob)
-        return queued
-          ? { ok: true, retryable: false, detail: 'sendBeacon queued（无 CSRF 头）' }
-          : { ok: false, retryable: true, detail: 'sendBeacon rejected' }
-      } catch (error) {
-        return { ok: false, retryable: true, detail: error instanceof Error ? error.message : String(error) }
+      // 页面隐藏/卸载：只走 keepalive fetch（能带 CSRF 头与 Cookie），不回退 sendBeacon。
+      const viaFetch = await post(events, true)
+      if (viaFetch.ok) return viaFetch
+      return {
+        ok: false,
+        retryable: true,
+        detail:
+          'keepalive fetch failed on hide; events kept for retry (sendBeacon cannot carry CSRF header)',
       }
     },
   }

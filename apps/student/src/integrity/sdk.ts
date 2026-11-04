@@ -1,7 +1,7 @@
 /**
  * 诚信事件 SDK 入口（11 §3，apps/student/src/integrity）。
  *
- * 组成：身份（sessionId/deviceId）→ 事件工厂（08 §2 ClientEvent）→ 内存队列（5s/20 条/beacon）
+ * 组成：身份（sessionId/deviceId）→ 事件工厂（08 §2 ClientEvent）→ 内存队列（5s/20 条/隐藏时 keepalive fetch）
  *      → 传输层（mock 内存 / 真实 fetch）；采集器挂 visibility/blur/fullscreen/copy/paste/... 
  *
  * 用法：App onLaunch 调 initIntegrity()（全局只初始化一次）；做题页 setContext({attemptId, layer})；
