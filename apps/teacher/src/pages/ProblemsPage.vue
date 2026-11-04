@@ -47,6 +47,7 @@ const columns = [
   { colKey: 'version', title: '版本' },
   { colKey: 'status', title: '审核状态' },
   { colKey: 'checks', title: '自动校验' },
+  { colKey: 'actions', title: '操作', width: 90 },
 ];
 
 async function load(): Promise<void> {
@@ -154,6 +155,9 @@ onMounted(load);
         >
           {{ autoChecksSummary(row.autoChecks).failed.length === 0 ? '全过' : `失败 ${autoChecksSummary(row.autoChecks).failed.length}` }}
         </t-tag>
+      </template>
+      <template #actions="{ row }">
+        <t-link theme="primary" @click.stop="open(row)">审核</t-link>
       </template>
       <template #empty><div class="empty">题库为空。导入流水线发布后会出现。</div></template>
     </t-table>
