@@ -2,7 +2,11 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { Client } from 'pg';
+
+import { checkCategories } from './checks.ts';
 import { loadConceptsFile } from './concepts.ts';
+import { stageDraft } from './db.ts';
 import { twoDrafts } from './draft.ts';
 import { copyFixturePages, readOcrPages, writeOcrPages } from './ocr.ts';
 import { renderPdf } from './pdf.ts';
@@ -170,6 +174,36 @@ async function commandDraft(parsed: ParsedArgs): Promise<void> {
   if (outputs.some((out) => !out.ok)) process.exitCode = 1;
 }
 
+async function commandSubmit(parsed: ParsedArgs): Promise<void> {
+  const file = parsed.positionals[0] ?? optional(parsed, 'file');
+  if (file === undefined) throw new Error('用法：pnpm import:submit <imports/.../problem.json> [--database-url …]');
+  const pkg = readJson<import('@proof-gym/engine').ProblemPackage>(file);
+  const conceptsPath = optional(parsed, 'concepts');
+  const options = conceptsPath === undefined ? {} : { concepts: loadConceptsFile(conceptsPath) };
+  const databaseUrl = optional(parsed, 'database-url') ?? process.env.DATABASE_URL;
+  const checks = checkCategories(pkg, options);
+
+  if (databaseUrl === undefined || databaseUrl.trim() === '') {
+    console.log(JSON.stringify({ mode: 'dry-run', problemId: pkg.id, autoChecks: checks.categories, issues: checks.issues.length }, null, 2));
+    console.log('dry-run：设置 --database-url / DATABASE_URL 后会把草稿写入 content.problem_versions(review_status=draft) 等待教师审核。');
+    return;
+  }
+
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    const staged = await stageDraft(pkg, client, options);
+    await client.query('COMMIT');
+    console.log(JSON.stringify({ mode: 'db', ...staged }, null, 2));
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+
 async function commandPublish(parsed: ParsedArgs): Promise<void> {
   const file = parsed.positionals[0] ?? optional(parsed, 'file');
   if (file === undefined) throw new Error('用法：pnpm import:publish <imports/.../problem.json> --reviewer T-01 --minutes 90');
@@ -191,6 +225,7 @@ function usage(): void {
   pnpm import:items --job <jobId> [--chapter 2] [--proof-only]
   pnpm import:draft --job <jobId> [--items id1,id2] [--max 4] [--concepts concepts.json] [--draft-fixture-a a.json --draft-fixture-b b.json]
   pnpm import:publish imports/<jobId>/<problemId>.json --reviewer T-01 --minutes 90 [--concepts concepts.json]
+  pnpm import:submit imports/<jobId>/<problemId>.json [--database-url postgres://…] [--concepts concepts.json]
 
 仓库内自带的最小 fixtures：apps/import/fixtures/ch2（OCR）、fixtures/epsN.json 与 epsN-alt.json（两稿）。
 离线模式：OCR 用 --ocr-fixture，起草用 --draft-fixture-a/b；真实 OCR 需 SIMPLETEX_API_KEY / DASHSCOPE_API_KEY 并渲染页面；起草需 DEEPSEEK_API_KEY。`);
@@ -215,6 +250,9 @@ export async function run(argv: string[]): Promise<void> {
       break;
     case 'publish':
       await commandPublish(parsed);
+      break;
+    case 'submit':
+      await commandSubmit(parsed);
       break;
     default:
       usage();
