@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 import type { ProblemPackage } from '@proof-gym/engine';
 import { describe, expect, it } from 'vitest';
 
+import { twoDrafts } from '../src/draft.ts';
 import { createDeepSeekDraftProvider } from '../src/providers/deepseek.ts';
+import { createQwenDraftProvider } from '../src/providers/qwen-draft.ts';
+import type { DraftProvider } from '../src/providers/types.ts';
 import { createQwenOcrProvider } from '../src/providers/qwen.ts';
 import { createSimpleTexOcrProvider } from '../src/providers/simpletex.ts';
 import type { FetchLike } from '../src/providers/types.ts';
@@ -89,6 +92,53 @@ describe('导入 provider（#42 S3/S6）', () => {
     const bodies = calls.map((call) => JSON.parse(String(call.init?.body)) as { temperature: number; response_format: { type: string } });
     expect(bodies.map((body) => body.temperature)).toEqual([0.2, 0.8]);
     expect(bodies[0]?.response_format.type).toBe('json_object');
+  });
+
+  it('Qwen 起草：DashScope OpenAI 兼容 text chat，解析 JSON', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fake: FetchLike = async (url, init) => {
+      calls.push({ url, init });
+      return jsonResponse({ choices: [{ message: { content: seedJson() } }] });
+    };
+    const provider = createQwenDraftProvider({ apiKey: 'dash-key', model: 'qwen-plus', fetch: fake });
+    const pkg = await provider.draftOnce!({ itemId: 'p27-i0', body: '证明 lim a_n = 3' });
+    expect(pkg.id).toBe('epsN');
+    const init = calls[0]?.init as RequestInit;
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer dash-key');
+    const body = JSON.parse(String(init.body)) as { model: string; messages: Array<{ content: string }> };
+    expect(body.model).toBe('qwen-plus');
+    expect(body.messages[1]?.content).toContain('p27-i0');
+  });
+
+  it('S7 双模型：注入 A=DeepSeek / B=Qwen 时 provider=multi，各调用一次', async () => {
+    const seedPkg = JSON.parse(seedJson()) as Parameters<typeof structuredClone>[0];
+    const calls: string[] = [];
+    const fakeDeepseek: DraftProvider = {
+      name: 'deepseek',
+      async draftOnce() {
+        calls.push('deepseek');
+        return structuredClone(seedPkg) as never;
+      },
+      async twoDrafts() {
+        throw new Error('multi 模式不应调用 twoDrafts');
+      },
+    };
+    const fakeQwen: DraftProvider = {
+      name: 'qwen',
+      async draftOnce() {
+        calls.push('qwen');
+        return structuredClone(seedPkg) as never;
+      },
+      async twoDrafts() {
+        throw new Error('multi 模式不应调用 twoDrafts');
+      },
+    };
+    const pair = await twoDrafts(
+      { itemId: 'p27-i0', page: 27, chapter: '第二章', label: '例1', body: '例1 证明', proofLike: true },
+      { draftProvider: fakeDeepseek, draftProviderB: fakeQwen },
+    );
+    expect(pair.provider).toBe('multi');
+    expect(calls.sort()).toEqual(['deepseek', 'qwen']);
   });
 
   it('DeepSeek：非 JSON 响应报错，不静默', async () => {

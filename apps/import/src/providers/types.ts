@@ -20,6 +20,8 @@ export interface DraftPair {
 }
 
 export interface DraftProvider {
-  name: 'deepseek';
+  name: 'deepseek' | 'qwen';
   twoDrafts(item: { itemId: string; body: string }): Promise<DraftPair>;
+  // 双模型起草时只取一份稿，避免浪费第二次调用；不实现则回退 twoDrafts。
+  draftOnce?(item: { itemId: string; body: string }): Promise<ProblemPackage>;
 }
