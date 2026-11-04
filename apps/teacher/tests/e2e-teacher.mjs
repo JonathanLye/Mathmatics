@@ -123,6 +123,11 @@ async function main() {
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(6500);
   await shot('02-live-1280');
+  // #169：数字卡筛选（在线）
+  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
+  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
+  await shot('02c-live-filter-1280');
+  await page.getByText('清除', { exact: true }).click();
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
