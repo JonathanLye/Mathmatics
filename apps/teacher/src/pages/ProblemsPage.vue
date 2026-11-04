@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
 import MathTextView from '../components/MathTextView.vue';
 import { autoChecksSummary, statusLabel, statusTheme } from '../utils/problems.ts';
@@ -31,6 +32,12 @@ const selected = ref<ProblemItem | null>(null);
 const pkg = ref<ProblemPackageView | null>(null);
 const pkgLoading = ref(false);
 const pkgError = ref('');
+const actionVisible = ref(false);
+const actionDecision = ref<'approve' | 'return'>('approve');
+const actionComments = ref('');
+const actionMinutes = ref(10);
+const acting = ref(false);
+const actionError = ref('');
 
 const columns = [
   { colKey: 'problemId', title: 'ID' },
@@ -73,6 +80,43 @@ async function open(item: ProblemItem): Promise<void> {
 function close(): void {
   selected.value = null;
   pkg.value = null;
+}
+
+const canReview = (): boolean => {
+  const status = pkg.value?.review?.status ?? selected.value?.status ?? '';
+  return status === 'draft' || status === 'pending' || status === 'returned';
+};
+
+function openAction(decision: 'approve' | 'return'): void {
+  actionDecision.value = decision;
+  actionComments.value = '';
+  actionMinutes.value = 10;
+  actionError.value = '';
+  actionVisible.value = true;
+}
+
+async function submitAction(): Promise<void> {
+  if (selected.value === null) return;
+  acting.value = true;
+  actionError.value = '';
+  try {
+    const body =
+      actionDecision.value === 'approve'
+        ? { decision: 'approve', comments: actionComments.value, minutes: actionMinutes.value }
+        : { decision: 'return', comments: actionComments.value };
+    await api.post(
+      `/api/v1/teacher/problems/${selected.value.problemId}/versions/${selected.value.version}/review`,
+      body,
+    );
+    MessagePlugin.success(actionDecision.value === 'approve' ? '已通过并发布' : '已退回');
+    actionVisible.value = false;
+    await load();
+    await open(selected.value);
+  } catch (caught) {
+    actionError.value = caught instanceof ApiError ? caught.message : '审核失败';
+  } finally {
+    acting.value = false;
+  }
 }
 
 onMounted(load);
@@ -130,21 +174,45 @@ onMounted(load);
         <MathTextView :text="pkg.public.stem" />
         <h4>结构</h4>
         <div class="page-sub">关键步骤 {{ pkg.secret.keys?.length ?? 0 }} · 路线 {{ pkg.secret.routes?.length ?? 0 }}</div>
-        <t-alert
-          theme="info"
-          message="审核写接口（approve/return/edit + 自动校验全绿才发布）下一 PR 接；当前只读。"
-          style="margin-top: 12px"
-        />
+        <div v-if="canReview()" class="review-actions">
+          <t-button theme="primary" @click="openAction('approve')">通过并发布</t-button>
+          <t-button theme="danger" variant="outline" @click="openAction('return')">退回</t-button>
+          <span class="page-sub">approve 要求四项自动校验全绿（S8 写入 auto_checks）</span>
+        </div>
+        <t-alert v-else theme="success" message="该版本已发布，无需再审核。" style="margin-top: 12px" />
         <details style="margin-top: 12px">
           <summary>原始题目包 JSON</summary>
           <pre class="pkg-json">{{ JSON.stringify(pkg, null, 2) }}</pre>
         </details>
       </div>
     </t-drawer>
+
+    <t-dialog
+      v-model:visible="actionVisible"
+      :header="actionDecision === 'approve' ? '通过并发布' : '退回题目'"
+      :confirm-btn="{ content: actionDecision === 'approve' ? '通过' : '退回', loading: acting }"
+      @confirm="submitAction"
+    >
+      <t-alert v-if="actionError" theme="error" :message="actionError" style="margin-bottom: 8px" />
+      <t-form label-width="70px">
+        <t-form-item label="意见">
+          <t-textarea v-model="actionComments" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="给导入同学的说明（可空）" />
+        </t-form-item>
+        <t-form-item v-if="actionDecision === 'approve'" label="用时">
+          <t-input-number v-model="actionMinutes" :min="0" :max="100000" suffix="分钟" />
+        </t-form-item>
+      </t-form>
+    </t-dialog>
   </div>
 </template>
 
 <style scoped>
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
 .pkg-json {
   max-height: 360px;
   overflow: auto;
