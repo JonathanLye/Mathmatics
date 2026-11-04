@@ -30,13 +30,15 @@ export async function listProblems(
 ): Promise<ProblemListItemDto[]> {
   const rows = (
     await db.query<ListRow>(
-      `select p.id as problem_id, p.title, p.chapter, p.kind, p.current_version as version,
+      `select p.id as problem_id, p.title, p.chapter, p.kind, v.version,
               v.review_status, v.auto_checks, v.provenance
          from content.problems p
-         join content.problem_versions v on v.problem_id = p.id and v.version = p.current_version
+         join content.problem_versions v
+           on v.problem_id = p.id
+          and (v.version = p.current_version or v.review_status in ('draft', 'pending', 'returned'))
         where ($1::text is null or v.review_status = $1)
           and ($2::text is null or p.chapter = $2)
-        order by p.id`,
+        order by p.id, v.version`,
       [filter.status ?? null, filter.chapter ?? null],
     )
   ).rows;
@@ -108,5 +110,98 @@ export async function getProblemVersion(
     secret: row.secret,
     review: { status: row.review_status, autoChecks: row.auto_checks ?? {} },
     ...(row.provenance === null ? {} : { provenance: row.provenance }),
+  };
+}
+
+
+// 04 §8.2：审核结论。approve 要求四项自动校验全绿（由导入流水线 S8 写入 auto_checks）；
+// 本接口只做“读取+发布/退回”，不重算 S8（避免与 apps/import 双实现漂移）。
+const REQUIRED_CHECKS = ['schema', 'katex', 'leakExhaustive', 'patternSelfTest'] as const;
+
+export interface ReviewInput {
+  decision: 'approve' | 'return' | 'edit';
+  comments?: string;
+  edited?: Record<string, unknown>;
+  minutes?: number;
+}
+
+type VersionRow = {
+  review_status: ProblemListItemDto['status'];
+  auto_checks: Record<string, unknown> | null;
+};
+
+export async function reviewProblem(
+  db: Queryable,
+  actorId: string,
+  problemId: string,
+  version: number,
+  input: ReviewInput,
+): Promise<ProblemListItemDto> {
+  const row = (
+    await db.query<VersionRow>(
+      `select review_status, auto_checks from content.problem_versions where problem_id = $1 and version = $2`,
+      [problemId, version],
+    )
+  ).rows[0];
+  if (!row) throw new AppError('NOT_FOUND', 404, '题目版本不存在');
+
+  if (input.decision === 'edit') {
+    throw new AppError('VALIDATION_FAILED', 422, 'edit 尚未实现：需要 S8 复跑后写入新版本（#42 后续）');
+  }
+
+  if (input.decision === 'approve') {
+    const checks = row.auto_checks ?? {};
+    const missing = REQUIRED_CHECKS.filter((name) => checks[name] !== true);
+    if (missing.length > 0) {
+      throw new AppError('VALIDATION_FAILED', 422, `自动校验未全绿：${missing.join(', ')}`, { missing });
+    }
+    if (row.review_status !== 'published') {
+      await db.query(
+        `update content.problem_versions
+            set review_status = 'published', reviewed_by = $3, reviewed_at = now(), published_at = now()
+          where problem_id = $1 and version = $2`,
+        [problemId, version, actorId],
+      );
+      await db.query(
+        `update content.problems set current_version = greatest(coalesce(current_version, 0), $2) where id = $1`,
+        [problemId, version],
+      );
+    }
+    await db.query(
+      `insert into content.review_records (problem_id, version, reviewer_id, decision, comments, minutes_spent)
+       values ($1, $2, $3, 'approve', $4, $5)`,
+      [problemId, version, actorId, input.comments ?? null, input.minutes ?? 0],
+    );
+  } else {
+    await db.query(`update content.problem_versions set review_status = 'returned' where problem_id = $1 and version = $2`, [
+      problemId,
+      version,
+    ]);
+    await db.query(
+      `insert into content.review_records (problem_id, version, reviewer_id, decision, comments, minutes_spent)
+       values ($1, $2, $3, 'return', $4, $5)`,
+      [problemId, version, actorId, input.comments ?? null, input.minutes ?? 0],
+    );
+  }
+
+  const item = (
+    await db.query<ListRow>(
+      `select p.id as problem_id, p.title, p.chapter, p.kind, v.version,
+              v.review_status, v.auto_checks, v.provenance
+         from content.problems p
+         join content.problem_versions v on v.problem_id = p.id and v.version = $2
+        where p.id = $1`,
+      [problemId, version],
+    )
+  ).rows[0];
+  if (!item || item.version === null) throw new AppError('NOT_FOUND', 404, '题目版本不存在');
+  return {
+    problemId: item.problem_id,
+    title: item.title,
+    ...(item.chapter === null ? {} : { chapter: item.chapter }),
+    kind: item.kind,
+    version: item.version,
+    status: item.review_status,
+    autoChecks: item.auto_checks ?? {},
   };
 }
