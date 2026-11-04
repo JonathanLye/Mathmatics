@@ -1451,12 +1451,7 @@ export interface components {
                 layerFunnel?: {
                     [key: string]: number;
                 };
-                keyHeat?: {
-                    key?: string;
-                    label?: string;
-                    stuck?: number;
-                    viaHint?: number;
-                }[];
+                keyHeat?: components["schemas"]["KeyHeatItem"][];
             };
             /** Format: date-time */
             at: string;
@@ -1473,7 +1468,7 @@ export interface components {
             layerFunnel?: {
                 [key: string]: number;
             };
-            keyHeat?: Record<string, never>[];
+            keyHeat?: components["schemas"]["KeyHeatItem"][];
             recognition?: {
                 requests?: number;
                 editRate?: number;
@@ -1516,11 +1511,77 @@ export interface components {
                  */
                 inkId?: string | null;
             }[];
-            hints: Record<string, never>[];
+            hints: components["schemas"]["AttemptHint"][];
             notes: components["schemas"]["Note"][];
-            integrity?: Record<string, never>[];
-            timeline: Record<string, never>[];
+            integrity?: components["schemas"]["AttemptIntegritySignal"][];
+            timeline: components["schemas"]["AttemptTimelineItem"][];
+            /** @description 求助标记（04 §4）；与 integrity 分开，供教师处理标记 */
+            helpFlags?: components["schemas"]["AttemptHelpFlag"][];
+            /** @description 作答级指标（08 §4.1）；未实现的指标不出现，不写 0 冒充 */
             metrics?: Record<string, never>;
+        };
+        KeyHeatItem: {
+            /** @description 关键步骤 id（题目包 secret.keys[].id） */
+            key: string;
+            label: string;
+            /** @description 自己写出该步骤的人数 */
+            own?: number;
+            /** @description 经提示写出该步骤的人数 */
+            viaHint?: number;
+            /** @description 卡在该步骤的人数（当前实现未统计时不出现） */
+            stuck?: number;
+        };
+        AttemptHint: {
+            hintId: string;
+            /** @description 关键步骤 id */
+            key: string;
+            /** @description H0–H4 */
+            level: string;
+            /** @description 本次透露量 */
+            cost: number;
+            revealAfter: number;
+            /** @description 教师/系统覆盖发放 */
+            override: boolean;
+            text: components["schemas"]["MathText"];
+            /** Format: date-time */
+            deliveredAt: string;
+        };
+        AttemptIntegritySignal: {
+            /** Format: uuid */
+            flagId: string;
+            /** @description 11 §2 的诚信信号名 */
+            signal: string;
+            score: number;
+            /** @description 结构随 signal 变化；不含学生原文 */
+            evidence?: Record<string, never>;
+            /** @description client / server */
+            source: string;
+            /** @description 教师处理结论；未处理为 null */
+            disposition?: string | null;
+            /** Format: date-time */
+            at: string;
+        };
+        AttemptTimelineItem: {
+            seq: number;
+            /** @description 08 §3 的事件类型 */
+            type: string;
+            /** Format: date-time */
+            at: string;
+            layer?: components["schemas"]["LayerId"] | null;
+        };
+        AttemptHelpFlag: {
+            /** Format: uuid */
+            flagId: string;
+            /**
+             * @description 求助标记（04 §4）；诚信标记见 integrity
+             * @enum {string}
+             */
+            kind: "help";
+            layer?: string | null;
+            /** Format: date-time */
+            at: string;
+            resolved: boolean;
+            note?: string | null;
         };
         ProblemListItem: {
             problemId: string;

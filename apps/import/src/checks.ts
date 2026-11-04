@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import katex from 'katex';
-import { leakExhaustive, type ProblemPackage } from '@proof-gym/engine';
+import { canon, leakExhaustive, type ConceptsFile, type ProblemPackage } from '@proof-gym/engine';
 
 const require = createRequire(import.meta.url);
 const addFormats = require('ajv-formats') as (ajv: Ajv2020) => Ajv2020;
@@ -61,13 +61,76 @@ function schemaValidate(pkg: ProblemPackage): CheckIssue[] {
 
 // 10 §2 S8 的 CLI 版自动校验：JSON Schema、KaTeX、穷举泄题。透露量校准由 report.ts 对两稿做比对提示。
 // 与 contracts/tools/check-seeds.mjs 的穷举泄题同一实现（engine/leak 复跑 gateRule）。
-export function checkPackage(pkg: ProblemPackage): CheckResult {
+export interface CheckOptions {
+  // 与 check-seeds 对齐：概念卡/词条也要做穷举泄题检查（发布时传 seed/concepts.json）。
+  concepts?: ConceptsFile;
+}
+
+// 结构与提示阶梯：与 contracts/tools/check-seeds.mjs 的规则一致（S8 同一口径，见 10 §2）。
+function structuralIssues(pkg: ProblemPackage): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  const P = pkg.public as ProblemPackage['public'] & {
+    layers?: Record<string, { enabled?: boolean }>;
+  };
+  const S = pkg.secret;
+  if (P.layers?.L1?.enabled === true && (P.def === undefined || S.def === undefined)) {
+    issues.push({ where: 'public.def', message: 'L1 启用但缺 def' });
+  }
+  if (P.layers?.L2?.enabled === true && (P.frame === undefined || S.frame === undefined)) {
+    issues.push({ where: 'public.frame', message: 'L2 启用但缺 frame' });
+  }
+  if (P.keyCount !== S.keys.length) {
+    issues.push({ where: 'public.keyCount', message: `keyCount=${P.keyCount} 与 keys.length=${S.keys.length} 不一致` });
+  }
+  const keyIds = new Set(S.keys.map((key) => key.id));
+  for (const route of S.routes) {
+    for (const id of route) if (!keyIds.has(id)) issues.push({ where: 'secret.routes', message: `路线引用了不存在的 ${id}` });
+  }
+  for (const key of S.keys) {
+    const levels = key.hints.map((hint) => hint.level).join(',');
+    if (levels !== 'H0,H1,H2,H3,H4') issues.push({ where: `${key.id}.hints`, message: `提示级别应为 H0..H4，实际 ${levels}` });
+    const costs = key.hints.map((hint) => hint.cost).join(',');
+    if (costs !== '0,0,0.5,1,1') issues.push({ where: `${key.id}.hints`, message: `透露量应为 0,0,0.5,1,1，实际 ${costs}` });
+    const compiled: RegExp[] = [];
+    for (const pattern of key.patterns) {
+      try {
+        compiled.push(new RegExp(pattern, 'u'));
+      } catch (error) {
+        issues.push({ where: `${key.id}.patterns`, message: `正则不合法：${(error as Error).message}` });
+      }
+    }
+    const compiledErrors = S.errors.map((error) => ({
+      id: error.id,
+      patterns: error.patterns.flatMap((pattern) => {
+        try {
+          return [new RegExp(pattern, 'u')];
+        } catch {
+          return [];
+        }
+      }),
+    }));
+    for (const example of key.examples ?? []) {
+      const text = canon(example);
+      if (!compiled.some((pattern) => pattern.test(text))) {
+        issues.push({ where: `${key.id}.examples`, message: `样例未命中本步骤：${example}` });
+      }
+      const errorHit = compiledErrors.find((error) => error.patterns.some((pattern) => pattern.test(text)));
+      if (errorHit) issues.push({ where: `${key.id}.examples`, message: `样例被错误类型 ${errorHit.id} 截走：${example}` });
+    }
+  }
+  return issues;
+}
+
+export function checkPackage(pkg: ProblemPackage, options: CheckOptions = {}): CheckResult {
   const issues: CheckIssue[] = [...schemaValidate(pkg)];
   // schema 不通过时不再继续（否则 KaTeX/leak 会在缺字段的畸形包上抛 TypeError，A 复审 P2-3）。
   if (issues.length > 0) return { ok: false, issues };
   if (pkg === null || typeof pkg !== 'object' || pkg.public === undefined || pkg.secret === undefined) {
     return { ok: false, issues: [{ where: 'package', message: '缺少 public/secret' }] };
   }
+  issues.push(...structuralIssues(pkg));
+  // 结构不合法时不再进入 leakExhaustive（无效路线会让引擎抛错）。
+  if (issues.length > 0) return { ok: false, issues };
 
   walkStrings(pkg, 'package', (where, text) => {
     for (const match of text.matchAll(MATH)) {
@@ -79,7 +142,7 @@ export function checkPackage(pkg: ProblemPackage): CheckResult {
     }
   });
 
-  for (const failure of leakExhaustive(pkg, { concepts: [], glossary: [] })) {
+  for (const failure of leakExhaustive(pkg, options.concepts ?? { concepts: [], glossary: [] })) {
     issues.push({ where: failure.where, message: failure.message });
   }
 

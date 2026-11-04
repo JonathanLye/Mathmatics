@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { ProblemPackage } from '@proof-gym/engine';
 import { Client } from 'pg';
 
-import { checkPackage, type CheckIssue } from './checks.ts';
+import { checkPackage, type CheckIssue, type CheckOptions } from './checks.ts';
 
 export interface PublishResult {
   ok: boolean;
@@ -29,10 +29,10 @@ function stable(value: unknown): string {
 // 同一 version 已发布：内容相同→幂等跳过；内容不同→要求 bump version（07 published 不可变）。
 export async function publishPackage(
   file: string,
-  options: { reviewer: string; minutes: number; databaseUrl?: string },
+  options: { reviewer: string; minutes: number; databaseUrl?: string } & CheckOptions,
 ): Promise<PublishResult> {
   const pkg = JSON.parse(readFileSync(file, 'utf8')) as ProblemPackage;
-  const checks = checkPackage(pkg);
+  const checks = checkPackage(pkg, { concepts: options.concepts });
   const databaseUrl = options.databaseUrl?.trim();
   const mode: PublishResult['mode'] = databaseUrl === undefined || databaseUrl === '' ? 'dry-run' : 'db';
   if (!checks.ok) return { ok: false, mode, issues: checks.issues };

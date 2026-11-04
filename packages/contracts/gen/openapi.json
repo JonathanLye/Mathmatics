@@ -4474,21 +4474,7 @@
               "keyHeat": {
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "label": {
-                      "type": "string"
-                    },
-                    "stuck": {
-                      "type": "integer"
-                    },
-                    "viaHint": {
-                      "type": "integer"
-                    }
-                  }
+                  "$ref": "#/components/schemas/KeyHeatItem"
                 }
               }
             }
@@ -4548,7 +4534,7 @@
           "keyHeat": {
             "type": "array",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/KeyHeatItem"
             }
           },
           "recognition": {
@@ -4687,7 +4673,7 @@
           "hints": {
             "type": "array",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/AttemptHint"
             }
           },
           "notes": {
@@ -4699,18 +4685,211 @@
           "integrity": {
             "type": "array",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/AttemptIntegritySignal"
             }
           },
           "timeline": {
             "type": "array",
             "items": {
-              "type": "object",
-              "description": "按时间的关键事件摘要（层切换、提交、提示、切出）"
+              "$ref": "#/components/schemas/AttemptTimelineItem"
             }
           },
+          "helpFlags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttemptHelpFlag"
+            },
+            "description": "求助标记（04 §4）；与 integrity 分开，供教师处理标记"
+          },
           "metrics": {
-            "type": "object"
+            "type": "object",
+            "description": "作答级指标（08 §4.1）；未实现的指标不出现，不写 0 冒充"
+          }
+        }
+      },
+      "KeyHeatItem": {
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "关键步骤 id（题目包 secret.keys[].id）"
+          },
+          "label": {
+            "type": "string"
+          },
+          "own": {
+            "type": "integer",
+            "description": "自己写出该步骤的人数"
+          },
+          "viaHint": {
+            "type": "integer",
+            "description": "经提示写出该步骤的人数"
+          },
+          "stuck": {
+            "type": "integer",
+            "description": "卡在该步骤的人数（当前实现未统计时不出现）"
+          }
+        }
+      },
+      "AttemptHint": {
+        "type": "object",
+        "required": [
+          "hintId",
+          "key",
+          "level",
+          "cost",
+          "revealAfter",
+          "override",
+          "text",
+          "deliveredAt"
+        ],
+        "properties": {
+          "hintId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "关键步骤 id"
+          },
+          "level": {
+            "type": "string",
+            "description": "H0–H4"
+          },
+          "cost": {
+            "type": "number",
+            "description": "本次透露量"
+          },
+          "revealAfter": {
+            "type": "number"
+          },
+          "override": {
+            "type": "boolean",
+            "description": "教师/系统覆盖发放"
+          },
+          "text": {
+            "$ref": "#/components/schemas/MathText"
+          },
+          "deliveredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AttemptIntegritySignal": {
+        "type": "object",
+        "required": [
+          "flagId",
+          "signal",
+          "score",
+          "source",
+          "at"
+        ],
+        "properties": {
+          "flagId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "signal": {
+            "type": "string",
+            "description": "11 §2 的诚信信号名"
+          },
+          "score": {
+            "type": "number"
+          },
+          "evidence": {
+            "type": "object",
+            "description": "结构随 signal 变化；不含学生原文"
+          },
+          "source": {
+            "type": "string",
+            "description": "client / server"
+          },
+          "disposition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "教师处理结论；未处理为 null"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AttemptTimelineItem": {
+        "type": "object",
+        "required": [
+          "seq",
+          "type",
+          "at"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string",
+            "description": "08 §3 的事件类型"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "layer": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LayerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "AttemptHelpFlag": {
+        "type": "object",
+        "required": [
+          "flagId",
+          "kind",
+          "at",
+          "resolved"
+        ],
+        "properties": {
+          "flagId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "help"
+            ],
+            "description": "求助标记（04 §4）；诚信标记见 integrity"
+          },
+          "layer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
