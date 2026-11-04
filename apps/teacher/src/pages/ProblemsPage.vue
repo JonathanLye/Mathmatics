@@ -134,7 +134,7 @@ onMounted(load);
     <t-table
       :data="items"
       :columns="columns"
-      row-key="problemId"
+      :row-key="(row: ProblemItem) => `${row.problemId}@${row.version}`"
       :loading="loading"
       size="small"
       hover
