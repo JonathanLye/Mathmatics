@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
-import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterImportResult } from '../api/types.ts';
+import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
 import ExportPanel from '../components/ExportPanel.vue';
 import MetricsPanel from '../components/MetricsPanel.vue';
 import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
@@ -41,6 +41,9 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const importResult = ref<RosterImportResult | null>(null);
 const rotating = ref(false);
+const rosterEntries = ref<RosterEntry[]>([]);
+const rosterLoading = ref(false);
+const unclaiming = ref<string | null>(null);
 
 // 布置（04 §7）
 const createdAssignments = ref<AssignmentCard[]>([]);
@@ -180,6 +183,32 @@ function disconnectStream(): void {
   streamConnected.value = false;
 }
 
+async function loadRoster(): Promise<void> {
+  if (classId.value === '') return;
+  rosterLoading.value = true;
+  try {
+    rosterEntries.value = await api.get<RosterEntry[]>(`/api/v1/teacher/classes/${classId.value}/roster`);
+  } catch {
+    rosterEntries.value = [];
+  } finally {
+    rosterLoading.value = false;
+  }
+}
+
+async function unclaim(rosterId: string): Promise<void> {
+  if (unclaiming.value !== null) return;
+  unclaiming.value = rosterId;
+  try {
+    await api.delete(`/api/v1/teacher/classes/${classId.value}/roster/${rosterId}`);
+    MessagePlugin.success('已解除认领');
+    await Promise.all([loadRoster(), loadClassInfo()]);
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    unclaiming.value = null;
+  }
+}
+
 async function loadLive(): Promise<void> {
   liveLoading.value = true;
   try {
@@ -223,7 +252,7 @@ async function onFileChange(event: Event): Promise<void> {
     const result = await api.postCsv<RosterImportResult>(`/api/v1/teacher/classes/${classId.value}/roster`, file);
     importResult.value = result;
     MessagePlugin.success(`导入完成：新增 ${result.added}，重复 ${result.duplicates}，非法 ${result.invalid.length}`);
-    await loadClassInfo();
+    await Promise.all([loadClassInfo(), loadRoster()]);
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
   } finally {
@@ -296,6 +325,7 @@ function flagLabel(flag: string): string {
 onMounted(async () => {
   await loadClassInfo();
   await loadLive();
+  await loadRoster();
   connectStream();
   startPolling();
 });
@@ -387,11 +417,34 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="roster" label="名单">
-        <t-alert
-          theme="info"
-          message="当前契约没有 GET 名单列表接口（见 #50 PR 的缺口说明）；本页提供导入与认领人数，列表待 B 补契约后展示。"
-          style="margin: 12px 0"
-        />
+        <h4 style="margin: 16px 0 8px">名单列表</h4>
+        <t-table
+          :data="rosterEntries"
+          :columns="[
+            { colKey: 'name', title: '姓名' },
+            { colKey: 'claimed', title: '认领' },
+            { colKey: 'claimedAt', title: '认领时间' },
+            { colKey: 'claimedByAnon', title: '学生匿名码' },
+            { colKey: 'actions', title: '操作', width: 120 },
+          ]"
+          :loading="rosterLoading"
+          row-key="rosterId"
+          size="small"
+        >
+          <template #name="{ row }">{{ row.name ?? '未提供' }}</template>
+          <template #claimed="{ row }">
+            <t-tag :theme="row.claimed ? 'success' : 'default'" variant="light">{{ row.claimed ? '已认领' : '未认领' }}</t-tag>
+          </template>
+          <template #claimedAt="{ row }">{{ row.claimedAt ? new Date(row.claimedAt).toLocaleString('zh-CN') : '—' }}</template>
+          <template #claimedByAnon="{ row }">{{ row.claimedByAnon ?? '—' }}</template>
+          <template #actions="{ row }">
+            <t-popconfirm v-if="row.claimed" content="解除后学生需重新用邀请码认领，确定？" @confirm="unclaim(row.rosterId)">
+              <t-link theme="danger" :loading="unclaiming === row.rosterId">解除认领</t-link>
+            </t-popconfirm>
+            <span v-else class="page-sub">—</span>
+          </template>
+          <template #empty><div class="empty">名单为空，先导入 CSV。</div></template>
+        </t-table>
         <div class="inline-actions" style="margin-bottom: 16px">
           <span>邀请码 <b class="mono">{{ classInfo?.inviteCode ?? '—' }}</b></span>
           <t-button size="small" variant="outline" @click="copyInvite">复制</t-button>
