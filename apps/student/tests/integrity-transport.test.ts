@@ -71,6 +71,17 @@ describe('#27 传输层（POST /api/v1/events/batch）', () => {
     const outcome = await transport.send([event(1)], { beacon: true })
     expect(outcome.ok).toBe(false)
     expect(outcome.retryable).toBe(true)
-    expect(outcome.detail).toContain('sendBeacon cannot carry CSRF header')
+  })
+
+  it('隐藏时 keepalive 返回 4xx（如 403/422）→ 不可重试，不因此无限保留毒事件', async () => {
+    const fetchImpl: FetchLike = async () => ({ ok: false, status: 403 })
+    const outcome = await createFetchTransport({ fetchImpl }).send([event(1)], { beacon: true })
+    expect(outcome).toMatchObject({ ok: false, retryable: false })
+  })
+
+  it('隐藏时 keepalive 返回 503 → 可重试', async () => {
+    const fetchImpl: FetchLike = async () => ({ ok: false, status: 503 })
+    const outcome = await createFetchTransport({ fetchImpl }).send([event(1)], { beacon: true })
+    expect(outcome).toMatchObject({ ok: false, retryable: true })
   })
 })

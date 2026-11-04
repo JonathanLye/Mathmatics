@@ -84,14 +84,8 @@ export function createFetchTransport(options: FetchTransportOptions = {}): Event
     async send(events, opts = {}) {
       if (!opts.beacon) return post(events, false)
       // 页面隐藏/卸载：只走 keepalive fetch（能带 CSRF 头与 Cookie），不回退 sendBeacon。
-      const viaFetch = await post(events, true)
-      if (viaFetch.ok) return viaFetch
-      return {
-        ok: false,
-        retryable: true,
-        detail:
-          'keepalive fetch failed on hide; events kept for retry (sendBeacon cannot carry CSRF header)',
-      }
+      // 失败原样返回：网络/5xx/429 → retryable（事件留 IndexedDB 补发）；4xx → 不可重试（丢弃，与普通 flush 一致）。
+      return post(events, true)
     },
   }
 }
