@@ -120,23 +120,16 @@ function mergeLiveRow(row: LiveRow): void {
   const index = rows.findIndex((item) => item.anonCode === row.anonCode);
   if (index >= 0) rows[index] = row;
   else rows.push(row);
-  const summary = {
-    ...current.summary,
-    online: rows.filter((item) => item.status === 'active').length,
-    started: rows.filter((item) => item.attemptId !== null).length,
-    completed: rows.filter((item) => item.status === 'completed').length,
-    stuck: rows.filter((item) => (item.stuckSec ?? 0) >= 180).length,
-    flagged: rows.filter((item) => (item.flags?.length ?? 0) > 0).length,
-  };
-  live.value = { ...current, rows, summary };
+  // summary 口径以服务端 /live 为准（08 §4）；SSE 只更新行，5s 轮询覆盖 summary。
+  live.value = { ...current, rows };
 }
 
 function scheduleRetry(): void {
-  if (retryTimer !== undefined || document.hidden || !navigator.onLine) return;
+  if (retryTimer !== undefined || document.hidden) return;
   retryTimer = window.setTimeout(() => {
     retryTimer = undefined;
     connectStream();
-  }, retryDelay);
+  }, navigator.onLine ? retryDelay : 30_000);
   retryDelay = Math.min(30_000, retryDelay * 2);
 }
 

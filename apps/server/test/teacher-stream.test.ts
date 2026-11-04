@@ -163,6 +163,20 @@ describe('班级看板 SSE（#48 C 侧 / 06 §6）', () => {
     }
   });
 
+  it('首帧期间断开不影响后续连接（清理竞态回归）', async () => {
+    const controller = new AbortController();
+    const res = await fetch(`${base}/api/v1/teacher/classes/${classId}/stream`, {
+      headers: { cookie: teacherCookie },
+      signal: controller.signal,
+    });
+    expect(res.status).toBe(200);
+    controller.abort();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const { event, data } = await readSse(`${base}/api/v1/teacher/classes/${classId}/stream`, teacherCookie);
+    expect(event).toBe('row');
+    expect((JSON.parse(data) as { anonCode: string }).anonCode).toMatch(/^S-/);
+  });
+
   it('学生 403；非本班教师 404', async () => {
     const asStudent = await fetch(`${base}/api/v1/teacher/classes/${classId}/stream`, { headers: { cookie: studentCookie } });
     expect(asStudent.status).toBe(403);

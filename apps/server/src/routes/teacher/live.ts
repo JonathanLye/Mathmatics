@@ -63,7 +63,6 @@ export const teacherLiveRoutes: FastifyPluginAsync<AuthRouteOptions> = async (ap
 
     let closed = false;
     let busy = false;
-    let seq = 0;
     let poll: NodeJS.Timeout | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
     let lastWarn = 0;
@@ -90,8 +89,7 @@ export const teacherLiveRoutes: FastifyPluginAsync<AuthRouteOptions> = async (ap
           const previous = last.get(row.anonCode);
           if (previous === json) continue;
           last.set(row.anonCode, json);
-          seq += 1;
-          if (!write(`id: ${seq}\nevent: row\ndata: ${json}\n\n`)) return;
+          if (!write(`event: row\ndata: ${json}\n\n`)) return;
           if (previous !== undefined) {
             const before = JSON.parse(previous) as { flags?: string[] };
             const added = row.flags.filter((flag) => !(before.flags ?? []).includes(flag));
@@ -135,7 +133,8 @@ export const teacherLiveRoutes: FastifyPluginAsync<AuthRouteOptions> = async (ap
       cleanup();
       return;
     }
-    const pingMs = Number(process.env.TEACHER_SSE_PING_MS ?? 20_000);
+    const pingMs =
+      process.env.NODE_ENV === 'test' ? Number(process.env.TEACHER_SSE_PING_MS ?? 20_000) : 20_000;
     poll = setInterval(() => {
       void pump();
     }, 1000);
