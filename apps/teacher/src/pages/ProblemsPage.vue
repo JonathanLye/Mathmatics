@@ -20,9 +20,21 @@ interface ProblemPackageView {
   id: string;
   version: number;
   kind: string;
-  public: { title?: string; stem?: string; chapter?: string };
+  public: {
+    title?: string;
+    stem?: string;
+    chapter?: string;
+    def?: { task?: string; conceptId?: string };
+    frame?: { task?: string; template?: string };
+  };
   secret: { keys?: unknown[]; routes?: unknown[] };
-  review?: { status?: string; autoChecks?: Record<string, unknown> };
+  review?: {
+    status?: string;
+    autoChecks?: Record<string, unknown>;
+    reviewer?: string;
+    reviewedAt?: string;
+    comments?: string;
+  };
 }
 
 const items = ref<ProblemItem[]>([]);
@@ -93,6 +105,24 @@ const reviewStatus = (): string => pkg.value?.review?.status ?? selected.value?.
 
 const pkgChecks = (): { total: number; failed: string[] } => autoChecksSummary(pkg.value?.review?.autoChecks);
 
+// 04 §8.2：四项自动校验逐项展示（与 #128 approve 门禁一致）；lean 有值时附加。
+const CHECK_LABELS: Array<{ key: string; label: string }> = [
+  { key: 'schema', label: 'JSON Schema' },
+  { key: 'katex', label: 'KaTeX 渲染' },
+  { key: 'leakExhaustive', label: '穷举泄题' },
+  { key: 'patternSelfTest', label: '规则/结构自测' },
+];
+const checkItems = (): Array<{ key: string; label: string; ok: boolean }> => {
+  const checks = pkg.value?.review?.autoChecks;
+  return CHECK_LABELS.map(({ key, label }) => ({ key, label, ok: checks?.[key] === true }));
+};
+const leanCheck = (): string | null => {
+  const lean = pkg.value?.review?.autoChecks?.lean;
+  return typeof lean === 'string' ? lean : null;
+};
+const hasStudentPreview = (): boolean =>
+  (pkg.value?.public.def?.task ?? '') !== '' || (pkg.value?.public.frame?.task ?? '') !== '';
+
 function openAction(decision: 'approve' | 'return'): void {
   actionDecision.value = decision;
   actionComments.value = '';
@@ -162,7 +192,7 @@ onMounted(load);
       <h1>题库与审核</h1>
       <t-button size="small" :loading="loading" @click="load">刷新</t-button>
     </div>
-    <div class="page-sub">审核屏（04 §8）：先看题目与自动校验；发布/退回结论接口下一 PR 接。</div>
+    <div class="page-sub">审核屏（04 §8）：看题目、四项自动校验与审核记录；支持通过 / 退回 / 编辑 JSON。</div>
     <t-alert v-if="error" theme="error" :message="error" style="margin: 12px 0" />
 
     <t-table
@@ -201,13 +231,28 @@ onMounted(load);
       <div v-else-if="selected && pkg">
         <h3 style="margin-top: 0">{{ pkg.public.title ?? selected.title }} <span class="page-sub">v{{ pkg.version }}</span></h3>
         <div class="page-sub">{{ selected.problemId }} · {{ selected.chapter ?? '' }} · {{ pkg.kind === 'transfer' ? '迁移题' : '主题' }}</div>
-        <t-alert
-          v-if="pkgChecks().total > 0"
-          :theme="pkgChecks().failed.length === 0 ? 'success' : 'warning'"
-          :message="pkgChecks().failed.length === 0 ? `自动校验全部通过（${pkgChecks().total} 项）` : `自动校验失败：${pkgChecks().failed.join(', ')}`"
-          style="margin: 8px 0"
-        />
-        <t-alert v-else theme="info" message="未提供自动校验结果（auto_checks 为空）：不能通过审核，只能退回或补跑 S8。" style="margin: 8px 0" />
+        <div class="check-card">
+          <div class="check-head">
+            <b>自动校验</b>
+            <t-tag v-if="pkgChecks().total === 0" variant="light">未提供</t-tag>
+            <t-tag v-else :theme="pkgChecks().failed.length === 0 ? 'success' : 'danger'" variant="light">
+              {{ pkgChecks().failed.length === 0 ? '全绿' : `失败 ${pkgChecks().failed.length}` }}
+            </t-tag>
+            <t-tag v-if="leanCheck()" variant="light">Lean: {{ leanCheck() }}</t-tag>
+          </div>
+          <div class="check-grid">
+            <div v-for="item in checkItems()" :key="item.key" class="check-item">
+              <span :class="item.ok ? 'check-ok' : 'check-bad'">{{ item.ok ? '✓' : '✗' }}</span>
+              <span>{{ item.label }}</span>
+            </div>
+          </div>
+          <div v-if="pkgChecks().total === 0" class="page-sub">auto_checks 为空：不能通过，只能退回或补跑 S8。</div>
+          <div v-if="pkg.review?.reviewer || pkg.review?.reviewedAt || pkg.review?.comments" class="review-meta">
+            <span v-if="pkg.review?.reviewer">审核人：{{ pkg.review.reviewer }}</span>
+            <span v-if="pkg.review?.reviewedAt">时间：{{ new Date(pkg.review.reviewedAt).toLocaleString('zh-CN') }}</span>
+            <span v-if="pkg.review?.comments">意见：{{ pkg.review.comments }}</span>
+          </div>
+        </div>
         <h4>题面</h4>
         <MathTextView :text="pkg.public.stem" />
         <h4>结构</h4>
@@ -224,6 +269,19 @@ onMounted(load);
           :message="reviewStatus() === 'published' ? '该版本已发布，无需再审核。' : reviewStatus() === 'retired' ? '该版本已下线。' : '当前状态无需审核。'"
           style="margin-top: 12px"
         />
+        <details v-if="hasStudentPreview()" style="margin-top: 12px">
+          <summary>学生视角预览（L1 定义 / L3 骨架）</summary>
+          <div class="preview-block">
+            <b>L1 定义</b>
+            <MathTextView v-if="pkg.public.def?.task" :text="pkg.public.def.task" />
+          </div>
+          <div v-if="pkg.public.frame?.task" class="preview-block">
+            <b>L3 骨架</b>
+            <MathTextView :text="pkg.public.frame.task" />
+            <MathTextView v-if="pkg.public.frame.template" :text="pkg.public.frame.template" />
+          </div>
+          <div class="page-sub">仅题目包 public 字段；完整学生视图（受层/预算影响）由引擎在作答时投影。</div>
+        </details>
         <details style="margin-top: 12px">
           <summary>原始题目包 JSON</summary>
           <pre class="pkg-json">{{ JSON.stringify(pkg, null, 2) }}</pre>
@@ -278,6 +336,48 @@ onMounted(load);
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+.check-card {
+  border: 1px solid var(--td-component-border, #e3e6eb);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+.check-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 12px;
+}
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.check-ok { color: var(--td-success-color, #2ba471); font-weight: 600; }
+.check-bad { color: var(--td-error-color, #d54941); font-weight: 600; }
+.review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--td-text-color-secondary, #5e6670);
+}
+.preview-block {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--td-bg-color-container-hover, #f7f8fa);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .review-actions {
   display: flex;
