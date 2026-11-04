@@ -30,7 +30,7 @@ export async function listProblems(
 ): Promise<ProblemListItemDto[]> {
   const rows = (
     await db.query<ListRow>(
-      `select p.id as problem_id, p.title, p.chapter, p.kind, p.current_version as version,
+      `select p.id as problem_id, p.title, p.chapter, p.kind, v.version,
               v.review_status, v.auto_checks, v.provenance
          from content.problems p
          join content.problem_versions v
