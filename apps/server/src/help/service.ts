@@ -23,7 +23,7 @@ import { PREVIEW_TTL_MS, signPreview, verifyPreview } from './token.ts';
 
 // 求助与领取提示（06 §4.2–4.3；09 §3 C4、C5）。
 // 服务端只下发题目包里预写的提示文本：不调用模型，不把学生文本发往任何外部服务。
-// 概念回答与行批注（concept / check_line）尚未实现：不返回 note，不假装有内容。
+// 概念回答与行批注（concept / check_line）：从概念库与 app.attempt_lines 生成 Note（06 §4.2），不调用模型。
 // H0/H1 不计透露量，直接经引擎下发；H2 起先给预览与令牌，领取时由引擎重新检查（06 §4.2 的 /hints/claim）。
 // 测验模式关闭提示（11 §5.2 的测验时段"关提示"）：stuck 返回 preview.reason = test_mode。
 
@@ -124,6 +124,44 @@ export function createHelpService(deps: HelpDeps): HelpService {
     return { noteId: randomUUID(), kind, who, text, at: new Date(now()).toISOString() };
   }
 
+  // 概念解释（06 §4.2）：取本题 public.def.conceptId 对应的概念词条（最新版本），给白话要点；
+  // 概念库里没有该词条时返回 null（不假装有内容）。
+  async function conceptNote(owned: Owned): Promise<Record<string, unknown> | null> {
+    const conceptId = owned.ctx.pkg.public.def?.conceptId;
+    if (conceptId === undefined || conceptId === '') return null;
+    const row = await db.query<{
+      body: { title?: string; definition?: string; card?: { plain?: string } };
+    }>(`select body from content.concepts where id = $1 order by version desc limit 1`, [conceptId]);
+    const concept = row.rows[0]?.body;
+    if (!concept) return null;
+    const plain = concept.card?.plain?.trim() ?? '';
+    const text = plain !== '' ? `${concept.title ?? conceptId}：${plain}` : (concept.definition ?? concept.title ?? '').trim();
+    if (text === '') return null;
+    return { ...noteOf('concept', '助教', text), level: 'H0', lessonConceptId: conceptId };
+  }
+
+  // 行批注（06 §4.2）：指向指定行（缺省最新一行）；依据缺失时追问，否则确认衔接。
+  async function checkLineNote(attemptId: string, lineId?: string): Promise<Record<string, unknown> | null> {
+    const row =
+      lineId !== undefined
+        ? (
+            await db.query<{ id: string; justification: string | null }>(
+              `select id, justification from app.attempt_lines where id = $1 and attempt_id = $2`,
+              [lineId, attemptId],
+            )
+          ).rows[0]
+        : (
+            await db.query<{ id: string; justification: string | null }>(
+              `select id, justification from app.attempt_lines where attempt_id = $1 order by created_at desc, idx desc limit 1`,
+              [attemptId],
+            )
+          ).rows[0];
+    if (!row) return null;
+    const missing = row.justification === null || row.justification.trim() === '';
+    const text = missing ? '依据没写。它由哪条定义或已证结论得到？' : '这一行和前面衔接上了。';
+    return { ...noteOf('annotation', '批注', text), lineId: row.id };
+  }
+
   function hintNote(owned: Owned, event: EngineEvent): Record<string, unknown> {
     const keyId = String(event.payload.key);
     const level = String(event.payload.level);
@@ -160,6 +198,18 @@ export function createHelpService(deps: HelpDeps): HelpService {
       if (routed === 'pressure') {
         await attempts.setHelpOutcome(helpId, 'refusal');
         return { routed, note: refusalNote(owned), state: await attempts.get(userId, attemptId) };
+      }
+      if (routed === 'concept') {
+        const note = await conceptNote(owned);
+        await attempts.setHelpOutcome(helpId, 'concept');
+        const state = await attempts.get(userId, attemptId);
+        return note === null ? { routed, state } : { routed, note, state };
+      }
+      if (routed === 'check_line') {
+        const note = await checkLineNote(attemptId, extra.lineId);
+        await attempts.setHelpOutcome(helpId, 'annotation');
+        const state = await attempts.get(userId, attemptId);
+        return note === null ? { routed, state } : { routed, note, state };
       }
       if (routed !== 'stuck') {
         return { routed, state: await attempts.get(userId, attemptId) };

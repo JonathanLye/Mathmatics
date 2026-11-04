@@ -136,16 +136,38 @@ describe('求助与领取（响应均符合 HelpResult）', () => {
     expect((await stateOf(h.db, h.attemptId)).hint.reveal).toBe(before);
   });
 
-  it('概念与行批注尚未实现：不返回 note 与预览，不假装有内容', async () => {
+  it('概念回答：返回概念词条的 Note（kind=concept、lessonConceptId），不返回预览', async () => {
     const concept = await postHelp(h, { intent: 'concept' });
     assertHelpResult(concept);
-    expect(concept.json()).toMatchObject({ routed: 'concept' });
-    expect(concept.json().note).toBeUndefined();
+    expect(concept.json()).toMatchObject({
+      routed: 'concept',
+      note: { kind: 'concept', who: '助教', level: 'H0', lessonConceptId: 'seq-limit' },
+    });
+    expect(String(concept.json().note.text)).toContain('数列极限');
     expect(concept.json().preview).toBeUndefined();
-    const check = await postHelp(h, { intent: 'check_line' });
-    assertHelpResult(check);
-    expect(check.json()).toMatchObject({ routed: 'check_line' });
-    expect(check.json().note).toBeUndefined();
+  });
+
+  it('行批注：无依据的行返回追问（lineId 指向该行）；有依据的行返回衔接确认', async () => {
+    const bare = await h.db.query<{ id: string }>(
+      `insert into app.attempt_lines (attempt_id, layer, role, idx, statement, statement_canon, provenance)
+       values ($1, 'L3', 'step', 1, '任取 epsilon', '任取 ', 'keyboard') returning id`,
+      [h.attemptId],
+    );
+    const bareId = bare.rows[0]?.id as string;
+    const first = await postHelp(h, { intent: 'check_line', lineId: bareId });
+    assertHelpResult(first);
+    expect(first.json()).toMatchObject({ routed: 'check_line', note: { kind: 'annotation', lineId: bareId } });
+    expect(String(first.json().note.text)).toContain('依据');
+
+    const withWhy = await h.db.query<{ id: string }>(
+      `insert into app.attempt_lines (attempt_id, layer, role, idx, statement, justification, statement_canon, provenance)
+       values ($1, 'L3', 'step', 2, '取 N=ceil(5/epsilon)', '由定义', '取 ', 'keyboard') returning id`,
+      [h.attemptId],
+    );
+    const whyId = withWhy.rows[0]?.id as string;
+    const second = await postHelp(h, { intent: 'check_line', lineId: whyId });
+    expect(second.json()).toMatchObject({ routed: 'check_line', note: { kind: 'annotation', lineId: whyId } });
+    expect(String(second.json().note.text)).toContain('衔接');
   });
 
   it('测验模式关闭提示：stuck 返回 test_mode，领取返回 403 TEST_MODE_RESTRICTED', async () => {
