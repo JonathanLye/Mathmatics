@@ -30,6 +30,11 @@ const live = ref<LiveSnapshot | null>(null);
 const liveError = ref('');
 const liveLoading = ref(false);
 let pollTimer: number | undefined;
+let stream: EventSource | undefined;
+let retryTimer: number | undefined;
+let retryDelay = 1000;
+const streamConnected = ref(false);
+const streamError = ref('');
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -105,6 +110,74 @@ async function loadClassInfo(): Promise<void> {
   } catch (caught) {
     pageError.value = messageOf(caught);
   }
+}
+
+// #48 C 侧：看板 SSE（06 §6 row/flag/ping）；失败时保留 5s 轮询兜底。
+function mergeLiveRow(row: LiveRow): void {
+  const current = live.value;
+  if (current === null) return;
+  const rows = [...current.rows];
+  const index = rows.findIndex((item) => item.anonCode === row.anonCode);
+  if (index >= 0) rows[index] = row;
+  else rows.push(row);
+  // summary 口径以服务端 /live 为准（08 §4）；SSE 只更新行，5s 轮询覆盖 summary。
+  live.value = { ...current, rows };
+}
+
+function scheduleRetry(): void {
+  if (retryTimer !== undefined || document.hidden) return;
+  retryTimer = window.setTimeout(() => {
+    retryTimer = undefined;
+    connectStream();
+  }, navigator.onLine ? retryDelay : 30_000);
+  retryDelay = Math.min(30_000, retryDelay * 2);
+}
+
+function connectStream(): void {
+  if (typeof EventSource === 'undefined' || classId.value === '' || document.hidden) return;
+  if (retryTimer !== undefined) {
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
+  stream?.close();
+  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream`);
+  stream.onopen = () => {
+    streamConnected.value = true;
+    streamError.value = '';
+    retryDelay = 1000;
+  };
+  stream.addEventListener('row', (event) => {
+    try {
+      mergeLiveRow(JSON.parse((event as MessageEvent).data) as LiveRow);
+    } catch {
+      // 忽略坏帧，轮询会补齐
+    }
+  });
+  stream.addEventListener('flag', (event) => {
+    try {
+      const flag = JSON.parse((event as MessageEvent).data) as { type: string; anonCode: string };
+      MessagePlugin.warning(`${flag.anonCode}：${FLAG_LABEL[flag.type] ?? flag.type}标记`);
+    } catch {
+      // ignore
+    }
+  });
+  stream.onerror = () => {
+    streamConnected.value = false;
+    streamError.value = '实时连接断开，已回退 5s 轮询，正在重连…';
+    stream?.close();
+    stream = undefined;
+    scheduleRetry();
+  };
+}
+
+function disconnectStream(): void {
+  if (retryTimer !== undefined) {
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
+  stream?.close();
+  stream = undefined;
+  streamConnected.value = false;
 }
 
 async function loadLive(): Promise<void> {
@@ -223,6 +296,7 @@ function flagLabel(flag: string): string {
 onMounted(async () => {
   await loadClassInfo();
   await loadLive();
+  connectStream();
   startPolling();
 });
 
@@ -232,7 +306,25 @@ function onVisibility(): void {
 
 document.addEventListener('visibilitychange', onVisibility);
 
+function onVisibilityChange(): void {
+  if (document.hidden) disconnectStream();
+  else if (stream === undefined) connectStream();
+}
+
+function onOnline(): void {
+  retryDelay = 1000;
+  if (stream === undefined) connectStream();
+}
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('online', onOnline);
+});
+
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  window.removeEventListener('online', onOnline);
+  disconnectStream();
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibility);
 });
@@ -291,7 +383,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </t-table>
-        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。</div>
+        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。{{ streamConnected ? ' SSE 已连接。' : '' }}{{ streamError ? ` ${streamError}` : '' }}</div>
       </t-tab-panel>
 
       <t-tab-panel value="roster" label="名单">

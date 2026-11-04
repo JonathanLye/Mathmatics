@@ -695,7 +695,7 @@ export interface paths {
         };
         /**
          * 实时看板推送（SSE）
-         * @description 事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线后用 `Last-Event-ID` 续传。
+         * @description 事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线重连后重推当前快照；前端另有 5s 轮询兜底。
          */
         get: operations["streamLive"];
         put?: never;
@@ -5630,7 +5630,10 @@ export interface operations {
     };
     streamLive: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 缺省为最近开放的布置 */
+                assignmentId?: string;
+            };
             header?: never;
             path: {
                 classId: components["parameters"]["classId"];
