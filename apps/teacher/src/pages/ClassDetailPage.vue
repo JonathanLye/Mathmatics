@@ -5,12 +5,25 @@ import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
 import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterImportResult } from '../api/types.ts';
+import ExportPanel from '../components/ExportPanel.vue';
+import MetricsPanel from '../components/MetricsPanel.vue';
+import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
 
 const route = useRoute();
 const classId = computed(() => String(route.params.classId ?? ''));
 const tab = ref('live');
 const classInfo = ref<ClassSummary | null>(null);
 const pageError = ref('');
+
+// 学生详情抽屉（#35：解锁 / 发一句话 / 处理标记）
+const drawerVisible = ref(false);
+const selectedAttemptId = ref<string | null>(null);
+
+function openAttempt(row: LiveRow): void {
+  if (row.attemptId === null || row.attemptId === undefined) return;
+  selectedAttemptId.value = row.attemptId;
+  drawerVisible.value = true;
+}
 
 // 实时看板（#51 提供 /live；未上线时显示提示，不阻塞其他页签）
 const live = ref<LiveSnapshot | null>(null);
@@ -61,6 +74,7 @@ const liveColumns = [
   { colKey: 'stuckSec', title: '无进展' },
   { colKey: 'flags', title: '标记' },
   { colKey: 'lastActiveAt', title: '最近活动' },
+  { colKey: 'actions', title: '操作', width: 90 },
 ];
 
 const stats = computed(() => {
@@ -103,7 +117,9 @@ async function loadLive(): Promise<void> {
     liveError.value =
       caught instanceof ApiError && (caught.status === 404 || caught.status === 501)
         ? '实时看板接口尚未上线（#51），上线后自动生效。'
-        : messageOf(caught);
+        : caught instanceof ApiError
+          ? caught.message
+          : '看板加载失败，请检查网络后重试';
   } finally {
     liveLoading.value = false;
   }
@@ -248,6 +264,7 @@ onBeforeUnmount(() => {
           :loading="liveLoading"
           size="small"
           hover
+          @row-click="(ctx: { row: LiveRow }) => openAttempt(ctx.row)"
         >
           <template #status="{ row }">
             <t-tag :theme="row.status === 'completed' ? 'success' : row.status === 'locked' ? 'danger' : 'default'">
@@ -265,9 +282,12 @@ onBeforeUnmount(() => {
           <template #lastActiveAt="{ row }">
             <span>{{ row.lastActiveAt ? new Date(row.lastActiveAt).toLocaleTimeString('zh-CN') : '—' }}</span>
           </template>
+          <template #actions="{ row }">
+            <t-link theme="primary" :disabled="!row.attemptId" @click.stop="openAttempt(row)">详情</t-link>
+          </template>
           <template #empty>
             <div class="empty">
-              {{ liveError ? '看板接口待上线。' : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
+              {{ liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
             </div>
           </template>
         </t-table>
@@ -351,13 +371,19 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="metrics" label="指标">
-        <t-alert theme="info" message="指标页随 #35 上线：层漏斗、关键步骤卡点热力、独立度分布（口径 08 §4）。" style="margin: 12px 0" />
+        <MetricsPanel :class-id="classId" :assignment-id="live?.assignmentId ?? undefined" />
       </t-tab-panel>
 
       <t-tab-panel value="export" label="导出">
-        <t-alert theme="info" message="导出页随 #35 上线：默认匿名、字段与 08 §5 一致、带字段字典。" style="margin: 12px 0" />
+        <ExportPanel :class-id="classId" />
       </t-tab-panel>
     </t-tabs>
+
+    <StudentDetailDrawer
+      v-model:visible="drawerVisible"
+      :attempt-id="selectedAttemptId"
+      @refresh="loadLive"
+    />
   </div>
 </template>
 

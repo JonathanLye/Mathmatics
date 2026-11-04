@@ -4,6 +4,7 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 
 import { createModelGateway } from './ai/gateway.ts';
 import { loadConfig, type AppConfig } from './config.ts';
+import { requestSerializer } from './logging.ts';
 import { loadContract } from './contract.ts';
 import type { Db } from './db/index.ts';
 import { AppError, registerErrorHandler } from './errors.ts';
@@ -30,7 +31,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const app = Fastify({
     ...(options.loggerInstance
       ? { loggerInstance: options.loggerInstance }
-      : { logger: options.logger === false ? false : { level: config.logLevel } }),
+      : { logger: options.logger === false ? false : { level: config.logLevel, serializers: { req: requestSerializer } } }),
     trustProxy: config.env === 'production' ? trustNearestProxy : false,
   });
 

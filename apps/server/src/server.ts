@@ -4,10 +4,11 @@ import { buildApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { openDb } from './db/index.ts';
 import { cleanupExpiredIdempotencyKeys } from './idempotency.ts';
+import { requestSerializer } from './logging.ts';
 
 const config = loadConfig();
 // 先建 pino 实例：池里空闲连接的错误发生在 app 建立之后，但只有共用同一个 logger 才能进结构化日志。
-const logger = pino({ level: config.logLevel });
+const logger = pino({ level: config.logLevel, serializers: { req: requestSerializer } });
 const db = await openDb({
   databaseUrl: config.databaseUrl,
   pgliteDir: config.pgliteDir,

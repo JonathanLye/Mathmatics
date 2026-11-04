@@ -18,3 +18,85 @@ export interface RosterImportResult {
   duplicates: number;
   invalid: Array<{ row: number; reason: string }>;
 }
+
+// —— #35：教师端详情/指标/导出用到的扩展类型 ——
+// 服务端额外返回 helpFlags 与 integrity[].flagId（契约缺命名 schema，见 #102 的缺口清单）。
+export interface HelpFlagItem {
+  flagId: string;
+  kind: string;
+  layer: string | null;
+  at: string;
+  resolved: boolean;
+  note: string | null;
+}
+
+export interface IntegrityItem {
+  flagId?: string;
+  signal: string;
+  score: number;
+  evidence?: unknown;
+  source?: string;
+  disposition?: string | null;
+  at?: string;
+}
+
+export interface TeacherLine {
+  lineId: string;
+  layer: string;
+  n: number;
+  statement: string;
+  justification: string;
+  provenance: string;
+  cls: string;
+  keys: string[];
+  conf: number | null;
+  path: string;
+}
+
+export interface TeacherHint {
+  hintId: string;
+  key: string;
+  level: string;
+  cost: number;
+  revealAfter: number;
+  override?: boolean;
+  text: string;
+  deliveredAt: string;
+}
+
+export interface TimelineItem {
+  seq: number;
+  type: string;
+  at: string;
+  layer: string | null;
+}
+
+export interface TeacherAttemptDetail {
+  attemptId: string;
+  anonCode: string;
+  displayName: string | null;
+  status: string;
+  mode: string;
+  problem: { problemId: string; version: number; title: string };
+  lines: TeacherLine[];
+  hints: TeacherHint[];
+  notes: unknown[];
+  helpFlags: HelpFlagItem[];
+  integrity: IntegrityItem[];
+  timeline: TimelineItem[];
+  metrics: Record<string, unknown>;
+}
+
+export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
+export type ExportTable = 'attempts' | 'lines' | 'hints' | 'help' | 'recognitions' | 'integrity' | 'events';
+
+// GET /teacher/attempts/{id}/events 的一页（08 §2/§6）；回放只用 seq/type/layer/payload。
+export interface StoredEvent {
+  id: string;
+  seq: number;
+  type: string;
+  source: string;
+  tsServer: string;
+  layer?: string | null;
+  payload: Record<string, unknown>;
+}

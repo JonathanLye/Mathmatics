@@ -1,11 +1,27 @@
 /**
- * 会话/登录/同意（P0 本地模拟；真实登录由 B 的 #18 提供后替换）。
- * 同意书五段口径见 13-合规与运营.md §2 与 10-开发文档/00-README M11。
+ * 会话/登录/同意（issue #24：真实接口；mock 模式保留本地 fallback）。
+ *
+ * - 登录：POST /auth/student/login（#18 已完成），响应设置 HttpOnly Cookie，返回 Me；
+ * - 同意书：GET /consents 取服务端文本与本人签署状态，POST /consents 提交 {version, items}；
+ *   必选三段（service / crossBorderHosting / monitoring）未同意时不允许开始练习（13 §2）。
+ * - 页面只渲染本 store；不在前端判断是否需要同意（以 Me.consentRequired 为准）。
  */
 import { computed, ref } from 'vue'
 
+import {
+  errorMessage,
+  getConsents,
+  getMe,
+  isMockMode,
+  login as apiLogin,
+  logout as apiLogout,
+  mockConsentDoc,
+  submitConsents,
+} from '@/api/client'
+import type { ConsentChoices, ConsentDoc, ConsentKey, MeView } from '@/types/attempt'
+
 export interface ConsentItem {
-  id: string
+  id: ConsentKey
   title: string
   required: boolean
   summary: string
@@ -13,34 +29,178 @@ export interface ConsentItem {
   value: boolean
 }
 
-const CONSENT_ITEMS: ConsentItem[] = [
-  { id: 'service', title: '服务所需', required: true, summary: '记录你的作答过程，才能给你分层提示和给老师看卡点。', detail: '我们会保存你的作答内容、提示领取记录与操作事件，用于提供练习服务与教师端过程查看。', value: true },
-  { id: 'crossBorderHosting', title: '香港服务器存储', required: true, summary: '你的数据存放在中国香港的服务器上（目前部署方案）。', detail: '服务器位于中国香港，数据存储与处理均在境外；我们按最小必要原则收集，并设置访问控制与保留期限。', value: true },
-  { id: 'monitoring', title: '过程监测', required: true, summary: '练习/测验期间会记录离开页面等过程信号，只提示老师，不自动处罚。', detail: '会记录页面可见性、全屏状态、复制粘贴等信号，作为诚信提示；是否处理由老师判断。', value: true },
-  { id: 'crossBorderModel', title: '境外决策模型（可选）', required: false, summary: '可不同意；不同意时用规则化提示，不影响你做题。', detail: 'Jev 与部分模型服务位于境外，发送前会做去标识化处理；你可以随时关闭。', value: false },
-  { id: 'research', title: '教研使用（可选）', required: false, summary: '可不同意；不同意不影响任何功能。', detail: '去标识化后的作答与事件可用于教学研究；不会公开你的身份信息。', value: false },
-]
+function toItems(doc: ConsentDoc): ConsentItem[] {
+  return doc.sections.map((section) => {
+    const signedValue = doc.signed?.items?.[section.key]
+    return {
+      id: section.key,
+      title: section.title,
+      required: section.required,
+      summary: section.body,
+      detail: section.body,
+      // 必选项目前固定开（UI 不允许取消）；可选项恢复本人上次签署的值。
+      value: section.required ? true : signedValue === true,
+    }
+  })
+}
 
+const items = ref<ConsentItem[]>(toItems(mockConsentDoc))
+const docVersion = ref(mockConsentDoc.version)
+const signed = ref<ConsentDoc['signed']>(null)
+const me = ref<MeView | null>(null)
 const inviteCode = ref('')
 const studentNo = ref('')
 const loggedIn = ref(false)
 const consented = ref(false)
-const consentVersion = ref('p0-v1')
+const loading = ref(false)
+const error = ref<string | null>(null)
+
+function applyDoc(doc: ConsentDoc): void {
+  docVersion.value = doc.version
+  signed.value = doc.signed
+  items.value = toItems(doc)
+}
+
+function choices(): ConsentChoices {
+  const result: ConsentChoices = {
+    service: false,
+    crossBorderHosting: false,
+    crossBorderModel: false,
+    monitoring: false,
+    research: false,
+  }
+  for (const item of items.value) result[item.id] = item.value
+  return result
+}
+
+const requiredOk = computed(() => items.value.filter((item) => item.required).every((item) => item.value))
+
+const mockSleep = (ms = 80) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 export function useSession() {
-  const requiredOk = computed(() => CONSENT_ITEMS.filter((i) => i.required).every((i) => i.value))
-  function login(invite: string, no: string) {
+  /** GET /consents：加载服务端同意书文本；mock 模式回落到内置占位（正文只从 GET /consents 取）。 */
+  async function loadConsentDoc(): Promise<boolean> {
+    loading.value = true
+    error.value = null
+    try {
+      applyDoc(await getConsents())
+      return true
+    } catch (e) {
+      error.value = errorMessage(e)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** 刷新页面后恢复会话：GET /me；未登录返回 false（mock 模式没有服务端会话）。 */
+  async function restore(): Promise<boolean> {
+    if (isMockMode()) return false
+    loading.value = true
+    error.value = null
+    try {
+      me.value = await getMe()
+      loggedIn.value = true
+      consented.value = !me.value.consentRequired
+      return true
+    } catch {
+      loggedIn.value = false
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** POST /auth/student/login。返回是否登录成功；错误文案放在 error。 */
+  async function login(invite: string, no: string): Promise<boolean> {
     inviteCode.value = invite
     studentNo.value = no
-    loggedIn.value = Boolean(invite && no)
-    return loggedIn.value
+    if (!invite || !no) {
+      loggedIn.value = false
+      return false
+    }
+    loading.value = true
+    error.value = null
+    try {
+      me.value = await apiLogin(invite, no)
+      loggedIn.value = true
+      consented.value = !me.value.consentRequired
+      return true
+    } catch (e) {
+      loggedIn.value = false
+      error.value = errorMessage(e)
+      return false
+    } finally {
+      loading.value = false
+    }
   }
-  function submitConsent() {
+
+  /** POST /consents：提交五段选择；返回是否可以进入练习页。 */
+  async function submitConsent(): Promise<boolean> {
     if (!requiredOk.value) return false
-    consented.value = true
-    return true
+    loading.value = true
+    error.value = null
+    try {
+      if (isMockMode()) {
+        await mockSleep()
+        consented.value = true
+      } else {
+        me.value = await submitConsents(docVersion.value, choices())
+        consented.value = !me.value.consentRequired
+      }
+      return consented.value
+    } catch (e) {
+      error.value = errorMessage(e)
+      return false
+    } finally {
+      loading.value = false
+    }
   }
-  return { items: CONSENT_ITEMS, inviteCode, studentNo, loggedIn, consented, consentVersion, requiredOk, login, submitConsent }
+
+  async function logout(): Promise<void> {
+    try {
+      await apiLogout()
+    } finally {
+      me.value = null
+      loggedIn.value = false
+      consented.value = false
+    }
+  }
+
+  return {
+    items,
+    docVersion,
+    /** 兼容旧页面的名字：当前同意书版本。 */
+    consentVersion: docVersion,
+    signed,
+    me,
+    inviteCode,
+    studentNo,
+    loggedIn,
+    consented,
+    loading,
+    error,
+    requiredOk,
+    loadConsentDoc,
+    restore,
+    login,
+    submitConsent,
+    logout,
+  }
+}
+
+/** 测试隔离：恢复到初始状态（mock 文案、未登录）。 */
+export function __resetSessionForTests(): void {
+  items.value = toItems(mockConsentDoc)
+  docVersion.value = mockConsentDoc.version
+  signed.value = null
+  me.value = null
+  inviteCode.value = ''
+  studentNo.value = ''
+  loggedIn.value = false
+  consented.value = false
+  loading.value = false
+  error.value = null
 }
 
 export function maskStudentNo(no: string): string {

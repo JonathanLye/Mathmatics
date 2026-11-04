@@ -318,3 +318,72 @@ export interface LineDraft {
 export interface AttemptEnvelope<T = unknown> {
   state: AttemptState
 }
+
+// ---------------------------------------------------------------------------
+// 真实接口（issue #24）用到的契约 DTO 子集
+// 真源：packages/contracts/openapi.yaml（Me / ConsentDoc / StudentHome / AssignmentCard）。
+// 只镜像前端要渲染的字段；#6 的生成类型接入后可整体替换本文件。
+// ---------------------------------------------------------------------------
+
+export type ConsentKey = 'service' | 'crossBorderHosting' | 'crossBorderModel' | 'monitoring' | 'research'
+export type ConsentChoices = Record<ConsentKey, boolean>
+
+export interface MeView {
+  userId: string
+  role: 'student' | 'teacher' | 'admin'
+  anonCode: string
+  displayName: string | null
+  classes: Array<{ id: string; name: string }>
+  consentRequired: boolean
+  features: Record<string, boolean>
+}
+
+export interface ConsentSection {
+  key: ConsentKey
+  title: string
+  body: string
+  required: boolean
+}
+
+export interface SignedConsent {
+  version: string
+  items: ConsentChoices
+  signedAt: string
+}
+
+export interface ConsentDoc {
+  version: string
+  sections: ConsentSection[]
+  signed: SignedConsent | null
+}
+
+/** 首页卡片（02 §4.2）：GET /student/home 的 AssignmentCard 子集。 */
+export interface AssignmentCardView {
+  assignmentId: string
+  title: string
+  chapter?: string
+  mode: AttemptMode
+  status: 'scheduled' | 'open' | 'closed' | 'cancelled'
+  openAt?: string
+  closeAt?: string | null
+  attemptId?: string | null
+  attemptStatus?: AttemptStatus | null
+  currentLayer?: LayerId | null
+  reviewPublished?: boolean
+}
+
+export interface StudentHomeView {
+  inProgress: AssignmentCardView[]
+  todo: AssignmentCardView[]
+  done: AssignmentCardView[]
+  week?: { keysOwn: number; keysTotal: number; problemsDone: number }
+  notebook?: { cards: number; toRedo: number }
+}
+
+/** InputMeta：所有文本类写接口的必填元信息（openapi InputMeta）。 */
+export interface InputMeta {
+  provenance: InputProvenance
+  draftId: string
+  recogId?: string
+  pasteChars?: number
+}
