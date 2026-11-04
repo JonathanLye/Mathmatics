@@ -85,6 +85,12 @@ jobs:
         run: pnpm test
       - name: Smoke
         run: pnpm build
+      # 与 infra/Dockerfile 的 web-builder 对齐：部署镜像在构建阶段跑下面两条命令；
+      # 这里提前在干净环境验证它们可用（否则首次 docker compose build 才会暴露问题）。
+      - name: Build web (student H5 + teacher)
+        run: |
+          VITE_USE_MOCK=false pnpm --filter @proof-gym/student build:h5
+          pnpm --filter @proof-gym/teacher build
 
   # PGlite 覆盖不到 node-postgres 驱动路径与真实 advisory 锁；这个 job 只做迁移/种子冒烟，不进 ci-gate。
   postgres:
