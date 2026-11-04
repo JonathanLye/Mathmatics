@@ -76,7 +76,7 @@ async function submit() {
 .pg-login__error { color: var(--margin); margin-top: var(--sp-1); }
 .pg-login__submit {
   margin-top: var(--sp-3); min-height: 48px; border-radius: var(--radius-input);
-  background: var(--accent); color: #fff; border: 0; font-size: 16px;
+  background: var(--accent); color: var(--on-accent); border: 0; font-size: 16px;
 }
 .pg-login__submit:disabled { opacity: 0.5; }
 .pg-login__hint { margin-top: var(--sp-4); color: var(--ink-2); text-align: center; }

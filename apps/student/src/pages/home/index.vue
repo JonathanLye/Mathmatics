@@ -318,7 +318,7 @@ function addToNotebook(card: AssignmentCardView): void {
   line-height: 1.2;
 }
 .pg-home__btn--small { min-height: 36px; font-size: 13px; padding: 0 var(--sp-2); }
-.pg-home__btn--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pg-home__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .pg-home__btn--disabled { opacity: 0.45; }
 .pg-home__empty { color: var(--ink-2); padding: var(--sp-2) 0; }
 .pg-home__notebook { padding: var(--sp-3); margin-top: var(--sp-3); display: flex; flex-direction: column; gap: 2px; }

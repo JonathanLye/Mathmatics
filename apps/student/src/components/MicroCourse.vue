@@ -314,6 +314,6 @@ function close() {
   font-size: 15px;
   line-height: 1.2;
 }
-.pg-micro__btn--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pg-micro__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .pg-micro__btn[disabled] { opacity: 0.45; }
 </style>
