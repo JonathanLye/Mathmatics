@@ -21,7 +21,8 @@
     "import:pdf": "node apps/import/src/cli.ts pdf",
     "import:items": "node apps/import/src/cli.ts items",
     "import:draft": "node apps/import/src/cli.ts draft",
-    "import:publish": "node apps/import/src/cli.ts publish"
+    "import:publish": "node apps/import/src/cli.ts publish",
+    "import:submit": "node apps/import/src/cli.ts submit"
   },
   "devDependencies": {
     "@types/node": "catalog:",

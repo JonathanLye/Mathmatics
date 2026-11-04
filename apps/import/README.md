@@ -15,6 +15,8 @@ pnpm import:draft --job <jobId> --max 4 \
   --draft-fixture-a apps/import/fixtures/epsN.json --draft-fixture-b apps/import/fixtures/epsN-alt.json
 # 4) 发布（先跑 S8；DATABASE_URL 设置后才写库，否则 dry-run）
 pnpm import:publish imports/<jobId>/epsN.json --reviewer T-01 --minutes 90
+#    或先暂存为草稿，交给教师审核屏 approve/return（推荐流程）
+pnpm import:submit imports/<jobId>/epsN.json --database-url postgres://… --concepts apps/import/fixtures/concepts.json
 ```
 
 ## 说明
@@ -32,3 +34,11 @@ pnpm import:publish imports/<jobId>/epsN.json --reviewer T-01 --minutes 90
 - S8 自动校验：JSON Schema（contracts 的 problem-package.schema.json）、KaTeX、穷举泄题（复用 `packages/engine` 的 `leakExhaustive`；单包模式不传概念库，概念/词条泄漏由 seed 检查覆盖）。schema 不通过时不写 JSON，只写报告列出问题。
 - 安全：模型输出的 `id` 只接受 Slug，非法值退化为 `item-<itemId>`，并校验输出路径必须落在 `imports/` 内（防路径穿越）。
 - `import:publish` 设 `DATABASE_URL` 时写 `content.problems / content.problem_versions / vault.problem_secrets / vault.reference_proofs / content.review_records`；`--reviewer` 是教师匿名码（app.users.anon_code）。同一 version 已发布：内容相同→幂等跳过，内容不同→要求 bump version（07 published 不可变）。
+
+## 草稿暂存（`import:submit`）
+
+- 写入 `content.problems` + `content.problem_versions(review_status='draft', auto_checks=四类布尔)` +
+  `vault.problem_secrets` + `vault.reference_proofs`；
+- 版本规则：包自带 version 大于当前最大版本则沿用，否则顺延 `max+1`（已发布版本不可覆盖）；
+- 教师审核屏「通过」要求四类 auto_checks 全绿（由本命令的 S8 结果写入），通过后服务端切 `current_version`；
+- 未设置 `--database-url`/`DATABASE_URL` 时为 dry-run，只输出四项校验结果。

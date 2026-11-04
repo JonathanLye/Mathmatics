@@ -121,17 +121,15 @@ function structuralIssues(pkg: ProblemPackage): CheckIssue[] {
   return issues;
 }
 
-export function checkPackage(pkg: ProblemPackage, options: CheckOptions = {}): CheckResult {
-  const issues: CheckIssue[] = [...schemaValidate(pkg)];
-  // schema 不通过时不再继续（否则 KaTeX/leak 会在缺字段的畸形包上抛 TypeError，A 复审 P2-3）。
-  if (issues.length > 0) return { ok: false, issues };
-  if (pkg === null || typeof pkg !== 'object' || pkg.public === undefined || pkg.secret === undefined) {
-    return { ok: false, issues: [{ where: 'package', message: '缺少 public/secret' }] };
-  }
-  issues.push(...structuralIssues(pkg));
-  // 结构不合法时不再进入 leakExhaustive（无效路线会让引擎抛错）。
-  if (issues.length > 0) return { ok: false, issues };
+export interface CheckCategories {
+  schema: boolean;
+  katex: boolean;
+  leakExhaustive: boolean;
+  patternSelfTest: boolean;
+}
 
+function katexIssues(pkg: ProblemPackage): CheckIssue[] {
+  const issues: CheckIssue[] = [];
   walkStrings(pkg, 'package', (where, text) => {
     for (const match of text.matchAll(MATH)) {
       try {
@@ -141,10 +139,48 @@ export function checkPackage(pkg: ProblemPackage, options: CheckOptions = {}): C
       }
     }
   });
+  return issues;
+}
 
-  for (const failure of leakExhaustive(pkg, options.concepts ?? { concepts: [], glossary: [] })) {
-    issues.push({ where: failure.where, message: failure.message });
+// 给导入暂存/审核屏用的分项结果（S8 四项：schema / katex / leakExhaustive / patternSelfTest）。
+export function checkCategories(
+  pkg: ProblemPackage,
+  options: CheckOptions = {},
+): CheckResult & { categories: CheckCategories } {
+  const schema = schemaValidate(pkg);
+  if (schema.length > 0) {
+    return { ok: false, issues: schema, categories: { schema: false, katex: false, leakExhaustive: false, patternSelfTest: false } };
   }
+  if (pkg === null || typeof pkg !== 'object' || pkg.public === undefined || pkg.secret === undefined) {
+    return {
+      ok: false,
+      issues: [{ where: 'package', message: '缺少 public/secret' }],
+      categories: { schema: false, katex: false, leakExhaustive: false, patternSelfTest: false },
+    };
+  }
+  const structural = structuralIssues(pkg);
+  const katex = katexIssues(pkg);
+  const leak =
+    structural.length === 0
+      ? leakExhaustive(pkg, options.concepts ?? { concepts: [], glossary: [] }).map((failure) => ({
+          where: failure.where,
+          message: failure.message,
+        }))
+      : [];
+  const issues = [...structural, ...katex, ...leak];
+  return {
+    ok: issues.length === 0,
+    issues,
+    categories: {
+      schema: true,
+      katex: katex.length === 0,
+      leakExhaustive: leak.length === 0,
+      patternSelfTest: structural.length === 0,
+    },
+  };
+}
 
-  return { ok: issues.length === 0, issues };
+export function checkPackage(pkg: ProblemPackage, options: CheckOptions = {}): CheckResult {
+  const result = checkCategories(pkg, options);
+  return { ok: result.ok, issues: result.issues };
 }
