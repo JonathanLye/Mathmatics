@@ -1,0 +1,24 @@
+{
+  "name": "@proof-gym/content-checks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "题目包 S8 检查（schema/katex/leak/pattern），CLI 与 server 共用",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@proof-gym/contracts": "workspace:*",
+    "@proof-gym/engine": "workspace:*",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
+    "katex": "^0.19.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

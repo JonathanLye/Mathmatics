@@ -38,6 +38,10 @@ const actionComments = ref('');
 const actionMinutes = ref(10);
 const acting = ref(false);
 const actionError = ref('');
+const editVisible = ref(false);
+const editJson = ref('');
+const editError = ref('');
+const editing = ref(false);
 
 const columns = [
   { colKey: 'problemId', title: 'ID' },
@@ -95,6 +99,34 @@ function openAction(decision: 'approve' | 'return'): void {
   actionMinutes.value = 10;
   actionError.value = '';
   actionVisible.value = true;
+}
+
+function openEdit(): void {
+  if (pkg.value === null) return;
+  editJson.value = JSON.stringify(pkg.value, null, 2);
+  editError.value = '';
+  editVisible.value = true;
+}
+
+async function submitEdit(): Promise<void> {
+  if (selected.value === null || editing.value) return;
+  editing.value = true;
+  editError.value = '';
+  try {
+    const edited = JSON.parse(editJson.value) as Record<string, unknown>;
+    const item = await api.post<ProblemItem>(
+      `/api/v1/teacher/problems/${selected.value.problemId}/versions/${selected.value.version}/review`,
+      { decision: 'edit', edited, comments: actionComments.value },
+    );
+    MessagePlugin.success(`已保存并发布新版本 v${item.version}`);
+    editVisible.value = false;
+    await load();
+    await open(item);
+  } catch (caught) {
+    editError.value = caught instanceof ApiError ? caught.message : caught instanceof SyntaxError ? 'JSON 格式不合法' : '保存失败';
+  } finally {
+    editing.value = false;
+  }
 }
 
 async function submitAction(): Promise<void> {
@@ -183,6 +215,7 @@ onMounted(load);
         <div v-if="canReview()" class="review-actions">
           <t-button theme="primary" @click="openAction('approve')">通过并发布</t-button>
           <t-button theme="danger" variant="outline" @click="openAction('return')">退回</t-button>
+          <t-button variant="outline" @click="openEdit">编辑 JSON</t-button>
           <span class="page-sub">approve 要求四项自动校验全绿（S8 写入 auto_checks）</span>
         </div>
         <t-alert
@@ -220,6 +253,20 @@ onMounted(load);
       </div>
       <div class="page-sub" v-if="actionDecision === 'approve'" style="margin-top: 8px">
         通过即发布到学生端，不可撤销；要求四项自动校验全绿。
+      </div>
+    </t-dialog>
+
+    <t-dialog v-model:visible="editVisible" header="编辑题目包并发布新版本" width="820px" :footer="false">
+      <t-alert v-if="editError" theme="error" :message="editError" style="margin-bottom: 8px" />
+      <t-alert
+        theme="warning"
+        message="保存会重跑 S8；全绿则发布为新版本（v+1）并切 current_version，不覆盖原版本；参考证明未提供时沿用源版本。"
+        style="margin-bottom: 8px"
+      />
+      <t-textarea v-model="editJson" :autosize="{ minRows: 16, maxRows: 28 }" style="font-family: monospace" />
+      <div class="dialog-actions">
+        <t-button variant="outline" :disabled="editing" @click="editVisible = false">取消</t-button>
+        <t-button theme="primary" :loading="editing" @click="submitEdit">保存并发布</t-button>
       </div>
     </t-dialog>
   </div>
