@@ -1029,6 +1029,8 @@ paths:
         - { name: chapter, in: query, schema: { type: string } }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
         '200':
           description: 题目
           content:
@@ -1046,11 +1048,14 @@ paths:
         - { name: version, in: path, required: true, schema: { type: integer } }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
         '200':
-          description: 题目包
+          description: 题目包（不含 referenceProofs：参考证明单独存放在 vault.reference_proofs，pg_app 不可读）
           content:
             application/json:
-              schema: { $ref: './problem-package.schema.json' }
+              schema: { $ref: '#/components/schemas/ProblemPackageView' }
   /teacher/problems/{problemId}/versions/{version}/review:
     post:
       tags: [content]
@@ -1540,11 +1545,24 @@ components:
               items: { type: string, enum: [back_to_definition, open_lesson, park_and_next, flag_teacher] }
         note: { $ref: '#/components/schemas/Note' }
         state: { $ref: '#/components/schemas/AttemptState' }
+    ProblemPackageView:
+      type: object
+      description: 审核屏读取的题目包视图：结构同 problem-package.schema.json，但 secret 不含 referenceProofs（单独存放，读它须记审计）。
+      required: [schemaVersion, id, version, public, secret, review]
+      properties:
+        schemaVersion: { const: '1.0' }
+        id: { type: string }
+        version: { type: integer, minimum: 1 }
+        kind: { type: string, enum: [main, transfer] }
+        public: { $ref: './problem-package.schema.json#/$defs/PublicPart' }
+        secret: { type: object, description: 'SecretPart 去掉 referenceProofs；教师/审核角色可见，学生接口不得返回' }
+        review: { $ref: './problem-package.schema.json#/$defs/Review' }
+        provenance: { $ref: './problem-package.schema.json#/$defs/Provenance' }
     ClassSettings:
       type: object
       properties:
         photoEnabled: { type: boolean, default: true }
-        lessonGenerated: { type: boolean, default: true, description: 第 1–2 层是否允许按学生原话生成补充讲解 }
+        lessonGenerated: { type: boolean, default: false, description: '第 1–2 层是否允许按学生原话生成补充讲解；P0 默认关（fail-closed，09 §2）' }
         revealBudget: { type: number, default: 2 }
         integrityPractice: { type: string, enum: [log_and_notice, log_only], default: log_and_notice }
         testMaxSwitches: { type: integer, default: 3 }
