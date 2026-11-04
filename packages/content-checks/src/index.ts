@@ -160,13 +160,13 @@ export function checkCategories(
   }
   const structural = structuralIssues(pkg);
   const katex = katexIssues(pkg);
-  const leak =
-    structural.length === 0
-      ? leakExhaustive(pkg, options.concepts ?? { concepts: [], glossary: [] }).map((failure) => ({
-          where: failure.where,
-          message: failure.message,
-        }))
-      : [];
+  const leakRuns = structural.length === 0;
+  const leak = leakRuns
+    ? leakExhaustive(pkg, options.concepts ?? { concepts: [], glossary: [] }).map((failure) => ({
+        where: failure.where,
+        message: failure.message,
+      }))
+    : [];
   const issues = [...structural, ...katex, ...leak];
   return {
     ok: issues.length === 0,
@@ -174,7 +174,7 @@ export function checkCategories(
     categories: {
       schema: true,
       katex: katex.length === 0,
-      leakExhaustive: leak.length === 0,
+      leakExhaustive: leakRuns && leak.length === 0,
       patternSelfTest: structural.length === 0,
     },
   };

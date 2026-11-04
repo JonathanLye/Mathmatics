@@ -1,7 +1,7 @@
 import { checkCategories } from '@proof-gym/content-checks';
 import type { ProblemPackage } from '@proof-gym/engine';
 
-import type { Queryable } from '../../db/index.ts';
+import type { Db, Queryable } from '../../db/index.ts';
 import { AppError } from '../../errors.ts';
 
 // 04 §8 审核屏 / openapi /teacher/problems：列表 + 完整题目包（含 secret，仅教师/审核角色）。
@@ -134,6 +134,17 @@ type VersionRow = {
 };
 
 export async function reviewProblem(
+  db: Db,
+  actorId: string,
+  problemId: string,
+  version: number,
+  input: ReviewInput,
+): Promise<ProblemListItemDto> {
+  // 审核结论 + 发布/退回/编辑必须原子：approve 切 current_version、edit 写新版本 + vault + review_records。
+  return db.tx(async (tx) => reviewProblemTx(tx, actorId, problemId, version, input));
+}
+
+async function reviewProblemTx(
   db: Queryable,
   actorId: string,
   problemId: string,
@@ -253,6 +264,8 @@ async function stageEditedVersion(
     throw new AppError('VALIDATION_FAILED', 422, '修改后的题目包未通过 S8 校验', { issues: checks.issues });
   }
 
+  // 锁题目行，避免两个教师同时 edit 拿到同一个 nextVersion（并发写新版本）。
+  await db.query(`select id from content.problems where id = $1 for update`, [problemId]);
   const maxRow = await db.query<{ max: number | null }>(
     `select max(version) as max from content.problem_versions where problem_id = $1`,
     [problemId],
