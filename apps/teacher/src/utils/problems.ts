@@ -25,3 +25,8 @@ export function autoChecksSummary(checks: Record<string, unknown> | undefined): 
   const entries = Object.entries(checks ?? {}).filter(([, value]) => typeof value === 'boolean');
   return { total: entries.length, failed: entries.filter(([, value]) => value !== true).map(([key]) => key) };
 }
+
+// 只有草稿/待审/退回的版本可以写审核结论；已发布/已下线/未知状态不可写。
+export function canReviewStatus(status: string | null | undefined): boolean {
+  return status === 'draft' || status === 'pending' || status === 'returned';
+}

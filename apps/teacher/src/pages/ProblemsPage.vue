@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
 import MathTextView from '../components/MathTextView.vue';
-import { autoChecksSummary, statusLabel, statusTheme } from '../utils/problems.ts';
+import { autoChecksSummary, canReviewStatus, statusLabel, statusTheme } from '../utils/problems.ts';
 
 interface ProblemItem {
   problemId: string;
@@ -83,10 +83,11 @@ function close(): void {
   pkg.value = null;
 }
 
-const canReview = (): boolean => {
-  const status = pkg.value?.review?.status ?? selected.value?.status ?? '';
-  return status === 'draft' || status === 'pending' || status === 'returned';
-};
+const canReview = (): boolean => canReviewStatus(pkg.value?.review?.status ?? selected.value?.status);
+
+const reviewStatus = (): string => pkg.value?.review?.status ?? selected.value?.status ?? '';
+
+const pkgChecks = (): { total: number; failed: string[] } => autoChecksSummary(pkg.value?.review?.autoChecks);
 
 function openAction(decision: 'approve' | 'return'): void {
   actionDecision.value = decision;
@@ -97,7 +98,7 @@ function openAction(decision: 'approve' | 'return'): void {
 }
 
 async function submitAction(): Promise<void> {
-  if (selected.value === null) return;
+  if (selected.value === null || acting.value) return;
   acting.value = true;
   actionError.value = '';
   try {
@@ -169,11 +170,12 @@ onMounted(load);
         <h3 style="margin-top: 0">{{ pkg.public.title ?? selected.title }} <span class="page-sub">v{{ pkg.version }}</span></h3>
         <div class="page-sub">{{ selected.problemId }} · {{ selected.chapter ?? '' }} · {{ pkg.kind === 'transfer' ? '迁移题' : '主题' }}</div>
         <t-alert
-          v-if="(pkg.review?.autoChecks as Record<string, unknown> | undefined)"
-          :theme="autoChecksSummary(pkg.review?.autoChecks).failed.length === 0 ? 'success' : 'warning'"
-          :message="autoChecksSummary(pkg.review?.autoChecks).failed.length === 0 ? '自动校验全部通过' : `自动校验失败：${autoChecksSummary(pkg.review?.autoChecks).failed.join(', ')}`"
+          v-if="pkgChecks().total > 0"
+          :theme="pkgChecks().failed.length === 0 ? 'success' : 'warning'"
+          :message="pkgChecks().failed.length === 0 ? `自动校验全部通过（${pkgChecks().total} 项）` : `自动校验失败：${pkgChecks().failed.join(', ')}`"
           style="margin: 8px 0"
         />
+        <t-alert v-else theme="info" message="未提供自动校验结果（auto_checks 为空）：不能通过审核，只能退回或补跑 S8。" style="margin: 8px 0" />
         <h4>题面</h4>
         <MathTextView :text="pkg.public.stem" />
         <h4>结构</h4>
@@ -183,7 +185,12 @@ onMounted(load);
           <t-button theme="danger" variant="outline" @click="openAction('return')">退回</t-button>
           <span class="page-sub">approve 要求四项自动校验全绿（S8 写入 auto_checks）</span>
         </div>
-        <t-alert v-else theme="success" message="该版本已发布，无需再审核。" style="margin-top: 12px" />
+        <t-alert
+          v-else
+          :theme="reviewStatus() === 'published' ? 'success' : 'default'"
+          :message="reviewStatus() === 'published' ? '该版本已发布，无需再审核。' : reviewStatus() === 'retired' ? '该版本已下线。' : '当前状态无需审核。'"
+          style="margin-top: 12px"
+        />
         <details style="margin-top: 12px">
           <summary>原始题目包 JSON</summary>
           <pre class="pkg-json">{{ JSON.stringify(pkg, null, 2) }}</pre>
@@ -194,8 +201,7 @@ onMounted(load);
     <t-dialog
       v-model:visible="actionVisible"
       :header="actionDecision === 'approve' ? '通过并发布' : '退回题目'"
-      :confirm-btn="{ content: actionDecision === 'approve' ? '通过' : '退回', loading: acting }"
-      @confirm="submitAction"
+      :footer="false"
     >
       <t-alert v-if="actionError" theme="error" :message="actionError" style="margin-bottom: 8px" />
       <t-form label-width="70px">
@@ -206,11 +212,26 @@ onMounted(load);
           <t-input-number v-model="actionMinutes" :min="0" :max="100000" suffix="分钟" />
         </t-form-item>
       </t-form>
+      <div class="dialog-actions">
+        <t-button variant="outline" :disabled="acting" @click="actionVisible = false">取消</t-button>
+        <t-button theme="primary" :loading="acting" @click="submitAction">
+          {{ actionDecision === 'approve' ? '确认通过并发布' : '确认退回' }}
+        </t-button>
+      </div>
+      <div class="page-sub" v-if="actionDecision === 'approve'" style="margin-top: 8px">
+        通过即发布到学生端，不可撤销；要求四项自动校验全绿。
+      </div>
     </t-dialog>
   </div>
 </template>
 
 <style scoped>
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
 .review-actions {
   display: flex;
   align-items: center;
