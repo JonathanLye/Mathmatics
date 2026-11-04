@@ -145,6 +145,11 @@ async function main() {
   await shot('04-metrics-1280');
   await page.getByText('导出', { exact: true }).click();
   await shot('05-export-1280');
+  // #165：布置列表来自 GET /teacher/assignments（不再只显示会话内创建）
+  await page.getByText('布置', { exact: true }).first().click();
+  await page.getByText('数列极限 · ε-N').first().waitFor({ timeout: 10000 });
+  await shot('05b-assignments-1280');
+
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');

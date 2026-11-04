@@ -960,6 +960,22 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '204': { description: 已处理 }
   /teacher/assignments:
+    get:
+      tags: [teacher]
+      summary: 班级布置列表（按开放时间倒序；状态按数据库时钟推导）
+      operationId: listAssignments
+      parameters:
+        - { name: classId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 布置
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AssignmentCard' }
     post:
       tags: [teacher]
       summary: 布置练习或测验
@@ -1345,6 +1361,9 @@ components:
         attemptId: { type: [string, 'null'], format: uuid }
         attemptStatus: { type: [string, 'null'], enum: [active, parked, locked, completed, abandoned, null] }
         currentLayer: { oneOf: [{ $ref: '#/components/schemas/LayerId' }, { type: 'null' }] }
+        problemId: { type: string }
+        version: { type: integer }
+        settings: { type: object, additionalProperties: true }
         reviewPublished: { type: boolean }
     PublicProblemView:
       type: object

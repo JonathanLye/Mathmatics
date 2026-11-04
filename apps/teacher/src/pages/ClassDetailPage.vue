@@ -180,6 +180,17 @@ function disconnectStream(): void {
   streamConnected.value = false;
 }
 
+async function loadAssignments(): Promise<void> {
+  if (classId.value === '') return;
+  try {
+    createdAssignments.value = await api.get<AssignmentCard[]>(
+      `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
+    );
+  } catch {
+    // 列表失败不阻塞看板；保留空列表
+  }
+}
+
 async function loadLive(): Promise<void> {
   liveLoading.value = true;
   try {
@@ -267,7 +278,7 @@ async function createAssignment(): Promise<void> {
     const closeAt = assignmentForm.value.closeAt === '' ? null : new Date(assignmentForm.value.closeAt);
     if (closeAt !== null && Number.isNaN(closeAt.getTime())) throw new Error('截止时间格式不对');
 
-    const card = await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
+    await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
       classId: classId.value,
       problemId: assignmentForm.value.problemId.trim(),
       version: Number(assignmentForm.value.version),
@@ -276,7 +287,7 @@ async function createAssignment(): Promise<void> {
       closeAt: closeAt === null ? null : closeAt.toISOString(),
       settings: { revealBudget: Number(assignmentForm.value.revealBudget) },
     });
-    createdAssignments.value.unshift(card);
+    await loadAssignments();
     MessagePlugin.success('布置已创建');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
@@ -296,6 +307,7 @@ function flagLabel(flag: string): string {
 onMounted(async () => {
   await loadClassInfo();
   await loadLive();
+  await loadAssignments();
   connectStream();
   startPolling();
 });
@@ -444,7 +456,7 @@ onBeforeUnmount(() => {
 
         <t-alert
           theme="info"
-          message="当前契约没有 GET 布置列表接口（见 #50 PR）；这里只显示本次会话创建的布置。列表接口补上后自动替换。"
+          message="列表来自 GET /teacher/assignments；关闭后可发布讲评（A/B 两组同时可见）。"
           style="margin: 12px 0"
         />
         <t-table
