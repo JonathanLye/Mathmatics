@@ -6,6 +6,7 @@
   "scripts": {
     "dev:h5": "uni --host 0.0.0.0",
     "build:h5": "uni build",
+    "build:prod": "uni build --mode production",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
