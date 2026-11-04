@@ -40,10 +40,14 @@ import {
   editTransferLine,
   fetchLesson,
   finishSteps,
-  recognizeInk,
   finishTransfer,
+  getAttempt,
+  isMockMode,
+  recognizeInk,
+  setMockMode,
   requestHelp,
   skipLayer,
+  startAttempt,
   startTransfer,
   submitDef,
   submitFramework,
@@ -65,6 +69,8 @@ import type {
 
 const { state, mockKey, busy, error, setMock, apply, run } = useAttempt()
 const { mode } = useViewport()
+/** 真实模式（#24）：页面按服务端 state 渲染；mock 模式保留四份演示状态切换。 */
+const realMode = ref(!isMockMode())
 
 const layersOpen = ref(false)
 const editorOpen = ref(false)
@@ -133,7 +139,26 @@ function mockFromHash(): MockKey | null {
 const initialMock = mockFromHash()
 if (initialMock) setMock(initialMock)
 
-onLoad((q) => {
+onLoad(async (q) => {
+  // #24 真实接口开关：默认由 VITE_USE_MOCK 决定；联调/e2e 可用 ?api=real 在 mock 构建里强制真实模式。
+  if (q?.api === 'real') {
+    setMockMode(false)
+    realMode.value = true
+  }
+  // 真实模式：?assignmentId= 开始/恢复作答（POST /student/assignments/{id}/attempt）；
+  // ?attemptId= 断线重连（GET /attempts/{id}）。mock 模式继续走下面的演示状态。
+  if (realMode.value) {
+    const assignmentId = q?.assignmentId ? String(q.assignmentId) : ''
+    const attemptId = q?.attemptId ? String(q.attemptId) : ''
+    if (assignmentId || attemptId) {
+      await run(async () => {
+        const next = assignmentId ? await startAttempt(assignmentId) : await getAttempt(attemptId)
+        apply(next)
+        return next
+      })
+      return
+    }
+  }
   // 证明本「稍后重做」：服务端返回的新作答 state 通过 store 跨页交接（mock；真接口按 assignmentId 创建）。
   const pending = takePendingAttempt()
   if (pending) {
@@ -141,7 +166,7 @@ onLoad((q) => {
     apply(pending)
     return
   }
-  if (!mockEnabled) return
+  if (realMode.value || !mockEnabled) return
   const k = parseMockKey(q?.mock) ?? initialMock
   if (k) setMock(k)
 })
@@ -489,6 +514,11 @@ function backHome() {
       @open-layers="layersOpen = true"
     />
 
+    <view v-if="error" class="pg-practice__error pg-small">
+      <text class="pg-practice__errortext">{{ error }}</text>
+      <button class="pg-practice__errorbtn pg-small" @tap="backHome">回首页</button>
+    </view>
+
     <LayerNav
       v-if="mode === 'tablet'"
       :layers="state.layers"
@@ -738,7 +768,8 @@ function backHome() {
     />
     <MicroCourse :open="microOpen" :lesson="microLesson" @close="closeMicro" />
 
-    <MockSwitcher v-if="mockEnabled" :model-value="mockKey" @update:model-value="onSwitchMock" />
+    <!-- 真实模式不显示 mock 状态切换（#24） -->
+    <MockSwitcher v-if="mockEnabled && !realMode" :model-value="mockKey" @update:model-value="onSwitchMock" />
 
     <view v-if="toast" class="pg-toast pg-small" role="status" aria-live="polite">{{ toast }}</view>
   </view>
@@ -772,6 +803,25 @@ function backHome() {
 .pg-practice__main {
   min-width: 0;
   padding-bottom: 140px;
+}
+.pg-practice__error {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-input);
+  background: var(--margin-soft);
+  color: var(--ink);
+}
+.pg-practice__errortext { flex: 1; }
+.pg-practice__errorbtn {
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--sheet);
+  color: var(--ink);
 }
 .pg-practice__content {
   padding: 0 var(--sp-3);

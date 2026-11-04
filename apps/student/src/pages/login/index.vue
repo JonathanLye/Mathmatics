@@ -1,24 +1,34 @@
 <script setup lang="ts">
-/** 登录（02 §4.1）：邀请码 6 位 + 学号；邀请码可从链接参数带入。P0 本地模拟，真实接口见 B 的 #18。 */
+/** 登录（02 §4.1）：邀请码 6 位 + 学号；邀请码可从链接参数带入。真实接口（#18/#24）：POST /auth/student/login。 */
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { isMockMode } from '@/api/client'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
+const loading = session.loading
+const mockMode = isMockMode()
 const invite = ref('')
 const studentNo = ref('')
 const error = ref('')
 
-onLoad((query) => {
+function redirectAfterLogin() {
+  uni.redirectTo({ url: session.consented.value ? '/pages/home/index' : '/pages/consent/index' })
+}
+
+onLoad(async (query) => {
   if (query?.invite) invite.value = String(query.invite).slice(0, 6)
+  // 刷新页面时恢复服务端会话（真实模式）；mock 模式直接返回 false。
+  if (await session.restore()) redirectAfterLogin()
 })
 
-function submit() {
+async function submit() {
   error.value = ''
   if (invite.value.trim().length !== 6) { error.value = '请输入 6 位邀请码（可问老师要）'; return }
   if (!studentNo.value.trim()) { error.value = '请输入学号'; return }
-  session.login(invite.value.trim(), studentNo.value.trim())
-  uni.redirectTo({ url: session.consented.value ? '/pages/home/index' : '/pages/consent/index' })
+  const ok = await session.login(invite.value.trim(), studentNo.value.trim())
+  if (!ok) { error.value = session.error.value || '登录失败，请重试'; return }
+  redirectAfterLogin()
 }
 </script>
 
@@ -34,9 +44,11 @@ function submit() {
       <text class="pg-login__label pg-small">学号</text>
       <input v-model="studentNo" class="pg-login__input" placeholder="你的学号" />
       <text v-if="error" class="pg-login__error pg-small">{{ error }}</text>
-      <button class="pg-login__submit" @tap="submit">进入</button>
+      <button class="pg-login__submit" :disabled="loading" @tap="submit">{{ loading ? '登录中…' : '进入' }}</button>
     </view>
-    <text class="pg-login__hint pg-small">P0 本地模拟登录；真实登录（邀请码认领名单）由服务端 #18 提供。</text>
+    <text class="pg-login__hint pg-small">
+      {{ mockMode ? '当前为 mock 模式（离线演示）；接真实接口用 VITE_USE_MOCK=false 或 setMockMode(false)。' : '登录走服务端 #18：邀请码 + 学号认领名单，服务端写 HttpOnly 会话 Cookie。' }}
+    </text>
   </view>
 </template>
 
@@ -57,5 +69,6 @@ function submit() {
   margin-top: var(--sp-3); min-height: 48px; border-radius: var(--radius-input);
   background: var(--accent); color: #fff; border: 0; font-size: 16px;
 }
+.pg-login__submit:disabled { opacity: 0.5; }
 .pg-login__hint { margin-top: var(--sp-4); color: var(--ink-2); text-align: center; }
 </style>

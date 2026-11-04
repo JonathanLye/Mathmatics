@@ -1,22 +1,36 @@
 <script setup lang="ts">
-/** 同意页（02 §4.1 / 13 §2）：五段；必选三段默认勾选且不能取消；两段可选默认关。 */
-import { ref } from 'vue'
+/** 同意页（02 §4.1 / 13 §2）：文本与签署状态来自 GET /consents；必选三段固定同意，可选两段默认关。 */
+import { computed, ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
+import { isMockMode } from '@/api/client'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
+const items = session.items
+const version = session.docVersion
+const requiredOk = session.requiredOk
+const loading = session.loading
+const mockMode = isMockMode()
 const error = ref('')
 const expanded = ref<string | null>(null)
+const errorText = computed(() => error.value || session.error.value || '')
+
+onLoad(async () => {
+  await session.loadConsentDoc()
+  if (session.consented.value) uni.redirectTo({ url: '/pages/home/index' })
+})
 
 function toggle(id: string) {
-  const item = session.items.find((i) => i.id === id)
+  const item = items.value.find((entry) => entry.id === id)
   if (!item || item.required) return
   item.value = !item.value
 }
 
-function submit() {
+async function submit() {
   error.value = ''
-  if (!session.requiredOk.value) { error.value = '必选三项都要同意才能开始练习；有疑问请联系老师。'; return }
-  if (!session.submitConsent()) { error.value = '提交失败，请重试'; return }
+  if (!requiredOk.value) { error.value = '必选三项都要同意才能开始练习；有疑问请联系老师。'; return }
+  const ok = await session.submitConsent()
+  if (!ok) { error.value = session.error.value || '提交失败，请重试'; return }
   uni.redirectTo({ url: '/pages/home/index' })
 }
 </script>
@@ -25,7 +39,10 @@ function submit() {
   <view class="pg-page pg-consent">
     <text class="pg-consent__title">开始前，请读一下</text>
     <text class="pg-consent__sub pg-small">这是校内的练习工具。下面五段说明我们要用哪些数据、存在哪里、你能怎么选。</text>
-    <view v-for="item in session.items" :key="item.id" class="pg-consent__item pg-sheet">
+    <view v-if="loading" class="pg-consent__item pg-sheet">
+      <text class="pg-consent__summary pg-small">正在加载同意书…</text>
+    </view>
+    <view v-for="item in items" :key="item.id" class="pg-consent__item pg-sheet">
       <view class="pg-consent__head" @tap="expanded = expanded === item.id ? null : item.id">
         <text class="pg-consent__name">{{ item.title }}</text>
         <text v-if="item.required" class="pg-consent__tag pg-consent__tag--req pg-small">必选</text>
@@ -36,9 +53,11 @@ function submit() {
       <text v-if="expanded === item.id" class="pg-consent__detail pg-small">{{ item.detail }}</text>
       <text class="pg-consent__more pg-small" @tap="expanded = expanded === item.id ? null : item.id">{{ expanded === item.id ? '收起全文' : '展开全文' }}</text>
     </view>
-    <text v-if="error" class="pg-consent__error pg-small">{{ error }}</text>
-    <button class="pg-consent__submit" @tap="submit">同意并开始</button>
-    <text class="pg-consent__hint pg-small">P0 本地记录同意状态；版本号 {{ session.consentVersion }}。正式接口由服务端 #18 提供。</text>
+    <text v-if="errorText" class="pg-consent__error pg-small">{{ errorText }}</text>
+    <button class="pg-consent__submit" :disabled="loading" @tap="submit">{{ loading ? '提交中…' : '同意并开始' }}</button>
+    <text class="pg-consent__hint pg-small">
+      版本 {{ version }} · {{ mockMode ? 'mock 模式：正文为占位（正式文本由服务端 /consents 提供），签署只记在本地。' : '文本与签署状态来自服务端 GET/POST /consents（#18）。' }}
+    </text>
   </view>
 </template>
 
@@ -57,5 +76,6 @@ function submit() {
 .pg-consent__more { display: inline-block; margin-top: var(--sp-2); color: var(--accent); text-decoration: underline; }
 .pg-consent__error { display: block; color: var(--margin); margin: var(--sp-2) 0; }
 .pg-consent__submit { margin-top: var(--sp-3); min-height: 48px; border-radius: var(--radius-input); border: 0; background: var(--accent); color: #fff; font-size: 16px; }
+.pg-consent__submit:disabled { opacity: 0.5; }
 .pg-consent__hint { display: block; margin-top: var(--sp-3); color: var(--ink-2); }
 </style>
