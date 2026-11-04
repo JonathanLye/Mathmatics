@@ -31,6 +31,7 @@ import { nextLineNoOf } from '@/components/layers/proofLines'
 import MathText from '@ui-math/MathText.vue'
 import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
+import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
@@ -222,6 +223,9 @@ onLoad(async (q) => {
     setMockMode(false)
     realMode.value = true
   }
+  // #145 年龄门：登录后、同意/练习前必须先有年龄分档（null → 选择页；lt14 → 暂不开通）。
+  // 未登录/字段缺失不在这里拦（unknown），以服务端写接口的 409 AGE_BAND_REQUIRED / 403 AGE_RESTRICTED 为准。
+  if (!ageGatePassed(await enforceAgeGate())) return
   // 真实模式：?assignmentId= 开始/恢复作答（POST /student/assignments/{id}/attempt）；
   // ?attemptId= 断线重连（GET /attempts/{id}）。mock 模式继续走下面的演示状态。
   if (realMode.value) {

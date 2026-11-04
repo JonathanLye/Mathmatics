@@ -325,8 +325,11 @@ export interface AttemptEnvelope<T = unknown> {
 // 只镜像前端要渲染的字段；#6 的生成类型接入后可整体替换本文件。
 // ---------------------------------------------------------------------------
 
+/** 可签署的同意项（POST /consents 的 items 键；#131 起 guardianNotice 不在其中）。 */
 export type ConsentKey = 'service' | 'crossBorderHosting' | 'crossBorderModel' | 'monitoring' | 'research'
 export type ConsentChoices = Record<ConsentKey, boolean>
+/** GET /consents 的段 key：14–17 会多一段只读的 guardianNotice（required=false，不签署）。 */
+export type ConsentSectionKey = ConsentKey | 'guardianNotice'
 
 export interface MeView {
   userId: string
@@ -335,11 +338,13 @@ export interface MeView {
   displayName: string | null
   classes: Array<{ id: string; name: string }>
   consentRequired: boolean
+  /** 年龄分档（#131）：学生必返；null=尚未选择（前端路由到年龄选择页）。 */
+  ageBand: MeAgeBand
   features: Record<string, boolean>
 }
 
 export interface ConsentSection {
-  key: ConsentKey
+  key: ConsentSectionKey
   title: string
   body: string
   required: boolean
@@ -379,6 +384,16 @@ export interface StudentHomeView {
   week?: { keysOwn: number; keysTotal: number; problemsDone: number }
   notebook?: { cards: number; toRedo: number }
 }
+
+// ---------------------------------------------------------------------------
+// 年龄分档（issue #145 / 13 §4；契约真源：#131 的 POST /auth/student/age-band + Me.ageBand）
+// ---------------------------------------------------------------------------
+
+/** 年龄分档：< 14 不开通；14–17 可用（建议告知监护人）；≥ 18 按成年人规则。 */
+export type AgeBand = 'lt14' | '14to17' | 'ge18'
+
+/** Me.ageBand：学生必返；null=尚未选择（需先调 POST /auth/student/age-band）。 */
+export type MeAgeBand = AgeBand | null
 
 /** InputMeta：所有文本类写接口的必填元信息（openapi InputMeta）。 */
 export interface InputMeta {
