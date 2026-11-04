@@ -170,7 +170,7 @@ export async function buildLiveSnapshot(
         `select
            (select max(ts_server) from ev.events where attempt_id = $1) as last_active,
            (select payload->>'state' from ev.events where attempt_id = $1 and type = 'integ.visibility' order by seq desc limit 1) as last_visibility,
-           (select count(*)::text from ev.events where attempt_id = $1 and type = 'integ.visibility' and payload->>'state' = 'hidden') as away_count,
+           (select count(*)::text from ev.events where attempt_id = $1 and type = 'integ.visibility' and payload->>'state' = 'visible' and coalesce((payload->>'awayMs')::bigint, 0) >= 2000) as away_count,
            (exists (select 1 from ev.events where attempt_id = $1 and type = 'budget.exhausted')) as budget,
            (exists (select 1 from app.help_flags where attempt_id = $1 and resolved_at is null)) as help,
            (exists (select 1 from app.integrity_signals where attempt_id = $1 and score >= 0.5 and disposition is null)) as integrity,

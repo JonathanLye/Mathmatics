@@ -149,6 +149,36 @@ describe('教师看板 /live（#51）', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('away 口径 ≥2s：短于 2 秒的切屏不计（11 §2 / #124）', async () => {
+    const row = (
+      await db.query<{ user_id: string; assignment_id: string; problem_id: string; problem_version: number; anon: string }>(
+        `select a.user_id, a.assignment_id, a.problem_id, a.problem_version, u.anon_code as anon
+           from app.attempts a join app.users u on u.id = a.user_id where a.id = $1`,
+        [attemptId],
+      )
+    ).rows[0];
+    if (!row) throw new Error('attempt missing');
+    const insert = (seq: number, payload: Record<string, unknown>) =>
+      db.query(
+        `insert into ev.events
+           (id, seq, type, source, ts_server, user_id, user_anon, role, assignment_id, attempt_id,
+            problem_id, problem_version, layer, mode, payload)
+         values (gen_random_uuid(), $1, 'integ.visibility', 'server', now(), $2, $3, 'student', $4, $5, $6, $7, 'L3', 'practice', $8::jsonb)`,
+        [seq, row.user_id, row.anon, row.assignment_id, attemptId, row.problem_id, row.problem_version, JSON.stringify(payload)],
+      );
+    await insert(9001, { state: 'hidden' });
+    await insert(9002, { state: 'visible', awayMs: 500 });
+    await insert(9003, { state: 'hidden' });
+    await insert(9004, { state: 'visible', awayMs: 3000 });
+
+    const live = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/live`, headers: { cookie: teacherCookie } });
+    expect(live.statusCode, live.body).toBe(200);
+    expect(live.json().rows[0].awayCount).toBe(1);
+
+    const metrics = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/metrics`, headers: { cookie: teacherCookie } });
+    expect(metrics.json().integrity.awayEventsMedian).toBe(1);
+  });
+
   it('样本 n<10 时比例返回 null，只给人数', async () => {
     const res = await app.inject({
       method: 'GET',
