@@ -257,6 +257,49 @@ function completed(): AttemptState {
   return s
 }
 
+/**
+ * #46 严格测验 mock 状态（test 模式）。
+ *
+ * ⚠️ 仅 mock：真实 AttemptState 目前没有 exam 扩展字段（openapi 待 B 补，见 types/attempt.ts ExamView 注释）。
+ * - integrity.warnings/maxWarnings/locked 走契约里已有的可选字段（服务端尚未填）；
+ * - exam.deadlineAt / allowedHelp 为 A 侧 mock 扩展，仅用于 UI/e2e；
+ * - 时间用运行时的 now（测试环境真实时钟），避免 mock 固定日期导致倒计时已过期。
+ */
+function examState(warnings: number, locked = false): AttemptState {
+  const s = l3Active()
+  const nowMs = Date.now()
+  s.stateVersion = 30 + warnings
+  s.mode = 'test'
+  s.status = locked ? 'locked' : 'active'
+  s.integrity = {
+    mode: 'test',
+    locked,
+    warnings,
+    maxWarnings: 3,
+    notice: null,
+    watermark: 'S-7K2Q9M',
+  }
+  s.exam = {
+    deadlineAt: new Date(nowMs + 15 * 60_000).toISOString(),
+    allowedHelp: 'off',
+    watermark: 'S-7K2Q9M',
+  }
+  s.serverTime = new Date(nowMs).toISOString()
+  // 测验模式关提示（04 §7）：state 里不给可领取提示；实际判定仍由服务端 help 路由做。
+  s.help = {
+    ...s.help,
+    hintAvailable: false,
+    nextLevel: null,
+    nextCost: null,
+    waitSec: 0,
+    needAttempt: false,
+    exhausted: false,
+    flagged: false,
+    stuckOffer: false,
+  }
+  return s
+}
+
 export type MockKey =
   | 'l1-active'
   | 'l3-active'
@@ -266,6 +309,11 @@ export type MockKey =
   | 'l5-active'
   | 'l6-active'
   | 'completed'
+  | 'exam-active'
+  | 'exam-warn-1'
+  | 'exam-warn-2'
+  | 'exam-locked'
+  | 'exam-unlocked'
 
 export const MOCK_LABELS: Record<MockKey, string> = {
   'l1-active': '① 第 1 层进行中',
@@ -276,6 +324,11 @@ export const MOCK_LABELS: Record<MockKey, string> = {
   'l5-active': '⑥ 第 5 层迁移题',
   'l6-active': '⑦ 第 6 层总结',
   completed: '⑧ 本题完成',
+  'exam-active': '⑨ 测验进行中',
+  'exam-warn-1': '⑩ 测验·已切出 1 次',
+  'exam-warn-2': '⑪ 测验·已切出 2 次',
+  'exam-locked': '⑫ 测验·已锁定',
+  'exam-unlocked': '⑬ 测验·教师已解锁',
 }
 
 /**
@@ -304,6 +357,12 @@ export function createMockState(key: MockKey): AttemptState {
     case 'l5-active': return l5Active()
     case 'l6-active': return l6Active()
     case 'completed': return completed()
+    // #46 严格测验 mock（test 模式；真实字段待 B 补，见 examState 注释）
+    case 'exam-active': return examState(0)
+    case 'exam-warn-1': return examState(1)
+    case 'exam-warn-2': return examState(2)
+    case 'exam-locked': return examState(3, true)
+    case 'exam-unlocked': return examState(3)
     // 运行时兜底：类型层已穷尽，但 URL/存储等不可信输入可能把非法键传进来；
     // 返回默认状态而不是 undefined，避免 state.value 为空导致整页渲染抛错（PR #87 审计）。
     default: return l3Active()
