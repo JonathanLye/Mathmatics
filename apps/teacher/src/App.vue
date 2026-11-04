@@ -10,6 +10,15 @@ const router = useRouter();
 
 const isPublic = computed(() => route.meta.public === true || session.me === null);
 const dark = ref(document.documentElement.getAttribute('theme-mode') === 'dark');
+// 12 §5：加载/空/错误/离线四态。离线用 navigator.onLine + online/offline 事件（04 开头：手机可只读查看）。
+const online = ref(navigator.onLine);
+
+function markOnline(): void {
+  online.value = true;
+}
+function markOffline(): void {
+  online.value = false;
+}
 
 function toggleTheme(): void {
   dark.value = !dark.value;
@@ -24,8 +33,16 @@ function onUnauthorized(): void {
   }
 }
 
-onMounted(() => window.addEventListener('pg:unauthorized', onUnauthorized));
-onBeforeUnmount(() => window.removeEventListener('pg:unauthorized', onUnauthorized));
+onMounted(() => {
+  window.addEventListener('pg:unauthorized', onUnauthorized);
+  window.addEventListener('online', markOnline);
+  window.addEventListener('offline', markOffline);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('pg:unauthorized', onUnauthorized);
+  window.removeEventListener('online', markOnline);
+  window.removeEventListener('offline', markOffline);
+});
 
 async function logout(): Promise<void> {
   try {
@@ -56,6 +73,12 @@ async function logout(): Promise<void> {
           <t-button variant="text" theme="default" @click="logout">退出</t-button>
         </div>
       </header>
+      <t-alert
+        v-if="!online"
+        theme="warning"
+        message="网络已断开：当前数据可能不是最新；恢复连接后会自动继续刷新。"
+        class="offline-banner"
+      />
       <main class="app-content"><router-view /></main>
     </div>
   </div>
