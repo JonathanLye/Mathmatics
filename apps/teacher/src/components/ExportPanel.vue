@@ -19,6 +19,21 @@ const formatOptions = [
   { label: 'Excel（.xlsx）', value: 'xlsx' },
   { label: 'JSONL（事件）', value: 'jsonl' },
 ];
+// 08 §5 字段字典（与 server 导出列一致）；页面展示，便于教师核对下载内容。
+const FIELD_DICT: Record<ExportTable, string[]> = {
+  attempts: ['anon_id', 'class_code', 'arm', 'arm_order', 'problem_id', 'problem_version', 'mode', 'kind', 'started_at', 'completed_at', 'duration_s', 'lines', 'keys_total', 'reveal', 'independence', 'away_count', 'away_s', 'integrity_max_score', 'integrity_signals', 'completed'],
+  lines: ['anon_id', 'attempt_id', 'layer', 'role', 'idx', 'slot', 'statement', 'justification', 'statement_canon', 'provenance', 'cls', 'keys', 'new_keys', 'error_id', 'conf', 'classifier_path', 'created_at', 'edited_at', 'deleted_at'],
+  hints: ['anon_id', 'attempt_id', 'help_id', 'key_id', 'level', 'cost', 'reveal_before', 'reveal_after', 'text_shown', 'delivered_at'],
+  help: ['anon_id', 'attempt_id', 'layer', 'intent', 'routed', 'routed_by', 'conf', 'text', 'outcome', 'created_at'],
+  recognitions: ['anon_id', 'attempt_id', 'kind', 'provider', 'cross_provider', 'confidence', 'agree', 'latency_ms', 'queue_ms', 'status', 'edited', 'edit_distance', 'cost_cny', 'created_at'],
+  integrity: ['anon_id', 'attempt_id', 'signal', 'score', 'evidence', 'source', 'disposition', 'created_at'],
+  events: ['seq', 'type', 'source', 'ts_server', 'anon_id', 'attempt_id', 'layer', 'payload'],
+};
+const FIELD_DICT_ROWS = Object.entries(FIELD_DICT).map(([table, fields]) => ({
+  table,
+  fields: fields.join(', '),
+}));
+
 const tableOptions: Array<{ label: string; value: ExportTable }> = [
   { label: '作答汇总 attempts', value: 'attempts' },
   { label: '证明行长表 lines', value: 'lines' },
@@ -111,6 +126,8 @@ onBeforeUnmount(stopPolling);
       <div v-else-if="job.status === 'pending_approval'" class="page-sub">实名导出等待管理员审批。</div>
     </div>
     <div class="page-sub">说明：导出字段字典随文件提供（Excel 第二工作表 / CSV 同名 .dictionary.csv）。</div>
+    <h4 style="margin: 18px 0 6px">字段字典（08 §5）</h4>
+    <t-table :data="FIELD_DICT_ROWS" :columns="[{ colKey: 'table', title: '表' }, { colKey: 'fields', title: '字段' }]" row-key="table" size="small" />
   </div>
 </template>
 

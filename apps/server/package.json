@@ -14,15 +14,17 @@
     "@fastify/cookie": "catalog:",
     "@fastify/rate-limit": "catalog:",
     "@node-rs/argon2": "catalog:",
+    "@proof-gym/content-checks": "workspace:*",
     "@proof-gym/contracts": "workspace:*",
     "@proof-gym/engine": "workspace:*",
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
+    "exceljs": "^4.4.0",
     "fastify": "catalog:",
+    "jszip": "^3.10.2",
     "pg": "catalog:",
     "pino": "catalog:",
-    "yaml": "catalog:",
-    "@proof-gym/content-checks": "workspace:*"
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

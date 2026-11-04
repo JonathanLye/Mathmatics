@@ -5,6 +5,7 @@ import type { AuthRouteOptions } from '../auth.ts';
 import { teacherAssignmentRoutes } from './assignments.ts';
 import { teacherAttemptRoutes } from './attempts.ts';
 import { teacherClassRoutes } from './classes.ts';
+import { teacherExportRoutes } from './exports.ts';
 import { teacherFlagRoutes } from './flags.ts';
 import { teacherLiveRoutes } from './live.ts';
 import { teacherProblemRoutes } from './problems.ts';
@@ -21,5 +22,6 @@ export const teacherRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, o
   await app.register(teacherLiveRoutes, options);
   await app.register(teacherAttemptRoutes, options);
   await app.register(teacherFlagRoutes, options);
+  await app.register(teacherExportRoutes, options);
   await app.register(teacherProblemRoutes, options);
 };
