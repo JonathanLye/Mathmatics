@@ -167,6 +167,35 @@ describe('导入 CLI（#36 / 10 §6）', () => {
     });
   });
 
+  it('import:run 一条龙（S1→items→draft，离线 fixtures）', () => {
+    const root = tempDir();
+    const pdf = join(root, 'fake.pdf');
+    writeFileSync(pdf, '%PDF-1.4\n%%EOF\n');
+    const res = runCli(root, [
+      'run',
+      '--file',
+      pdf,
+      '--pages',
+      '27-28',
+      '--skip-render',
+      '--ocr-fixture',
+      join(FIXTURES, 'ch2'),
+      '--job',
+      'run1',
+      '--max',
+      '2',
+      '--draft-fixture-a',
+      join(FIXTURES, 'epsN.json'),
+      '--draft-fixture-b',
+      join(FIXTURES, 'epsN-alt.json'),
+    ]);
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout).toContain('"drafts"');
+    const jobDir = join(root, 'imports', 'run1');
+    expect(existsSync(join(jobDir, 'report.md'))).toBe(true);
+    expect(existsSync(join(jobDir, 'job.json'))).toBe(true);
+  });
+
   it(
     '四条命令在仓库 fixtures 下端到端跑通（多条目报告不覆盖）',
     () => {
