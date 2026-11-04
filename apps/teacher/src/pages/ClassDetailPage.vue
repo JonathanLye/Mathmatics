@@ -52,7 +52,49 @@ const assignmentForm = ref({
   openAt: toLocalInput(new Date()),
   closeAt: '',
   revealBudget: 2,
+  photoEnabled: true,
+  hintsEnabled: true,
+  maxSwitches: 3,
+  durationMin: 0,
 });
+
+// 04 §6：关闭布置后发布参考证明与讲评（A/B 组同时发布）
+const publishVisible = ref(false);
+const publishTarget = ref<AssignmentCard | null>(null);
+const publishProofIds = ref('');
+const publishNote = ref('');
+const publishError = ref('');
+const publishing = ref(false);
+
+function openPublish(card: AssignmentCard): void {
+  publishTarget.value = card;
+  publishProofIds.value = '';
+  publishNote.value = '';
+  publishError.value = '';
+  publishVisible.value = true;
+}
+
+async function submitPublish(): Promise<void> {
+  if (publishTarget.value === null || publishing.value) return;
+  publishing.value = true;
+  publishError.value = '';
+  try {
+    const proofIds = publishProofIds.value.split(/[,，\s]+/).map((item) => item.trim()).filter((item) => item !== '');
+    const updated = await api.post<AssignmentCard>(
+      `/api/v1/teacher/assignments/${publishTarget.value.assignmentId}/publish-review`,
+      { ...(proofIds.length > 0 ? { proofIds } : {}), ...(publishNote.value.trim() === '' ? {} : { note: publishNote.value.trim() }) },
+    );
+    const index = createdAssignments.value.findIndex((item) => item.assignmentId === updated.assignmentId);
+    if (index >= 0) createdAssignments.value[index] = updated;
+    MessagePlugin.success('讲评已发布');
+    publishVisible.value = false;
+  } catch (caught) {
+    publishError.value =
+      caught instanceof ApiError && caught.status === 409 ? '布置尚未关闭，不能发布讲评（可把截止时间设为过去）' : messageOf(caught);
+  } finally {
+    publishing.value = false;
+  }
+}
 
 const STATUS_LABEL: Record<string, string> = {
   not_started: '未开始',
@@ -274,7 +316,15 @@ async function createAssignment(): Promise<void> {
       mode: assignmentForm.value.mode,
       openAt: openAt.toISOString(),
       closeAt: closeAt === null ? null : closeAt.toISOString(),
-      settings: { revealBudget: Number(assignmentForm.value.revealBudget) },
+      settings: {
+        revealBudget: Number(assignmentForm.value.revealBudget),
+        photoEnabled: assignmentForm.value.photoEnabled,
+        hintsEnabled: assignmentForm.value.hintsEnabled,
+        maxSwitches: Number(assignmentForm.value.maxSwitches),
+        ...(assignmentForm.value.mode === 'test' && Number(assignmentForm.value.durationMin) > 0
+          ? { durationMin: Number(assignmentForm.value.durationMin) }
+          : {}),
+      },
     });
     createdAssignments.value.unshift(card);
     MessagePlugin.success('布置已创建');
@@ -437,6 +487,18 @@ onBeforeUnmount(() => {
           <t-form-item label="透露预算">
             <t-input-number v-model="assignmentForm.revealBudget" :min="0" :max="10" theme="normal" />
           </t-form-item>
+          <t-form-item label="拍照">
+            <t-switch v-model="assignmentForm.photoEnabled" />
+          </t-form-item>
+          <t-form-item label="求助">
+            <t-switch v-model="assignmentForm.hintsEnabled" />
+          </t-form-item>
+          <t-form-item label="切出锁定">
+            <t-input-number v-model="assignmentForm.maxSwitches" :min="0" :max="10" theme="normal" suffix="次" />
+          </t-form-item>
+          <t-form-item v-if="assignmentForm.mode === 'test'" label="限时">
+            <t-input-number v-model="assignmentForm.durationMin" :min="0" :max="300" theme="normal" suffix="分钟" />
+          </t-form-item>
           <t-form-item label=" ">
             <t-button theme="primary" :loading="creating" @click="createAssignment">布置</t-button>
           </t-form-item>
@@ -454,12 +516,35 @@ onBeforeUnmount(() => {
             { colKey: 'mode', title: '模式' },
             { colKey: 'status', title: '状态' },
             { colKey: 'openAt', title: '开放' },
+            { colKey: 'actions', title: '操作', width: 120 },
           ]"
           row-key="assignmentId"
           size="small"
         >
+          <template #actions="{ row }">
+            <t-link theme="primary" :disabled="row.reviewPublished" @click="openPublish(row as AssignmentCard)">
+              {{ row.reviewPublished ? '已发布讲评' : '发布讲评' }}
+            </t-link>
+          </template>
           <template #empty><div class="empty">还没有创建布置。</div></template>
         </t-table>
+
+        <t-dialog v-model:visible="publishVisible" header="发布讲评（参考证明 + 说明）" :footer="false">
+          <t-alert v-if="publishError" theme="error" :message="publishError" style="margin-bottom: 8px" />
+          <t-alert theme="info" message="布置关闭后才可发布；A/B 两组同时可见。参考证明不在这里列出时只发布讲评说明。" style="margin-bottom: 8px" />
+          <t-form label-width="90px">
+            <t-form-item label="参考证明 ID">
+              <t-input v-model="publishProofIds" placeholder="可空，多个用逗号分隔（来自题目包 referenceProofs）" />
+            </t-form-item>
+            <t-form-item label="讲评">
+              <t-textarea v-model="publishNote" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="讲评说明（MathText，可空）" />
+            </t-form-item>
+          </t-form>
+          <div class="dialog-actions">
+            <t-button variant="outline" :disabled="publishing" @click="publishVisible = false">取消</t-button>
+            <t-button theme="primary" :loading="publishing" @click="submitPublish">发布讲评</t-button>
+          </div>
+        </t-dialog>
       </t-tab-panel>
 
       <t-tab-panel value="metrics" label="指标">
