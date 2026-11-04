@@ -13,7 +13,7 @@ const HASH_OPTIONS: Options = { algorithm: 2, memoryCost: 19456, timeCost: 2, pa
 // 密码最短长度。产品文档没有给出密码策略，这里取 OWASP 无 MFA 时的下限 8，PO 可以改。
 export const MIN_PASSWORD_LENGTH = 8;
 
-const INVALID_CREDENTIALS = '用户名或密码不对';
+export const INVALID_CREDENTIALS = '用户名或密码不对';
 
 // 用户名不存在时也做一次校验，让响应时间与"密码错误"接近，避免枚举账号。
 const timingDummyHash = hash('timing-equalizer-not-a-real-password', HASH_OPTIONS);
