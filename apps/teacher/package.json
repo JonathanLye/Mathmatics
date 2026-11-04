@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "e2e:teacher": "node tests/e2e-teacher.mjs"
   },
   "dependencies": {
     "@proof-gym/contracts": "workspace:*",
@@ -25,6 +26,7 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",
-    "vue-tsc": "^3.3.14"
+    "vue-tsc": "^3.3.14",
+    "playwright-core": "^1.49.0"
   }
 }
