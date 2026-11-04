@@ -31,6 +31,8 @@ interface TeacherLoginBody {
 export const LOGIN_MAX_PER_MINUTE = 120;
 
 export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
+  // 生产/测试强制 Secure；开发环境放开，允许 http://内网 IP 给学生手机演示（#67-1）。
+  const secureCookie = config.env !== 'development';
   // 同 IP 120 次/分。05 §7 原写 10 次/分，但校园网出口共用一个 IP，一个班（≈60 人）同时登录时第 11 个人起全部 429；
   // 这里只防整段脚本式爆破，不防单个学号被猜。同邀请码失败锁定：未实现，策略需产品确认（见复审报告 P1-5）。
   app.post(
@@ -48,7 +50,7 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
         ip: maskIp(request.ip),
         uaHash: userAgent === undefined ? null : sha256Hex(userAgent),
       });
-      setSessionCookie(reply, session.sessionId, session.expiresAt);
+      setSessionCookie(reply, session.sessionId, session.expiresAt, { secure: secureCookie });
 
       const me = await buildMe(db, { userId: session.userId, role: 'student', sessionId: session.sessionId });
       contract.validate('Me', me);
@@ -69,7 +71,7 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
         password: body.password,
         ipMasked: maskIp(request.ip),
       });
-      setSessionCookie(reply, session.sessionId, session.expiresAt);
+      setSessionCookie(reply, session.sessionId, session.expiresAt, { secure: secureCookie });
 
       const me = await buildMe(db, { userId: session.userId, role: session.role, sessionId: session.sessionId });
       contract.validate('Me', me);
@@ -80,7 +82,7 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
   app.post('/auth/logout', async (request, reply) => {
     const auth = await requireAuth(db, request);
     await revokeSession(db, auth.sessionId);
-    clearSessionCookie(reply);
+    clearSessionCookie(reply, { secure: secureCookie });
     return reply.status(204).send();
   });
 

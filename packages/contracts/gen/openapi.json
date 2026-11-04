@@ -3,7 +3,7 @@
   "info": {
     "title": "证明陪练场 API",
     "version": "1.0.0-p0",
-    "description": "三端共用的接口契约（学生端 H5/小程序、教师端、服务端）。说明见 06-接口契约.md。\n\n约定：\n- 基础路径 `/api/v1`；JSON UTF-8；时间 ISO 8601（UTC）。\n- 鉴权：HttpOnly + Secure + SameSite=Lax 的会话 Cookie `pg_sid`；教师端镜像 iframe 用短期 `mirrorToken`（查询参数）。\n- 写操作带 `Idempotency-Key` 头（uuid）。同一个键 24 小时内重放返回同一结果。\n- 学生作答相关的写接口一律返回 `{ state: AttemptState, ... }`。前端只渲染 `state`，不自己推算层、预算、门槛。\n- 写接口可带 `If-Match: <stateVersion>`；版本落后返回 409 `STATE_STALE` 和最新 `state`。\n- 错误统一为 `{ error: { code, message, detail? } }`，`message` 可直接给用户看。\n- **DTO 白名单**：任何学生可调用的接口都不得返回题目包 secret 部分的任何字段（关键步骤、leak、pattern、提示原文库、要点卡、参考证明）。契约测试会扫描响应体。\n",
+    "description": "三端共用的接口契约（学生端 H5/小程序、教师端、服务端）。说明见 06-接口契约.md。\n\n约定：\n- 基础路径 `/api/v1`；JSON UTF-8；时间 ISO 8601（UTC）。\n- 鉴权：HttpOnly + Secure + SameSite=Lax 的会话 Cookie `pg_sid`；教师端镜像 iframe 用短期 `mirrorToken`（查询参数）。\n- 所有改变状态的请求（POST/PUT/PATCH/DELETE）必须带 `X-Requested-With: proof-gym` 头（CSRF 防护，见 05 §7）；缺失或不符返回 403 `FORBIDDEN`。`sendBeacon` 无法加自定义头，只能用于可靠补发的事件上报（事件 id 幂等）。\n- 写操作带 `Idempotency-Key` 头（uuid）。同一个键 24 小时内重放返回同一结果。\n- 学生作答相关的写接口一律返回 `{ state: AttemptState, ... }`。前端只渲染 `state`，不自己推算层、预算、门槛。\n- 写接口可带 `If-Match: <stateVersion>`；版本落后返回 409 `STATE_STALE` 和最新 `state`。\n- 错误统一为 `{ error: { code, message, detail? } }`，`message` 可直接给用户看。\n- **DTO 白名单**：任何学生可调用的接口都不得返回题目包 secret 部分的任何字段（关键步骤、leak、pattern、提示原文库、要点卡、参考证明）。契约测试会扫描响应体。\n",
     "contact": {
       "name": "证明陪练场项目组"
     },
