@@ -22,9 +22,16 @@ import {
   type HomeData,
 } from '@/api/client'
 import type { AssignmentCardView } from '@/types/attempt'
+import OfflineBar from '@/components/OfflineBar.vue'
+import { initIntegrity } from '@/integrity/sdk'
 import { maskStudentNo, useSession } from '@/stores/session'
 
 const session = useSession()
+
+/** #27：离线提示条的重试（事件队列立刻补发一次；mock 下等同成功）。 */
+async function handleOfflineRetry(): Promise<void> {
+  await initIntegrity().flush('manual')
+}
 const mockMode = ref(isMockMode())
 const home = ref<HomeData | null>(null)
 const loading = ref(true)
@@ -135,6 +142,8 @@ function addToNotebook(card: AssignmentCardView): void {
 
 <template>
   <view class="pg-page pg-home" data-testid="home-page">
+    <!-- #27 离线提示条：正常文档流，不遮 44px 操作区 -->
+    <OfflineBar @retry="handleOfflineRetry" />
     <view class="pg-home__head">
       <text class="pg-home__hello" data-testid="home-greeting">{{ greeting }}</text>
       <text v-if="home?.week" class="pg-home__stat pg-small" data-testid="home-week">

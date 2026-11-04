@@ -4,8 +4,8 @@
  * 只渲染 AttemptState；不做层/预算/门槛/归类判定（08 §8 AI 规则 3）。
  * 布局：手机单列 + 底部操作坞；平板两栏；桌面三栏（02 §3）。
  */
-import { computed, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { computed, ref, watch } from 'vue'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
 import TopBar from '@/components/TopBar.vue'
 import LayerNav from '@/components/LayerNav.vue'
 import LayerSheet from '@/components/LayerSheet.vue'
@@ -24,6 +24,9 @@ import MicroCourse from '@/components/MicroCourse.vue'
 import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
 import EditorSheet from '@/components/EditorSheet.vue'
+import OfflineBar from '@/components/OfflineBar.vue'
+import { initIntegrity } from '@/integrity/sdk'
+import { getDraftStore } from '@/storage/drafts'
 import { nextLineNoOf } from '@/components/layers/proofLines'
 import MathText from '@ui-math/MathText.vue'
 import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
@@ -92,6 +95,15 @@ const microLesson = ref<LessonView | null>(null)
 /** 迁移题子作答的父作答 state：子作答完成后用「回到本题完成页」恢复（mock；真接口由服务端返回父 state）。 */
 const transferParent = ref<AttemptState | null>(null)
 
+// ---- #27 诚信事件 SDK / IndexedDB 草稿 / 离线提示 ----
+const integrity = initIntegrity()
+const draftStore = getDraftStore()
+/** 恢复提示：def（L1）| line_statement（L3 行）| null */
+const restoredDraft = ref<'def' | 'line_statement' | null>(null)
+const l1Initial = ref('')
+const lineDraftInitial = ref({ statement: '', justification: '' })
+const offlineRetrying = ref(false)
+
 const currentLayer = computed(() => state.value.currentLayer)
 const lines = computed(() => state.value.steps?.lines ?? [])
 const notes = computed(() => state.value.notes ?? [])
@@ -113,6 +125,71 @@ const layerTask = computed(() => {
   return ''
 })
 const modeClass = computed(() => 'pg-practice--' + mode.value)
+/** #27：打开行编辑器时的初始值 —— 识别确认的文本优先（#15 行为），否则用本机未提交草稿。 */
+const editorInitialStatement = computed(() => recogDraft.value?.text ?? lineDraftInitial.value.statement)
+const editorInitialJustification = computed(() => lineDraftInitial.value.justification)
+
+// #27：事件归属随作答/切层/状态更新（currentLayer 声明之后再调用）
+function syncIntegrityContext(): void {
+  integrity.setContext({
+    attemptId: state.value.attemptId,
+    layer: state.value.currentLayer,
+    mode: state.value.mode,
+    problemId: state.value.problem.problemId,
+  })
+}
+syncIntegrityContext()
+watch(
+  [() => state.value.attemptId, currentLayer, () => state.value.mode, () => state.value.status],
+  syncIntegrityContext,
+)
+
+/** 打开做题页时恢复本机草稿（#27）：只恢复当前 attempt/layer 的必要字段。 */
+async function restoreDrafts(): Promise<void> {
+  const attemptId = state.value.attemptId
+  if (!attemptId) return
+  if (currentLayer.value === 'L1') {
+    const text = await draftStore.loadDraft(attemptId, 'def')
+    if (text) {
+      l1Initial.value = text
+      restoredDraft.value = 'def'
+    }
+    return
+  }
+  if (currentLayer.value === 'L3') {
+    const statement = await draftStore.loadDraft(attemptId, 'line_statement')
+    const justification = await draftStore.loadDraft(attemptId, 'line_justification')
+    if (statement || justification) {
+      lineDraftInitial.value = { statement: statement ?? '', justification: justification ?? '' }
+      restoredDraft.value = 'line_statement'
+    }
+  }
+}
+
+/** L1 输入 → 500ms 防抖写 IndexedDB（只存 text/updatedAt）。 */
+function handleLayer1Input(value: string): void {
+  void draftStore.saveDraft(state.value.attemptId, 'def', value)
+}
+
+/** L3 行编辑器输入 → 防抖写「这一行 / 依据」两个草稿。 */
+function handleEditorDraft(d: { statement: string; justification: string }): void {
+  void draftStore.saveDraft(state.value.attemptId, 'line_statement', d.statement)
+  void draftStore.saveDraft(state.value.attemptId, 'line_justification', d.justification)
+}
+
+async function handleOfflineRetry(): Promise<void> {
+  offlineRetrying.value = true
+  try {
+    await integrity.flush('manual')
+  } finally {
+    offlineRetrying.value = false
+  }
+}
+
+onUnload(() => {
+  draftStore.flush()
+  void integrity.flushBeacon()
+})
 
 function show(msg: string) {
   toast.value = msg
@@ -156,6 +233,7 @@ onLoad(async (q) => {
         apply(next)
         return next
       })
+      void restoreDrafts()
       return
     }
   }
@@ -164,11 +242,16 @@ onLoad(async (q) => {
   if (pending) {
     transferParent.value = null
     apply(pending)
+    void restoreDrafts()
     return
   }
-  if (realMode.value || !mockEnabled) return
+  if (realMode.value || !mockEnabled) {
+    void restoreDrafts()
+    return
+  }
   const k = parseMockKey(q?.mock) ?? initialMock
   if (k) setMock(k)
+  void restoreDrafts()
 })
 
 function onSwitchMock(k: MockKey) {
@@ -178,6 +261,10 @@ function onSwitchMock(k: MockKey) {
   lastHelp.value = { intent: 'concept', text: '' }
   editorOpen.value = false
   helpOpen.value = false
+  restoredDraft.value = null
+  l1Initial.value = ''
+  lineDraftInitial.value = { statement: '', justification: '' }
+  void restoreDrafts()
 }
 
 function switchLayer(_layer: LayerId) {
@@ -186,9 +273,18 @@ function switchLayer(_layer: LayerId) {
 }
 
 async function handleSubmit(text: string) {
-  const fn = currentLayer.value === 'L1' ? submitDef : submitFramework
+  const layer = currentLayer.value
+  const attemptId = state.value.attemptId
+  const fn = layer === 'L1' ? submitDef : submitFramework
   const next = await run(() => fn(state.value, text))
-  if (next) apply(next)
+  if (!next) return
+  apply(next)
+  // #27：提交成功后清除本机草稿（避免下次打开又恢复旧内容）。
+  if (layer === 'L1') {
+    l1Initial.value = ''
+    await draftStore.clearDraft(attemptId, 'def')
+    restoredDraft.value = null
+  }
 }
 
 /**
@@ -219,8 +315,15 @@ function closeMicro() {
 async function handleSkip() {
   const layer = currentLayer.value
   if (layer !== 'L1' && layer !== 'L2' && layer !== 'L4' && layer !== 'L5') return
+  const attemptId = state.value.attemptId
   const next = await run(() => skipLayer(state.value, layer))
-  if (next) apply(next)
+  if (!next) return
+  apply(next)
+  if (layer === 'L1') {
+    l1Initial.value = ''
+    await draftStore.clearDraft(attemptId, 'def')
+    restoredDraft.value = null
+  }
 }
 
 /** 第 4 层：提交一道自检题；判定与追问都来自服务端返回的 state。 */
@@ -299,10 +402,18 @@ function goProofbook() {
 }
 
 async function handleAddLine(draft: LineDraft) {
+  const attemptId = state.value.attemptId
   const next = await run(() => addLine(state.value, draft))
   if (next) {
     apply(next)
     editorOpen.value = false
+    // #27：加行成功后清除这一行的本机草稿（失败时保留，便于重试）。
+    lineDraftInitial.value = { statement: '', justification: '' }
+    restoredDraft.value = null
+    await Promise.all([
+      draftStore.clearDraft(attemptId, 'line_statement'),
+      draftStore.clearDraft(attemptId, 'line_justification'),
+    ])
   } else {
     // 失败不关编辑器：本地草稿与 draftId 保留，重试复用（PR #90 复审建议）。
     show(error.value || '加入证明失败，请重试；你写的内容还在编辑器里')
@@ -514,6 +625,8 @@ function backHome() {
       @open-layers="layersOpen = true"
     />
 
+    <!-- #27 离线提示条：正常文档流 + sticky，不覆盖 44px 操作区/BottomDock -->
+    <OfflineBar :retrying="offlineRetrying" @retry="handleOfflineRetry" />
     <view v-if="error" class="pg-practice__error pg-small">
       <text class="pg-practice__errortext">{{ error }}</text>
       <button class="pg-practice__errorbtn pg-small" @tap="backHome">回首页</button>
@@ -536,6 +649,14 @@ function backHome() {
         <ProblemCard :problem="state.problem" />
 
         <view class="pg-practice__content">
+          <!-- #27 草稿恢复提示：重新打开时告诉学生内容来自本机未提交草稿 -->
+          <view v-if="restoredDraft" class="pg-draftnotice" data-testid="draft-restored" role="status">
+            <text class="pg-draftnotice__text pg-small">已恢复上次未提交的草稿</text>
+            <button class="pg-draftnotice__btn pg-small" role="button" data-testid="draft-restored-dismiss" @tap="restoredDraft = null">
+              知道了
+            </button>
+          </view>
+
           <view class="pg-practice__head">
             <text class="pg-practice__layertitle">{{ layerTitle }}</text>
             <!-- #11：L1/L2 的任务说明由表单用 MathText 渲染，这里不再显示纯文本（避免露出 LaTeX 源码）。 -->
@@ -624,7 +745,9 @@ function backHome() {
             layer="L1"
             :view="state.def ?? {}"
             :busy="busy"
+            :initial-text="l1Initial"
             @submit="handleSubmit"
+            @update:text="handleLayer1Input"
             @lesson="handleLesson"
             @skip="handleSkip"
           />
@@ -743,11 +866,12 @@ function backHome() {
     <EditorSheet
       :open="editorOpen"
       :line-no="nextLineNo"
-      :initial-statement="recogDraft?.text ?? ''"
-      :initial-justification="''"
+      :initial-statement="editorInitialStatement"
+      :initial-justification="editorInitialJustification"
       :busy="busy"
       @update:open="editorOpen = $event"
       @submit="handleAddLine"
+      @update:draft="handleEditorDraft"
     />
 
     <!-- #15 拍照识别：识别中的占位（02 §4.5：超过 3 秒提示可先用键盘），拿到结果后进确认面板 -->
@@ -825,6 +949,27 @@ function backHome() {
 }
 .pg-practice__content {
   padding: 0 var(--sp-3);
+}
+.pg-draftnotice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.pg-draftnotice__text { flex: 1; min-width: 0; }
+.pg-draftnotice__btn {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
 }
 .pg-practice__head {
   display: flex;
