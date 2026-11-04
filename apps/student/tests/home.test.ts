@@ -53,6 +53,7 @@ const ME: MeView = {
   displayName: '测试同学',
   classes: [],
   consentRequired: false,
+  ageBand: 'ge18',
   features: {},
 }
 

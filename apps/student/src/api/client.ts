@@ -24,6 +24,7 @@ import {
   type HttpMethod,
 } from './http'
 import { createMockState, DEFAULT_MOCK, mockRecognition, type MockKey } from '@/mocks/attemptStates'
+import { AGE_BAND_LOCKED_MESSAGE, ageBandFromQuery } from '@/auth/ageBand'
 import {
   mockLesson,
   mockNotebook,
@@ -36,10 +37,12 @@ import {
 } from '@/mocks/laterLayers'
 import { SELFCHECK_ADAPTIVE_CONFIG } from '@/components/selfcheck/adaptView'
 import type {
+  AgeBand,
   AttemptState,
   AssignmentCardView,
   ConsentChoices,
   ConsentDoc,
+  ConsentSection,
   HelpIntent,
   HelpResult,
   HintPreview,
@@ -63,6 +66,57 @@ const DEFAULT_USE_MOCK = ENV_USE_MOCK === undefined ? true : ENV_USE_MOCK !== 'f
 
 let USE_MOCK = DEFAULT_USE_MOCK
 let activeHttp: HttpClient = createHttpClient()
+
+/**
+ * mock 的年龄分档（#145）：
+ * - 默认 ge18，不阻塞既有 mock 演示/e2e 流程；
+ * - ?ageBand=null|lt14|14to17|ge18（H5 hash 查询）覆盖初始值，供年龄分档 e2e；
+ * - 年龄选择页提交后写入 override（只能设置一次；再次提交按契约 409 AGE_BAND_LOCKED）。
+ */
+const DEFAULT_MOCK_AGE_BAND: AgeBand = 'ge18'
+const MOCK_AGE_BAND_UNSET = 'unset'
+let mockAgeBandOverride: AgeBand | null | typeof MOCK_AGE_BAND_UNSET = MOCK_AGE_BAND_UNSET
+
+/** 从当前 H5 hash 的查询串读 ?ageBand=（null/lt14/14to17/ge18）；无参数/非法 → undefined。 */
+function readAgeBandFromUrl(): AgeBand | null | undefined {
+  if (typeof window === 'undefined' || !window.location) return undefined
+  const hash = window.location.hash || ''
+  const queryIndex = hash.indexOf('?')
+  if (queryIndex === -1) return undefined
+  return ageBandFromQuery(hash.slice(queryIndex + 1))
+}
+
+/**
+ * mock 模式下的当前年龄分档：override 优先，其次 URL ?ageBand=，最后默认 ge18。
+ * URL 覆盖值会**固定**到 override：守卫重定向到 /pages/age/index 后 hash 不再带该参数，
+ * 若不固定会退回默认 ge18，e2e「null → 选择」就会看到「已记录」而不是选择页。
+ */
+function resolveMockAgeBand(): AgeBand | null {
+  if (mockAgeBandOverride === MOCK_AGE_BAND_UNSET) {
+    const fromUrl = readAgeBandFromUrl()
+    if (fromUrl !== undefined) mockAgeBandOverride = fromUrl
+  }
+  if (mockAgeBandOverride !== MOCK_AGE_BAND_UNSET) return mockAgeBandOverride
+  return DEFAULT_MOCK_AGE_BAND
+}
+
+/** mock Me（带当前年龄分档）。login/getMe 在 mock 模式都走这里，保证年龄守卫能读到 ageBand。 */
+export function mockMeView(): MeView {
+  return { ...clone(mockMe), ageBand: resolveMockAgeBand() }
+}
+
+/** 测试隔离：把 mock 年龄分档恢复为「未 override」（读取 URL/默认 ge18）。 */
+export function __resetMockAgeBandForTests(): void {
+  mockAgeBandOverride = MOCK_AGE_BAND_UNSET
+}
+
+/** mock 模式默认年龄分档（ge18，不阻塞既有流程）。 */
+export const MOCK_DEFAULT_AGE_BAND: AgeBand = DEFAULT_MOCK_AGE_BAND
+
+/** 测试隔离：直接设定 mock 年龄分档（null = 尚未选择）。 */
+export function __setMockAgeBandForTests(value: AgeBand | null): void {
+  mockAgeBandOverride = value
+}
 
 const LATENCY = 160
 const sleep = (ms = LATENCY) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -99,6 +153,7 @@ export function __resetClientForTests(): void {
   activeHttp = createHttpClient()
   cachedDeviceId = null
   lastStateStaleAt = 0
+  mockAgeBandOverride = MOCK_AGE_BAND_UNSET
 }
 
 /**
@@ -414,6 +469,8 @@ export const mockMe: MeView = {
   displayName: null,
   classes: [],
   // mock 演示仍走「登录 → 同意页」流程；真实值以服务端 Me 为准。
+  // #145：默认 ge18（不阻塞既有 mock 流程）；?ageBand= 可覆盖，见 resolveMockAgeBand。
+  ageBand: 'ge18',
   consentRequired: true,
   features: {},
 }
@@ -439,11 +496,31 @@ export const mockConsentDoc: ConsentDoc = {
   signed: null,
 }
 
+/**
+ * 14–17 岁同意书附加的「建议告知监护人」只读说明（#131）：
+ * required=false、不签署；正文用占位，正式文本只从服务端 GET /consents 取（#62 待确认）。
+ */
+export const GUARDIAN_NOTICE_PLACEHOLDER_BODY = '（「建议告知监护人」正文由服务端提供，待 #62 确认）'
+
+export const GUARDIAN_NOTICE_SECTION: ConsentSection = {
+  key: 'guardianNotice',
+  title: '建议告知监护人（14–17 岁）',
+  body: GUARDIAN_NOTICE_PLACEHOLDER_BODY,
+  required: false,
+}
+
+/** mock GET /consents：14–17 追加 guardianNotice 只读段（其他档位不变）。 */
+export function mockConsentDocForAgeBand(ageBand: AgeBand | null): ConsentDoc {
+  const doc = clone(mockConsentDoc)
+  if (ageBand === '14to17') doc.sections = [...doc.sections, clone(GUARDIAN_NOTICE_SECTION)]
+  return doc
+}
+
 /** POST /auth/student/login：邀请码 + 学号 + deviceId，返回 Me（响应设置 HttpOnly Cookie）。 */
 export async function login(inviteCode: string, studentNo: string, deviceId = getDeviceId()): Promise<MeView> {
   if (USE_MOCK) {
     await sleep()
-    return clone(mockMe)
+    return mockMeView()
   }
   const result = await activeHttp.post<MeView>('/auth/student/login', { inviteCode, studentNo, deviceId })
   return result.data
@@ -462,16 +539,40 @@ export async function logout(): Promise<void> {
 export async function getMe(): Promise<MeView> {
   if (USE_MOCK) {
     await sleep()
-    return clone(mockMe)
+    return mockMeView()
   }
   return activeHttp.get<MeView>('/me')
+}
+
+/**
+ * POST /auth/student/age-band（#131）：学生自选年龄段，只能设置一次。
+ * - 成功后返回最新 Me（ageBand 已记录）；
+ * - 已记录 → 409 AGE_BAND_LOCKED（防止 <14 学生重新提交自我解锁）；
+ * - <14 记录后服务端仍返回 200 + Me，但写接口会 403 AGE_RESTRICTED（前端只负责展示与拦截，不自己判定合规）。
+ */
+export async function setStudentAgeBand(ageBand: AgeBand): Promise<MeView> {
+  if (ageBand !== 'lt14' && ageBand !== '14to17' && ageBand !== 'ge18') {
+    throw new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: '年龄分段不合法' })
+  }
+  if (USE_MOCK) {
+    await sleep()
+    const current = resolveMockAgeBand()
+    if (current !== null) {
+      throw new ApiError({ status: 409, code: 'AGE_BAND_LOCKED', message: AGE_BAND_LOCKED_MESSAGE })
+    }
+    mockAgeBandOverride = ageBand
+    return mockMeView()
+  }
+  // 网络抖动重试一次：若首次其实已记录成功，重试会拿到 409 AGE_BAND_LOCKED，页面按「已记录」处理（不伪造成功）。
+  const result = await withRetry(() => activeHttp.post<MeView>('/auth/student/age-band', { ageBand }))
+  return result.data
 }
 
 /** GET /consents：当前同意书文本 + 本人最近一次签署。 */
 export async function getConsents(): Promise<ConsentDoc> {
   if (USE_MOCK) {
     await sleep()
-    return clone(mockConsentDoc)
+    return clone(mockConsentDocForAgeBand(resolveMockAgeBand()))
   }
   return activeHttp.get<ConsentDoc>('/consents')
 }

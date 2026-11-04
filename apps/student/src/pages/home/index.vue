@@ -24,6 +24,7 @@ import {
 import type { AssignmentCardView } from '@/types/attempt'
 import OfflineBar from '@/components/OfflineBar.vue'
 import { initIntegrity } from '@/integrity/sdk'
+import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { maskStudentNo, useSession } from '@/stores/session'
 
 const session = useSession()
@@ -43,11 +44,13 @@ const notice = ref('')
 let slowTimer: ReturnType<typeof setTimeout> | null = null
 let noticeTimer: ReturnType<typeof setTimeout> | null = null
 
-onLoad((q) => {
+onLoad(async (q) => {
   if (q?.api === 'real') {
     setMockMode(false)
     mockMode.value = false
   }
+  // #145 年龄门：Me.ageBand=null → 年龄选择页；lt14 → 暂不开通（守卫内重定向）。
+  if (!ageGatePassed(await enforceAgeGate())) return
 })
 
 onShow(() => {
