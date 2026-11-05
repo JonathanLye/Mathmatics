@@ -9,7 +9,7 @@
  * - 按钮用 [data-testid] + role=button 定位；点击先 scrollIntoViewIfNeeded 再走真实鼠标事件，失败直接 FAIL，不回退 JS click；
  * - 监听 pageerror，结尾断言无未捕获 JS 异常。
  *
- * 用法：先 npm run build:h5，再 npm run e2e:flows
+ * 用法：先 npm run build:mock，再 npm run e2e:flows
  * 依赖：playwright-core + 本机 ms-playwright 的 chromium（可用 PG_CHROMIUM 指定）。
  * 产物：tests/.artifacts/flows/*.png + report.json（目录已 gitignore）。
  */
@@ -150,7 +150,7 @@ async function openMock(page, base, mock) {
 
 async function main() {
   if (!fs.existsSync(distDir)) {
-    console.error('[flows] 缺少构建产物：' + distDir + '，先运行 npm run build:h5')
+    console.error('[flows] 缺少构建产物：' + distDir + '，先运行 npm run build:mock')
     process.exit(2)
   }
   const exe = findChromium()

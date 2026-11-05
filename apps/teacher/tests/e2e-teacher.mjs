@@ -172,11 +172,14 @@ async function main() {
   await shot('06b-settings-1280');
   // #171：题库状态筛选（草稿）
   await page.locator('.problem-filters .t-select').first().click();
-  await page.getByText('草稿', { exact: true }).last().click();
+  await page.locator('.t-select-option').filter({ hasText: '草稿' }).first().click();
   await page.getByText(/共 \d+ 行/).waitFor({ timeout: 10000 });
   const draftRows = await page.locator('tbody tr').count();
   assert(draftRows >= 1, '题库筛选草稿应为至少 1 行');
   await shot('06a-problems-filter-1280');
+  await page.goto(`${BASE}/t/settings`, { waitUntil: 'networkidle' });
+  await page.getByText('默认策略（04 §7）').waitFor({ timeout: 10000 });
+  await shot('06b-settings-1280');
 
   // 5) 三档 + 深色
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
