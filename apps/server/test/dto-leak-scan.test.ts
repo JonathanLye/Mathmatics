@@ -1,15 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
-import { gateRule, type Secret } from '@proof-gym/engine';
+import { gateRule, serializeState, type Secret } from '@proof-gym/engine';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
 import { createSession, SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
+import { loadProblem } from '../src/attempts/problem.ts';
+import { loadConfig } from '../src/config.ts';
 import { seedContent } from '../src/db/seed.ts';
 import type { Db } from '../src/db/index.ts';
+
+// 引擎的测试替身：把 epsN 作答推到额度用尽（reveal 2/2）。只在测试里引用。
+import { Runner } from '../../../packages/engine/test/support/runner.ts';
+import { SCENARIOS } from '../../../packages/engine/test/support/scenarios.ts';
 
 import { buildTestApp, cookieFrom, DEVICE_B, loginBody, setupFixture, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
 
@@ -58,6 +65,9 @@ const MAIN_OPS = [
   'POST /attempts/{attemptId}/help',
   'POST /attempts/{attemptId}/hints/claim',
   'POST /events/batch',
+  'POST /recognitions/ink',
+  'POST /recognitions/photo',
+  'POST /recognitions/{recogId}/confirm',
 ] as const;
 
 // 迁移题子作答（kind=transfer，从第 3 层开始）走到的接口。
@@ -74,6 +84,43 @@ const SESSION_ID = '6f1b2c4e-8d3a-4b7e-9c10-2a5d7e8f9a02';
 const INPUT = { provenance: 'keyboard', draftId: '00000000-0000-4000-8000-0000000000d1' };
 // 不含任何泄题片段的学生文本：响应里出现的命中只可能来自服务端。
 const NEUTRAL_LINE = '由题设先写一行';
+
+// 识别接口：模型走脚本化 fetch（不出网），识别结果固定为不含泄题片段的中性文本。
+// 扫描要验证的是服务端自己拼出来的响应字段（状态、diff、提示文案、错误信封）里没有题目机密，而不是模型说了什么。
+const KEYED = loadConfig({ NODE_ENV: 'test', SIMPLETEX_APP_ID: 'test-app', SIMPLETEX_APP_SECRET: 'test-secret-value', DASHSCOPE_API_KEY: 'test-dashscope-key' });
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+const modelFetch = (async (url: string) => {
+  if (url.includes('simpletex_ocr')) return json({ status: true, res: { content: `$\\text{${NEUTRAL_LINE}}$\n\n${NEUTRAL_LINE}二` } });
+  if (url.includes('latex_ocr')) return json({ status: true, res: { latex: `\\text{${NEUTRAL_LINE}}`, conf: 0.95 } });
+  if (url.includes('chat/completions')) return json({ choices: [{ message: { content: `${NEUTRAL_LINE}\n${NEUTRAL_LINE}二` } }] });
+  return json({}, 404);
+}) as unknown as typeof fetch;
+
+const INK_DOC = {
+  v: 1,
+  w: 360,
+  h: 120,
+  dpr: 2,
+  t0: 0,
+  orientation: 'portrait',
+  fullscreen: false,
+  strokes: [{ id: 0, p: 'pen', pts: [[10, 40, 0, 0.5], [60, 44, 20, 0.5], [120, 40, 40, 0.5]] }],
+};
+const inkBase64 = (): string => gzipSync(Buffer.from(JSON.stringify(INK_DOC))).toString('base64');
+
+// 最小的 JPEG：魔数 + 一个 SOF0 段（640×480），足够通过类型嗅探
+const JPEG = Buffer.from('ffd8ffe000104a46494600010100000100010000ffc0000b08' + '01e0' + '0280' + '0100' + 'ffd9', 'hex');
+function photoForm(fields: Record<string, string>): { payload: Buffer; headers: Record<string, string> } {
+  const boundary = `----pgleak${randomUUID()}`;
+  const parts = Object.entries(fields).map(([k, v]) => Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+  parts.push(
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
+    JPEG,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  );
+  return { payload: Buffer.concat(parts), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
+}
 
 type VaultRow = { problem_id: string; secret: Secret };
 type Tag = 'concept' | 'check_line' | 'hint' | 'chip';
@@ -129,7 +176,7 @@ interface StudentContext {
 async function openApp(mainId: string): Promise<Omit<StudentContext, 'cookie' | 'records'> & { assignmentId: string }> {
   const fx = await setupFixture();
   await seedContent(fx.db);
-  const app = await buildTestApp(fx.db, { rateLimits: { events: 100_000, help: 100_000 } });
+  const app = await buildTestApp(fx.db, { rateLimits: { events: 100_000, help: 100_000 }, models: KEYED.models }, { fetchImpl: modelFetch });
   await app.ready();
   const teacherId = (await fx.db.query<{ id: string }>(`select id from app.users where role = 'teacher'`)).rows[0]?.id;
   const version = (
@@ -164,7 +211,7 @@ async function call(
   ctx: StudentContext,
   op: string,
   owner: string,
-  opts: { params?: Record<string, string>; payload?: unknown; extraExempt?: readonly string[]; tag?: Tag } = {},
+  opts: { params?: Record<string, string>; payload?: unknown; extraExempt?: readonly string[]; tag?: Tag; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; json: Record<string, any>; body: string; headers: Record<string, unknown> }> {
   const [method, template] = op.split(' ') as ['GET' | 'POST', string];
   const params = opts.params ?? {};
@@ -175,7 +222,7 @@ async function call(
   const res = await ctx.app.inject({
     method,
     url: `/api/v1${url}`,
-    headers: method === 'GET' ? { cookie: ctx.cookie } : { cookie: ctx.cookie, ...WRITE_HEADERS },
+    headers: method === 'GET' ? { cookie: ctx.cookie } : { cookie: ctx.cookie, ...WRITE_HEADERS, ...opts.headers },
     ...(opts.payload === undefined ? {} : { payload: opts.payload as object }),
   });
   ctx.records.push({
@@ -323,7 +370,7 @@ interface Walk {
   ladder: Record<string, { delivered: string[]; expected: string[] }>;
   concept: Record<string, Record<string, any>>;
   errorNotes: Record<string, Array<{ errorId: string; lineId: string; note: unknown }>>;
-  recognitionStatuses: number[];
+  recognition: { ink: Record<string, any>; photo: Record<string, any>; confirm: Record<string, any>; photoConfirm: Record<string, any> };
   app: FastifyInstance;
   close(): Promise<void>;
 }
@@ -398,16 +445,20 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   ).json;
   const eventsDuplicate = (await call(ctx, 'POST /events/batch', main, { params, payload: { events: [acceptedEvent] } })).json;
 
-  // —— /recognitions：契约里有、服务端还没有路由。记录真实响应状态码（见"尚无路由"用例）。
-  const recognitionStatuses: number[] = [];
-  const recog = randomUUID();
-  for (const [op, reqParams, payload] of [
-    ['POST /recognitions/ink', {}, { attemptId, target: 'line', strokes: [] }],
-    ['POST /recognitions/photo', {}, { attemptId, target: 'line' }],
-    ['POST /recognitions/{recogId}/confirm', { recogId: recog }, { attemptId, text: NEUTRAL_LINE }],
-  ] as const) {
-    recognitionStatuses.push((await call(ctx, op, main, { params: reqParams, payload })).status);
-  }
+  // —— /recognitions：手写 → 确认；拍照 → 确认。模型走脚本化 fetch。
+  const ink = await call(ctx, 'POST /recognitions/ink', main, {
+    payload: { attemptId, draftId: randomUUID(), target: 'line_statement', ink: inkBase64() },
+  });
+  const confirmed = await call(ctx, 'POST /recognitions/{recogId}/confirm', main, {
+    params: { recogId: ink.json.recogId as string },
+    payload: { text: ink.json.text as string },
+  });
+  const form = photoForm({ attemptId, draftId: randomUUID(), target: 'line_statement', source: 'camera' });
+  const photo = await call(ctx, 'POST /recognitions/photo', main, { payload: form.payload, headers: form.headers });
+  const photoConfirmed = await call(ctx, 'POST /recognitions/{recogId}/confirm', main, {
+    params: { recogId: photo.json.recogId as string },
+    payload: { text: (photo.json.lines as Array<{ text: string }>).map((l) => l.text).join('\n'), lines: (photo.json.lines as Array<{ text: string }>).map((l) => l.text) },
+  });
 
   // —— 第 1、2 层
   await call(ctx, 'POST /attempts/{attemptId}/definition', main, { params, payload: { text: NEUTRAL_LINE, input: INPUT } });
@@ -505,7 +556,7 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
     ladder,
     concept,
     errorNotes,
-    recognitionStatuses,
+    recognition: { ink: ink.json, photo: photo.json, confirm: confirmed.json, photoConfirm: photoConfirmed.json },
     app,
     close: async () => {
       await app.close();
@@ -658,16 +709,24 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
     });
   });
 
-  it('/recognitions/*：契约里有、服务端尚无路由（#25），响应是 404，没有内容可扫', () => {
-    for (const { main } of PROBLEMS) {
+  describe.each(PROBLEMS)('$main：/recognitions/*（#21）', ({ main }) => {
+    it('手写 / 拍照 / 确认都返回真实识别内容（不是空响应假绿），且 0 命中', () => {
       const walk = walkOf(main);
-      // 这条变红说明识别接口落地了：把它们加进 walkProblem 与 MAIN_OPS 做真实扫描，再改这条，不要删。
-      expect(walk.recognitionStatuses).toEqual([404, 404, 404]);
+      const { ink, photo, confirm, photoConfirm } = walk.recognition;
+      expect(ink).toMatchObject({ status: 'ok' });
+      expect(typeof ink.agree).toBe('boolean'); // 两路是否一致由脚本化 fetch 决定；字段本身与 diff 照样被扫描
+      expect(String(ink.text)).toContain(NEUTRAL_LINE);
+      expect(photo).toMatchObject({ status: 'ok' });
+      expect((photo.lines as unknown[]).length).toBeGreaterThan(1);
+      expect(confirm).toMatchObject({ recogId: ink.recogId });
+      expect(photoConfirm).toMatchObject({ recogId: photo.recogId });
       for (const op of ['POST /recognitions/ink', 'POST /recognitions/photo', 'POST /recognitions/{recogId}/confirm']) {
-        expect(implemented(walk.app, op), op).toBe(false);
-        expect(scanOp(walk, main, op).hits).toEqual([]);
+        const { records, hits } = scanOp(walk, main, op);
+        expect(records.length, op).toBeGreaterThan(0);
+        for (const record of records) expect(record.status, `${op} ${record.body}`).toBe(200);
+        expect(hits, op).toEqual([]);
       }
-    }
+    });
   });
 
   it('覆盖面守卫：契约里已实现的学生接口都被本文件真实走到并扫描（新接口落地必须加进来）', () => {
@@ -717,69 +776,89 @@ describe.each(PROBLEMS)('跨题门槛：$main 缺任一 key 都到不了 $transf
   });
 });
 
-// 迁移题被教师直接布置：/teacher/problems?status=published 不按 kind 过滤，POST /teacher/assignments 也不查 kind，
-// 教师端布置下拉框列出全部已发布题（04 §7 只要求"已发布版本"）。这名学生没有父作答，父题 key 对他是真正的"未透露"，
-// 所以这里不豁免任何父题 key。这条断言不能为了变绿而放宽（12 §7、AGENTS.md §3）。
-describe.each(PROBLEMS)('$transfer 被教师直接布置（没有父作答）', ({ main, transfer }) => {
-  let walk: { app: FastifyInstance; fx: Fixture; records: ScanRecord[]; vault: VaultRow[]; listed: string[]; created: number; delivered: string[]; expected: number };
+// 迁移题不能被教师直接布置（#185/#186）：这是此前"没有父作答，父题 key 对学生是真正的未透露"那条泄露路径的根因。
+// 根因已在布置入口消除，所以这里断言入口确实拒绝、没有留下任何作答入口；不再有可扫描的直布学生响应。
+describe.each(PROBLEMS)('$transfer 不能被教师直接布置（#186）', ({ main, transfer }) => {
+  let result: { status: number; body: Record<string, any>; assignments: number };
+  let close: () => Promise<void>;
 
   beforeAll(async () => {
     const { app, db, fx } = await openApp(main);
+    close = async () => {
+      await app.close();
+      await fx.close();
+    };
     const teacherId = (await db.query<{ id: string }>(`select id from app.users where role = 'teacher'`)).rows[0]?.id as string;
     await db.query(`insert into app.devices (id, user_id) values ($1, $2)`, [DEVICE_B, teacherId]);
     const session = await createSession(db, { userId: teacherId, deviceId: DEVICE_B, ip: null, ttlMs: STUDENT_SESSION_MS });
     const teacher = { cookie: `${SESSION_COOKIE}=${app.signCookie(session.id)}`, ...WRITE_HEADERS };
-    const list = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems?status=published', headers: teacher });
     const created = await app.inject({
       method: 'POST',
       url: '/api/v1/teacher/assignments',
       headers: teacher,
       payload: { classId: fx.classId, problemId: transfer, version: 1, mode: 'practice', openAt: new Date(Date.now() - 3_600_000).toISOString() },
     });
-
-    const ctx: StudentContext = { app, db, fx, cookie: '', records: [] };
-    const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
-    ctx.cookie = cookieFrom(login.headers['set-cookie']);
-    await call(ctx, 'POST /auth/student/age-band', transfer, { payload: { ageBand: 'ge18' } });
-    await call(ctx, 'POST /consents', transfer, { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
-    await call(ctx, 'GET /student/home', transfer);
-    const assignmentId = created.json().assignmentId ?? created.json().id;
-    const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', transfer, { params: { assignmentId } });
-    expect(started.status, started.body).toBe(200);
-    const attemptId = started.json.state.attemptId as string;
-    const vault = (await db.query<VaultRow>(`select problem_id, secret from vault.problem_secrets`)).rows;
-    const secret = vault.find((v) => v.problem_id === transfer)?.secret as Secret;
-    await walkConceptAndCheckLine(ctx, transfer, attemptId, secret);
-    const delivered = await walkHintLadder(ctx, transfer, attemptId, secret);
-    walk = {
-      app,
-      fx,
-      records: ctx.records,
-      vault,
-      listed: (list.json() as Array<{ problemId: string }>).map((p) => p.problemId),
-      created: created.statusCode,
-      delivered,
-      expected: secret.routes.flatMap((r) => r.flatMap((id) => secret.keys.find((k) => k.id === id)?.hints ?? [])).length,
-    };
+    const assignments = (await db.query<{ n: string }>(`select count(*) as n from app.assignments where problem_id = $1`, [transfer])).rows[0]?.n;
+    result = { status: created.statusCode, body: created.json(), assignments: Number(assignments) };
   }, 120_000);
 
   afterAll(async () => {
-    await walk.app.close();
-    await walk.fx.close();
+    await close();
   });
 
-  it('教师端确实能选到并布置这道题（路径真实存在）', () => {
-    expect(walk.listed).toContain(transfer);
-    expect(walk.created).toBe(201);
+  it('POST /teacher/assignments 返回 422，且没有创建布置', () => {
+    expect(result.status, JSON.stringify(result.body)).toBe(422);
+    expect(String(result.body.error?.message)).toContain('迁移题不能直接布置');
+    expect(result.assignments).toBe(0);
   });
+});
 
-  it('提示阶梯全部真实下发过', () => {
-    expect(walk.delivered.length).toBe(walk.expected);
-  });
+// 软着陆（12 §7 第 5 项）：教师补发的 H4 会作为批注下发给学生。它是已透露的 key（和 H3/H4 同口径，只豁免所属的 K3），
+// 其余 key 的片段仍然 0 命中。
+describe('教师补发 H4（grantH4）后的学生响应', { timeout: 60_000 }, () => {
+  it('只豁免被补发的 key；其余 key 0 命中，且补发的 H4 真的出现在响应里', async () => {
+    const { app, db, fx, assignmentId } = await openApp('epsN');
+    try {
+      const ctx: StudentContext = { app, db, fx, cookie: '', records: [] };
+      const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
+      ctx.cookie = cookieFrom(login.headers['set-cookie']);
+      await call(ctx, 'POST /auth/student/age-band', 'epsN', { payload: { ageBand: 'ge18' } });
+      await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
+      const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', 'epsN', { params: { assignmentId } });
+      const attemptId = started.json.state.attemptId as string;
 
-  it('全部学生响应 0 命中（不豁免父题 key）', () => {
-    expect(walk.records.some((r) => r.exempt[main] !== undefined)).toBe(false);
-    expect(scan(walk.records, walk.vault)).toEqual([]);
+      const { ctx: engineCtx } = await loadProblem(db, 'epsN', 1);
+      const runner = new Runner(engineCtx);
+      for (const action of SCENARIOS.weak.slice(0, 25)) action(runner);
+      expect(runner.state.hint.exhausted).toBe(true);
+      await db.query(`update app.attempts set state = $2::jsonb, current_layer = 'L3', reveal = $3 where id = $1`, [
+        attemptId,
+        JSON.stringify(serializeState(runner.state)),
+        runner.state.hint.reveal,
+      ]);
+
+      const teacherId = (await db.query<{ id: string }>(`select id from app.users where role = 'teacher'`)).rows[0]?.id as string;
+      await db.query(`insert into app.devices (id, user_id) values ($1, $2)`, [DEVICE_B, teacherId]);
+      const session = await createSession(db, { userId: teacherId, deviceId: DEVICE_B, ip: null, ttlMs: STUDENT_SESSION_MS });
+      const granted = await app.inject({
+        method: 'POST',
+        url: `/api/v1/teacher/attempts/${attemptId}/unlock`,
+        headers: { cookie: `${SESSION_COOKIE}=${app.signCookie(session.id)}`, ...WRITE_HEADERS },
+        payload: { grantH4: 'K3' },
+      });
+      expect(granted.statusCode, granted.body).toBe(200);
+
+      const vault = (await db.query<VaultRow>(`select problem_id, secret from vault.problem_secrets`)).rows;
+      const view = await call(ctx, 'GET /attempts/{attemptId}', 'epsN', { params: { attemptId }, extraExempt: ['K3'] });
+      expect(view.json.state.notes).toEqual([expect.objectContaining({ kind: 'hint', level: 'H4' })]);
+      expect(scan(ctx.records.slice(-1), vault)).toEqual([]);
+      // 对照：不豁免 K3 时，补发的 H4 确实包含 K3 的片段（豁免是必要的，而不是扫描漏扫）
+      const strict = ctx.records.slice(-1).map((r) => ({ ...r, exempt: {} }));
+      expect(scan(strict, vault).some((hit) => hit.includes('epsN/K3'))).toBe(true);
+    } finally {
+      await app.close();
+      await fx.close();
+    }
   });
 });
 
