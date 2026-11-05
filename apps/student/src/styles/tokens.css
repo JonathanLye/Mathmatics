@@ -14,6 +14,8 @@
   --rule: #e2e4e8;
   --accent: #2b4fa3;
   --accent-soft: #e8eefb;
+  /* 主色（--accent）上的文字色：浅色时用纸色（对比 ≈6.9:1），深色时随 --paper 自动变为深字（在 #8fb0ff 上 ≈7.5:1），满足 WCAG AA。 */
+  --on-accent: var(--paper);
   --margin: #9a3b4f;
   --margin-soft: #f7ecef;
   --hint: #9a6b12;

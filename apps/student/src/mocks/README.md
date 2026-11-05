@@ -35,6 +35,13 @@
 1. 页面底部右下角的 `mock: …` 悬浮按钮（`MockSwitcher.vue`）；
 2. 直接访问带参数的路由：`#/pages/practice/index?mock=l1-active`（H5）。
 
+## AIGC 标识 mock（Refs #37 / task-90）
+
+- **默认无生成内容**（与线上 P0 一致）：mockLesson.generated = null，微课不显示 AIGC 标签。
+- **测试/演示开关**：H5 URL 带 `?aigc=1`（hash 或 search 均可）时，fetchLesson 返回 mockGeneratedLesson（generated 为占位文本），用于验证 AiGeneratedTag 的显隐、tokens/深色兼容；不带参数时标签不出现。
+- 该开关**只验证渲染能力**：不启用真实生成、不伪造 AI 数学内容；真实数据一律以服务端 LessonView.generated 为准（B 侧若启用生成，必须同批加显式标识与 X-AIGC 响应头，见 13 合规）。
+- e2e：npm run e2e:flows:aigc（先 build:mock）。
+
 ## Prism mock（契约级 mock server）
 
 ```bash
