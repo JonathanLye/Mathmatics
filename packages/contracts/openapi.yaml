@@ -969,6 +969,7 @@ paths:
       responses:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
         '200':
           description: 布置
           content:

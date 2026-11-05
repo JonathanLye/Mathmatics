@@ -36,6 +36,9 @@ let retryDelay = 1000;
 const streamConnected = ref(false);
 const streamError = ref('');
 const selectedAssignmentId = ref('');
+const assignmentsError = ref('');
+// 首屏由 onMounted 顺序加载；watch 只响应之后教师的切换，避免首屏重复请求。
+let pageReady = false;
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -214,10 +217,14 @@ async function loadAssignments(): Promise<void> {
       `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
     );
     if (selectedAssignmentId.value === '' || !createdAssignments.value.some((item) => item.assignmentId === selectedAssignmentId.value)) {
-      selectedAssignmentId.value = createdAssignments.value[0]?.assignmentId ?? '';
+      // 列表按开放时间倒序，第一条可能是还没开放的布置（看板是空的）；优先选进行中的。
+      const current = createdAssignments.value.find((item) => item.status === 'open') ?? createdAssignments.value[0];
+      selectedAssignmentId.value = current?.assignmentId ?? '';
     }
-  } catch {
-    // 列表失败不阻塞看板；保留空列表
+    assignmentsError.value = '';
+  } catch (caught) {
+    // 列表失败不阻塞看板，但要让教师知道，而不是误以为没有布置。
+    assignmentsError.value = messageOf(caught);
   }
 }
 
@@ -336,8 +343,9 @@ function flagLabel(flag: string): string {
 }
 
 watch(selectedAssignmentId, () => {
+  if (!pageReady) return;
   void loadLive();
-  if (stream !== undefined || streamConnected.value) connectStream();
+  connectStream();
 });
 
 onMounted(async () => {
@@ -346,6 +354,7 @@ onMounted(async () => {
   await loadLive();
   connectStream();
   startPolling();
+  pageReady = true;
 });
 
 function onVisibility(): void {
@@ -397,7 +406,6 @@ onBeforeUnmount(() => {
             v-model="selectedAssignmentId"
             :options="createdAssignments.map((item) => ({ label: `${item.title}（${statusLabel(item.status)}）`, value: item.assignmentId }))"
             style="width: 320px"
-            @change="() => { if (tab === 'live') { void loadLive(); connectStream(); } }"
           />
         </div>
         <div class="stat-cards">
@@ -510,11 +518,7 @@ onBeforeUnmount(() => {
           </t-form-item>
         </t-form>
 
-        <t-alert
-          theme="info"
-          message="列表来自 GET /teacher/assignments；关闭后可发布讲评（A/B 两组同时可见）。"
-          style="margin: 12px 0"
-        />
+        <t-alert v-if="assignmentsError" theme="warning" :message="`布置列表加载失败：${assignmentsError}`" style="margin: 12px 0" />
         <t-table
           :data="createdAssignments"
           :columns="[
