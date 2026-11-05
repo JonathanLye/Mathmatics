@@ -43,6 +43,7 @@ const importResult = ref<RosterImportResult | null>(null);
 const rotating = ref(false);
 const rosterEntries = ref<RosterEntry[]>([]);
 const rosterLoading = ref(false);
+const rosterError = ref('');
 const unclaiming = ref<string | null>(null);
 
 // 布置（04 §7）
@@ -186,10 +187,12 @@ function disconnectStream(): void {
 async function loadRoster(): Promise<void> {
   if (classId.value === '') return;
   rosterLoading.value = true;
+  rosterError.value = '';
   try {
     rosterEntries.value = await api.get<RosterEntry[]>(`/api/v1/teacher/classes/${classId.value}/roster`);
-  } catch {
+  } catch (caught) {
     rosterEntries.value = [];
+    rosterError.value = caught instanceof ApiError ? caught.message : '名单加载失败，请重试';
   } finally {
     rosterLoading.value = false;
   }
@@ -418,6 +421,9 @@ onBeforeUnmount(() => {
 
       <t-tab-panel value="roster" label="名单">
         <h4 style="margin: 16px 0 8px">名单列表</h4>
+        <t-alert v-if="rosterError" theme="warning" :message="rosterError" style="margin-bottom: 8px">
+          <template #operation><t-link theme="primary" @click="loadRoster">重试</t-link></template>
+        </t-alert>
         <t-table
           :data="rosterEntries"
           :columns="[

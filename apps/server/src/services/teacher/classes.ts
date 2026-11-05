@@ -163,13 +163,24 @@ export async function listRoster(
       [classId],
     )
   ).rows;
-  return rows.map((row) => ({
-    rosterId: row.id,
-    name: row.name_enc === null ? null : decryptPii(config.piiKey, Buffer.from(row.name_enc)),
-    claimed: row.claimed_by !== null,
-    claimedAt: row.claimed_at,
-    claimedByAnon: row.anon_code,
-  }));
+  return rows.map((row) => {
+    // PII 解密失败（key 轮换/脏数据）不应拖垮整个名单：姓名置 null，教师仍可看认领状态。
+    let name: string | null = null;
+    if (row.name_enc !== null) {
+      try {
+        name = decryptPii(config.piiKey, Buffer.from(row.name_enc));
+      } catch {
+        name = null;
+      }
+    }
+    return {
+      rosterId: row.id,
+      name,
+      claimed: row.claimed_by !== null,
+      claimedAt: row.claimed_at === null ? null : new Date(row.claimed_at).toISOString(),
+      claimedByAnon: row.anon_code,
+    };
+  });
 }
 
 // 04 §10：解除认领（学生换手机/换设备异常）；只清 claimed_by/claimed_at，不删名单行。
@@ -181,15 +192,35 @@ export async function unclaimRoster(
 ): Promise<void> {
   await assertClassTeacher(db, auth, classId);
   await db.tx(async (tx) => {
-    const updated = await tx.query<{ id: string }>(
-      `update app.roster_entries set claimed_by = null, claimed_at = null
-        where id = $1 and class_id = $2 returning id`,
+    const before = (
+      await tx.query<{ claimed_by: string | null; claimed_at: string | null; anon_code: string | null }>(
+        `select r.claimed_by, r.claimed_at::text as claimed_at,
+                (select u.anon_code from app.users u where u.id = r.claimed_by) as anon_code
+           from app.roster_entries r
+          where r.id = $1 and r.class_id = $2
+          for update`,
+        [rosterId, classId],
+      )
+    ).rows[0];
+    if (before === undefined) throw new AppError('NOT_FOUND', 404, '名单行不存在');
+    if (before.claimed_by === null) throw new AppError('NOT_FOUND', 404, '该名单行尚未认领');
+    await tx.query(
+      `update app.roster_entries set claimed_by = null, claimed_at = null where id = $1 and class_id = $2`,
       [rosterId, classId],
     );
-    if (updated.rows.length === 0) throw new AppError('NOT_FOUND', 404, '名单行不存在');
+    // 解除后名单行不再关联学生，审计里保留被解除的学生匿名码以便追溯。
     await tx.query(
       `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'unclaim_roster', $2, $3::jsonb)`,
-      [auth.userId, rosterId, JSON.stringify({ classId })],
+      [
+        auth.userId,
+        rosterId,
+        JSON.stringify({
+          classId,
+          unclaimedBy: before.claimed_by,
+          unclaimedAnon: before.anon_code,
+          previousClaimedAt: before.claimed_at,
+        }),
+      ],
     );
   });
 }

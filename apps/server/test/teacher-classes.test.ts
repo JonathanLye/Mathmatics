@@ -333,7 +333,11 @@ describe('名单 CSV 导入（04 §10）', () => {
     const entries = before.json() as Array<{ rosterId: string; name: string | null; claimed: boolean; claimedByAnon: string | null }>;
     expect(entries).toHaveLength(2);
     expect(entries.map((entry) => entry.name)).toContain('张三');
+    expect(entries.map((entry) => entry.name)).toContain(null);
     expect(entries.every((entry) => !entry.claimed)).toBe(true);
+    const raw = entries[0] as unknown as Record<string, unknown>;
+    expect(raw).not.toHaveProperty('studentNo');
+    expect(raw).not.toHaveProperty('student_no_hash');
 
     await studentLogin(inviteCode, '2026001');
     const afterLogin = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(cookie) });
@@ -342,6 +346,7 @@ describe('名单 CSV 导入（04 §10）', () => {
     );
     expect(claimedEntry).toBeTruthy();
     expect(claimedEntry?.claimedByAnon).toMatch(/^S-/);
+    expect(String((claimedEntry as unknown as { claimedAt?: string }).claimedAt)).toMatch(/Z$/);
 
     const unclaimed = await app.inject({
       method: 'DELETE',
@@ -351,10 +356,18 @@ describe('名单 CSV 导入（04 §10）', () => {
     expect(unclaimed.statusCode, unclaimed.body).toBe(204);
     const afterUnclaim = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(cookie) });
     expect((afterUnclaim.json() as Array<{ claimed: boolean }>).every((entry) => !entry.claimed)).toBe(true);
-    const audit = await db.query(`select action from app.audit_log where action = 'unclaim_roster' and target = $1`, [
-      claimedEntry?.rosterId,
-    ]);
+    const again = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/teacher/classes/${classId}/roster/${claimedEntry?.rosterId}`,
+      headers: auth(cookie),
+    });
+    expect(again.statusCode, again.body).toBe(404);
+    const audit = await db.query<{ detail: { unclaimedAnon?: string } }>(
+      `select detail from app.audit_log where action = 'unclaim_roster' and target = $1`,
+      [claimedEntry?.rosterId],
+    );
     expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.detail.unclaimedAnon).toMatch(/^S-/);
 
     await createTeacherAccount(db, { username: 'other.teacher', password: PASSWORD });
     const other = await teacherLogin('other.teacher');
