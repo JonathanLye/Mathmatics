@@ -129,6 +129,20 @@ async function main() {
   await shot('02b-roster-1280');
   await page.getByText('实时看板', { exact: true }).first().click();
   await page.waitForTimeout(500);
+  // #169：数字卡筛选（在线）
+  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
+  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
+  await shot('02c-live-filter-1280');
+  await page.getByText('清除', { exact: true }).click();
+  // #180：布置表单从已发布题目选择
+  await page.locator('.t-tabs').getByText('布置', { exact: true }).click();
+  await page.getByPlaceholder('选择已发布的题目版本').waitFor({ timeout: 10000 });
+  await shot('02d-assignment-form-1280');
+  await page.locator('.t-tabs').getByText('实时看板', { exact: true }).click();
+  await page.waitForTimeout(400);
+  // #166：按布置筛选看板
+  await page.locator('.live-toolbar .t-select').first().waitFor({ timeout: 10000 });
+  await shot('02a-live-switcher-1280');
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
@@ -151,9 +165,17 @@ async function main() {
   await shot('04-metrics-1280');
   await page.getByText('导出', { exact: true }).click();
   await shot('05-export-1280');
+  // #165：布置列表来自 GET /teacher/assignments（不再只显示会话内创建）
+  await page.getByText('布置', { exact: true }).first().click();
+  await page.getByText('数列极限 · ε-N').first().waitFor({ timeout: 10000 });
+  await shot('05b-assignments-1280');
+
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');
+  await page.goto(`${BASE}/t/settings`, { waitUntil: 'networkidle' });
+  await page.getByText('默认策略（04 §7）').waitFor({ timeout: 10000 });
+  await shot('06b-settings-1280');
 
   // 5) 三档 + 深色
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
