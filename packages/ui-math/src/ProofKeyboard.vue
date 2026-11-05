@@ -385,7 +385,10 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
 .ui-pk__action--done {
   border-color: var(--accent, #2b4fa3);
   background: var(--accent, #2b4fa3);
-  color: #fff;
+  /* #164：主色按钮文字跟随主题（#155 在 tokens.css 定义 --on-accent: var(--paper)：
+     浅色 #2b4fa3 上 7.06:1、深色 #8fb0ff 上 8.48:1，均 ≥ WCAG AA 4.5:1；
+     ui-math 是独立包，缺 token 时依次回退 --paper / #fff，不写死 #fff）。 */
+  color: var(--on-accent, var(--paper, #ffffff));
 }
 .ui-pk__variantmask {
   position: absolute;
