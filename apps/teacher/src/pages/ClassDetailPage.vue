@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { MessagePlugin } from 'tdesign-vue-next';
 
@@ -35,6 +35,7 @@ let retryTimer: number | undefined;
 let retryDelay = 1000;
 const streamConnected = ref(false);
 const streamError = ref('');
+const selectedAssignmentId = ref('');
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -140,7 +141,8 @@ function connectStream(): void {
     retryTimer = undefined;
   }
   stream?.close();
-  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream`);
+  const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream${query}`);
   stream.onopen = () => {
     streamConnected.value = true;
     streamError.value = '';
@@ -186,6 +188,9 @@ async function loadAssignments(): Promise<void> {
     createdAssignments.value = await api.get<AssignmentCard[]>(
       `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
     );
+    if (selectedAssignmentId.value === '' || !createdAssignments.value.some((item) => item.assignmentId === selectedAssignmentId.value)) {
+      selectedAssignmentId.value = createdAssignments.value[0]?.assignmentId ?? '';
+    }
   } catch {
     // 列表失败不阻塞看板；保留空列表
   }
@@ -194,7 +199,8 @@ async function loadAssignments(): Promise<void> {
 async function loadLive(): Promise<void> {
   liveLoading.value = true;
   try {
-    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live`);
+    const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live${query}`);
     liveError.value = '';
   } catch (caught) {
     live.value = null;
@@ -304,10 +310,15 @@ function flagLabel(flag: string): string {
   return FLAG_LABEL[flag] ?? flag;
 }
 
+watch(selectedAssignmentId, () => {
+  void loadLive();
+  if (stream !== undefined || streamConnected.value) connectStream();
+});
+
 onMounted(async () => {
   await loadClassInfo();
-  await loadLive();
   await loadAssignments();
+  await loadLive();
   connectStream();
   startPolling();
 });
@@ -355,6 +366,15 @@ onBeforeUnmount(() => {
     <t-tabs v-model="tab">
       <t-tab-panel value="live" label="实时看板">
         <t-alert v-if="liveError" theme="warning" :message="liveError" style="margin: 12px 0" />
+        <div v-if="createdAssignments.length > 0" class="live-toolbar">
+          <span class="page-sub">布置</span>
+          <t-select
+            v-model="selectedAssignmentId"
+            :options="createdAssignments.map((item) => ({ label: `${item.title}（${statusLabel(item.status)}）`, value: item.assignmentId }))"
+            style="width: 320px"
+            @change="() => { if (tab === 'live') { void loadLive(); connectStream(); } }"
+          />
+        </div>
         <div class="stat-cards">
           <div v-for="item in stats" :key="item.label" class="stat-card">
             <div class="value">{{ item.value }}</div>
@@ -475,7 +495,7 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="metrics" label="指标">
-        <MetricsPanel :class-id="classId" :assignment-id="live?.assignmentId ?? undefined" />
+        <MetricsPanel :class-id="classId" :assignment-id="selectedAssignmentId === '' ? undefined : selectedAssignmentId" />
       </t-tab-panel>
 
       <t-tab-panel value="export" label="导出">
@@ -492,6 +512,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.live-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
 .native-input {
   height: 32px;
   padding: 0 8px;
