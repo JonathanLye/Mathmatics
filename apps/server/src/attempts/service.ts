@@ -41,6 +41,8 @@ export interface LineInput {
   statement: string;
   justification?: string | null;
   provenance: string;
+  // 手写/拍照来源：已确认的识别结果（app.recognitions.id）
+  recogId?: string | null;
   cls?: string | null;
   keys?: string[];
   newKeys?: string[];
@@ -468,8 +470,8 @@ export async function addLine(tx: Queryable, row: AttemptRow, line: LineInput): 
   await tx.query(
     `insert into app.attempt_lines
        (id, attempt_id, layer, role, idx, slot, statement, justification, statement_canon, justification_canon,
-        provenance, cls, keys, new_keys, error_id, classifier_path)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'rule')`,
+        provenance, recog_id, cls, keys, new_keys, error_id, classifier_path)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'rule')`,
     [
       line.id ?? randomUUID(),
       row.id,
@@ -482,6 +484,7 @@ export async function addLine(tx: Queryable, row: AttemptRow, line: LineInput): 
       canon(line.statement),
       line.justification ? canon(line.justification) : null,
       line.provenance,
+      line.recogId ?? null,
       line.cls ?? null,
       line.keys ?? [],
       line.newKeys ?? [],

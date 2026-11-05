@@ -11,6 +11,7 @@ import { AppError } from '../errors.ts';
 import type { RouteInput } from '../help/intent.ts';
 import { createIdempotency } from '../idempotency.ts';
 import { createHelpService } from '../help/service.ts';
+import { assertConfirmedInput } from '../recognition/provenance.ts';
 
 import type { AuthRouteOptions } from './auth.ts';
 
@@ -77,13 +78,6 @@ function parseBody<T>(contract: ContractValidator, path: string, request: Fastif
   return request.body as T;
 }
 
-// 手写、拍照、混合来源需要已确认的识别结果（16 §2）。识别服务本期未接入，因此这些来源一律拒绝。
-function rejectUnconfirmedInput(input: InputMeta): void {
-  if (input.provenance === 'ink' || input.provenance === 'photo' || input.provenance === 'mixed') {
-    throw new AppError('RECOG_NOT_CONFIRMED', 409, '手写或拍照内容需先确认识别结果');
-  }
-}
-
 export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
   const svc = createAttemptService(db, contract);
   const helpSvc = createHelpService({ db, attempts: svc, secret: config.sessionSecret });
@@ -118,7 +112,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/definition', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/definition', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
     const state = await svc.command({
       userId: auth.userId,
@@ -127,7 +121,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
       build: () => ({ kind: 'def.submit', lineId, text: body.text }),
       record: async (tx, row, result) => {
         if (!result.events.some((e) => e.type === 'def.submit')) return;
-        await addLine(tx, row, { id: lineId, layer: 'L1', role: 'def', statement: body.text, provenance: body.input.provenance });
+        await addLine(tx, row, { id: lineId, layer: 'L1', role: 'def', statement: body.text, provenance: body.input.provenance, recogId: body.input.recogId });
       },
     });
     return { state };
@@ -136,7 +130,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/framework', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/framework', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
     const state = await svc.command({
       userId: auth.userId,
@@ -145,7 +139,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
       build: () => ({ kind: 'frame.submit', lineId, text: body.text }),
       record: async (tx, row, result) => {
         if (!result.events.some((e) => e.type === 'frame.submit')) return;
-        await addLine(tx, row, { id: lineId, layer: 'L2', role: 'frame', statement: body.text, provenance: body.input.provenance });
+        await addLine(tx, row, { id: lineId, layer: 'L2', role: 'frame', statement: body.text, provenance: body.input.provenance, recogId: body.input.recogId });
       },
     });
     return { state };
@@ -165,7 +159,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/lines', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<LineSubmission>(contract, '/attempts/{attemptId}/lines', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.statement, body.justification ?? '']);
     const lineId = randomUUID();
     const state = await svc.command({
       userId: auth.userId,
@@ -189,6 +183,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
           statement: body.statement,
           justification: body.justification ?? null,
           provenance: body.input.provenance,
+          recogId: body.input.recogId,
           cls: String(ev.payload.cls),
           keys: ev.payload.keys as string[],
           newKeys: ev.payload.newKeys as string[],
@@ -213,7 +208,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/selfcheck/:itemId', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/selfcheck/{itemId}', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const itemId = param(request, 'itemId');
     const state = await svc.command({
       userId: auth.userId,
@@ -229,6 +224,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
           slot: itemId,
           statement: body.text,
           provenance: body.input.provenance,
+          recogId: body.input.recogId,
           cls: ev.payload.valid === true ? 'pass' : 'fail',
         });
       },
@@ -245,7 +241,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/summary', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<SummarySubmission>(contract, '/attempts/{attemptId}/summary', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, body.answers);
     const state = await svc.command({
       userId: auth.userId,
       attemptId: attemptId(request),
@@ -261,6 +257,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
             slot: String(i + 1),
             statement: answer,
             provenance: body.input.provenance,
+            recogId: body.input.recogId,
           });
         }
       },

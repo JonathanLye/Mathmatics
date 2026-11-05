@@ -19,6 +19,8 @@ export interface AppConfig {
   pgliteDir: string;
   // 每分钟、每会话的请求上限（见 routes/events.ts、routes/attempts.ts）。
   rateLimits: { events: number; help: number };
+  // 识别（03 §3、09 §10）：每生每日上限、全局并发（= 已购 SimpleTex QPS）、每生同时在途数、照片落盘目录。
+  recognition: { inkPerDay: number; photoPerDay: number; concurrency: number; perUserConcurrency: number; storageDir: string };
   // 含各 provider 的密钥（见 ai/registry.ts）：不得打印或序列化。
   models: ModelRegistry;
 }
@@ -87,6 +89,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     rateLimits: {
       events: positiveInt(env.RATE_LIMIT_EVENTS_PER_MIN, 120, 'RATE_LIMIT_EVENTS_PER_MIN'),
       help: positiveInt(env.RATE_LIMIT_HELP_PER_MIN, 60, 'RATE_LIMIT_HELP_PER_MIN'),
+    },
+    recognition: {
+      inkPerDay: positiveInt(env.RECOG_INK_PER_DAY, 300, 'RECOG_INK_PER_DAY'),
+      photoPerDay: positiveInt(env.RECOG_PHOTO_PER_DAY, 30, 'RECOG_PHOTO_PER_DAY'),
+      concurrency: positiveInt(env.RECOG_CONCURRENCY, 5, 'RECOG_CONCURRENCY'),
+      perUserConcurrency: positiveInt(env.RECOG_PER_USER_CONCURRENCY, 2, 'RECOG_PER_USER_CONCURRENCY'),
+      storageDir: env.STORAGE_DIR ?? '.data/photos',
     },
     models: loadModelRegistry(MODELS_PATH, env),
   };

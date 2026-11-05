@@ -17,6 +17,7 @@
     "@proof-gym/content-checks": "workspace:*",
     "@proof-gym/contracts": "workspace:*",
     "@proof-gym/engine": "workspace:*",
+    "@resvg/resvg-js": "catalog:",
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
     "exceljs": "^4.4.0",

@@ -2,6 +2,7 @@ import { gateRule, type Secret } from '@proof-gym/engine';
 import type { FastifyInstance } from 'fastify';
 import { expect } from 'vitest';
 
+import type { AppConfig } from '../../src/config.ts';
 import { loadContract } from '../../src/contract.ts';
 import { seedContent } from '../../src/db/seed.ts';
 import type { Db } from '../../src/db/index.ts';
@@ -25,11 +26,14 @@ export interface HelpHarness {
 }
 
 // 登录、签署同意书、开始一次作答（题目 epsN）。与 attempts.test.ts 的 startedAttempt 相同的步骤。
-export async function startHelpHarness(problemId = 'epsN'): Promise<HelpHarness> {
+export async function startHelpHarness(
+  problemId = 'epsN',
+  options: { config?: Partial<AppConfig>; fetchImpl?: typeof fetch } = {},
+): Promise<HelpHarness> {
   const fx = await setupFixture();
   await seedContent(fx.db);
   // 红队用例在一个会话里连发上百次求助，远超真实使用，所以关掉求助限流（限流本身在 ops-hardening.test.ts 里测）。
-  const app = await buildTestApp(fx.db, { rateLimits: { events: 120, help: 100_000 } });
+  const app = await buildTestApp(fx.db, { rateLimits: { events: 120, help: 100_000 }, ...options.config }, { fetchImpl: options.fetchImpl });
   const teacherId = (await fx.db.query<{ id: string }>(`select id from app.users where role = 'teacher'`)).rows[0]?.id as string;
   const version = (
     await fx.db.query<{ version: number }>(`select max(version) as version from content.problem_versions where problem_id = $1`, [
