@@ -145,6 +145,10 @@ async function main() {
   await shot('04-metrics-1280');
   await page.getByText('导出', { exact: true }).click();
   await shot('05-export-1280');
+  // #176：班级默认设置页签
+  await page.locator('.t-tabs').getByText('设置', { exact: true }).click();
+  await page.getByText('默认透露预算').waitFor({ timeout: 10000 });
+  await shot('05c-class-settings-1280');
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');

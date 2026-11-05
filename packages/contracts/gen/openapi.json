@@ -1696,6 +1696,51 @@
         }
       }
     },
+    "/teacher/classes/{classId}/settings": {
+      "patch": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出）",
+        "operationId": "updateClassSettings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已更新",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/teacher/classes/{classId}/roster": {
       "post": {
         "tags": [

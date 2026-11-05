@@ -135,3 +135,23 @@ export async function rotateInviteCode(
   }
   throw new Error('邀请码生成失败：连续冲突');
 }
+
+
+// 04 §1/§7：班级默认设置（只存白名单键；未知键忽略）。写 audit_log。
+export async function updateClassSettings(
+  db: Db,
+  auth: AuthContext,
+  classId: string,
+  input: unknown,
+): Promise<Record<string, unknown>> {
+  await assertClassTeacher(db, auth, classId);
+  const settings = normalizeClassSettings(input);
+  await db.tx(async (tx) => {
+    await tx.query(`update app.classes set settings = $2::jsonb where id = $1`, [classId, JSON.stringify(settings)]);
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'update_class_settings', $2, $3::jsonb)`,
+      [auth.userId, classId, JSON.stringify({ classId, settings })],
+    );
+  });
+  return classSummaryById(db, classId);
+}
