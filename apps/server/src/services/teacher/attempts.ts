@@ -3,7 +3,7 @@ import { nextKey } from '@proof-gym/engine';
 import type { AuthContext } from '../../auth/session.ts';
 import { decryptPii } from '../../auth/crypto.ts';
 import type { AppConfig } from '../../config.ts';
-import type { Queryable } from '../../db/index.ts';
+import type { Db, Queryable } from '../../db/index.ts';
 import { AppError } from '../../errors.ts';
 import { loadProblem } from '../../attempts/problem.ts';
 import { computeAttemptMetrics } from '../../metrics/attempt.ts';
@@ -278,4 +278,60 @@ export async function loadAttemptDetail(
     timeline,
     metrics,
   };
+}
+
+
+export interface ReclassifyInput {
+  cls: 'match' | 'error' | 'unknown' | 'lowconf' | 'demo_needs_reason' | 'pass' | 'fail';
+  keys?: string[];
+  errorId?: string | null;
+  note?: string;
+}
+
+// 04 §4：低置信/错误归类的教师改判。只改 teacher 侧归类（classifier_path='teacher'）并写 audit_log，
+// 不写事件/注解，学生已看到的内容不变。
+export async function reclassifyLine(
+  db: Db,
+  auth: AuthContext,
+  attemptId: string,
+  lineId: string,
+  input: ReclassifyInput,
+): Promise<Record<string, unknown>> {
+  await loadTeacherAttempt(db, auth, attemptId);
+  return db.tx(async (tx) => {
+    const before = (
+      await tx.query<{ cls: string | null; keys: string[]; error_id: string | null }>(
+        `select cls, keys, error_id from app.attempt_lines
+          where id = $1 and attempt_id = $2 and deleted_at is null
+          for update`,
+        [lineId, attemptId],
+      )
+    ).rows[0];
+    if (before === undefined) throw new AppError('NOT_FOUND', 404, '证明行不存在');
+    const after = (
+      await tx.query<{ cls: string; keys: string[]; error_id: string | null; classifier_path: string }>(
+        `update app.attempt_lines
+            set cls = $3, keys = coalesce($4::text[], keys), error_id = $5, classifier_path = 'teacher'
+          where id = $1 and attempt_id = $2
+          returning cls, keys, error_id, classifier_path`,
+        [lineId, attemptId, input.cls, input.keys ?? null, input.errorId ?? null],
+      )
+    ).rows[0]!;
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail)
+       values ($1, 'reclassify_line', $2, $3::jsonb)`,
+      [
+        auth.userId,
+        `${attemptId}:${lineId}`,
+        JSON.stringify({
+          attemptId,
+          lineId,
+          before: { cls: before.cls, keys: before.keys, errorId: before.error_id },
+          after: { cls: after.cls, keys: after.keys, errorId: after.error_id },
+          note: input.note ?? null,
+        }),
+      ],
+    );
+    return { lineId, cls: after.cls, keys: after.keys, errorId: after.error_id, classifierPath: after.classifier_path };
+  });
 }
