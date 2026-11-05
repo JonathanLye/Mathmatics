@@ -14,6 +14,8 @@ interface ProblemItem {
   status: string;
   autoChecks?: Record<string, unknown>;
   source?: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
 }
 
 interface ProblemPackageView {
@@ -208,6 +210,14 @@ onMounted(load);
       <template #kind="{ row }">{{ row.kind === 'transfer' ? '迁移题' : '主题' }}</template>
       <template #status="{ row }">
         <t-tag :theme="statusTheme(row.status)" variant="light">{{ statusLabel(row.status) }}</t-tag>
+      </template>
+      <template #source="{ row }">{{ row.source ?? '—' }}</template>
+      <template #reviewed="{ row }">
+        <div v-if="row.reviewedBy" class="page-sub">
+          {{ row.reviewedBy }}<br />
+          <span v-if="row.reviewedAt">{{ new Date(row.reviewedAt).toLocaleString('zh-CN') }}</span>
+        </div>
+        <span v-else>—</span>
       </template>
       <template #checks="{ row }">
         <t-tag v-if="autoChecksSummary(row.autoChecks).total === 0" variant="light">未提供</t-tag>

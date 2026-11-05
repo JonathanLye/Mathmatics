@@ -1778,6 +1778,8 @@ components:
         status: { type: string, enum: [draft, pending, returned, published, retired] }
         autoChecks: { type: object }
         source: { type: string }
+        reviewedBy: { type: [string, 'null'], description: 最近一次审核人（display_name/anon_code） }
+        reviewedAt: { type: [string, 'null'], format: date-time }
     ImportJob:
       type: object
       required: [jobId, status]
