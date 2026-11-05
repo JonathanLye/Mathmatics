@@ -45,6 +45,16 @@ const rotating = ref(false);
 // 布置（04 §7）
 const createdAssignments = ref<AssignmentCard[]>([]);
 const creating = ref(false);
+interface PublishedProblem {
+  problemId: string;
+  title: string;
+  chapter?: string;
+  version: number;
+}
+const publishedProblems = ref<PublishedProblem[]>([]);
+const selectedProblem = ref('');
+const problemsLoading = ref(false);
+
 const assignmentForm = ref({
   problemId: 'epsN',
   version: 1,
@@ -180,6 +190,21 @@ function disconnectStream(): void {
   streamConnected.value = false;
 }
 
+async function loadPublishedProblems(): Promise<void> {
+  problemsLoading.value = true;
+  try {
+    publishedProblems.value = await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published');
+    if (selectedProblem.value === '' || !publishedProblems.value.some((item) => `${item.problemId}@${item.version}` === selectedProblem.value)) {
+      const first = publishedProblems.value[0];
+      selectedProblem.value = first === undefined ? '' : `${first.problemId}@${first.version}`;
+    }
+  } catch {
+    publishedProblems.value = [];
+  } finally {
+    problemsLoading.value = false;
+  }
+}
+
 async function loadLive(): Promise<void> {
   liveLoading.value = true;
   try {
@@ -256,8 +281,13 @@ async function copyInvite(): Promise<void> {
 }
 
 async function createAssignment(): Promise<void> {
-  if (assignmentForm.value.problemId.trim() === '') {
-    MessagePlugin.warning('请填写题目 ID');
+  if (selectedProblem.value === '') {
+    MessagePlugin.warning('请选择已发布的题目（无已发布题目请先在题库发布）');
+    return;
+  }
+  const [problemId, versionText] = selectedProblem.value.split('@');
+  if (problemId === undefined || problemId === '' || versionText === undefined) {
+    MessagePlugin.warning('题目选择不合法');
     return;
   }
   creating.value = true;
@@ -269,8 +299,8 @@ async function createAssignment(): Promise<void> {
 
     const card = await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
       classId: classId.value,
-      problemId: assignmentForm.value.problemId.trim(),
-      version: Number(assignmentForm.value.version),
+      problemId,
+      version: Number(versionText),
       mode: assignmentForm.value.mode,
       openAt: openAt.toISOString(),
       closeAt: closeAt === null ? null : closeAt.toISOString(),
@@ -295,6 +325,7 @@ function flagLabel(flag: string): string {
 
 onMounted(async () => {
   await loadClassInfo();
+  await loadPublishedProblems();
   await loadLive();
   connectStream();
   startPolling();
@@ -419,11 +450,21 @@ onBeforeUnmount(() => {
 
       <t-tab-panel value="assignments" label="布置">
         <t-form label-width="90px" style="max-width: 560px; margin-top: 12px">
-          <t-form-item label="题目 ID">
-            <t-input v-model="assignmentForm.problemId" placeholder="如：epsN" />
+          <t-form-item label="题目">
+            <t-select
+              v-model="selectedProblem"
+              :loading="problemsLoading"
+              placeholder="选择已发布的题目版本"
+              style="width: 360px"
+              filterable
+              :options="publishedProblems.map((item) => ({
+                label: `${item.title}${item.chapter ? ' · ' + item.chapter : ''} · v${item.version}`,
+                value: `${item.problemId}@${item.version}`,
+              }))"
+            />
           </t-form-item>
-          <t-form-item label="版本">
-            <t-input-number v-model="assignmentForm.version" :min="1" theme="normal" />
+          <t-form-item v-if="publishedProblems.length === 0" label=" ">
+            <t-alert theme="warning" message="没有已发布题目：请先在题库完成审核发布。" />
           </t-form-item>
           <t-form-item label="模式">
             <t-select v-model="assignmentForm.mode" :options="[{ label: '练习', value: 'practice' }, { label: '测验', value: 'test' }]" />
