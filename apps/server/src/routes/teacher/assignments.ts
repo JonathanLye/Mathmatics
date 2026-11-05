@@ -2,11 +2,13 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import {
   createAssignment,
+  listAssignments,
   publishReview,
   updateAssignment,
   type AssignmentInput,
   type PublishReviewInput,
 } from '../../services/teacher/assignments.ts';
+import { AppError } from '../../errors.ts';
 import { requireTeacher, uuidParam } from '../../services/teacher/auth.ts';
 
 import type { AuthRouteOptions } from '../auth.ts';
@@ -16,6 +18,17 @@ interface AssignmentIdParams {
 }
 
 export const teacherAssignmentRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, contract }) => {
+  // 班级布置列表（04 §6/§7；教师端发布讲评/关闭入口）
+  app.get('/teacher/assignments', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const raw = (request.query as { classId?: unknown }).classId;
+    if (typeof raw !== 'string' || raw === '') throw new AppError('VALIDATION_FAILED', 422, 'classId 必填');
+    const classId = uuidParam(raw, '班级');
+    const cards = await listAssignments(db, auth, classId);
+    for (const card of cards) contract.validate('AssignmentCard', card);
+    return cards;
+  });
+
   // 布置练习/测验（04 §7）
   app.post('/teacher/assignments', async (request, reply) => {
     const auth = await requireTeacher(db, request);
