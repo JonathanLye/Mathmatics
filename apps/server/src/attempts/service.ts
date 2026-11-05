@@ -22,6 +22,7 @@ import { AppError } from '../errors.ts';
 import { nextSeq } from '../integrity/seq.ts';
 
 import { loadProblem } from './problem.ts';
+import { EMPTY_EXTRAS, loadViewExtras } from './extras.ts';
 import { type AttemptRow, type Snapshot, toAttemptState } from './view.ts';
 
 export interface StepSpec {
@@ -120,7 +121,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
 
   async function snapshotOf(q: Queryable, row: AttemptRow, now = Date.now()): Promise<Snapshot> {
     const problem = await loadProblem(q, row.problem_id, row.problem_version);
-    return { row, state: deserializeState(row.state), problem, now };
+    return { row, state: deserializeState(row.state), problem, now, extras: await loadViewExtras(q, row) };
   }
 
   async function userAnon(q: Queryable, userId: string): Promise<string> {
@@ -259,7 +260,8 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const anon = await userAnon(tx, row.user_id);
       const saved = await commit(tx, row, result, row.status, anon, `L${snap.state.layer}`);
       if (spec.record) await spec.record(tx, saved, result);
-      return dto({ ...snap, row: saved, state: result.state });
+      // 行和事件都在这个事务里刚写完：重新读，响应里才有刚写的那一行。
+      return dto({ ...snap, row: saved, state: result.state, extras: await loadViewExtras(tx, saved) });
     });
   }
 
@@ -381,7 +383,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const anon = await userAnon(tx, userId);
       const events = [{ type: 'attempt.start', at: now, payload: { resumed: false, kind: 'main' } }];
       const saved = await commit(tx, inserted, { state: initial, events }, 'active', anon, 'L1');
-      return dto({ row: saved, state: initial, problem, now });
+      return dto({ row: saved, state: initial, problem, now, extras: EMPTY_EXTRAS });
     });
   }
 
@@ -510,7 +512,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
         { type: 'attempt.start', at: now, payload: { resumed: false, kind: 'transfer', parentAttemptId: row.id } },
       ];
       const saved = await commit(tx, inserted, { state: initial, events }, 'active', anon, 'L3');
-      return dto({ row: saved, state: initial, problem, now });
+      return dto({ row: saved, state: initial, problem, now, extras: EMPTY_EXTRAS });
     });
   }
 
