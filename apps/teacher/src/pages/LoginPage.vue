@@ -61,9 +61,11 @@ async function submit(): Promise<void> {
         <t-form-item>
           <t-input
             v-model="totp"
-            placeholder="动态验证码（启用了 TOTP 才填）"
+            placeholder="6 位动态验证码（启用了两步验证才填）"
             size="large"
             autocomplete="one-time-code"
+            inputmode="numeric"
+            aria-label="动态验证码"
             :maxlength="6"
             @enter="submit"
           />

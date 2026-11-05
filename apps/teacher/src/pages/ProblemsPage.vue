@@ -68,19 +68,24 @@ const columns = [
   { colKey: 'actions', title: '操作', width: 90 },
 ];
 
+// 快速切换筛选时只认最后一次请求，避免慢响应覆盖新结果。
+let loadSeq = 0;
+
 async function load(): Promise<void> {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = '';
   try {
     const params = new URLSearchParams();
     if (statusFilter.value !== '') params.set('status', statusFilter.value);
     if (chapterFilter.value.trim() !== '') params.set('chapter', chapterFilter.value.trim());
-    const suffix = params.size > 0 ? `?${params.toString()}` : '';
-    items.value = await api.get<ProblemItem[]>(`/api/v1/teacher/problems${suffix}`);
+    const query = params.toString();
+    const result = await api.get<ProblemItem[]>(`/api/v1/teacher/problems${query === '' ? '' : `?${query}`}`);
+    if (seq === loadSeq) items.value = result;
   } catch (caught) {
-    error.value = caught instanceof ApiError ? caught.message : '加载题库失败';
+    if (seq === loadSeq) error.value = caught instanceof ApiError ? caught.message : '加载题库失败';
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -215,7 +220,7 @@ onMounted(load);
         style="width: 150px"
         @change="load"
       />
-      <t-input v-model="chapterFilter" placeholder="章节（如 第二章）" clearable style="width: 200px" @enter="load" />
+      <t-input v-model="chapterFilter" placeholder="完整章节名（如 第二章 数列极限）" clearable style="width: 260px" @enter="load" />
       <t-button size="small" theme="primary" @click="load">查询</t-button>
       <t-button size="small" variant="outline" @click="statusFilter = ''; chapterFilter = ''; load()">重置</t-button>
       <span class="page-sub">共 {{ items.length }} 行</span>
