@@ -341,4 +341,45 @@ describe('发布讲评（#50 / 04 §6）', () => {
     expect(res.json().status).toBe('closed');
     expect(res.json().reviewPublished).toBe(true);
   });
+
+  it('GET /teacher/assignments：本班列表含题目/版本/设置/状态；缺 classId 422、非本班 404', async () => {
+    const cookie = await teacherLogin();
+    const classId = await createClass(cookie);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/assignments',
+      headers: auth(cookie),
+      payload: assignmentBody(classId, { settings: { revealBudget: 3, photoEnabled: false } }),
+    });
+    expect(created.statusCode, created.body).toBe(201);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/api/v1/teacher/assignments?classId=${classId}`,
+      headers: auth(cookie),
+    });
+    expect(list.statusCode, list.body).toBe(200);
+    const cards = list.json() as Array<Record<string, unknown>>;
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      assignmentId: created.json().assignmentId,
+      problemId: PROBLEM_ID,
+      version: PROBLEM_VERSION,
+      mode: 'practice',
+      status: 'open',
+      settings: { revealBudget: 3, photoEnabled: false },
+    });
+
+    const missing = await app.inject({ method: 'GET', url: '/api/v1/teacher/assignments', headers: auth(cookie) });
+    expect(missing.statusCode, missing.body).toBe(422);
+
+    await createTeacherAccount(db, { username: 'other.teacher', password: PASSWORD });
+    const other = await teacherLogin('other.teacher');
+    const hidden = await app.inject({
+      method: 'GET',
+      url: `/api/v1/teacher/assignments?classId=${classId}`,
+      headers: auth(other),
+    });
+    expect(hidden.statusCode, hidden.body).toBe(404);
+  });
 });

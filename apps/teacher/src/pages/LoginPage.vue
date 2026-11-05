@@ -11,6 +11,7 @@ const route = useRoute();
 
 const username = ref('');
 const password = ref('');
+const totp = ref('');
 const loading = ref(false);
 const error = ref('');
 
@@ -25,6 +26,7 @@ async function submit(): Promise<void> {
     await api.post('/api/v1/auth/teacher/login', {
       username: username.value.trim(),
       password: password.value,
+      ...(totp.value.trim() === '' ? {} : { totp: totp.value.trim() }),
     });
     await loadSession();
     await router.push(safeRedirect(route.query.redirect));
@@ -53,6 +55,18 @@ async function submit(): Promise<void> {
             placeholder="密码"
             size="large"
             autocomplete="current-password"
+            @enter="submit"
+          />
+        </t-form-item>
+        <t-form-item>
+          <t-input
+            v-model="totp"
+            placeholder="6 位动态验证码（启用了两步验证才填）"
+            size="large"
+            autocomplete="one-time-code"
+            inputmode="numeric"
+            aria-label="动态验证码"
+            :maxlength="6"
             @enter="submit"
           />
         </t-form-item>
