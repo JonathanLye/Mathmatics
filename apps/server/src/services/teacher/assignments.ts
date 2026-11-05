@@ -48,16 +48,23 @@ function parseTime(value: string | null | undefined, label: string): Date | null
   return date;
 }
 
-// 04 §7：只能选已发布版本。SQL 外键只保证版本存在，不保证 review_status。
+// 04 §7：只能选已发布版本，且只能是主题（迁移题必须经父作答的 /transfer 进入）。
+// 直接布置迁移题会让学生在无父作答上下文领取 H3/H4，跨题命中父题 leak（#184）。
 async function loadPublishedProblem(db: Queryable, problemId: string, version: number): Promise<void> {
   const row = (
-    await db.query<{ review_status: string }>(
-      `select review_status from content.problem_versions where problem_id = $1 and version = $2`,
+    await db.query<{ review_status: string; kind: string }>(
+      `select v.review_status, p.kind
+         from content.problem_versions v
+         join content.problems p on p.id = v.problem_id
+        where v.problem_id = $1 and v.version = $2`,
       [problemId, version],
     )
   ).rows[0];
   if (!row || row.review_status !== 'published') {
     throw new AppError('VALIDATION_FAILED', 422, '只能布置已发布的题目版本');
+  }
+  if (row.kind !== 'main') {
+    throw new AppError('VALIDATION_FAILED', 422, '迁移题不能直接布置：学生需先完成主题并走 /transfer');
   }
 }
 
