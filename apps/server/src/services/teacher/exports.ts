@@ -15,6 +15,9 @@ import { csvField } from '../../export/attempts-csv.ts';
 import { assertClassTeacher } from './auth.ts';
 
 export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
+// 08 §5.1 role 的中文口径；08 未定义 spare 的中文，保留原值。
+const ROLE_LABELS: Record<string, string> = { required: '必做', optional: '选练', test: '测试' };
+
 export type ExportTable = 'attempts' | 'lines' | 'hints' | 'help' | 'recognitions' | 'integrity' | 'events';
 export const EXPORT_TABLES: readonly ExportTable[] = [
   'attempts',
@@ -163,8 +166,12 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
             help_stuck: number; help_concept: number; help_check: number; help_free: number; pressure_count: number;
             first_help_at: Date | null; first_error: string | null;
             recog_requests: number; recog_edit_rate: number | null; recog_disagree_rate: number | null;
+            submissions: number; step_lines: number;
           }>(
             `select
+               (select count(*)::int from ev.events e where e.attempt_id = $1
+                  and e.type in ('def.submit', 'frame.submit', 'line.submit', 'selfcheck.submit', 'summary.submit')) as submissions,
+               (select count(*)::int from app.attempt_lines l where l.attempt_id = $1 and l.role = 'step' and l.deleted_at is null) as step_lines,
                (select count(*)::int from ev.events e where e.attempt_id = $1 and e.type = 'integ.visibility'
                   and e.payload->>'state' = 'visible' and coalesce((e.payload->>'awayMs')::bigint, 0) >= 2000) as away_count,
                (select sum((e.payload->>'awayMs')::bigint)::text from ev.events e where e.attempt_id = $1 and e.type = 'integ.visibility'
@@ -202,7 +209,7 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
           chapter: pub.chapter ?? null,
           tags: Array.isArray(pub.tags) ? (pub.tags as unknown[]).join(';') : null,
           difficulty: pub.difficulty ?? null,
-          role: null,
+          role: ROLE_LABELS[String(pub.role)] ?? pub.role ?? null,
           mode: row.mode === 'test' ? '测验' : '练习',
           kind: row.kind,
           parent_attempt_id: row.parent_attempt_id,
@@ -210,12 +217,12 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
           completed_at: completedAt,
           duration_s: durationS,
           active_s: Math.round(Number(row.active_ms ?? 0) / 1000),
-          submissions: null,
+          submissions: stats?.submissions ?? 0,
           layers_done: null,
           layers_skipped: null,
           def_attempts: metrics.defAttempts,
           lesson_opened: metrics.lessonOpened,
-          lines: metrics.lines,
+          lines: stats?.step_lines ?? 0,
           keys_total: row.keys_total,
           keys_own: row.keys_own,
           keys_autonomous: null,

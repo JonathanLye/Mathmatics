@@ -57,6 +57,9 @@ async function waitDone(exportId: string): Promise<{ status: string; url: string
   throw new Error('导出任务未在 4s 内完成');
 }
 
+let studentCookie: string;
+let attemptId: string;
+
 beforeEach(async () => {
   fx = await setupFixture();
   db = fx.db;
@@ -87,11 +90,12 @@ beforeEach(async () => {
     payload: loginBody({ inviteCode: created.json().inviteCode as string, studentNo: STUDENT_NO }),
   });
   expect(login.statusCode, login.body).toBe(200);
-  const studentCookie = cookieFrom(login.headers['set-cookie']);
+  studentCookie = cookieFrom(login.headers['set-cookie']);
   await setStudentAgeBand(app, studentCookie);
   await post(studentCookie, '/consents', { version: 'p0-v1', items: REQUIRED });
   const started = await post(studentCookie, `/student/assignments/${assignment.json().assignmentId as string}/attempt`);
   expect(started.statusCode, started.body).toBe(200);
+  attemptId = started.json().state.attemptId as string;
 });
 
 afterEach(async () => {
@@ -182,6 +186,32 @@ describe('导出任务（#35 / 04 §9 / 08 §5）', () => {
     const res = await fetch(`${base}${done.url}`, { headers: { cookie: teacherCookie } });
     return { exportId: job.exportId, url: done.url as string, zip: await JSZip.loadAsync(Buffer.from(await res.arrayBuffer())) };
   }
+
+  it('attempts 的 ★ 字段：role 中文口径、submissions 计各层提交、lines 不含已删除行（08 §5.1）', async () => {
+    expect((await post(studentCookie, `/attempts/${attemptId}/layers/L1/skip`, {})).statusCode).toBe(200);
+    expect((await post(studentCookie, `/attempts/${attemptId}/layers/L2/skip`, {})).statusCode).toBe(200);
+    for (const [draft, statement] of [['e1', '取 ε'], ['e2', '取 N']] as const) {
+      const line = await post(studentCookie, `/attempts/${attemptId}/lines`, {
+        statement,
+        justification: '由题设',
+        input: { provenance: 'keyboard', draftId: `00000000-0000-4000-8000-0000000000${draft}` },
+      });
+      expect(line.statusCode, line.body).toBe(200);
+    }
+    await db.query(
+      `update app.attempt_lines set deleted_at = now()
+        where id = (select id from app.attempt_lines where attempt_id = $1 and role = 'step' order by idx limit 1)`,
+      [attemptId],
+    );
+    const { zip } = await exportAndUnzip('csv', ['attempts']);
+    const attempts = (await zip.file('attempts.csv')?.async('string')) ?? '';
+    const [header, first] = attempts.replace(/^\uFEFF/, '').split('\r\n');
+    const columns = (header ?? '').split(',');
+    const values = (first ?? '').split(',');
+    expect(values[columns.indexOf('role')]).toBe('必做');
+    expect(values[columns.indexOf('submissions')]).toBe('2');
+    expect(values[columns.indexOf('lines')]).toBe('1');
+  });
 
   it('CSV：jsonb 列是 JSON 而不是 [object Object]；attempts 带 attempt_id 能与 lines/events 关联', async () => {
     const { zip } = await exportAndUnzip('csv', ['attempts', 'events']);
