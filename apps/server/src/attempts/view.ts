@@ -1,4 +1,6 @@
-import { type AttemptState, type HelpPreview, helpPreview, type SerializedAttemptState } from '@proof-gym/engine';
+import { createHash } from 'node:crypto';
+
+import { type AttemptState, type HelpPreview, helpPreview, independenceOf, type SerializedAttemptState } from '@proof-gym/engine';
 
 import type { LoadedProblem } from './problem.ts';
 
@@ -52,7 +54,7 @@ export function toAttemptState({ row, state, problem, now }: Snapshot): Record<s
       keysTotal,
     },
     def: { conceptId: pub.def?.conceptId ?? '', submissions: state.def.attempts, lessonSuggested: false },
-    notes: [],
+    notes: overrideNotes(row, state, problem),
     help: helpView(help),
     integrity: { mode: row.mode, locked: row.status === 'locked' },
     serverTime: new Date(now).toISOString(),
@@ -61,12 +63,36 @@ export function toAttemptState({ row, state, problem, now }: Snapshot): Record<s
   if (state.done) {
     dto.completion = {
       done: true,
-      independence: Math.max(0, 1 - state.hint.reveal / keysTotal),
+      independence: independenceOf(state, keysTotal),
       reviewAvailable: false,
       leanCard: null,
     };
   }
   return dto;
+}
+
+// 教师补发的 H4（软着陆）以批注形式下发：由引擎状态 overrides 推出，不另存，所以刷新/重连后仍在，回放一致。
+// 文本是题目包里该步骤的 H4 提示，补发时已过闸门（H4 放行本步骤片段）。noteId 由作答与步骤确定，便于前端去重/关闭。
+function overrideNotes(row: AttemptRow, state: AttemptState, problem: LoadedProblem): Record<string, unknown>[] {
+  return (state.overrides ?? []).flatMap((keyId) => {
+    const hint = problem.ctx.pkg.secret.keys.find((k) => k.id === keyId)?.hints.find((h) => h.level === 'H4');
+    if (!hint) return [];
+    const h = createHash('sha256').update(`${row.id}:override:${keyId}`).digest('hex');
+    const noteId = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+    return [
+      {
+        noteId,
+        kind: 'hint',
+        who: 'H4 · 老师补发',
+        text: hint.text,
+        lineId: null,
+        level: 'H4',
+        cost: 0,
+        lessonConceptId: null,
+        at: new Date(state.overrideAt?.[keyId] ?? Date.now()).toISOString(),
+      },
+    ];
+  });
 }
 
 function problemView(row: AttemptRow, problem: LoadedProblem): Record<string, unknown> {

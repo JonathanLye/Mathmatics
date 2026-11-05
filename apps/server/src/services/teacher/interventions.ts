@@ -6,6 +6,8 @@ import { AppError } from '../../errors.ts';
 import { unlockAttempt } from '../../integrity/unlock.ts';
 import { nextSeq } from '../../integrity/seq.ts';
 import { loadProblem } from '../../attempts/problem.ts';
+import { createAttemptService } from '../../attempts/service.ts';
+import type { ContractValidator } from '../../contract.ts';
 import { loadTeacherAttempt } from './auth.ts';
 import { appendTeacherAttemptEvent } from './events.ts';
 
@@ -138,15 +140,33 @@ export async function resolveFlag(
 }
 
 // 04 §6 / 11 §5.2：解锁复用 B 的 unlockAttempt（不复制状态机逻辑）。
-// grantH4 契约允许但 B 的 service 尚未实现（#31 交接项），这里显式拒绝而不是假装成功。
+// 带 grantH4（关键步骤 ID，可为空串表示"下一个未完成的步骤"）时走软着陆：只在学生额度耗尽后补发一条 H4，
+// 由引擎的 teacher.grant_h4 命令产生 hint.deliver{override:true}（不增加 reveal；学生需补 ≥6 字依据才计入；
+// 完成时 attempt.complete.teacherOverrides 记录，独立度不计为"独立完成"），同时解除锁定并写 attempt.unlock{by, grantH4}。
 export async function unlockForTeacher(
   db: Db,
   auth: AuthContext,
   attemptId: string,
   grantH4: string | undefined,
+  contract: ContractValidator,
 ): Promise<void> {
   if (grantH4 !== undefined) {
-    throw new AppError('VALIDATION_FAILED', 422, 'grantH4 尚未实现（#31 交接项），本轮只支持解除锁定');
+    if (auth.role === 'admin') {
+      throw new AppError('FORBIDDEN', 403, '管理员补发暂不支持（04 §1 的“管理员看全部”后续补）');
+    }
+    await createAttemptService(db, contract).grantH4({
+      attemptId,
+      keyId: grantH4 === '' ? undefined : grantH4,
+      teacherAnon: (await db.query<{ anon_code: string }>(`select anon_code from app.users where id = $1`, [auth.userId])).rows[0]?.anon_code ?? 'unknown',
+      authorize: async (tx, row) => {
+        await loadTeacherAttempt(tx, auth, row.id);
+      },
+    });
+    await db.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'unlock', $2, $3::jsonb)`,
+      [auth.userId, attemptId, JSON.stringify({ grantH4: grantH4 === '' ? 'next' : grantH4 })],
+    );
+    return;
   }
   await loadTeacherAttempt(db, auth, attemptId);
   if (auth.role === 'admin') {

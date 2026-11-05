@@ -74,12 +74,12 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
     return loadAttemptEvents(db, auth, attemptId, afterSeq, limit);
   });
 
-  // 04 §6 / 11 §5.2：解锁复用 B 的 unlockAttempt；grantH4 尚未实现（#31 交接项）。
+  // 04 §6 / 11 §5.2：解锁复用 B 的 unlockAttempt；带 grantH4 时走软着陆（额度耗尽后补发一条 H4）。
   app.post('/teacher/attempts/:attemptId/unlock', async (request) => {
     const auth = await requireTeacher(db, request);
     const attemptId = uuidParam((request.params as AttemptIdParams).attemptId, '作答');
     const body = (request.body ?? {}) as UnlockBody;
-    await unlockForTeacher(db, auth, attemptId, body.grantH4);
+    await unlockForTeacher(db, auth, attemptId, body.grantH4, contract);
     const detail = await loadAttemptDetail(db, config, auth, attemptId);
     contract.validate('AttemptDetail', detail);
     return detail;

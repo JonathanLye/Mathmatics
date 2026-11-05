@@ -138,6 +138,19 @@ async function unlock(): Promise<void> {
   }
 }
 
+// 软着陆（01 §4、11 §5.2）：学生额度用尽后，教师补发一条 H4（下一个未完成的步骤）。
+// 服务端只在额度耗尽后接受；学生需补 ≥6 字依据，该步才计入；本题标记"含教师补发"。
+async function grantHint(): Promise<void> {
+  if (props.attemptId === null) return;
+  try {
+    detail.value = await api.post<TeacherAttemptDetail>(`/api/v1/teacher/attempts/${props.attemptId}/unlock`, { grantH4: '' });
+    MessagePlugin.success('已补发一条 H4：学生补上依据后才计入，本题标记含教师补发');
+    emit('refresh');
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  }
+}
+
 // 04 §5.1：取 5 分钟只读令牌，iframe 打开学生镜像页（/s/mirror，A 侧页面）。
 async function openMirror(): Promise<void> {
   if (props.attemptId === null) return;
@@ -224,6 +237,9 @@ function lineMeta(line: TeacherLine): string {
       <div class="intervene">
         <t-popconfirm content="解锁后计数不清零、阈值 +1，确定解锁？" @confirm="unlock">
           <t-button size="small" :disabled="detail.status !== 'locked'">解锁</t-button>
+        </t-popconfirm>
+        <t-popconfirm content="学生额度用尽时才可用：补发一条 H4（下一个未完成的步骤），学生需补依据才计入，本题不再算独立完成。确定补发？" @confirm="grantHint">
+          <t-button size="small" :disabled="detail.status === 'completed'" data-testid="grant-h4">补发提示（额度用尽）</t-button>
         </t-popconfirm>
         <t-button size="small" :loading="mirrorLoading" @click="openMirror">镜像预览</t-button>
         <t-button size="small" @click="replayVisible = true">回放</t-button>

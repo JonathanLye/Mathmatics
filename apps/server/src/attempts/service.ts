@@ -10,6 +10,7 @@ import {
   canon,
   createAttempt,
   deserializeState,
+  independenceOf,
   serializeState,
   step,
 } from '@proof-gym/engine';
@@ -17,6 +18,8 @@ import {
 import type { ContractValidator } from '../contract.ts';
 import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
+
+import { nextSeq } from '../integrity/seq.ts';
 
 import { loadProblem } from './problem.ts';
 import { type AttemptRow, type Snapshot, toAttemptState } from './view.ts';
@@ -79,6 +82,16 @@ export interface AttemptService {
   command(spec: StepSpec): Promise<Record<string, unknown>>;
   park(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
   transfer(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
+  // 教师软着陆（05 §4、11 §5.2）：额度耗尽后补发一条 H4。授权由调用方在事务内做（authorize 抛错即回滚）。
+  // 作答若处于锁定状态，同时解除锁定（与 unlockAttempt 一致）。写 hint.deliver{override} 与 attempt.unlock{by, grantH4}。
+  grantH4(spec: GrantH4Spec): Promise<void>;
+}
+
+export interface GrantH4Spec {
+  attemptId: string;
+  keyId?: string;
+  teacherAnon: string;
+  authorize(tx: Queryable, row: AttemptRow): Promise<void>;
 }
 
 // 作答的写入路径（05 §4、06 §5）：
@@ -221,7 +234,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
           done ? 'completed' : status,
           reveal,
           next.state.hint.matched.size,
-          done ? Math.max(0, 1 - reveal / row.keys_total) : null,
+          done ? independenceOf(next.state, row.keys_total) : null,
           seq,
           done,
         ],
@@ -247,6 +260,54 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const saved = await commit(tx, row, result, row.status, anon, `L${snap.state.layer}`);
       if (spec.record) await spec.record(tx, saved, result);
       return dto({ ...snap, row: saved, state: result.state });
+    });
+  }
+
+  async function grantH4(spec: GrantH4Spec): Promise<void> {
+    await db.tx(async (tx) => {
+      const row = (await tx.query<AttemptRow>(`select * from app.attempts where id = $1 for update`, [spec.attemptId])).rows[0];
+      if (!row) throw new AppError('NOT_FOUND', 404, '作答不存在');
+      await spec.authorize(tx, row);
+      if (row.status !== 'active' && row.status !== 'locked') {
+        throw new AppError('VALIDATION_FAILED', 409, '这次作答已搁置或已结束，不能补发提示');
+      }
+      const snap = await snapshotOf(tx, row);
+      const result = step(snap.problem.ctx, snap.state, { kind: 'teacher.grant_h4', key: spec.keyId }, snap.now);
+      if (result.rejected === 'not_allowed') {
+        throw new AppError('VALIDATION_FAILED', 409, '学生的提示额度还没有用完；补发只在额度耗尽后使用');
+      }
+      if (result.rejected === 'wrong_layer') {
+        throw new AppError('VALIDATION_FAILED', 409, '补发提示只在第 3 层写证明时使用');
+      }
+      if (result.rejected === 'invalid') {
+        throw new AppError('VALIDATION_FAILED', 422, '这个关键步骤不存在、已经完成，或已经补发过');
+      }
+      if (!result.events.some((e) => e.type === 'hint.deliver')) {
+        // 闸门拦下（gate.block）：不下发，也不留下半个状态
+        throw new AppError('VALIDATION_FAILED', 409, '这条提示没有通过防泄题检查，未补发');
+      }
+      const anon = await userAnon(tx, row.user_id);
+      const saved = await commit(tx, row, result, 'active', anon, `L${snap.state.layer}`);
+      if (row.status === 'locked') await tx.query(`update app.attempts set locked_reason = null where id = $1`, [row.id]);
+      const seq = await nextSeq(tx, row.id);
+      await tx.query(
+        `insert into ev.events
+           (id, seq, type, source, ts_server, user_id, user_anon, role, assignment_id, attempt_id,
+            problem_id, problem_version, layer, mode, payload)
+         values (gen_random_uuid(), $1, 'attempt.unlock', 'teacher', now(), $2, $3, 'student', $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+        [
+          seq,
+          saved.user_id,
+          anon,
+          saved.assignment_id,
+          saved.id,
+          saved.problem_id,
+          saved.problem_version,
+          `L${result.state.layer}`,
+          saved.mode,
+          JSON.stringify({ by: spec.teacherAnon, grantH4: spec.keyId ?? (result.events[0]?.payload.key as string) }),
+        ],
+      );
     });
   }
 
@@ -461,6 +522,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     command,
     park,
     transfer,
+    grantH4,
   };
 }
 

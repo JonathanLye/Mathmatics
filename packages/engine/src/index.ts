@@ -12,6 +12,7 @@ export {
   ENGINE_EVENT_TYPES,
   deserializeState,
   helpPreview,
+  independenceOf,
   pickSelfcheck,
   replay,
   serializeState,

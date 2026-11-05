@@ -35,6 +35,9 @@ export interface AttemptState {
   done: boolean;
   rapidWindowMs: number;
   hint: HintState;
+  // 教师在额度耗尽后补发过 H4 的关键步骤（05 §4：不增加 reveal，但本题不计入"独立"）。旧版本存的状态没有这两个字段。
+  overrides?: readonly string[];
+  overrideAt?: Readonly<Record<string, number>>;
 }
 
 export interface EngineEvent {
@@ -53,6 +56,8 @@ export type Command =
   | { kind: 'frame.submit'; lineId: string; text: string }
   | { kind: 'line.submit'; lineId: string; s: string; j: string; provenance: 'ink' | 'keyboard' | 'photo' | 'mixed' | 'paste' }
   | { kind: 'hint.request' }
+  // 教师补发一次 H4（额度耗尽的唯一出口，05 §4）。key 缺省取下一个未完成的关键步骤。
+  | { kind: 'teacher.grant_h4'; key?: string }
   | { kind: 'finish.try' }
   | { kind: 'selfcheck.item'; itemId: string; answer: string }
   | { kind: 'selfcheck.submit'; answers: readonly string[] }
@@ -164,6 +169,21 @@ export function apply(state: AttemptState, event: EngineEvent): AttemptState {
       const level = p.level as string;
       const cost = p.cost as number;
       const lv = state.hint.hintLv[key] ?? 0;
+      if (p.override === true) {
+        // 教师补发：不改 reveal，不进学生的求助计时（快速窗口、停留、"先写一行"门槛都不受影响）。
+        // 学生要补 ≥6 字依据，该步才计入（见 line.submit 的 demo_needs_reason）。
+        return {
+          ...state,
+          viaHint: level === 'H4' && !state.viaHint.includes(key) ? [...state.viaHint, key] : state.viaHint,
+          overrides: (state.overrides ?? []).includes(key) ? state.overrides : [...(state.overrides ?? []), key],
+          overrideAt: { ...(state.overrideAt ?? {}), [key]: event.at },
+          hint: {
+            ...state.hint,
+            hintLv: { ...state.hint.hintLv, [key]: lv + 1 },
+            keyCost: cost > 0 ? { ...state.hint.keyCost, [key]: Math.max(state.hint.keyCost[key] ?? 0, cost) } : state.hint.keyCost,
+          },
+        };
+      }
       return {
         ...state,
         viaHint: level === 'H4' && !state.viaHint.includes(key) ? [...state.viaHint, key] : state.viaHint,
@@ -333,6 +353,9 @@ function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState,
     case 'hint.request':
       requestHint(ctx, at, st, emit);
       return;
+    case 'teacher.grant_h4':
+      grantH4(ctx, cmd.key, st, emit, reject);
+      return;
     case 'finish.try': {
       if (st.layer !== 3) return reject('wrong_layer');
       const complete = nextKey(secret, st.hint.matched) === null;
@@ -406,13 +429,22 @@ function completeAttempt(ctx: Context, at: number, cur: () => AttemptState, emit
   const st = cur();
   const keysTotal = ctx.pkg.secret.keys.length;
   const reveal = st.hint.reveal;
+  const overrides = st.overrides ?? [];
   emit('attempt.complete', {
     reveal,
-    independence: Math.max(0, 1 - reveal / keysTotal),
+    independence: independenceOf(st, keysTotal),
     keysOwn: st.hint.matched.size,
     keysTotal,
     durationMs: at - st.start,
+    ...(overrides.length > 0 ? { teacherOverrides: [...overrides] } : {}),
   });
+}
+
+// 独立度 = 1 − 透露量 / 关键步骤数（08 §4）。教师补发的 H4 不增加 reveal，但每条按透露 1 计入，
+// 所以含教师补发的作答不会被算成"独立完成"（01 §4）。
+export function independenceOf(st: AttemptState, keysTotal: number): number {
+  const effective = st.hint.reveal + (st.overrides ?? []).length;
+  return Math.max(0, 1 - effective / keysTotal);
 }
 
 // 按题作答自检题：写满的题计入（valid 由规则层判定）；三题全部通过则第 4 层完成。
@@ -430,6 +462,32 @@ function answerSelfcheck(ctx: Context, itemId: string, answer: string, at: numbe
 // 自检题的最少字数：题库给出（check.minChars），缺省 4。
 function selfcheckMinChars(secret: Secret, itemId: string): number {
   return secret.selfcheckBank.find((q) => q.id === itemId)?.check.minChars ?? 4;
+}
+
+// 教师补发 H4（05 §4、12 §7 软着陆）：只在额度耗尽后；文本照常过闸门（H4 放行本步骤片段）；
+// revealDelta=0、override=true，所以不改 reveal；回放同一条 hint.deliver 事件即可重建。
+function grantH4(ctx: Context, keyId: string | undefined, st: AttemptState, emit: Emit, reject: Reject): void {
+  if (!st.hint.exhausted) return reject('not_allowed');
+  if (st.layer !== 3) return reject('wrong_layer');
+  const secret = ctx.pkg.secret;
+  const key = keyId === undefined ? nextKey(secret, st.hint.matched) : secret.keys.find((k) => k.id === keyId);
+  if (!key || st.hint.matched.has(key.id) || (st.overrides ?? []).includes(key.id)) return reject('invalid');
+  const hint = key.hints.find((h) => h.level === 'H4');
+  if (!hint) return reject('invalid');
+  const gate = gateRule(secret, hint.text, st.hint.matched, hintAllow(key.id, hint.cost));
+  if (!gate.ok) {
+    emit('gate.block', { channel: 'hint', stage: 'rule', fallback: 'H0', keys: gate.hits.map((h) => h.key) });
+    return;
+  }
+  emit('hint.deliver', {
+    hintId: `${key.id}.${hint.level}`,
+    key: key.id,
+    level: hint.level,
+    cost: hint.cost,
+    revealDelta: 0,
+    revealAfter: st.hint.reveal,
+    override: true,
+  });
 }
 
 function requestHint(ctx: Context, at: number, st: AttemptState, emit: Emit): void {
