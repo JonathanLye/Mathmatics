@@ -169,6 +169,8 @@ describe('导出任务（#35 / 04 §9 / 08 §5）', () => {
     const job = created.json() as { exportId: string };
     const hide = await app.inject({ method: 'GET', url: `/api/v1/teacher/exports/${job.exportId}`, headers: { cookie: other } });
     expect(hide.statusCode).toBe(404);
+    // 等后台导出完成再结束测试，避免 afterEach 关闭 PGlite 后 setImmediate 仍在跑。
+    await waitDone(job.exportId);
   });
 
   async function exportAndUnzip(format: 'csv' | 'jsonl', tables: string[]) {
