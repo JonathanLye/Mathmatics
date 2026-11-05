@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import type { FastifyPluginAsync } from 'fastify';
 
 import {
+  approveExport,
   contentTypeFor,
   createExport,
   exportFile,
@@ -18,16 +19,25 @@ interface ExportIdParams {
   exportId: string;
 }
 
-export const teacherExportRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, contract }) => {
+export const teacherExportRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
   // 06 §3 / 04 §9：创建匿名导出；实名导出进入 pending_approval（管理员审批后才会生成）。
   app.post('/teacher/exports', async (request, reply) => {
     const auth = await requireTeacher(db, request);
     contract.validateRequest('/teacher/exports', 'post', request.body);
     const input = parseCreateExport(request.body);
     await assertClassTeacher(db, auth, input.classId);
-    const job = await createExport(db, auth, input, request.log);
+    const job = await createExport(db, auth, input, request.log, config.piiKey);
     contract.validate('ExportJob', job);
     return reply.code(202).send(job);
+  });
+
+  // 管理员审批实名导出（04 §9）；只有 admin 可调用。
+  app.post('/teacher/exports/:exportId/approve', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const { exportId } = request.params as ExportIdParams;
+    const job = await approveExport(db, auth, uuidParam(exportId, '导出任务'), request.log, config.piiKey);
+    contract.validate('ExportJob', job);
+    return job;
   });
 
   app.get('/teacher/exports/:exportId', async (request) => {

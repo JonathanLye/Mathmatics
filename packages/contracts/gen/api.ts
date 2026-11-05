@@ -983,6 +983,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/exports/{exportId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 管理员审批实名导出（pending_approval → queued 并生成） */
+        post: operations["approveExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/teacher/exports/{exportId}/download": {
         parameters: {
             query?: never;
@@ -6252,6 +6269,32 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    approveExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exportId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已审批 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJob"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     downloadExport: {

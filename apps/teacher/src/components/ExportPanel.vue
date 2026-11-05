@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
+import { session } from '../stores/session.ts';
 import type { AssignmentCard, ExportFormat, ExportJob, ExportTable } from '../api/types.ts';
 
 const props = defineProps<{ classId: string }>();
@@ -12,6 +13,7 @@ const anonymized = ref(true);
 const assignments = ref<AssignmentCard[]>([]);
 const selectedAssignmentIds = ref<string[]>([]);
 const assignmentsLoading = ref(false);
+const approving = ref(false);
 const submitting = ref(false);
 const job = ref<ExportJob | null>(null);
 const error = ref('');
@@ -81,6 +83,21 @@ async function submit(): Promise<void> {
     }
   } finally {
     submitting.value = false;
+  }
+}
+
+async function approveJob(): Promise<void> {
+  const current = job.value;
+  if (current === null || approving.value) return;
+  approving.value = true;
+  try {
+    job.value = await api.post<ExportJob>(`/api/v1/teacher/exports/${current.exportId}/approve`);
+    MessagePlugin.success('已审批，正在生成实名导出');
+    startPolling();
+  } catch (caught) {
+    MessagePlugin.error(caught instanceof ApiError ? caught.message : '审批失败');
+  } finally {
+    approving.value = false;
   }
 }
 

@@ -287,4 +287,54 @@ describe('导出任务（#35 / 04 §9 / 08 §5）', () => {
     const failed = await app.inject({ method: 'GET', url: `/api/v1/teacher/exports/${staleId}`, headers: { cookie: teacherCookie } });
     expect(failed.json()).toMatchObject({ status: 'failed' });
   });
+
+  it('实名导出：教师不能审批、管理员审批后生成 name 列；匿名导出不含 name（#35 / 04 §9）', async () => {
+    await createTeacherAccount(db, { username: 'admin.export', password: PASSWORD });
+    await db.query(
+      `update app.users u set role = 'admin'
+         from app.teacher_accounts t
+        where t.user_id = u.id and t.username = 'admin.export'`,
+    );
+    const adminCookie = await teacherLogin('admin.export');
+
+    const created = await post(teacherCookie, '/teacher/exports', {
+      classId,
+      format: 'csv',
+      tables: ['attempts'],
+      anonymized: false,
+    });
+    expect(created.statusCode, created.body).toBe(202);
+    const exportId = (created.json() as { exportId: string }).exportId;
+    expect(created.json().status).toBe('pending_approval');
+
+    const denied = await post(teacherCookie, `/teacher/exports/${exportId}/approve`);
+    expect(denied.statusCode, denied.body).toBe(403);
+
+    const approved = await post(adminCookie, `/teacher/exports/${exportId}/approve`);
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json().status).toBe('queued');
+
+    const done = await waitDone(exportId);
+    expect(done.status).toBe('done');
+    const download = await fetch(`${base}${done.url}`, { headers: { cookie: teacherCookie } });
+    const zip = await JSZip.loadAsync(Buffer.from(await download.arrayBuffer()));
+    const attemptsCsv = (await zip.file('attempts.csv')?.async('string')) ?? '';
+    const header = attemptsCsv.split('\r\n')[0] ?? '';
+    expect(header).toContain('name');
+    expect(attemptsCsv).toContain('导出学生');
+    const dictionary = (await zip.file('attempts.dictionary.csv')?.async('string')) ?? '';
+    expect(dictionary).toContain('name');
+
+    const audits = await db.query(`select action from app.audit_log where action = 'export_approve' and target = $1`, [exportId]);
+    expect(audits.rows).toHaveLength(1);
+    const approvedBy = await db.query<{ approved_by: string | null }>(`select approved_by from app.exports where id = $1`, [exportId]);
+    expect(approvedBy.rows[0]?.approved_by).toBeTruthy();
+
+    // 匿名导出仍严格按 08 §5：不含 name 列。
+    const anonymous = await post(teacherCookie, '/teacher/exports', { classId, format: 'csv', tables: ['attempts'] });
+    const anonDone = await waitDone((anonymous.json() as { exportId: string }).exportId);
+    const anonZip = await JSZip.loadAsync(Buffer.from(await (await fetch(`${base}${anonDone.url}`, { headers: { cookie: teacherCookie } })).arrayBuffer()));
+    const anonHeader = ((await anonZip.file('attempts.csv')?.async('string')) ?? '').split('\r\n')[0] ?? '';
+    expect(anonHeader).not.toContain('name');
+  });
 });

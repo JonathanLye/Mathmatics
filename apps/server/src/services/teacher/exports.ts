@@ -7,6 +7,7 @@ import path from 'node:path';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 
+import { decryptPii } from '../../auth/crypto.ts';
 import type { AuthContext } from '../../auth/session.ts';
 import { AppError } from '../../errors.ts';
 import type { Db, Queryable } from '../../db/index.ts';
@@ -127,7 +128,18 @@ const DICTIONARY: Record<ExportTable, string[]> = {
 
 type Row = Record<string, unknown>;
 
-async function buildRows(db: Queryable, classId: string, table: ExportTable, assignmentIds?: string[]): Promise<Row[]> {
+// 匿名导出严格按 08 §5；实名导出（管理员审批后）才追加 name 列。
+function columnsFor(table: ExportTable, anonymized: boolean): string[] {
+  return table === 'attempts' && !anonymized ? [...DICTIONARY[table], 'name'] : DICTIONARY[table];
+}
+
+async function buildRows(
+  db: Queryable,
+  classId: string,
+  table: ExportTable,
+  assignmentIds: string[] | undefined,
+  options: { anonymized: boolean; piiKey: Buffer },
+): Promise<Row[]> {
   const scoped = assignmentIds !== undefined && assignmentIds.length > 0;
   const params: unknown[] = scoped ? [classId, assignmentIds] : [classId];
   const scopeClause = scoped ? `and t.assignment_id = any($2::uuid[])` : '';
@@ -145,12 +157,13 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
                 t.problem_id, t.problem_version, pv.public,
                 t.mode, t.kind, t.parent_attempt_id,
                 t.started_at, t.completed_at, t.reveal, t.keys_own, t.keys_total, t.independence,
-                t.active_ms, t.status
+                t.active_ms, t.status, re.name_enc
            from app.attempts t
            join app.assignments asg on asg.id = t.assignment_id
            join app.users u on u.id = t.user_id
            left join app.student_profiles sp on sp.user_id = t.user_id
            left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
+           left join app.roster_entries re on re.class_id = asg.class_id and re.claimed_by = t.user_id
            left join content.problem_versions pv on pv.problem_id = t.problem_id and pv.version = t.problem_version
           where asg.class_id = $1 ${scopeClause}
           order by t.started_at, t.id`,
@@ -197,7 +210,17 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
         const completedAt = row.completed_at as Date | null;
         const durationS =
           completedAt !== null && startedAt !== null ? Math.round((completedAt.getTime() - startedAt.getTime()) / 1000) : null;
+        // 实名导出：管理员审批后才解密姓名；匿名导出不读取/不输出姓名。
+        let name: string | null = null;
+        if (!options.anonymized && row.name_enc !== null && row.name_enc !== undefined) {
+          try {
+            name = decryptPii(options.piiKey, Buffer.from(row.name_enc as Buffer));
+          } catch {
+            name = null;
+          }
+        }
         result.push({
+          ...(options.anonymized ? {} : { name }),
           anon_id: row.anon_id,
           attempt_id: row.attempt_id,
           class_code: classCodeOf(classId),
@@ -333,15 +356,21 @@ function toCsv(columns: string[], rows: Row[]): string {
   return BOM + lines.join('\r\n') + '\r\n';
 }
 
-function dictionaryCsv(tables: ExportTable[]): string {
+function dictionaryCsv(tables: ExportTable[], anonymized: boolean): string {
   const lines = ['table,field,description'];
   for (const table of tables) {
-    for (const field of DICTIONARY[table]) lines.push(`${table},${field},08 §5 字段字典`);
+    for (const field of columnsFor(table, anonymized)) lines.push(`${table},${field},08 §5 字段字典`);
   }
   return BOM + lines.join('\r\n') + '\r\n';
 }
 
-async function writeCsvZip(id: string, format: ExportFormat, tables: ExportTable[], rows: Map<ExportTable, Row[]>): Promise<number> {
+async function writeCsvZip(
+  id: string,
+  format: ExportFormat,
+  tables: ExportTable[],
+  rows: Map<ExportTable, Row[]>,
+  anonymized: boolean,
+): Promise<number> {
   await mkdir(FILE_DIR, { recursive: true });
   const zip = new JSZip();
   let count = 0;
@@ -351,12 +380,12 @@ async function writeCsvZip(id: string, format: ExportFormat, tables: ExportTable
     const ext = format === 'jsonl' ? 'jsonl' : 'csv';
     const body =
       ext === 'csv'
-        ? toCsv(DICTIONARY[table], tableRows)
+        ? toCsv(columnsFor(table, anonymized), tableRows)
         : tableRows.map((row) => JSON.stringify(row)).join('\n') + (tableRows.length > 0 ? '\n' : '');
     zip.file(`${table}.${ext}`, body);
-    zip.file(`${table}.dictionary.csv`, dictionaryCsv([table]));
+    zip.file(`${table}.dictionary.csv`, dictionaryCsv([table], anonymized));
   }
-  zip.file('dictionary.csv', dictionaryCsv(tables));
+  zip.file('dictionary.csv', dictionaryCsv(tables, anonymized));
   zip.file(
     'README.txt',
     '默认匿名导出；字段字典见 *.dictionary.csv（Excel 为“字段字典”工作表）。口径 08 §5。\n' +
@@ -368,14 +397,19 @@ async function writeCsvZip(id: string, format: ExportFormat, tables: ExportTable
   return count;
 }
 
-async function writeXlsx(id: string, tables: ExportTable[], rows: Map<ExportTable, Row[]>): Promise<number> {
+async function writeXlsx(
+  id: string,
+  tables: ExportTable[],
+  rows: Map<ExportTable, Row[]>,
+  anonymized: boolean,
+): Promise<number> {
   await mkdir(FILE_DIR, { recursive: true });
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'proof-gym';
   let count = 0;
   for (const table of tables) {
     const sheet = workbook.addWorksheet(table.slice(0, 31));
-    const columns = DICTIONARY[table];
+    const columns = columnsFor(table, anonymized);
     sheet.addRow(columns);
     for (const row of rows.get(table) ?? []) {
       sheet.addRow(columns.map((column) => {
@@ -390,7 +424,7 @@ async function writeXlsx(id: string, tables: ExportTable[], rows: Map<ExportTabl
   }
   const dict = workbook.addWorksheet('字段字典');
   dict.addRow(['table', 'field', 'description']);
-  for (const table of tables) for (const field of DICTIONARY[table]) dict.addRow([table, field, '08 §5 字段字典']);
+  for (const table of tables) for (const field of columnsFor(table, anonymized)) dict.addRow([table, field, '08 §5 字段字典']);
   await workbook.xlsx.writeFile(path.join(FILE_DIR, `${id}.xlsx`));
   return count;
 }
@@ -399,22 +433,23 @@ export interface ExportLogger {
   error(detail: Record<string, unknown>, message: string): void;
 }
 
-export async function runExport(db: Db, exportId: string, log?: ExportLogger): Promise<void> {
+export async function runExport(db: Db, exportId: string, log?: ExportLogger, piiKey?: Buffer): Promise<void> {
   // 只认 queued：实名导出（pending_approval）与已在跑的任务不能被触发生成。
-  const row = (await db.query<{ scope: CreateExportInput; format: ExportFormat }>(
-    `update app.exports set status = 'running' where id = $1 and status = 'queued' returning scope, format`,
+  const row = (await db.query<{ scope: CreateExportInput; format: ExportFormat; anonymized: boolean }>(
+    `update app.exports set status = 'running' where id = $1 and status = 'queued' returning scope, format, anonymized`,
     [exportId],
   )).rows[0];
   if (row === undefined) return;
   try {
+    const options = { anonymized: row.anonymized, piiKey: piiKey ?? Buffer.alloc(0) };
     const rows = new Map<ExportTable, Row[]>();
     for (const table of row.scope.tables) {
-      rows.set(table, await buildRows(db, row.scope.classId, table, row.scope.assignmentIds));
+      rows.set(table, await buildRows(db, row.scope.classId, table, row.scope.assignmentIds, options));
     }
     const count =
       row.format === 'xlsx'
-        ? await writeXlsx(exportId, row.scope.tables, rows)
-        : await writeCsvZip(exportId, row.format, row.scope.tables, rows);
+        ? await writeXlsx(exportId, row.scope.tables, rows, row.anonymized)
+        : await writeCsvZip(exportId, row.format, row.scope.tables, rows, row.anonymized);
     await db.query(
       `update app.exports set status='done', file_key=$2, row_count=$3, finished_at=now() where id=$1`,
       [exportId, `${exportId}.${FILE_EXT[row.format]}`, count],
@@ -444,7 +479,13 @@ export async function sweepExports(db: Db): Promise<void> {
   );
 }
 
-export async function createExport(db: Db, auth: AuthContext, input: CreateExportInput, log?: ExportLogger): Promise<ExportJobDto> {
+export async function createExport(
+  db: Db,
+  auth: AuthContext,
+  input: CreateExportInput,
+  log?: ExportLogger,
+  piiKey?: Buffer,
+): Promise<ExportJobDto> {
   const status = input.anonymized === false ? 'pending_approval' : 'queued';
   const exportId = await db.tx(async (tx) => {
     const id = (await tx.query<{ id: string }>(
@@ -461,12 +502,44 @@ export async function createExport(db: Db, auth: AuthContext, input: CreateExpor
   if (status === 'queued') {
     // 后台任务的异常不能变成未处理的 rejection（Node 默认会让进程退出）。
     setImmediate(() => {
-      runExport(db, exportId, log).catch((error: unknown) => {
+      runExport(db, exportId, log, piiKey).catch((error: unknown) => {
         log?.error({ exportId, name: (error as Error).name }, 'export job crashed');
       });
     });
   }
   return { exportId, status, url: null, rows: null };
+}
+
+// 管理员审批实名导出：仅 admin；pending_approval → queued，记录 approved_by + audit，再后台生成。
+export async function approveExport(
+  db: Db,
+  auth: AuthContext,
+  exportId: string,
+  log?: ExportLogger,
+  piiKey?: Buffer,
+): Promise<ExportJobDto> {
+  if (auth.role !== 'admin') throw new AppError('FORBIDDEN', 403, '只有管理员可以审批实名导出');
+  await db.tx(async (tx) => {
+    const row = (
+      await tx.query<{ status: string; requested_by: string; scope: { classId: string } }>(
+        `select status, requested_by, scope from app.exports where id = $1 for update`,
+        [exportId],
+      )
+    ).rows[0];
+    if (row === undefined) throw new AppError('NOT_FOUND', 404, '导出任务不存在');
+    if (row.status !== 'pending_approval') throw new AppError('VALIDATION_FAILED', 409, '该导出任务不在待审批状态');
+    await tx.query(`update app.exports set status = 'queued', approved_by = $2 where id = $1`, [exportId, auth.userId]);
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'export_approve', $2, $3::jsonb)`,
+      [auth.userId, exportId, JSON.stringify({ requestedBy: row.requested_by, classId: row.scope.classId })],
+    );
+  });
+  setImmediate(() => {
+    runExport(db, exportId, log, piiKey).catch((error: unknown) => {
+      log?.error({ exportId, name: (error as Error).name }, 'approved export job crashed');
+    });
+  });
+  return getExport(db, auth, exportId);
 }
 
 type ExportRow = {
