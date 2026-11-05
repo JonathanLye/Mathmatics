@@ -127,6 +127,11 @@ export interface RequestOptions {
   ifMatch?: number | string
   /** 同一逻辑提交的重试必须复用同一个键（由调用方缓存）。 */
   idempotencyKey?: string
+  /**
+   * multipart/form-data 请求体（拍照识别 #25）：优先于 body；由浏览器生成边界，**不要**手设 Content-Type。
+   * 使用 formData 时不会 JSON.stringify，也不会加 application/json 头。
+   */
+  formData?: FormData
   headers?: Record<string, string>
   signal?: AbortSignal
   /** 单次请求超时（毫秒，默认 15s）；弱网/3G 下超时按 NETWORK 可重试错误处理。 */
@@ -276,7 +281,8 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     const method = requestOptions.method ?? 'GET'
     const headers: Record<string, string> = { Accept: 'application/json', ...(requestOptions.headers ?? {}) }
     if (WRITE_METHODS.has(method)) headers['X-Requested-With'] = 'proof-gym'
-    if (requestOptions.body !== undefined) headers['Content-Type'] = 'application/json'
+    const isMultipart = typeof FormData !== 'undefined' && requestOptions.formData instanceof FormData
+    if (requestOptions.body !== undefined && !isMultipart) headers['Content-Type'] = 'application/json'
     if (requestOptions.ifMatch !== undefined) headers['If-Match'] = String(requestOptions.ifMatch)
     if (requestOptions.idempotencyKey !== undefined) {
       if (!isUuid(requestOptions.idempotencyKey)) {
@@ -296,7 +302,11 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
         method,
         credentials: 'include',
         headers,
-        body: requestOptions.body === undefined ? undefined : JSON.stringify(requestOptions.body),
+        body: isMultipart
+          ? requestOptions.formData
+          : requestOptions.body === undefined
+            ? undefined
+            : JSON.stringify(requestOptions.body),
         signal: requestOptions.signal ?? controller?.signal,
       })
     } catch (cause) {

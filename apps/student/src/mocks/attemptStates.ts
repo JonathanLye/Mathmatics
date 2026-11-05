@@ -387,3 +387,26 @@ export const mockRecognition: Recognition = {
   diff: [{ start: 9, end: 22, alt: '\\frac{5}{n+z}' }],
   rendered: true,
 }
+
+/**
+ * #25 拍照识别的 mock：整页 → 切行（openapi Recognition.lines，2–3 行）。
+ * 只用于 mock 演示/e2e；真实服务端由 /recognitions/photo 返回同样的形状。
+ */
+export const mockPhotoRecognition: Recognition = {
+  recogId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  status: 'ok',
+  text: [
+    '$|a_n-3|=\\frac{5}{n+2}$',
+    '$\\frac{5}{n+2}<\\frac{5}{n}$',
+    '取 $N=5/\\varepsilon$，则当 $n>N$ 时成立。',
+  ].join(String.fromCharCode(10)),
+  lines: [
+    { text: '$|a_n-3|=\\frac{5}{n+2}$', bbox: [42, 120, 528, 180], confidence: 0.82 },
+    { text: '$\\frac{5}{n+2}<\\frac{5}{n}$', bbox: [42, 220, 528, 280], confidence: 0.79 },
+    { text: '取 $N=5/\\varepsilon$，则当 $n>N$ 时成立。', bbox: [42, 320, 528, 380], confidence: 0.71 },
+  ],
+  confidence: 0.77,
+  agree: null,
+  diff: [],
+  rendered: true,
+}

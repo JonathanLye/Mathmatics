@@ -56,9 +56,12 @@ import { getDraftStore } from '@/storage/drafts'
 import { filterDismissedNotes, formatNoteTime, mergeNotes, nextLineNoOf, parseNote } from '@/components/layers/proofLines'
 import MathText from '@ui-math/MathText.vue'
 import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
+import PhotoRecognitionPanel from '@/components/PhotoRecognitionPanel.vue'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
+import { compressImage, loadImageBlobFromPath } from '@/utils/imageCompress'
+import { uuidv7 } from '@/integrity/ids'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import {
@@ -71,9 +74,12 @@ import {
   fetchLesson,
   finishSteps,
   finishTransfer,
+  confirmRecognition,
   getAttempt,
   isMockMode,
+  photoRecognitionErrorMessage,
   recognizeInk,
+  recognizePhoto,
   setMockMode,
   requestHelp,
   skipLayer,
@@ -127,6 +133,15 @@ const recogOpen = ref(false)
 const recogBusy = ref(false)
 const recognition = ref<Recognition | null>(null)
 const recogDraft = ref<{ text: string; recogId: string; at: string } | null>(null)
+/** #25 拍照：压缩/识别进度文案；photoAdding=正在把选中的行加入证明。 */
+const photoProgress = ref('')
+const photoAdding = ref(false)
+/** 本次识别结果是否进入「逐行确认」面板（整页拍照；即便加到只剩 1 行也保持该面板，不回退到单行卡）。 */
+const photoPanelActive = ref(false)
+/** 最近一次压缩后的图片：重新识别时复用（不重拍、不再压缩）。 */
+let lastPhoto: { image: Blob; source: 'camera' | 'album' } | null = null
+/** 取消/重开时忽略在途识别结果。 */
+let recogSeq = 0
 /** 第 1 层微课（02 §4.9）：内容由服务端下发，这里只保存在内存里渲染。 */
 const microOpen = ref(false)
 const microLesson = ref<LessonView | null>(null)
@@ -207,6 +222,7 @@ const strictClass = computed(() => ({ 'pg-practice--strict': strictExamActive.va
 /** #27：打开行编辑器时的初始值 —— 识别确认的文本优先（#15 行为），否则用本机未提交草稿。 */
 const editorInitialStatement = computed(() => recogDraft.value?.text ?? lineDraftInitial.value.statement)
 const editorInitialJustification = computed(() => lineDraftInitial.value.justification)
+/* 拍照整页识别结果统一走逐行确认面板（photoPanelActive）；旧 #15 两路卡只作单行回退。 */
 
 // #27：事件归属随作答/切层/状态更新（currentLayer 声明之后再调用）
 function syncIntegrityContext(): void {
@@ -868,34 +884,208 @@ function handleKeyboard() {
   editorOpen.value = true
 }
 
-/** #15：拍照 → mock 识别 → 确认面板（真实 /recognitions/photo 接口在 #25 接入） */
+/**
+ * H5 选图：优先 uni.chooseImage（返回 tempFilePath）；若运行环境未注册该 API（本构建的 H5 运行时按需注册），
+ * 退回原生 <input type=file>（返回 File）。两条路都支持相机/相册：camera 带 capture=environment。
+ * 取消选择返回 null（不弹错误）。
+ */
+function pickImageWithDomInput(source: 'camera' | 'album'): Promise<File | null> {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      reject(new Error('当前环境不支持拍照，请用键盘或手写'))
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    if (source === 'camera') input.setAttribute('capture', 'environment')
+    input.setAttribute('data-testid', 'photo-file-input')
+    input.style.position = 'fixed'
+    input.style.left = '-9999px'
+    input.style.top = '0'
+    input.style.opacity = '0'
+    document.body.appendChild(input)
+    let settled = false
+    const cleanup = (): void => {
+      if (input.parentNode) input.parentNode.removeChild(input)
+    }
+    input.addEventListener('change', () => {
+      if (settled) return
+      settled = true
+      const file = input.files && input.files[0] ? input.files[0] : null
+      cleanup()
+      resolve(file)
+    })
+    input.addEventListener('cancel', () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(null)
+    })
+    input.click()
+  })
+}
+
+function choosePhotoFile(source: 'camera' | 'album'): Promise<File | string | null> {
+  const uniApi = (typeof uni !== 'undefined' ? uni : undefined) as
+    | { chooseImage?: (options: Record<string, unknown>) => void }
+    | undefined
+  if (typeof uniApi?.chooseImage !== 'function') {
+    return pickImageWithDomInput(source)
+  }
+  return new Promise((resolve, reject) => {
+    uniApi.chooseImage?.({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: [source],
+      success: (result: { tempFilePaths?: string[] }) => {
+        const path = result?.tempFilePaths?.[0]
+        resolve(typeof path === 'string' && path.length > 0 ? path : null)
+      },
+      fail: (error: { errMsg?: string } | undefined) => {
+        const message = String(error?.errMsg ?? error ?? '')
+        if (/cancel/i.test(message)) {
+          resolve(null)
+          return
+        }
+        reject(new Error(message || '选择图片失败'))
+      },
+    })
+  })
+}
+
+/**
+ * #25 拍照识别：选择图片 → 压缩（长边≤2000/≤2MB/去 EXIF）→ POST /recognitions/photo → 逐行确认。
+ * - 真实后端未实现时 404 会降级提示「即将上线」，不伪造识别结果；
+ * - 测验模式 photo 已禁用；取消选择不提示错误；
+ * - 取消/重新打开时用 recogSeq 忽略在途结果。
+ */
 async function startPhotoRecognition() {
   if (recogBusy.value) return
-  // 测验模式下拍照禁用（03 §3.3）
   if (state.value.integrity.mode === 'test') {
     show('测验模式下拍照不可用')
     return
   }
-  recogOpen.value = true
-  recogBusy.value = true
-  recognition.value = null
-  const result = await run(() => recognizeInk('mock-photo'))
-  recogBusy.value = false
-  if (!result) {
-    recogOpen.value = false
-    show('识别暂不可用，请用键盘')
+  // 拍照识别用于整页切行后加入第 3 层证明行（复用 addLine；其他层没有行列表落点）。
+  if (state.value.currentLayer !== 'L3') {
+    show('拍照识别用于第 3 层写证明行；请先完成前两层')
     return
   }
-  recognition.value = result
+  const seq = ++recogSeq
+  recogBusy.value = true
+  recogOpen.value = true
+  recognition.value = null
+  photoPanelActive.value = false
+  photoProgress.value = '正在打开相机…'
+  try {
+    const picked = await choosePhotoFile('camera')
+    if (seq !== recogSeq) return
+    if (!picked) {
+      closeRecogLoading()
+      return
+    }
+    photoProgress.value = '正在压缩图片…'
+    const sourceBlob = typeof picked === 'string' ? await loadImageBlobFromPath(picked) : picked
+    const compressed = await compressImage(sourceBlob, { maxEdge: 2000, maxBytes: 2 * 1024 * 1024 })
+    if (seq !== recogSeq) return
+    lastPhoto = { image: compressed.blob, source: 'camera' }
+    photoProgress.value = '正在识别…'
+    const result = await recognizePhoto({
+      attemptId: state.value.attemptId,
+      draftId: uuidv7(),
+      target: 'line_statement',
+      source: 'camera',
+      image: compressed.blob,
+    })
+    if (seq !== recogSeq) return
+    recognition.value = result
+    photoPanelActive.value = true
+    recogOpen.value = false
+  } catch (error) {
+    if (seq !== recogSeq) return
+    recogOpen.value = false
+    show(photoRecognitionErrorMessage(error))
+  } finally {
+    if (seq === recogSeq) {
+      recogBusy.value = false
+      photoProgress.value = ''
+    }
+  }
 }
 
 function handlePhoto() {
   void startPhotoRecognition()
 }
 
-/** 「重新识别」：重新跑一次 mock 识别（面板留在原处，识别中再次显示加载态） */
+/** 逐行确认面板：加入勾选行/单行 → 走既有 addLine（provenance=photo + recogId）→ 调 confirm。 */
+async function handlePhotoAdd(payload: { texts: string[]; indices: number[] }) {
+  const current = recognition.value
+  if (!current || photoAdding.value) return
+  if (payload.texts.length === 0) {
+    show('没有可加入的行')
+    return
+  }
+  photoAdding.value = true
+  recogBusy.value = true
+  const recogId = current.recogId
+  const added: string[] = []
+  try {
+    for (const text of payload.texts) {
+      const trimmed = text.trim()
+      if (!trimmed) continue
+      const draft: LineDraft = {
+        statement: trimmed,
+        input: { provenance: 'photo', draftId: uuidv7(), recogId },
+      }
+      const next = await run(() => addLine(state.value, draft))
+      if (!next) {
+        show(error.value || '加入行失败，请重试')
+        return
+      }
+      apply(next)
+      added.push(trimmed)
+    }
+    if (added.length === 0) {
+      show('没有可加入的行')
+      return
+    }
+    const remainingLines = (current.lines ?? []).filter((_, index) => !payload.indices.includes(index))
+    if (remainingLines.length > 0) {
+      recognition.value = {
+        ...current,
+        lines: remainingLines,
+        text: remainingLines.map((line) => line.text).join('\n'),
+      }
+    } else {
+      recognition.value = null
+      photoPanelActive.value = false
+    }
+    show('已加入 ' + added.length + ' 行（拍照识别）')
+    try {
+      await confirmRecognition(recogId, added.join('\n'), added)
+    } catch {
+      // 已加入的行不因确认回执失败而回滚（服务端行已落库）；只提示。
+      show('各行已加入，但确认回执未成功；可继续作答')
+    }
+  } finally {
+    photoAdding.value = false
+    recogBusy.value = false
+  }
+}
+
+/** 忽略整次拍照识别。 */
+function handleRecogIgnore() {
+  recogSeq += 1
+  recognition.value = null
+  photoPanelActive.value = false
+  recogOpen.value = false
+  show('已忽略这次拍照识别，可以继续写')
+}
+
+/** 「重新识别」：单行结果（#15 卡）重新跑一次；多行面板暂不提供重识别按钮。 */
 async function handleRecogRewrite() {
   recogBusy.value = true
+  photoPanelActive.value = false
   recognition.value = null
   const result = await run(() => recognizeInk('mock-photo'))
   recogBusy.value = false
@@ -910,6 +1100,7 @@ async function handleRecogRewrite() {
 /** 确认加入：识别结果进入草稿（mock 下页面能看到结果文本），并回填行编辑器 */
 function handleRecogConfirm(text: string) {
   const recogId = recognition.value?.recogId ?? ''
+  photoPanelActive.value = false
   recogOpen.value = false
   recognition.value = null
   recogDraft.value = { text, recogId, at: new Date().toISOString() }
@@ -924,8 +1115,11 @@ function handleRecogDiscard() {
 }
 
 function closeRecogLoading() {
+  recogSeq += 1
   recogOpen.value = false
   recognition.value = null
+  recogBusy.value = false
+  photoProgress.value = ''
 }
 
 function handleBack() {
@@ -1254,13 +1448,22 @@ function backHome() {
     <!-- #15 拍照识别：识别中的占位（02 §4.5：超过 3 秒提示可先用键盘），拿到结果后进确认面板 -->
     <view v-if="recogOpen && !recognition" class="pg-recogmask">
       <view class="pg-recogloading pg-sheet">
-        <text class="pg-recogloading__title">识别中…</text>
-        <text class="pg-recogloading__hint pg-small">超过 3 秒可以先用键盘；识别结果要你确认后才会用。</text>
+        <text class="pg-recogloading__title" data-testid="photo-progress">{{ photoProgress || '识别中…' }}</text>
+        <text class="pg-recogloading__hint pg-small">图片会先压缩（长边≤2000/≤2MB）再识别；结果要你逐行确认后才会用。</text>
         <button class="pg-practice__btn" @tap="closeRecogLoading">取消</button>
       </view>
     </view>
+    <!-- #25 拍照整页识别：逐行确认（可勾选/编辑/全部加入/逐行加入/忽略） -->
+    <PhotoRecognitionPanel
+      v-if="recognition && photoPanelActive"
+      :recognition="recognition"
+      :busy="recogBusy || photoAdding"
+      @add="handlePhotoAdd"
+      @ignore="handleRecogIgnore"
+    />
+    <!-- 单行结果沿用 #15 两路确认卡 -->
     <RecognitionConfirm
-      v-if="recognition"
+      v-else-if="recognition"
       :recognition="recognition"
       :busy="recogBusy"
       @rewrite="handleRecogRewrite"
