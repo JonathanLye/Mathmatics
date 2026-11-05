@@ -21,13 +21,13 @@ const formatOptions = [
 ];
 // 08 §5 字段字典（与 server 导出列一致）；页面展示，便于教师核对下载内容。
 const FIELD_DICT: Record<ExportTable, string[]> = {
-  attempts: ['anon_id', 'class_code', 'arm', 'arm_order', 'problem_id', 'problem_version', 'mode', 'kind', 'started_at', 'completed_at', 'duration_s', 'lines', 'keys_total', 'reveal', 'independence', 'away_count', 'away_s', 'integrity_max_score', 'integrity_signals', 'completed'],
+  attempts: ['anon_id', 'attempt_id', 'class_code', 'arm', 'arm_order', 'grade', 'problem_id', 'problem_version', 'chapter', 'tags', 'difficulty', 'role', 'mode', 'kind', 'parent_attempt_id', 'started_at', 'completed_at', 'duration_s', 'active_s', 'submissions', 'layers_done', 'layers_skipped', 'def_attempts', 'lesson_opened', 'lines', 'keys_total', 'keys_own', 'keys_autonomous', 'reveal', 'independence', 'hints_total', 'hint_max_level', 'first_error', 'first_help_latency_s', 'post_hint_dwell_med_s', 'rapid_locks', 'stuck_offers', 'pressure_count', 'help_stuck', 'help_concept', 'help_check', 'help_free', 'input_ink', 'input_kbd', 'input_photo', 'input_paste', 'recog_requests', 'recog_edit_rate', 'recog_disagree_rate', 'away_count', 'away_s', 'integrity_max_score', 'integrity_signals', 'completed', 'summary_missing_points', 'model_versions', 'prompt_version'],
   lines: ['anon_id', 'attempt_id', 'layer', 'role', 'idx', 'slot', 'statement', 'justification', 'statement_canon', 'provenance', 'cls', 'keys', 'new_keys', 'error_id', 'conf', 'classifier_path', 'created_at', 'edited_at', 'deleted_at'],
   hints: ['anon_id', 'attempt_id', 'help_id', 'key_id', 'level', 'cost', 'reveal_before', 'reveal_after', 'text_shown', 'delivered_at'],
   help: ['anon_id', 'attempt_id', 'layer', 'intent', 'routed', 'routed_by', 'conf', 'text', 'outcome', 'created_at'],
   recognitions: ['anon_id', 'attempt_id', 'kind', 'provider', 'cross_provider', 'confidence', 'agree', 'latency_ms', 'queue_ms', 'status', 'edited', 'edit_distance', 'cost_cny', 'created_at'],
   integrity: ['anon_id', 'attempt_id', 'signal', 'score', 'evidence', 'source', 'disposition', 'created_at'],
-  events: ['seq', 'type', 'source', 'ts_server', 'anon_id', 'attempt_id', 'layer', 'payload'],
+  events: ['id', 'seq', 'type', 'source', 'ts_server', 'ts_client', 'session_id', 'device_id', 'client_seq', 'user_anon', 'role', 'class_id', 'assignment_id', 'attempt_id', 'problem_id', 'problem_version', 'layer', 'mode', 'arm', 'app_version', 'platform', 'prompt_version', 'model_versions', 'payload'],
 };
 const FIELD_DICT_ROWS = Object.entries(FIELD_DICT).map(([table, fields]) => ({
   table,
@@ -123,9 +123,9 @@ onBeforeUnmount(stopPolling);
       <div>任务 <span class="mono">{{ job.exportId }}</span>：状态 <b>{{ job.status }}</b></div>
       <div v-if="job.rows !== null && job.rows !== undefined">行数：{{ job.rows }}</div>
       <t-link v-if="job.url" theme="primary" :href="job.url" target="_blank">下载</t-link>
-      <div v-else-if="job.status === 'pending_approval'" class="page-sub">实名导出等待管理员审批（审批接口尚未实现，可由 Lead/管理员离线处理）。</div>
+      <div v-else-if="job.status === 'pending_approval'" class="page-sub">实名导出需管理员审批；审批功能尚未上线，这个任务目前不会生成文件，请先用匿名导出。</div>
     </div>
-    <div class="page-sub">说明：导出字段字典随文件提供（Excel 第二工作表 / CSV 同名 .dictionary.csv）。</div>
+    <div class="page-sub">说明：导出字段字典随文件提供（Excel 第二工作表 / CSV 同名 .dictionary.csv）。文件 24 小时后删除，过期请重新导出。</div>
     <h4 style="margin: 18px 0 6px">字段字典（08 §5）</h4>
     <t-table :data="FIELD_DICT_ROWS" :columns="[{ colKey: 'table', title: '表' }, { colKey: 'fields', title: '字段' }]" row-key="table" size="small" />
   </div>
