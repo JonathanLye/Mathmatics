@@ -20,6 +20,14 @@ const mirrorVisible = ref(false);
 const replayVisible = ref(false);
 const mirrorUrl = ref('');
 const mirrorLoading = ref(false);
+const reclassifyVisible = ref(false);
+const reclassifyTarget = ref<TeacherLine | null>(null);
+const reclassifyCls = ref<string>('match');
+const reclassifyKeys = ref('');
+const reclassifyErrorId = ref('');
+const reclassifyNote = ref('');
+const reclassifying = ref(false);
+const reclassifyError = ref('');
 
 const STATUS_LABEL: Record<string, string> = {
   active: '进行中',
@@ -43,6 +51,7 @@ const lineColumns = [
   { colKey: 'justification', title: '依据' },
   { colKey: 'keys', title: '关键步骤', width: 140 },
   { colKey: 'meta', title: '归类', width: 150 },
+  { colKey: 'actions', title: '改判', width: 70 },
 ];
 
 function messageOf(caught: unknown): string {
@@ -80,6 +89,39 @@ watch(
   },
   { immediate: true },
 );
+
+function openReclassify(line: TeacherLine): void {
+  reclassifyTarget.value = line;
+  reclassifyCls.value = line.cls === 'lowconf' ? 'match' : line.cls || 'match';
+  reclassifyKeys.value = line.keys.join(', ');
+  reclassifyErrorId.value = '';
+  reclassifyNote.value = '';
+  reclassifyError.value = '';
+  reclassifyVisible.value = true;
+}
+
+async function submitReclassify(): Promise<void> {
+  if (reclassifyTarget.value === null || reclassifying.value) return;
+  reclassifying.value = true;
+  reclassifyError.value = '';
+  try {
+    const keys = reclassifyKeys.value.split(/[,，\s]+/).map((item) => item.trim()).filter((item) => item !== '');
+    await api.post(`/api/v1/teacher/attempts/${props.attemptId}/lines/${reclassifyTarget.value.lineId}/reclassify`, {
+      cls: reclassifyCls.value,
+      ...(keys.length > 0 ? { keys } : {}),
+      ...(reclassifyErrorId.value.trim() === '' ? {} : { errorId: reclassifyErrorId.value.trim() }),
+      ...(reclassifyNote.value.trim() === '' ? {} : { note: reclassifyNote.value.trim() }),
+    });
+    MessagePlugin.success('已改判（写审计，不改学生已见内容）');
+    reclassifyVisible.value = false;
+    await load();
+    emit('refresh');
+  } catch (caught) {
+    reclassifyError.value = messageOf(caught);
+  } finally {
+    reclassifying.value = false;
+  }
+}
 
 function close(): void {
   emit('update:visible', false);
@@ -207,6 +249,9 @@ function lineMeta(line: TeacherLine): string {
             <span v-if="lineMeta(row)">{{ lineMeta(row) }}</span>
           </div>
         </template>
+        <template #actions="{ row }">
+          <t-link theme="primary" @click="openReclassify(row as TeacherLine)">改判</t-link>
+        </template>
         <template #empty><div class="empty">还没有证明行。</div></template>
       </t-table>
 
@@ -276,6 +321,40 @@ function lineMeta(line: TeacherLine): string {
       />
     </t-dialog>
   </t-drawer>
+
+    <t-dialog v-model:visible="reclassifyVisible" header="改判该行归类" :footer="false" width="560px">
+      <t-alert v-if="reclassifyError" theme="error" :message="reclassifyError" style="margin-bottom: 8px" />
+      <t-alert theme="info" message="改判只更新教师侧归类并写 audit_log，不改变学生已看到的批注/事件。" style="margin-bottom: 8px" />
+      <t-form label-width="90px">
+        <t-form-item label="归类">
+          <t-select
+            v-model="reclassifyCls"
+            :options="[
+              { label: '命中 match', value: 'match' },
+              { label: '错误 error', value: 'error' },
+              { label: '未知 unknown', value: 'unknown' },
+              { label: '低置信 lowconf', value: 'lowconf' },
+              { label: '通过 pass', value: 'pass' },
+              { label: '失败 fail', value: 'fail' },
+            ]"
+            style="width: 200px"
+          />
+        </t-form-item>
+        <t-form-item label="关键步骤">
+          <t-input v-model="reclassifyKeys" placeholder="K1, K2（可空；逗号分隔）" />
+        </t-form-item>
+        <t-form-item label="错误 ID">
+          <t-input v-model="reclassifyErrorId" placeholder="如 E1（可空）" />
+        </t-form-item>
+        <t-form-item label="备注">
+          <t-input v-model="reclassifyNote" placeholder="改判理由（可空，≤200 字）" :maxlength="200" />
+        </t-form-item>
+      </t-form>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px">
+        <t-button variant="outline" :disabled="reclassifying" @click="reclassifyVisible = false">取消</t-button>
+        <t-button theme="primary" :loading="reclassifying" @click="submitReclassify">保存改判</t-button>
+      </div>
+    </t-dialog>
 </template>
 
 <style scoped>

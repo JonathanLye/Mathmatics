@@ -100,6 +100,24 @@ export const mockLesson: LessonView = {
 }
 
 /**
+ * AIGC 标识 mock（Refs #37 / task-90；只用于 UI/测试，不是真实生成内容）。
+ *
+ * - 真实口径：LessonView.generated 由 B 侧决定是否下发；当前 P0 不启用生成，因此默认 null；
+ * - 本 mock 只在测试/演示 URL 带 ?aigc=1 时由 api/client.ts 的 fetchLesson 返回（见 mocks/README.md）；
+ * - 文本故意写成占位说明，避免被误当成真实 AI 数学内容；标识渲染由 AiGeneratedTag 统一负责。
+ */
+export const MOCK_AIGC_GENERATED_TEXT =
+  '（mock）这是一条 AI 生成的补充讲解占位文本，仅用于验证「AI 生成 · 仅作学习提示」标识的渲染；不代表真实生成内容。'
+
+/** 带 generated 的微课副本（mock=true 时由 fetchLesson 在 ?aigc=1 下返回）。 */
+export const mockGeneratedLesson: LessonView = { ...mockLesson, generated: MOCK_AIGC_GENERATED_TEXT }
+
+/** 取微课 mock：generated=false 时与线上默认一致（无 AI 生成内容）；true 时带占位 generated。 */
+export function createMockLesson(options: { generated?: boolean } = {}): LessonView {
+  return options.generated ? { ...mockLesson, generated: MOCK_AIGC_GENERATED_TEXT } : { ...mockLesson }
+}
+
+/**
  * 第 4 层自检题（seed selfcheckBank 挑 4 道；维度/次数为 #47 自适应接线所需的 mock 扩展字段）。
  * 行号按 mock 的 2 行证明替换；true/false 判定由 mock reducer（submitSelfcheck）写入 records。
  */

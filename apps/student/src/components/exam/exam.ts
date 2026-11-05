@@ -9,6 +9,7 @@
  * - 水印不含 PII：只用匿名码 + 时间分钟；不请求/打印 token。
  */
 import type { AttemptMode, AttemptState, ExamView } from '@/types/attempt'
+import { FALLBACK_TOKEN, readCssToken } from '@/utils/themeTokens'
 
 /** 切出锁定默认次数（04 §7：测验默认「3 次锁定」；实际以服务端/布置配置为准）。 */
 export const EXAM_MAX_SWITCHES_DEFAULT = 3
@@ -117,27 +118,28 @@ function escapeXml(text: string): string {
 /**
  * 生成水印用的 SVG（斜向平铺单元）。文字必须是纯文本（匿名码/时间），不渲染 HTML。
  * 注意：返回**未编码** SVG 字符串；浏览器样式里用 backgroundImageFor 包 data URI。
+ * 深色模式：fill 取当前主题 --ink（无 DOM 时回退浅色值），否则深字深底不可见（D2）。
  */
-export function buildWatermarkSvg(text: string): string {
+export function buildWatermarkSvg(text: string, ink: string = readCssToken('--ink', FALLBACK_TOKEN.ink)): string {
   const safe = escapeXml(text)
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" width="280" height="140" viewBox="0 0 280 140">' +
     '<text x="140" y="70" transform="rotate(-24 140 70)" text-anchor="middle" ' +
     'font-family="ui-monospace, Menlo, monospace" font-size="11" ' +
-    'fill="#1d2430" fill-opacity="' + WATERMARK_OPACITY + '">' + safe + '</text>' +
+    'fill="' + escapeXml(ink) + '" fill-opacity="' + WATERMARK_OPACITY + '">' + safe + '</text>' +
     '</svg>'
   )
 }
 
 /** SVG → CSS background-image data URI（encodeURIComponent，避免引号/特殊字符破坏 style）。 */
-export function watermarkBackgroundImage(text: string): string {
-  return 'url("data:image/svg+xml,' + encodeURIComponent(buildWatermarkSvg(text)) + '")'
+export function watermarkBackgroundImage(text: string, ink?: string): string {
+  return 'url("data:image/svg+xml,' + encodeURIComponent(buildWatermarkSvg(text, ink)) + '")'
 }
 
 /** 水印覆盖层的行内样式：铺满、平铺、不接收指针事件、不可选中。 */
-export function watermarkStyle(text: string): Record<string, string> {
+export function watermarkStyle(text: string, ink?: string): Record<string, string> {
   return {
-    backgroundImage: watermarkBackgroundImage(text),
+    backgroundImage: watermarkBackgroundImage(text, ink),
     backgroundRepeat: 'repeat',
     backgroundSize: '280px 140px',
     pointerEvents: 'none',
@@ -149,12 +151,15 @@ export function watermarkStyle(text: string): Record<string, string> {
 /**
  * 分钟级缓存：同一分钟重复渲染复用同一 data URI（避免每秒重算 SVG/编码）。
  * cache 由调用方持有（Map），本函数有界（最多 16 条，超出清空最旧）。
+ * key 含 ink：深/浅色主题切换后同一文本也要重新生成（D2）。
  */
-export function cachedWatermarkBackground(text: string, cache: Map<string, string>): string {
-  const cached = cache.get(text)
+export function cachedWatermarkBackground(text: string, cache: Map<string, string>, ink?: string): string {
+  const color = ink ?? readCssToken('--ink', FALLBACK_TOKEN.ink)
+  const key = color + '\u0000' + text
+  const cached = cache.get(key)
   if (cached) return cached
-  const image = watermarkBackgroundImage(text)
-  cache.set(text, image)
+  const image = watermarkBackgroundImage(text, color)
+  cache.set(key, image)
   if (cache.size > 16) {
     const oldest = cache.keys().next().value
     if (typeof oldest === 'string') cache.delete(oldest)

@@ -125,6 +125,26 @@ async function main() {
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(6500);
   await shot('02-live-1280');
+  // #167：名单列表（姓名/认领状态）
+  await page.getByText('名单', { exact: true }).first().click();
+  await page.getByText('测试学生').first().waitFor({ timeout: 10000 });
+  await shot('02b-roster-1280');
+  await page.getByText('实时看板', { exact: true }).first().click();
+  await page.waitForTimeout(500);
+  // #169：数字卡筛选（在线）
+  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
+  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
+  await shot('02c-live-filter-1280');
+  await page.getByText('清除', { exact: true }).click();
+  // #180：布置表单从已发布题目选择
+  await page.locator('.t-tabs').getByText('布置', { exact: true }).click();
+  await page.getByPlaceholder('选择已发布的题目版本').waitFor({ timeout: 10000 });
+  await shot('02d-assignment-form-1280');
+  await page.locator('.t-tabs').getByText('实时看板', { exact: true }).click();
+  await page.waitForTimeout(400);
+  // #166：按布置筛选看板
+  await page.locator('.live-toolbar .t-select').first().waitFor({ timeout: 10000 });
+  await shot('02a-live-switcher-1280');
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
@@ -151,9 +171,43 @@ async function main() {
   await page.getByText('任务', { exact: false }).first().waitFor({ timeout: 10000 });
   await page.getByRole('link', { name: '下载' }).waitFor({ timeout: 15000 });
   await shot('05-export-1280');
+  // #176：班级默认设置页签
+  await page.locator('.t-tabs').getByText('设置', { exact: true }).click();
+  await page.getByText('默认透露预算').waitFor({ timeout: 10000 });
+  await shot('05c-class-settings-1280');
+  // #165：布置列表来自 GET /teacher/assignments（不再只显示会话内创建）
+  await page.getByText('布置', { exact: true }).first().click();
+  await page.getByText('数列极限 · ε-N').first().waitFor({ timeout: 10000 });
+  await shot('05b-assignments-1280');
+
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');
+  // #182：学生视角预览四种典型状态
+  const draftRow = page.locator('tbody tr').filter({ hasText: '草稿' }).first();
+  await draftRow.locator('.t-link').last().click();
+  await page.getByText('题目详情（含 secret，仅教师可见）').waitFor({ timeout: 10000 });
+  await page.getByText('学生视角预览', { exact: false }).first().click();
+  await page.getByText('L1 定义').first().waitFor({ timeout: 10000 });
+  const previewTabs = await page.locator('.t-tabs__nav-item-text-wrapper').allInnerTexts();
+  for (const label of ['L1 定义', 'L3 骨架', '额度用完', 'L6 总结']) {
+    assert(previewTabs.some((item) => item.trim() === label), `学生视角预览缺少：${label}`);
+  }
+  await shot('06c-review-preview-1280');
+  await page.keyboard.press('Escape');
+  // #178：来源与最近审核列确实显示（插槽没进 columns 时不会渲染）
+  await page.locator('thead').getByText('最近审核').waitFor({ timeout: 5000 });
+  await page.locator('thead').getByText('来源').waitFor({ timeout: 5000 });
+  // #171：题库状态筛选（草稿）
+  await page.locator('.problem-filters .t-select').first().click();
+  await page.getByText('草稿', { exact: true }).last().click();
+  await page.getByText(/共 \d+ 行/).waitFor({ timeout: 10000 });
+  const draftRows = await page.locator('tbody tr').count();
+  assert(draftRows >= 1, '题库筛选草稿应为至少 1 行');
+  await shot('06a-problems-filter-1280');
+  await page.goto(`${BASE}/t/settings`, { waitUntil: 'networkidle' });
+  await page.getByText('默认策略（04 §7）').waitFor({ timeout: 10000 });
+  await shot('06b-settings-1280');
 
   // 5) 三档 + 深色
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });

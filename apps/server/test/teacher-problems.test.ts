@@ -63,7 +63,7 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
     expect(bad.statusCode).toBe(422);
   });
 
-  it('POST review：approve 要求四项 S8 全绿并发布；return 记退回；edit 未实现 422', async () => {
+  it('POST review：approve 要求四项 S8 全绿并发布；return 记退回；edit 空包 422', async () => {
     const seedPkg = (await db.query<{ public: unknown }>(`select public from content.problem_versions where problem_id='epsN' and version=1`)).rows[0];
     const insertDraft = async (version: number, checks: Record<string, boolean>) => {
       await db.query(
@@ -100,6 +100,26 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
     expect(Number(listed.rows[0]?.current_version)).toBe(2);
     const records = await db.query(`select decision, minutes_spent from content.review_records where problem_id='epsN' and version=2`);
     expect(records.rows[0]).toMatchObject({ decision: 'approve', minutes_spent: 12 });
+
+    // 审核记录回读（#159）：reviewer / reviewedAt / comments 随题目包返回。
+    await db.query(
+      `insert into vault.problem_secrets (problem_id, version, secret)
+       select 'epsN', 2, secret from vault.problem_secrets where problem_id='epsN' and version=1`,
+    );
+    const detail = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems/epsN/versions/2', headers: { cookie } });
+    expect(detail.statusCode, detail.body).toBe(200);
+    const review = (detail.json() as { review: { reviewer?: string; reviewedAt?: string; comments?: string } }).review;
+    expect(review.reviewer).toBeTruthy();
+    expect(review.reviewedAt).toBeTruthy();
+    expect(review.comments).toBe('ok');
+
+    // #178：列表返回最近审核人/时间（04 §8.1）。
+    const listAfter = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems?status=published', headers: { cookie } });
+    const row = (listAfter.json() as Array<{ problemId: string; version: number; reviewedBy?: string; reviewedAt?: string }>).find(
+      (item) => item.problemId === 'epsN' && item.version === 2,
+    );
+    expect(row?.reviewedBy).toBeTruthy();
+    expect(row?.reviewedAt).toMatch(/Z$/);
 
     // return 记录退回
     await insertDraft(3, allGreen);

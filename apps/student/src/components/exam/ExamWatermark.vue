@@ -6,13 +6,17 @@
  * - 只接收已格式化的文本（不在组件里读身份/时间，便于单测与复用）。
  */
 import { computed } from 'vue'
+import { useThemeToken } from '@/composables/useThemeToken'
+import { FALLBACK_TOKEN } from '@/utils/themeTokens'
 import { WATERMARK_UPDATE_MS, cachedWatermarkBackground } from './exam'
 
 const props = withDefaults(defineProps<{ text: string; updateMs?: number }>(), {
   updateMs: WATERMARK_UPDATE_MS,
 })
 const cache = new Map<string, string>()
-const backgroundImage = computed(() => cachedWatermarkBackground(props.text, cache))
+// 水印 fill 跟随主题 --ink（D2）：深色模式深字深底不可见，故不能写死浅色值。
+const inkColor = useThemeToken('--ink', FALLBACK_TOKEN.ink)
+const backgroundImage = computed(() => cachedWatermarkBackground(props.text, cache, inkColor.value))
 const style = computed<Record<string, string>>(() => ({
   backgroundImage: backgroundImage.value,
   backgroundRepeat: 'repeat',

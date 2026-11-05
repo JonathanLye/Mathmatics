@@ -80,7 +80,7 @@ const emit = defineEmits<{ (e: 'start'): void }>()
   border-radius: var(--radius-input);
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 16px;
 }
 .pg-examgate__btn:disabled { opacity: 0.45; }

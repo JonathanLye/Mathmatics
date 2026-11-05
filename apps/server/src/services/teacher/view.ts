@@ -26,6 +26,9 @@ export function toClassSummary(row: ClassSummaryRow): Record<string, unknown> {
 export type AssignmentCardRow = {
   id: string;
   public: unknown;
+  problem_id: string;
+  problem_version: number;
+  settings: unknown;
   mode: string;
   status: string;
   open_at: Date | string;
@@ -50,6 +53,9 @@ export function toAssignmentCard(row: AssignmentCardRow): Record<string, unknown
     title: pub.title ?? '未命名题目',
     chapter: pub.chapter,
     stem: pub.stem,
+    problemId: row.problem_id,
+    version: row.problem_version,
+    settings: row.settings ?? {},
     mode: row.mode,
     status: row.status,
     openAt: iso(row.open_at),
