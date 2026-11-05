@@ -300,9 +300,8 @@ function submit() {
 }
 
 .pg-editor__title {
-  font-family: var(--font-serif);
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--ink);
 }
 

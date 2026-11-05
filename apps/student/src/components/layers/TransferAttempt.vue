@@ -262,7 +262,7 @@ function remove(line: ProofLine) {
   min-width: 0;
 }
 .pg-layer__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.pg-layer__title { font-family: var(--font-serif); font-size: 17px; font-weight: 600; color: var(--ink); }
+.pg-layer__title { font-size: 17px; font-weight: 900; color: var(--ink); }
 .pg-layer__step { color: var(--ink-2); flex: 0 0 auto; }
 .pg-layer__hint { color: var(--ink-2); }
 .pg-layer__row { display: flex; gap: var(--sp-2); }
@@ -299,10 +299,10 @@ function remove(line: ProofLine) {
   padding: 0 var(--sp-2);
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 13px;
 }
-.pg-attempt__link--danger { color: var(--margin); }
+.pg-attempt__link--danger { color: var(--margin-text); }
 .pg-attempt__just { color: var(--ink-2); }
 .pg-attempt__note { margin-top: var(--sp-1); padding: var(--sp-1) var(--sp-2); border-left: 3px solid var(--margin); background: var(--margin-soft); }
 .pg-attempt__notehead { display: flex; align-items: center; gap: var(--sp-1); }
@@ -325,7 +325,7 @@ function remove(line: ProofLine) {
 }
 .pg-attempt__notedismiss::after { border: 0; }
 .pg-attempt__editor { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
-.pg-attempt__editortitle { font-family: var(--font-serif); font-size: 15px; font-weight: 600; }
+.pg-attempt__editortitle { font-size: 15px; font-weight: 900; }
 .pg-attempt__input {
   display: block;
   width: 100%;
@@ -362,7 +362,7 @@ function remove(line: ProofLine) {
   color: var(--ink-2);
   font-size: 13px;
 }
-.pg-attempt__prov--active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pg-attempt__prov--active { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
 .pg-attempt__footer { display: flex; gap: var(--sp-2); }
 .pg-attempt__footer .pg-layer__btn { flex: 1; }
 </style>

@@ -151,16 +151,15 @@ async function submit(): Promise<void> {
   padding-bottom: calc(var(--sp-6) + var(--safe-bottom));
 }
 .pg-age__title {
-  font-family: var(--font-serif);
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--ink);
 }
 .pg-age__sub { color: var(--ink-2); }
 .pg-age__card { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-age__card--blocked { border-left: 3px solid var(--margin); }
-.pg-age__cardtitle { font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
-.pg-age__recorded { color: var(--accent); }
+.pg-age__cardtitle { font-size: 18px; font-weight: 900; color: var(--ink); }
+.pg-age__recorded { color: var(--accent-text); }
 .pg-age__options { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-age__option {
   /* uni-app H5 的 <button> 默认按内容收缩，这里显式撑满整行 */
@@ -191,25 +190,27 @@ async function submit(): Promise<void> {
   font-size: var(--fs-small);
   line-height: 1.6;
 }
-.pg-age__error { color: var(--margin); }
+.pg-age__error { color: var(--margin-text); }
 .pg-age__submit {
   width: 100%;
   box-sizing: border-box;
   align-self: stretch;
-  min-height: 48px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-input);
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius-card);
   background: var(--accent);
-  color: var(--sheet);
+  box-shadow: 0 var(--lip) 0 var(--accent-lip);
+  color: var(--on-accent);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 900;
+  letter-spacing: 0.5px;
 }
 /* uni-app H5 的 <uni-button> 不是原生表单控件，:disabled 伪类不生效，用属性选择器统一禁用态 */
 .pg-age__option[disabled] { opacity: 0.7; }
 .pg-age__submit[disabled] {
-  border-color: var(--rule);
   background: var(--rule);
-  color: var(--ink-2);
+  box-shadow: none;
+  color: var(--ink-3);
 }
 /* 去掉 uni-app H5 <button> 自带的 ::after 边框，避免与外层边框叠成双线 */
 .pg-age__option::after,

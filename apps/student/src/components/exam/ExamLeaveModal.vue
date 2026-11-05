@@ -48,8 +48,8 @@ const text = computed(() => leaveWarningText(props.count, props.maxWarnings))
   box-shadow: var(--shadow-sheet);
   border-left: 4px solid var(--hint);
 }
-.pg-leavewarn__title { font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
-.pg-leavewarn__text { color: var(--margin); font-size: 16px; }
+.pg-leavewarn__title { font-size: 18px; font-weight: 900; color: var(--ink); }
+.pg-leavewarn__text { color: var(--margin-text); font-size: 16px; }
 .pg-leavewarn__note { color: var(--ink-2); line-height: 1.6; }
 .pg-leavewarn__btn {
   min-height: 44px;

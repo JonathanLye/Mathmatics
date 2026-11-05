@@ -2,7 +2,7 @@
  * 三档宽度截图 + 横向溢出断言（DoD #8/#10：390/768/1280 无溢出）。
  * 用法：先 npm run build:mock（带 VITE_ENABLE_MOCK=1 用于四态截图），再 npm run e2e:screens
  * 深色：npm run e2e:screens:dark（等价 node tests/screenshots.mjs --dark / DARK=1）→ 输出 .artifacts/screens-dark/
- *       断言 colorScheme=dark 生效（--paper=#12161d）、--on-accent==--paper、pageerror/横向溢出/状态标记与浅色同标准。
+ *       断言 colorScheme=dark 生效（--paper=#131f24）、--on-accent=#14290a（两主题同值）、pageerror/横向溢出/状态标记与浅色同标准。
  * 依赖：playwright-core + 本机/CI 的 chromium（可用 PG_CHROMIUM 指定；自动探测 Windows/Linux/macOS）。
  *
  * PR #87 审计修复：
@@ -26,7 +26,9 @@ const distDir = path.join(appDir, 'dist', 'build', 'h5')
 const darkMode = process.argv.includes('--dark') || process.env.DARK === '1'
 const modeLabel = darkMode ? 'screens-dark' : 'screens'
 const outDir = path.join(__dirname, '.artifacts', modeLabel)
-const expectedPaper = darkMode ? '#12161d' : '#f7f6f2'
+const expectedPaper = darkMode ? '#131f24' : '#ffffff'
+// v2：--on-accent 是深字（亮绿面上对比 ≥ 4.5），不再等于 --paper；两个主题下必须同值。
+const expectedOnAccent = '#14290a'
 const logPrefix = darkMode ? '[screens-dark]' : '[screens]'
 
 const MIME = {
@@ -222,7 +224,7 @@ async function main() {
         await page.goto('about:blank')
         await page.goto('http://127.0.0.1:' + port + '/' + pg.hash, { waitUntil: 'networkidle' })
         await page.waitForTimeout(500)
-        // 深色断言：colorScheme 生效 + --paper 计算值正确 + --on-accent == --paper（D3）。
+        // 深色断言：colorScheme 生效 + --paper 计算值正确 + --on-accent 固定深字（D3，v2）。
         const theme = await page.evaluate(() => {
           const root = getComputedStyle(document.documentElement)
           return {
@@ -232,7 +234,7 @@ async function main() {
           }
         })
         const themeBad = theme.prefersDark !== darkMode || theme.paper !== expectedPaper
-        const onAccentBroke = theme.onAccent !== theme.paper
+        const onAccentBroke = theme.onAccent !== expectedOnAccent
         if (themeBad) themeMismatch++
         if (onAccentBroke) onAccentBad++
         const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
@@ -306,7 +308,7 @@ async function main() {
         (r.markerMissing ? '  !! 状态标记缺失' : '') +
         (r.layoutBad ? '  !! 布局断言失败' : '') +
         (r.themeBad ? '  !! 主题未生效' : '') +
-        (r.onAccentBroke ? '  !! --on-accent 与 --paper 不一致' : '') +
+        (r.onAccentBroke ? '  !! --on-accent 不是 #14290a' : '') +
         (r.pageErrors.length > 0 ? '  !! pageerror: ' + r.pageErrors.join(' | ') : ''),
     )
   }
@@ -314,7 +316,7 @@ async function main() {
     logPrefix + ' 共 ' + results.length + ' 张（' + (darkMode ? '深色' : '浅色') + '）；横向溢出 ' + overflow +
       ' 处；状态标记缺失 ' + markerMissing + ' 处；布局断言失败 ' + layoutBadCount +
       ' 处；pageerror ' + pageErrorCount + ' 页；主题未生效 ' + themeMismatch +
-      ' 页；--on-accent 与 --paper 不一致 ' + onAccentBad + ' 页；输出：' + outDir,
+      ' 页；--on-accent 不是 #14290a ' + onAccentBad + ' 页；输出：' + outDir,
   )
   if (overflow + markerMissing + layoutBadCount + pageErrorCount + themeMismatch + onAccentBad > 0) process.exit(1)
 }

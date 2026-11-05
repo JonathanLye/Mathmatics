@@ -272,9 +272,8 @@ function softLanding(action: string) {
 }
 .pg-help__title {
   color: var(--ink);
-  font-family: var(--font-serif);
   font-size: var(--fs-stem);
-  font-weight: 600;
+  font-weight: 900;
   line-height: 1.4;
 }
 .pg-help__close {

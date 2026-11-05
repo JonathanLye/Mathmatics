@@ -159,9 +159,8 @@ function onFrameError() {
 }
 
 .pg-mirror__title {
-  font-family: var(--font-serif);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--ink);
 }
 
@@ -169,7 +168,7 @@ function onFrameError() {
   padding: 1px var(--sp-2);
   border: 1px solid var(--accent);
   border-radius: 999px;
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
   white-space: nowrap;
 }

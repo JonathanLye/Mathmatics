@@ -159,13 +159,13 @@ function fmtDate(iso?: string): string {
   line-height: 1;
 }
 .pg-book__back::after { border: 0; }
-.pg-book__title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; }
+.pg-book__title { font-size: 20px; font-weight: 900; }
 .pg-book__hint { display: block; margin-bottom: var(--sp-3); color: var(--ink-2); }
 .pg-book__empty { display: block; color: var(--ink-2); }
-.pg-book__subtitle { display: block; margin: var(--sp-3) 0 var(--sp-2); font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-book__subtitle { display: block; margin: var(--sp-3) 0 var(--sp-2); font-size: 16px; font-weight: 900; }
 .pg-book__redo { padding: var(--sp-3); margin-bottom: var(--sp-2); }
 .pg-book__redohead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.pg-book__sectiontitle { font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-book__sectiontitle { font-size: 16px; font-weight: 900; }
 .pg-book__redocount { color: var(--ink-2); }
 .pg-book__redohint { display: block; margin-top: 2px; color: var(--ink-2); }
 .pg-book__redoskip { display: block; margin-top: 2px; color: var(--hint); }
@@ -173,7 +173,7 @@ function fmtDate(iso?: string): string {
 .pg-book__redomain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pg-book__redotitle { font-size: 15px; color: var(--ink); }
 .pg-book__redometa { color: var(--ink-2); }
-.pg-book__redoreason { color: var(--margin); }
+.pg-book__redoreason { color: var(--margin-text); }
 .pg-book__redoopen {
   flex: 0 0 auto;
   min-height: 40px;
@@ -181,11 +181,11 @@ function fmtDate(iso?: string): string {
   border: 1px solid var(--accent);
   border-radius: var(--radius-input);
   background: var(--sheet);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 14px;
 }
 .pg-book__card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); margin-bottom: var(--sp-3); }
-.pg-book__ptitle { font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-book__ptitle { font-size: 16px; font-weight: 900; }
 .pg-book__meta { color: var(--ink-2); }
 .pg-book__section { display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px dashed var(--rule); }
 .pg-book__label { color: var(--ink-2); }
@@ -195,7 +195,7 @@ function fmtDate(iso?: string): string {
   border: 1px solid var(--accent);
   border-radius: var(--radius-input);
   background: var(--sheet);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 15px;
 }
 .pg-book__skeleton { padding: var(--sp-3); }

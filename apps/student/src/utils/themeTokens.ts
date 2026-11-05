@@ -9,10 +9,10 @@
 
 /** 浅色 token 兜底值（tokens.css :root 的静态值；无 DOM 时使用）。 */
 export const FALLBACK_TOKEN = {
-  accent: '#2b4fa3',
-  rule: '#e2e4e8',
-  ink: '#1d2430',
-  paper: '#f7f6f2',
+  accent: '#58cc02',
+  rule: '#e5e5e5',
+  ink: '#3c3c3c',
+  paper: '#ffffff',
 } as const
 
 /** 读取 CSS 自定义属性（如 "--accent"）；没有 DOM、异常或空值时回退 fallback。 */

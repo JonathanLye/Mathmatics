@@ -1,52 +1,85 @@
 /**
- * 设计 token —— 唯一来源：10-开发文档/02-学生端设计规范.md §2
+ * 设计 token —— v2「厚边积木」（DESIGN-v2；唯一来源）。
  * 规则：
- * - 颜色只表达含义：红=批注（问句）、琥珀=计透露量的提示、绿=衔接/完成。
- * - 同时映射到 TDesign 的 --td-* 变量，便于 t- 组件跟着换肤。
- * - 深色模式：prefers-color-scheme + [data-theme="dark"] 两处都要生效。
+ * - 颜色只表达含义：绿=主操作/答对/完成；蓝=助教的话/待做（--margin 沿用旧名）；黄=计透露量的提示（--hint）；红=答错/求助（--danger）。
+ * - 可点的东西有 4px 硬下唇（--lip），不用模糊阴影；圆角 12/16/24。
+ * - 对比度：--on-accent 与 --accent 必须 ≥ 4.5:1（#164）。亮绿面上用深色字而不是白字。
+ * - 同时映射到 TDesign 的 --td-* 变量；深色 = prefers-color-scheme + html[data-theme='dark'] 两处同值。
  */
 :root {
-  /* 颜色（浅色） */
-  --paper: #f7f6f2;
+  /* 中性色 */
+  --paper: #ffffff;
   --sheet: #ffffff;
-  --ink: #1d2430;
-  --ink-2: #5d6878;
-  --rule: #e2e4e8;
-  --accent: #2b4fa3;
-  --accent-soft: #e8eefb;
-  /* 主色（--accent）上的文字色：浅色时用纸色（对比 ≈6.9:1），深色时随 --paper 自动变为深字（在 #8fb0ff 上 ≈7.5:1），满足 WCAG AA。 */
-  --on-accent: var(--paper);
-  --margin: #9a3b4f;
-  --margin-soft: #f7ecef;
-  --hint: #9a6b12;
-  --hint-soft: #fbf3e2;
-  --ok: #2f7a54;
-  --focus: #2b4fa3;
+  --soft: #f7f7f7;
+  --ink: #3c3c3c;
+  --ink-2: #6b6b6b;
+  --ink-3: #afafaf;
+  --rule: #e5e5e5;
 
-  /* 间距 / 圆角 / 阴影 / 动效 */
+  /* 主色：草绿（主操作/完成） */
+  --accent: #58cc02;
+  --accent-lip: #58a700;
+  --accent-text: #3c8400;
+  --accent-soft: #d7ffb8;
+  /* 主色面上的文字：深字，对比 ≥ 4.5（白字只有 ≈2:1，见 #164） */
+  --on-accent: #14290a;
+
+  /* 蓝：助教的话（旧名 --margin）/ 待做 */
+  --margin: #1cb0f6;
+  --margin-lip: #1899d6;
+  --margin-text: #1274a8;
+  --margin-soft: #ddf4ff;
+  --on-margin: #06344d;
+
+  /* 黄：透露额度 / 提示 */
+  --hint: #9a7200;
+  --hint-fill: #ffc800;
+  --hint-lip: #e5b400;
+  --hint-soft: #fff3c2;
+  --on-hint: #4a3600;
+
+  /* 红：答错 / 求助 */
+  --danger: #ff4b4b;
+  --danger-face: #d93030;
+  --danger-lip: #b02424;
+  --danger-text: #c42828;
+  --danger-soft: #ffdfe0;
+
+  /* 橙：卡住（教师端） */
+  --warn: #ff9600;
+  --warn-lip: #e08600;
+  --warn-text: #a85f00;
+  --warn-soft: #ffe9cc;
+
+  --ok: #3c8400;
+  --focus: #1899d6;
+
+  /* 间距 / 圆角 / 厚边 / 动效 */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
   --sp-6: 24px;
   --sp-8: 32px;
-  --radius-input: 6px;
-  --radius-card: 10px;
-  --radius-sheet: 16px;
-  --shadow-dock: 0 -1px 0 var(--rule), 0 -6px 18px rgba(29, 36, 48, 0.06);
-  --shadow-sheet: 0 -8px 28px rgba(29, 36, 48, 0.16);
-  --dur-fast: 150ms;
-  --dur-normal: 200ms;
+  --radius-input: 12px;
+  --radius-card: 16px;
+  --radius-sheet: 24px;
+  --lip: 4px;
+  --shadow-dock: 0 -2px 0 var(--rule);
+  --shadow-sheet: 0 -2px 0 var(--rule);
+  --dur-fast: 100ms;
+  --dur-normal: 220ms;
+  --ease-pop: cubic-bezier(0.34, 1.4, 0.64, 1);
 
-  /* 文案排版 */
-  --font-serif: "Noto Serif SC", "Songti SC", "SimSun", serif;
-  --font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --fs-stem: 17px;
+  /* 文案排版：Nunito（数字/拉丁）+ 系统中文粗体；题面与数学用衬线 */
+  --font-serif: 'STIX Two Text', 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  --font-sans: 'Nunito', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fs-stem: 18px;
   --fs-body: 16px;
   --fs-small: 13px;
   --fs-mono: 12px;
-  --lh-body: 1.65;
+  --lh-body: 1.6;
 
   /* 视口与安全区（02 §6） */
   --safe-top: env(safe-area-inset-top, 0px);
@@ -75,37 +108,49 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #12161d;
-    --sheet: #1a1f28;
-    --ink: #e4e8ef;
-    --ink-2: #9aa5b5;
-    --rule: #2c3442;
-    --accent: #8fb0ff;
-    --accent-soft: #1f2b45;
-    --margin: #e58aa0;
-    --margin-soft: #33202a;
-    --hint: #e3b65a;
-    --hint-soft: #33291a;
-    --ok: #6fcf9b;
-    --focus: #8fb0ff;
-    --shadow-dock: 0 -1px 0 var(--rule), 0 -6px 18px rgba(0, 0, 0, 0.35);
-    --shadow-sheet: 0 -8px 28px rgba(0, 0, 0, 0.45);
+    --paper: #131f24;
+    --sheet: #131f24;
+    --soft: #202f36;
+    --ink: #f1f7fb;
+    --ink-2: #afc0c9;
+    --ink-3: #6f838e;
+    --rule: #37464f;
+    --accent-text: #89e219;
+    --accent-soft: #1f3a12;
+    --margin-text: #49c0f8;
+    --margin-soft: #10344a;
+    --hint: #ffc800;
+    --hint-soft: #3d3410;
+    --danger-text: #ff7878;
+    --danger-soft: #4a1e24;
+    --warn-text: #ffb340;
+    --warn-soft: #402a0c;
+    --ok: #89e219;
+    --focus: #49c0f8;
+    --shadow-dock: 0 -2px 0 var(--rule);
+    --shadow-sheet: 0 -2px 0 var(--rule);
   }
 }
 
 /* 允许手动切换（设置页/演示页用 html[data-theme]） */
 html[data-theme='dark'] {
-  --paper: #12161d;
-  --sheet: #1a1f28;
-  --ink: #e4e8ef;
-  --ink-2: #9aa5b5;
-  --rule: #2c3442;
-  --accent: #8fb0ff;
-  --accent-soft: #1f2b45;
-  --margin: #e58aa0;
-  --margin-soft: #33202a;
-  --hint: #e3b65a;
-  --hint-soft: #33291a;
-  --ok: #6fcf9b;
-  --focus: #8fb0ff;
+  --paper: #131f24;
+  --sheet: #131f24;
+  --soft: #202f36;
+  --ink: #f1f7fb;
+  --ink-2: #afc0c9;
+  --ink-3: #6f838e;
+  --rule: #37464f;
+  --accent-text: #89e219;
+  --accent-soft: #1f3a12;
+  --margin-text: #49c0f8;
+  --margin-soft: #10344a;
+  --hint: #ffc800;
+  --hint-soft: #3d3410;
+  --danger-text: #ff7878;
+  --danger-soft: #4a1e24;
+  --warn-text: #ffb340;
+  --warn-soft: #402a0c;
+  --ok: #89e219;
+  --focus: #49c0f8;
 }

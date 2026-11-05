@@ -195,117 +195,77 @@ function onDismissNote(note: Note): void {
 </template>
 
 <style scoped>
-.pg-lines {
-  display: flex;
-  flex-direction: column;
-}
+.pg-lines { display: flex; flex-direction: column; gap: var(--sp-3); }
 
+/* 证明行：一块厚边卡（2px 边 + 4px 下唇），行号是小方块 */
 .pg-lines__row {
   display: flex;
-  gap: var(--sp-2);
-  padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--rule);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-3);
+  background: var(--sheet);
+  border: 2px solid var(--rule);
+  border-bottom-width: var(--lip);
+  border-radius: var(--radius-card);
 }
-
 .pg-lines__no {
-  flex: 0 0 24px;
-  width: 24px;
-  padding-top: 2px;
-  text-align: right;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--rule);
+  border-radius: 9px;
+  background: var(--soft);
   color: var(--ink-2);
-  font-size: var(--fs-mono);
+  font-size: 15px;
+  font-weight: 900;
 }
-
-.pg-lines__body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.pg-lines__stmt {
-  color: var(--ink);
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  overflow-wrap: anywhere;
-}
-
-.pg-lines__meta {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-1);
-  flex-wrap: wrap;
-  margin-top: 2px;
-}
-
+.pg-lines__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pg-lines__stmt { color: var(--ink); font-size: 20px; line-height: 1.45; overflow-wrap: anywhere; }
+.pg-lines__meta { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: 4px; }
 .pg-lines__just {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--soft);
   color: var(--ink-2);
-  font-size: var(--fs-small);
+  font-size: 13px;
+  font-weight: 800;
 }
-
-.pg-lines__justlabel {
-  flex: 0 0 auto;
-  color: var(--ink-2);
-}
-
-.pg-lines__justtext {
-  min-width: 0;
-}
-
-.pg-lines__justempty {
-  color: var(--ink-2);
-}
-
+.pg-lines__justlabel { flex: 0 0 auto; color: var(--ink-3); font-size: 12px; letter-spacing: 0.5px; }
+.pg-lines__justtext { min-width: 0; color: var(--ink-2); }
+.pg-lines__justempty { color: var(--ink-3); }
 .pg-lines__badge {
   flex: 0 0 auto;
   margin-left: auto;
-  padding: 1px var(--sp-2);
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: var(--paper);
+  padding: 2px var(--sp-2);
+  border-radius: 10px;
+  background: var(--soft);
   color: var(--ink-2);
-  /* 元信息 12–13px（02 §2.3），用 --fs-mono=12px，不写死 11px。 */
   font-size: var(--fs-mono);
+  font-weight: 800;
   line-height: 1.5;
   white-space: nowrap;
 }
 
-/* 行内批注（手机）：红笔左边线 + 批注底色（02 §3.1 / §4.8）。
-   颜色只表达含义：--margin=助教提问，--hint=计透露量的提示，--accent=概念回答。
-   annotation 一律 --margin；不读 note.text 推断"衔接上了"（PR #90 复审第 3 条：
-   等 B 在契约加结构化字段 note.linked / note.cls 后再染色）。 */
+/* 行内批注：助教的话 = 蓝；提示 = 黄；概念回答 = 绿（颜色只表达含义，02 §4.8） */
 .pg-lines__note {
   margin-top: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
-  border-left: 3px solid var(--rule);
-  border-radius: 0 var(--radius-input) var(--radius-input) 0;
-  background: var(--paper);
+  border: 2px solid var(--rule);
+  border-radius: 14px;
+  background: var(--soft);
   color: var(--ink);
-  animation: pg-note-in var(--dur-fast) ease-out;
+  animation: pg-note-in 220ms var(--ease-pop);
 }
-
-.pg-lines__notehead {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: 2px;
-}
-
-.pg-lines__notewho {
-  color: var(--ink-2);
-}
-
-.pg-lines__notetime {
-  color: var(--ink-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-}
-
+.pg-lines__notehead { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 2px; }
+.pg-lines__notewho { color: var(--ink-2); font-weight: 900; font-size: 12px; letter-spacing: 0.6px; }
+.pg-lines__notetime { color: var(--ink-3); font-family: var(--font-mono); font-size: var(--fs-mono); }
 /* 关闭批注（#151）：触控目标 ≥44px；不额外撑高卡片（用负外边距抵消）。 */
 .pg-lines__notedismiss {
   flex: 0 0 auto;
@@ -317,132 +277,51 @@ function onDismissNote(note: Note): void {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ink-2);
+  color: var(--ink-3);
   font-size: 18px;
   line-height: 1;
 }
-
-.pg-lines__notedismiss::after {
-  border: 0;
-}
-
-.pg-lines__notetext {
-  color: var(--ink);
-}
-
-.pg-lines__note--annotation {
-  border-left-color: var(--margin);
-  background: var(--margin-soft);
-}
-.pg-lines__note--annotation .pg-lines__notewho {
-  color: var(--margin);
-}
-
-.pg-lines__note--hint {
-  border-left-color: var(--hint);
-  background: var(--hint-soft);
-}
-.pg-lines__note--hint .pg-lines__notewho {
-  color: var(--hint);
-}
-
-.pg-lines__note--concept {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
-.pg-lines__note--concept .pg-lines__notewho {
-  color: var(--accent);
-}
-
+.pg-lines__notedismiss::after { border: 0; }
+.pg-lines__notetext { color: var(--ink); font-weight: 700; line-height: 1.5; }
+.pg-lines__note--annotation { border-color: var(--margin); background: var(--margin-soft); }
+.pg-lines__note--annotation .pg-lines__notewho { color: var(--margin-text); }
+.pg-lines__note--hint { border-color: var(--hint-fill); background: var(--hint-soft); }
+.pg-lines__note--hint .pg-lines__notewho { color: var(--hint); }
+.pg-lines__note--concept { border-color: var(--accent); background: var(--accent-soft); }
+.pg-lines__note--concept .pg-lines__notewho { color: var(--accent-text); }
 .pg-lines__note--system,
 .pg-lines__note--refusal,
 .pg-lines__note--lesson,
 .pg-lines__note--nudge,
-.pg-lines__note--student {
-  border-left-color: var(--rule);
-  background: var(--paper);
-}
+.pg-lines__note--student { border-color: var(--rule); background: var(--soft); }
 
-/* ≥600px 行内标记：只用一个颜色点，正文在页边栏（02 §3.2；PR #90 复审第 4 条）。 */
-.pg-lines__markers {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-top: var(--sp-1);
-}
+/* ≥600px 行内标记：只用一个颜色点，正文在页边栏（02 §3.2）。 */
+.pg-lines__markers { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.pg-lines__marker { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-3); }
+.pg-lines__marker--annotation { background: var(--margin); }
+.pg-lines__marker--hint { background: var(--hint-fill); }
+.pg-lines__marker--concept { background: var(--accent); }
 
-.pg-lines__marker {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ink-2);
-}
-
-.pg-lines__marker--annotation {
-  background: var(--margin);
-}
-
-.pg-lines__marker--hint {
-  background: var(--hint);
-}
-
-.pg-lines__marker--concept {
-  background: var(--accent);
-}
-
-.pg-lines__tail {
-  padding: var(--sp-3) 0 0;
-}
-
-.pg-lines__tailtitle {
-  display: block;
-  margin-bottom: var(--sp-1);
-  color: var(--ink-2);
-}
-
-.pg-lines__empty {
-  display: block;
-  padding: var(--sp-4) 0;
-  color: var(--ink-2);
-  line-height: var(--lh-body);
-}
-
+.pg-lines__tail { padding: var(--sp-3) 0 0; }
+.pg-lines__tailtitle { display: block; margin-bottom: var(--sp-1); color: var(--ink-2); font-weight: 800; }
+.pg-lines__empty { display: block; padding: var(--sp-4) 0; color: var(--ink-2); font-weight: 700; line-height: var(--lh-body); }
 .pg-lines__add {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  min-height: 48px;
-  margin-top: var(--sp-3);
-  border: 1px dashed var(--rule);
-  border-radius: var(--radius-input);
+  min-height: 60px;
+  margin-top: var(--sp-1);
+  border: 2px dashed var(--rule);
+  border-radius: var(--radius-card);
   background: transparent;
-  color: var(--accent);
+  color: var(--ink-2);
   font-size: 15px;
+  font-weight: 800;
 }
-
-.pg-lines__add::after {
-  border: 0;
-}
-
-.pg-lines__add:disabled {
-  opacity: 0.45;
-}
-
-.pg-lines__addicon {
-  font-size: 18px;
-  line-height: 1;
-}
-
-@keyframes pg-note-in {
-  from {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+.pg-lines__add::after { border: 0; }
+.pg-lines__add:disabled { opacity: 0.45; }
+.pg-lines__addicon { font-size: 20px; line-height: 1; }
+@keyframes pg-note-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
 </style>

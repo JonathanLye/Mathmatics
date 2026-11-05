@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PgIcon from '@/components/ui/PgIcon.vue'
+import PgMascot from '@/components/ui/PgMascot.vue'
 /**
  * 做题页（issue #10/#11/#12/#16 的集成页）。
  * 只渲染 AttemptState；不做层/预算/门槛/归类判定（08 §8 AI 规则 3）。
@@ -1347,8 +1349,25 @@ function backHome() {
               </view>
             </view>
 
-            <view v-else class="pg-practice__done pg-sheet" data-testid="completion-card">
+            <view v-else class="pg-practice__done pg-practice__done--win" data-testid="completion-card">
+              <view class="pg-win__paper" aria-hidden="true">
+                <view class="pg-win__sk" style="width: 82%" /><view class="pg-win__sk" style="width: 64%" /><view class="pg-win__sk" style="width: 73%" />
+                <view class="pg-win__stamp"><PgIcon name="qed" :size="44" color="#fff" /></view>
+              </view>
+              <view class="pg-win__mascot"><PgMascot expr="cheer" :size="84" tone="bee" /></view>
               <text class="pg-practice__donetitle" data-testid="completion-title">本题完成</text>
+              <text class="pg-win__big" data-testid="completion-independence">{{ state.completion?.independence ?? '-' }}</text>
+              <text class="pg-win__biglabel">独立度</text>
+              <view class="pg-win__keys" aria-hidden="true">
+                <view
+                  v-for="k in state.budget.keysTotal"
+                  :key="k"
+                  class="pg-win__key"
+                  :class="{ 'pg-win__key--hint': k > state.budget.keysOwn }"
+                >
+                  <PgIcon :name="k > state.budget.keysOwn ? 'bulb' : 'check'" :size="26" :tone="'ink'" />
+                </view>
+              </view>
               <text class="pg-practice__donebody pg-small">
                 自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；
                 透露 {{ state.budget.revealUsed }} / {{ state.budget.revealMax }}。
@@ -1359,10 +1378,9 @@ function backHome() {
                 你写出的关键步骤：{{ state.completion?.leanCard?.steps?.map((s) => s.label).join('、') }}
               </text>
               <text class="pg-practice__donebody pg-small">P0 只核对关键步骤齐全，未校验逻辑顺序。</text>
-              <view class="pg-practice__donerow">
-                <button class="pg-practice__btn" role="button" data-testid="back-home" @tap="backHome">回首页</button>
+              <view class="pg-practice__donerow pg-practice__donerow--win">
                 <button
-                  class="pg-practice__btn pg-practice__btn--primary"
+                  class="pg-btn pg-win__btn"
                   role="button"
                   data-testid="add-to-notebook"
                   @tap="goProofbook"
@@ -1370,13 +1388,14 @@ function backHome() {
                   加入证明本
                 </button>
                 <button
-                  class="pg-practice__btn"
+                  class="pg-btn pg-win__btn pg-win__btn--ghost"
                   role="button"
                   data-testid="make-transfer"
                   @tap="handleMakeTransfer"
                 >
                   再做一道迁移题
                 </button>
+                <button class="pg-btn pg-win__btn pg-win__btn--ghost" role="button" data-testid="back-home" @tap="backHome">回首页</button>
               </view>
             </view>
           </template>
@@ -1520,7 +1539,7 @@ function backHome() {
       </view>
     </view>
 
-    <view v-if="mode === 'mobile'" class="pg-practice__dockwrap">
+    <view v-if="mode === 'mobile' && !isCompleted" class="pg-practice__dockwrap">
       <BudgetBar :budget="state.budget" />
       <BottomDock
         :help-busy="busy"
@@ -1674,8 +1693,8 @@ function backHome() {
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-4);
   background: var(--accent-soft);
-  border-bottom: 1px solid var(--accent);
-  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent-text);
 }
 .pg-exambar__label { font-size: var(--fs-small); font-weight: 600; }
 .pg-exambar__time { margin-left: auto; font-size: var(--fs-body); }
@@ -1688,7 +1707,7 @@ function backHome() {
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: color-mix(in srgb, var(--ink) 48%, transparent);
+  background: rgba(0, 0, 0, 0.55);
 }
 .pg-fsexit__sheet {
   width: min(420px, 100%);
@@ -1697,17 +1716,19 @@ function backHome() {
   gap: var(--sp-2);
   padding: var(--sp-4);
   background: var(--sheet);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-sheet);
-  box-shadow: var(--shadow-sheet);
 }
-.pg-fsexit__title { font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
+.pg-fsexit__title { font-size: 20px; font-weight: 900; color: var(--ink); }
 .pg-fsexit__text { color: var(--ink-2); line-height: 1.6; }
 .pg-fsexit__btn {
-  min-height: 44px;
-  border-radius: var(--radius-input);
-  border: 1px solid var(--accent);
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius-card);
   background: var(--accent);
+  box-shadow: 0 var(--lip) 0 var(--accent-lip);
   color: var(--on-accent);
+  font-weight: 900;
 }
 .pg-practice__shell {
   display: block;
@@ -1754,7 +1775,7 @@ function backHome() {
   color: var(--ink);
 }
 .pg-practice__content {
-  padding: 0 var(--sp-3);
+  padding: 0;
 }
 .pg-draftnotice {
   display: flex;
@@ -1762,10 +1783,11 @@ function backHome() {
   gap: var(--sp-2);
   margin: var(--sp-2) 0;
   padding: var(--sp-2) var(--sp-3);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-card);
   background: var(--accent-soft);
   color: var(--ink);
+  font-weight: 700;
 }
 .pg-draftnotice__text { flex: 1; min-width: 0; }
 .pg-draftnotice__btn {
@@ -1784,13 +1806,14 @@ function backHome() {
   margin: var(--sp-2) 0;
 }
 .pg-practice__layertitle {
-  font-family: var(--font-serif);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.25;
   color: var(--ink);
 }
 .pg-practice__layertask {
   color: var(--ink-2);
+  font-weight: 700;
 }
 .pg-practice__aside {
   border-left: 1px solid var(--rule);
@@ -1799,19 +1822,18 @@ function backHome() {
 }
 .pg-practice__asidetitle {
   display: block;
-  font-family: var(--font-serif);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 900;
   margin-bottom: var(--sp-2);
 }
 .pg-practice__note {
-  padding: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   margin-bottom: var(--sp-2);
-  border-left: 3px solid var(--rule);
+  border-radius: 14px;
 }
-.pg-practice__note--annotation { border-left-color: var(--margin); background: var(--margin-soft); }
-.pg-practice__note--hint { border-left-color: var(--hint); background: var(--hint-soft); }
-.pg-practice__note--concept { border-left-color: var(--accent); background: var(--accent-soft); }
+.pg-practice__note--annotation { border-color: var(--margin); background: var(--margin-soft); }
+.pg-practice__note--hint { border-color: var(--hint-fill); background: var(--hint-soft); }
+.pg-practice__note--concept { border-color: var(--accent); background: var(--accent-soft); }
 .pg-practice__notehead { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 2px; }
 .pg-practice__notewho { display: block; color: var(--ink-2); }
 .pg-practice__notetime { color: var(--ink-2); font-family: var(--font-mono); font-size: var(--fs-mono); }
@@ -1843,7 +1865,7 @@ function backHome() {
 }
 .pg-practice__dockwrap :deep(.pg-budget) {
   background: var(--paper);
-  border-top: 1px solid var(--rule);
+  border-top: 2px solid var(--rule);
 }
 .pg-practice__finishrow {
   display: flex;
@@ -1851,19 +1873,26 @@ function backHome() {
   padding: var(--sp-3) 0 var(--sp-2);
 }
 .pg-practice__btn {
-  min-height: 44px;
+  min-height: 48px;
   padding: 0 var(--sp-4);
-  border-radius: var(--radius-input);
-  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  border: 2px solid var(--rule);
+  box-shadow: 0 2px 0 var(--rule);
   background: var(--sheet);
-  color: var(--ink);
+  color: var(--margin-text);
   font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
 }
+.pg-practice__btn::after { display: none; }
+.pg-practice__btn:active { transform: translateY(2px); box-shadow: none; }
 .pg-practice__btn--primary {
-  border-color: var(--accent);
+  border: 0;
   color: var(--on-accent);
   background: var(--accent);
+  box-shadow: 0 var(--lip) 0 var(--accent-lip);
 }
+.pg-practice__btn--primary:active { transform: translateY(var(--lip)); box-shadow: none; }
 .pg-practice__btn:disabled,
 .pg-practice__btn--disabled {
   opacity: 0.45;
@@ -1875,7 +1904,7 @@ function backHome() {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  border-left: 3px solid var(--accent);
+  border-color: var(--accent);
 }
 .pg-practice__drafthead {
   display: flex;
@@ -1884,9 +1913,8 @@ function backHome() {
   gap: var(--sp-2);
 }
 .pg-practice__drafttitle {
-  font-family: var(--font-serif);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--ink);
 }
 .pg-practice__draftmeta { color: var(--ink-2); }
@@ -1910,9 +1938,9 @@ function backHome() {
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--rule, rgba(0, 0, 0, 0.12));
+  border-bottom: 2px solid var(--rule, rgba(0, 0, 0, 0.12));
 }
-.pg-inksheet__title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--ink); }
+.pg-inksheet__title { font-size: 18px; font-weight: 900; color: var(--ink); }
 .pg-inksheet__stage { flex: 1; min-height: 0; }
 .pg-recogmask {
   position: fixed;
@@ -1920,7 +1948,7 @@ function backHome() {
   z-index: 66;
   display: flex;
   align-items: flex-end;
-  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  background: rgba(0, 0, 0, 0.5);
 }
 .pg-recogloading {
   width: 100%;
@@ -1929,17 +1957,44 @@ function backHome() {
   gap: var(--sp-2);
   padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  animation: pg-sheet-up 320ms var(--ease-pop) both;
 }
 .pg-recogloading__title {
-  font-family: var(--font-serif);
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 900;
 }
 .pg-recogloading__hint { color: var(--ink-2); }
 .pg-practice__placeholder { padding: var(--sp-3); }
 .pg-practice__done { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-practice__donetitle { font-family: var(--font-serif); font-size: 20px; font-weight: 600; }
-.pg-practice__donebody { color: var(--ink-2); }
+.pg-practice__donetitle { font-size: 22px; font-weight: 900; }
+.pg-practice__donebody { color: var(--ink-2); font-weight: 700; }
 .pg-practice__donerow { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+/* 完成页：整块深草绿 + ∎ 落章（白字对 #3c8400 ≥ 4.5:1）。 */
+.pg-practice__done--win {
+  position: relative;
+  margin: var(--sp-3) calc(-1 * var(--sp-3)) 0;
+  padding: 150px var(--sp-4) var(--sp-6);
+  align-items: center;
+  gap: var(--sp-2);
+  background: #3c8400;
+  color: #fff;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  text-align: center;
+}
+.pg-win__paper { position: absolute; left: 32px; right: 32px; top: 36px; height: 120px; padding: 20px 22px; border-radius: 20px; background: #fff; box-shadow: 0 6px 0 #2c6200; }
+.pg-win__sk { height: 10px; margin-bottom: 12px; border-radius: 5px; background: #eee; }
+.pg-win__stamp { position: absolute; right: 14px; bottom: -34px; width: 80px; height: 80px; border-radius: 24px; background: var(--accent); border: 5px solid #fff; box-shadow: 0 6px 0 var(--accent-lip); display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); animation: pg-stamp 700ms var(--ease-pop) both; }
+.pg-win__mascot { position: absolute; right: 18px; top: -34px; }
+.pg-practice__done--win .pg-practice__donetitle { margin-top: var(--sp-3); font-size: 15px; letter-spacing: 1.4px; opacity: 0.95; }
+.pg-win__big { font-size: 64px; line-height: 1; font-weight: 900; letter-spacing: -1px; }
+.pg-win__biglabel { font-size: 14px; font-weight: 900; letter-spacing: 1px; opacity: 0.92; }
+.pg-win__keys { display: flex; gap: 10px; justify-content: center; margin: var(--sp-2) 0; }
+.pg-win__key { width: 44px; height: 44px; border-radius: 14px; background: #fff; color: #14290a; box-shadow: 0 4px 0 #2c6200; display: flex; align-items: center; justify-content: center; animation: pg-pop 380ms var(--ease-pop) both; }
+.pg-win__key--hint { background: var(--hint-fill); box-shadow: 0 4px 0 var(--hint-lip); }
+.pg-practice__done--win .pg-practice__donebody { color: #fff; opacity: 0.95; }
+.pg-practice__donerow--win { flex-direction: column; align-self: stretch; margin-top: var(--sp-3); gap: var(--sp-3); }
+.pg-win__btn { background: #fff; color: #2c6200; box-shadow: 0 4px 0 #cfefb0; }
+.pg-win__btn--ghost { background: transparent; color: #fff; border: 2px solid rgba(255, 255, 255, 0.6); box-shadow: none; min-height: 48px; }
 .pg-practice__mask {
   position: fixed;
   inset: 0;

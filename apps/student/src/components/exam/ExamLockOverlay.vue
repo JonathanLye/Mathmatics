@@ -55,7 +55,7 @@ const title = computed(() => examLockedText())
   border-left: 4px solid var(--margin);
 }
 .pg-locked__icon { font-size: 28px; line-height: 1; }
-.pg-locked__title { font-family: var(--font-serif); font-size: 19px; font-weight: 600; color: var(--ink); }
+.pg-locked__title { font-size: 19px; font-weight: 900; color: var(--ink); }
 .pg-locked__text { color: var(--ink-2); line-height: 1.6; }
 .pg-locked__btn {
   min-height: 44px;

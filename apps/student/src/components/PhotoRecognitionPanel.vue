@@ -217,7 +217,7 @@ function ignore(): void {
 }
 .pg-photo__head { display: flex; align-items: flex-start; gap: var(--sp-2); }
 .pg-photo__headtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.pg-photo__title { font-family: var(--font-serif); font-size: var(--fs-stem); font-weight: 600; color: var(--ink); }
+.pg-photo__title { font-size: var(--fs-stem); font-weight: 900; color: var(--ink); }
 .pg-photo__summary { color: var(--ink-2); }
 .pg-photo__close {
   margin-left: auto;
@@ -245,12 +245,12 @@ function ignore(): void {
   min-height: 44px;
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 20px;
 }
 .pg-photo__lineno { color: var(--ink-2); }
 .pg-photo__meta { color: var(--ink-2); }
-.pg-photo__editbtn { margin-left: auto; color: var(--accent); background: transparent; border: 1px solid var(--rule); border-radius: var(--radius-input); min-height: 32px; padding: 0 var(--sp-2); }
+.pg-photo__editbtn { margin-left: auto; color: var(--accent-text); background: transparent; border: 1px solid var(--rule); border-radius: var(--radius-input); min-height: 32px; padding: 0 var(--sp-2); }
 .pg-photo__linebody { color: var(--ink); }
 .pg-photo__input {
   width: 100%;
@@ -267,7 +267,7 @@ function ignore(): void {
   min-height: 36px;
   border: 1px solid var(--accent);
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   border-radius: var(--radius-input);
   padding: 0 var(--sp-3);
 }

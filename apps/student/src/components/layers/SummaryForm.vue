@@ -87,7 +87,7 @@ function submit() {
   min-width: 0;
 }
 .pg-layer__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.pg-layer__title { font-family: var(--font-serif); font-size: 17px; font-weight: 600; color: var(--ink); }
+.pg-layer__title { font-size: 17px; font-weight: 900; color: var(--ink); }
 .pg-layer__step { color: var(--ink-2); flex: 0 0 auto; }
 .pg-layer__hint { color: var(--ink-2); }
 .pg-summary__item { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }

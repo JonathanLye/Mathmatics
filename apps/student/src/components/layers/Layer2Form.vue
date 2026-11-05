@@ -128,9 +128,8 @@ function showTemplate() {
   gap: var(--sp-2);
 }
 .pg-layer__title {
-  font-family: var(--font-serif);
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--ink);
 }
 .pg-layer__step { color: var(--ink-2); flex: 0 0 auto; }

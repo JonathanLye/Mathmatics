@@ -22,38 +22,20 @@ const collapsed = ref(false)
 </template>
 
 <style scoped>
-.pg-problem {
-  margin: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-}
-.pg-problem__head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-}
-.pg-problem__title {
-  font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--ink);
-}
-.pg-problem__meta { color: var(--ink-2); }
+.pg-problem { margin: var(--sp-3) 0; padding: var(--sp-3) var(--sp-4); }
+.pg-problem__head { display: flex; align-items: center; gap: var(--sp-1) var(--sp-2); flex-wrap: wrap; }
+.pg-problem__title { flex: 1; min-width: 0; font-size: 17px; font-weight: 900; color: var(--ink); }
+.pg-problem__meta { order: 3; flex-basis: 100%; color: var(--ink-2); font-weight: 700; }
 .pg-problem__toggle {
-  margin-left: auto;
   min-height: 32px;
-  padding: 0 var(--sp-2);
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-2);
+  padding: 0 var(--sp-3);
+  border: 2px solid var(--rule);
+  border-radius: 10px;
+  background: var(--sheet);
+  color: var(--margin-text);
   font-size: 12px;
+  font-weight: 900;
 }
-.pg-problem__stem {
-  margin-top: var(--sp-2);
-  font-family: var(--font-serif);
-  font-size: 17px;
-  line-height: 1.6;
-  color: var(--ink);
-}
+.pg-problem__toggle::after { display: none; }
+.pg-problem__stem { margin-top: var(--sp-2); font-family: var(--font-serif); font-size: var(--fs-stem); line-height: 1.6; color: var(--ink); }
 </style>
