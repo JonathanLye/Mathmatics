@@ -148,6 +148,9 @@ async function main() {
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');
+  await page.goto(`${BASE}/t/settings`, { waitUntil: 'networkidle' });
+  await page.getByText('默认策略（04 §7）').waitFor({ timeout: 10000 });
+  await shot('06b-settings-1280');
 
   // 5) 三档 + 深色
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
