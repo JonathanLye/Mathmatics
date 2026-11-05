@@ -33,6 +33,8 @@ interface LineSubmission {
   statement: string;
   justification?: string;
   input: InputMeta;
+  // 依据是独立的输入落点（03 §1）：没带时按键盘输入处理，不拿 input 的 recogId 去核对依据文字。
+  justificationInput?: InputMeta;
 }
 
 interface SummarySubmission {
@@ -159,7 +161,10 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/lines', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<LineSubmission>(contract, '/attempts/{attemptId}/lines', request);
-    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.statement, body.justification ?? '']);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.statement]);
+    if (body.justificationInput) {
+      await assertConfirmedInput(db, auth.userId, attemptId(request), body.justificationInput, [body.justification ?? '']);
+    }
     const lineId = randomUUID();
     const state = await svc.command({
       userId: auth.userId,

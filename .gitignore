@@ -29,6 +29,9 @@ work/runtime/
 
 # 部署本地状态
 infra/.env
+.env
+.env.local
+*.env.local
 infra/backups/
 
 # 题库导入本地产物（教辅 PDF / 页面图 / OCR 全文不入库，10 §7）

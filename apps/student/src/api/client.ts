@@ -1117,10 +1117,27 @@ export async function fetchAttempt(mock: MockKey = DEFAULT_MOCK): Promise<Attemp
   return createMockState(mock)
 }
 
-/** 手写识别（B 的 #21/#74 未完成：真实模式下没有可调接口，保留 mock）。 */
-export async function recognizeInk(_inkJson: string): Promise<Recognition> {
-  await sleep(600)
-  return clone(mockRecognition) as Recognition
+export interface RecognizeInkInput {
+  attemptId: string
+  /** 一行一个 draftId（03 §1）；确认后提交这一行时复用同一个。 */
+  draftId: string
+  target: 'def' | 'frame' | 'line_statement' | 'line_justification' | 'selfcheck' | 'summary' | 'help_text'
+  /** InkCanvas finish 事件给出的 gzip(ink-v1 JSON) 的 base64（≤256KB）。 */
+  ink: string
+}
+
+/**
+ * POST /recognitions/ink（#21）：写完这一行时调用一次，不做实时识别。
+ * - 不自动重试：识别请求没有幂等键，重试会产生重复识别记录并多计一次每日额度；
+ * - mock 模式（或传入字符串）返回演示结果，供 e2e/截图。
+ */
+export async function recognizeInk(input: string | RecognizeInkInput): Promise<Recognition> {
+  if (USE_MOCK || typeof input === 'string') {
+    await sleep(600)
+    return clone(mockRecognition) as Recognition
+  }
+  const result = await activeHttp.post<Recognition>('/recognitions/ink', input)
+  return result.data
 }
 
 // ---------------------------------------------------------------------------

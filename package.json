@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "node --watch apps/server/src/server.ts",
+    "dev:local": "node --env-file-if-exists=infra/.env --watch apps/server/src/server.ts",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r --if-present run test",
     "build": "node tools/smoke.mjs",

@@ -56,12 +56,14 @@ import { getDraftStore } from '@/storage/drafts'
 import { filterDismissedNotes, formatNoteTime, mergeNotes, nextLineNoOf, parseNote } from '@/components/layers/proofLines'
 import MathText from '@ui-math/MathText.vue'
 import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
+import InkCanvas from '@ui-math/InkCanvas.vue'
 import PhotoRecognitionPanel from '@/components/PhotoRecognitionPanel.vue'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { compressImage, loadImageBlobFromPath } from '@/utils/imageCompress'
 import { uuidv7 } from '@/integrity/ids'
+import { isApiError } from '@/api/http'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import {
@@ -132,7 +134,14 @@ const toast = ref('')
 const recogOpen = ref(false)
 const recogBusy = ref(false)
 const recognition = ref<Recognition | null>(null)
-const recogDraft = ref<{ text: string; recogId: string; at: string } | null>(null)
+const recogDraft = ref<{ text: string; recogId: string; at: string; source?: 'ink' | 'photo'; draftId?: string } | null>(null)
+/** #21 手写：全屏手写面板（InkCanvas）；写完一行 → /recognitions/ink → 确认卡 → 确认 → 行编辑器 → 以 ink 来源提交。 */
+const inkOpen = ref(false)
+const inkValue = ref('')
+/** 本次识别结果的来源：手写（单行确认卡）或拍照（逐行面板）；影响加载文案与「重写」行为。 */
+const recogSource = ref<'ink' | 'photo'>('photo')
+/** 一行一个 draftId（03 §1）：识别请求与随后提交这一行复用同一个。 */
+let inkDraftId = ''
 /** #25 拍照：压缩/识别进度文案；photoAdding=正在把选中的行加入证明。 */
 const photoProgress = ref('')
 const photoAdding = ref(false)
@@ -709,12 +718,22 @@ function goProofbook() {
   uni.navigateTo({ url: '/pages/proofbook/index' })
 }
 
+/** 手写确认过的文字原样提交 → 来源记为 ink（带 recogId）；改过就按键盘（学生已经自己动了笔）。 */
+function withInkProvenance(draft: LineDraft): LineDraft {
+  const rd = recogDraft.value
+  if (!rd || rd.source !== 'ink' || !rd.recogId) return draft
+  if (draft.statement.trim() !== rd.text.trim()) return draft
+  return { ...draft, input: { provenance: 'ink', draftId: rd.draftId || draft.input.draftId, recogId: rd.recogId } }
+}
+
 async function handleAddLine(draft: LineDraft) {
   const attemptId = state.value.attemptId
-  const next = await run(() => addLine(state.value, draft))
+  const toSend = withInkProvenance(draft)
+  const next = await run(() => addLine(state.value, toSend))
   if (next) {
     apply(next)
     editorOpen.value = false
+    recogDraft.value = null
     // #27：加行成功后清除这一行的本机草稿（失败时保留，便于重试）。
     lineDraftInitial.value = { statement: '', justification: '' }
     restoredDraft.value = null
@@ -875,9 +894,74 @@ watch(
   () => resetLineNoteState(),
 )
 
+function openInkSheet() {
+  inkValue.value = ''
+  inkDraftId = uuidv7()
+  inkOpen.value = true
+}
+
 function handleInk() {
-  editorOpen.value = true
-  show('手写画布由 #14 提供，本轮先进入行编辑器')
+  // 手写与拍照一样用于第 3 层写证明行（其他层的输入框先用键盘）。
+  if (state.value.currentLayer !== 'L3') {
+    show('手写用于第 3 层写证明行；这一层先用键盘')
+    return
+  }
+  if (recogBusy.value) return
+  openInkSheet()
+}
+
+function handleInkCancel() {
+  inkOpen.value = false
+}
+
+/** 手写识别错误 → 学生可读文案（不暗示对错，给出键盘兜底）。 */
+function inkRecognitionErrorMessage(err: unknown): string {
+  if (isApiError(err)) {
+    if (err.code === 'RATE_LIMITED' || err.status === 429) return '识别太频繁或今天的次数用完了，可以先用键盘'
+    if (err.code === 'UPSTREAM_UNAVAILABLE' || err.status === 503) return '没认出来，再写一次，或者用键盘'
+    if (err.code === 'PAYLOAD_TOO_LARGE' || err.status === 413) return '这一行写得太满了，分两行写或用键盘'
+    if (err.code === 'ATTEMPT_LOCKED') return '本题已锁定，请联系老师'
+    if (err.code === 'NETWORK' || err.status === 0) return '网络不稳定，手写识别暂不可用；可以稍后重试或用键盘'
+  }
+  return '手写识别暂不可用，请用键盘'
+}
+
+/** 「写完这一行」：InkCanvas 给出 gzip(ink-v1) 的 base64，调 /recognitions/ink，结果进确认卡。 */
+async function handleInkFinish(base64: string) {
+  inkOpen.value = false
+  if (!base64) return
+  const seq = ++recogSeq
+  recogSource.value = 'ink'
+  recogBusy.value = true
+  recogOpen.value = true
+  recognition.value = null
+  photoPanelActive.value = false
+  photoProgress.value = '正在识别这一行…'
+  try {
+    const result = await recognizeInk({
+      attemptId: state.value.attemptId,
+      draftId: inkDraftId || uuidv7(),
+      target: 'line_statement',
+      ink: base64,
+    })
+    if (seq !== recogSeq) return
+    if (result.status === 'empty' || !result.text) {
+      recogOpen.value = false
+      show('没有识别到内容，请再写一次，或者用键盘')
+      return
+    }
+    recognition.value = result
+    recogOpen.value = false
+  } catch (err) {
+    if (seq !== recogSeq) return
+    recogOpen.value = false
+    show(inkRecognitionErrorMessage(err))
+  } finally {
+    if (seq === recogSeq) {
+      recogBusy.value = false
+      photoProgress.value = ''
+    }
+  }
 }
 
 function handleKeyboard() {
@@ -972,6 +1056,7 @@ async function startPhotoRecognition() {
     return
   }
   const seq = ++recogSeq
+  recogSource.value = 'photo'
   recogBusy.value = true
   recogOpen.value = true
   recognition.value = null
@@ -1030,9 +1115,15 @@ async function handlePhotoAdd(payload: { texts: string[]; indices: number[] }) {
   const recogId = current.recogId
   const added: string[] = []
   try {
-    for (const text of payload.texts) {
-      const trimmed = text.trim()
-      if (!trimmed) continue
+    // 03 §3.2：只有确认过的识别结果才能用于提交——先 confirm（服务端记下确认的各行），再逐行加入。
+    const toAdd = payload.texts.map((text) => text.trim()).filter((text) => text !== '')
+    try {
+      await confirmRecognition(recogId, toAdd.join('\n'), toAdd)
+    } catch (err) {
+      show(photoRecognitionErrorMessage(err))
+      return
+    }
+    for (const trimmed of toAdd) {
       const draft: LineDraft = {
         statement: trimmed,
         input: { provenance: 'photo', draftId: uuidv7(), recogId },
@@ -1061,12 +1152,6 @@ async function handlePhotoAdd(payload: { texts: string[]; indices: number[] }) {
       photoPanelActive.value = false
     }
     show('已加入 ' + added.length + ' 行（拍照识别）')
-    try {
-      await confirmRecognition(recogId, added.join('\n'), added)
-    } catch {
-      // 已加入的行不因确认回执失败而回滚（服务端行已落库）；只提示。
-      show('各行已加入，但确认回执未成功；可继续作答')
-    }
   } finally {
     photoAdding.value = false
     recogBusy.value = false
@@ -1084,6 +1169,15 @@ function handleRecogIgnore() {
 
 /** 「重新识别」：单行结果（#15 卡）重新跑一次；多行面板暂不提供重识别按钮。 */
 async function handleRecogRewrite() {
+  if (recogSource.value === 'ink') {
+    // 手写：放弃这次结果，回到画布重写一遍（不重复识别同一份笔迹）。
+    recogSeq += 1
+    recognition.value = null
+    recogOpen.value = false
+    recogBusy.value = false
+    openInkSheet()
+    return
+  }
   recogBusy.value = true
   photoPanelActive.value = false
   recognition.value = null
@@ -1098,13 +1192,39 @@ async function handleRecogRewrite() {
 }
 
 /** 确认加入：识别结果进入草稿（mock 下页面能看到结果文本），并回填行编辑器 */
-function handleRecogConfirm(text: string) {
-  const recogId = recognition.value?.recogId ?? ''
+async function handleRecogConfirm(text: string) {
+  const current = recognition.value
+  const recogId = current?.recogId ?? ''
+  const fromInk = recogSource.value === 'ink'
+  if (fromInk && current && !isMockMode()) {
+    // 先 confirm，之后才能以手写来源提交（服务端核对提交文字与确认文字一致）。失败则留在确认卡里，学生可重试。
+    recogBusy.value = true
+    try {
+      await confirmRecognition(recogId, text)
+    } catch (err) {
+      show(inkRecognitionErrorMessage(err))
+      return
+    } finally {
+      recogBusy.value = false
+    }
+  }
   photoPanelActive.value = false
   recogOpen.value = false
   recognition.value = null
-  recogDraft.value = { text, recogId, at: new Date().toISOString() }
-  show('识别结果已放入草稿，继续写这一行')
+  recogDraft.value = {
+    text,
+    recogId,
+    at: new Date().toISOString(),
+    source: fromInk ? 'ink' : 'photo',
+    draftId: fromInk ? inkDraftId : undefined,
+  }
+  if (fromInk) {
+    // 手写确认后直接进行编辑器：补依据后提交；文字不改则按 ink 来源提交。
+    editorOpen.value = true
+    show('已确认，补上依据后加入证明')
+  } else {
+    show('识别结果已放入草稿，继续写这一行')
+  }
 }
 
 /** 放弃重写：关掉面板，不采用这次识别 */
@@ -1445,11 +1565,23 @@ function backHome() {
       @update:draft="handleEditorDraft"
     />
 
+    <!-- #21 手写：全屏手写面板；「写完这一行」才调识别（不做实时识别） -->
+    <view v-if="inkOpen" class="pg-inksheet" data-testid="ink-sheet" role="dialog" aria-modal="true" aria-label="手写这一行">
+      <view class="pg-inksheet__bar">
+        <text class="pg-inksheet__title">手写第 {{ nextLineNo }} 行</text>
+        <button class="pg-practice__btn pg-small" data-testid="ink-cancel" @tap="handleInkCancel">取消</button>
+      </view>
+      <view class="pg-inksheet__stage">
+        <InkCanvas v-model="inkValue" height="100%" @finish="handleInkFinish" />
+      </view>
+    </view>
+
     <!-- #15 拍照识别：识别中的占位（02 §4.5：超过 3 秒提示可先用键盘），拿到结果后进确认面板 -->
     <view v-if="recogOpen && !recognition" class="pg-recogmask">
       <view class="pg-recogloading pg-sheet">
         <text class="pg-recogloading__title" data-testid="photo-progress">{{ photoProgress || '识别中…' }}</text>
-        <text class="pg-recogloading__hint pg-small">图片会先压缩（长边≤2000/≤2MB）再识别；结果要你逐行确认后才会用。</text>
+        <text v-if="recogSource === 'ink'" class="pg-recogloading__hint pg-small">识别结果只是候选，要你核对确认后才会用；识别不好可以改用键盘。</text>
+        <text v-else class="pg-recogloading__hint pg-small">图片会先压缩（长边≤2000/≤2MB）再识别；结果要你逐行确认后才会用。</text>
         <button class="pg-practice__btn" @tap="closeRecogLoading">取消</button>
       </view>
     </view>
@@ -1758,6 +1890,23 @@ function backHome() {
   color: var(--ink);
 }
 .pg-practice__draftrow { display: flex; gap: var(--sp-2); }
+.pg-inksheet {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper, #fbf8f1);
+}
+.pg-inksheet__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--rule, rgba(0, 0, 0, 0.12));
+}
+.pg-inksheet__title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--ink); }
+.pg-inksheet__stage { flex: 1; min-height: 0; }
 .pg-recogmask {
   position: fixed;
   inset: 0;
