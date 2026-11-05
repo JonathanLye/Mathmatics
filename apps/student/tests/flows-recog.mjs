@@ -1,6 +1,6 @@
 /**
  * 识别确认面板端到端（issue #15 DoD：mock 识别结果能确认、能改、能放弃重写）。
- * 用法：先 npm run build:h5，再 npm run e2e:flows:recog
+ * 用法：先 npm run build:mock，再 npm run e2e:flows:recog
  * 依赖：playwright-core + 本机 ms-playwright chromium（PG_CHROMIUM 可指定），与 tests/screenshots.mjs 同一套。
  *
  * 覆盖：
@@ -111,7 +111,7 @@ async function openPractice(page, baseURL) {
 
 async function main() {
   if (!fs.existsSync(distDir)) {
-    console.error('[recog] 缺少构建产物：' + distDir + '，先运行 npm run build:h5')
+    console.error('[recog] 缺少构建产物：' + distDir + '，先运行 npm run build:mock')
     process.exit(2)
   }
   const exe = findChromium()

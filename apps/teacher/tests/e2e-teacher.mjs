@@ -123,17 +123,17 @@ async function main() {
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(6500);
   await shot('02-live-1280');
+  // #169：数字卡筛选（在线）
+  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
+  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
+  await shot('02c-live-filter-1280');
+  await page.getByText('清除', { exact: true }).click();
   // #167：名单列表（姓名/认领状态）
   await page.getByText('名单', { exact: true }).first().click();
   await page.getByText('测试学生').first().waitFor({ timeout: 10000 });
   await shot('02b-roster-1280');
   await page.getByText('实时看板', { exact: true }).first().click();
   await page.waitForTimeout(500);
-  // #169：数字卡筛选（在线）
-  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
-  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
-  await shot('02c-live-filter-1280');
-  await page.getByText('清除', { exact: true }).click();
   // #180：布置表单从已发布题目选择
   await page.locator('.t-tabs').getByText('布置', { exact: true }).click();
   await page.getByPlaceholder('选择已发布的题目版本').waitFor({ timeout: 10000 });
@@ -143,11 +143,6 @@ async function main() {
   // #166：按布置筛选看板
   await page.locator('.live-toolbar .t-select').first().waitFor({ timeout: 10000 });
   await shot('02a-live-switcher-1280');
-  // #169：数字卡筛选（在线）
-  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
-  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
-  await shot('02c-live-filter-1280');
-  await page.getByText('清除', { exact: true }).click();
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
@@ -187,11 +182,14 @@ async function main() {
   await shot('06b-settings-1280');
   // #171：题库状态筛选（草稿）
   await page.locator('.problem-filters .t-select').first().click();
-  await page.getByText('草稿', { exact: true }).last().click();
+  await page.locator('.t-select-option').filter({ hasText: '草稿' }).first().click();
   await page.getByText(/共 \d+ 行/).waitFor({ timeout: 10000 });
   const draftRows = await page.locator('tbody tr').count();
   assert(draftRows >= 1, '题库筛选草稿应为至少 1 行');
   await shot('06a-problems-filter-1280');
+  await page.goto(`${BASE}/t/settings`, { waitUntil: 'networkidle' });
+  await page.getByText('默认策略（04 §7）').waitFor({ timeout: 10000 });
+  await shot('06b-settings-1280');
 
   // 5) 三档 + 深色
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
