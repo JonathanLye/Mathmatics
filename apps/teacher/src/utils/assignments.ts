@@ -17,12 +17,12 @@ export interface AssignmentSettings {
 }
 
 export function normalizeAssignmentSettings(form: AssignmentForm): AssignmentSettings {
-  // 测验默认关求助/拍照（04 §7）；用户显式打开也不阻止，但默认值必须安全。
+  // 默认值由 defaultsForMode 决定（04 §7 测验默认关求助/拍照）；这里只负责归一化，教师显式打开也不阻止。
   const test = form.mode === 'test';
   return {
     revealBudget: Number(form.revealBudget),
-    photoEnabled: test ? form.photoEnabled : form.photoEnabled,
-    hintsEnabled: test ? form.hintsEnabled : form.hintsEnabled,
+    photoEnabled: form.photoEnabled,
+    hintsEnabled: form.hintsEnabled,
     maxSwitches: Number(form.maxSwitches),
     ...(test && Number(form.durationMin) > 0 ? { durationMin: Number(form.durationMin) } : {}),
   };

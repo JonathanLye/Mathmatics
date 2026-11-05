@@ -36,6 +36,10 @@ let retryTimer: number | undefined;
 let retryDelay = 1000;
 const streamConnected = ref(false);
 const streamError = ref('');
+const selectedAssignmentId = ref('');
+const assignmentsError = ref('');
+// 首屏由 onMounted 顺序加载；watch 只响应之后教师的切换，避免首屏重复请求。
+let pageReady = false;
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -45,8 +49,8 @@ const rotating = ref(false);
 
 // 布置（04 §7）
 const createdAssignments = ref<AssignmentCard[]>([]);
-const assignmentPayloads = new Map<string, Record<string, unknown>>();
 const creating = ref(false);
+const closingId = ref<string | null>(null);
 const assignmentForm = ref({
   problemId: 'epsN',
   version: 1,
@@ -89,18 +93,17 @@ async function submitPublish(): Promise<void> {
   publishing.value = true;
   publishError.value = '';
   try {
-    const proofIds = publishProofIds.value.split(/[,，\s]+/).map((item) => item.trim()).filter((item) => item !== '');
-    const updated = await api.post<AssignmentCard>(
+    const proofIds = parseProofIds(publishProofIds.value);
+    await api.post<AssignmentCard>(
       `/api/v1/teacher/assignments/${publishTarget.value.assignmentId}/publish-review`,
       { ...(proofIds.length > 0 ? { proofIds } : {}), ...(publishNote.value.trim() === '' ? {} : { note: publishNote.value.trim() }) },
     );
-    const index = createdAssignments.value.findIndex((item) => item.assignmentId === updated.assignmentId);
-    if (index >= 0) createdAssignments.value[index] = updated;
+    await loadAssignments();
     MessagePlugin.success('讲评已发布');
     publishVisible.value = false;
   } catch (caught) {
     publishError.value =
-      caught instanceof ApiError && caught.status === 409 ? '布置尚未关闭，不能发布讲评（可把截止时间设为过去）' : messageOf(caught);
+      caught instanceof ApiError && caught.status === 409 ? '布置尚未关闭，不能发布讲评：请先关闭该布置' : messageOf(caught);
   } finally {
     publishing.value = false;
   }
@@ -217,7 +220,8 @@ function connectStream(): void {
     retryTimer = undefined;
   }
   stream?.close();
-  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream`);
+  const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream${query}`);
   stream.onopen = () => {
     streamConnected.value = true;
     streamError.value = '';
@@ -257,10 +261,29 @@ function disconnectStream(): void {
   streamConnected.value = false;
 }
 
+async function loadAssignments(): Promise<void> {
+  if (classId.value === '') return;
+  try {
+    createdAssignments.value = await api.get<AssignmentCard[]>(
+      `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
+    );
+    if (selectedAssignmentId.value === '' || !createdAssignments.value.some((item) => item.assignmentId === selectedAssignmentId.value)) {
+      // 列表按开放时间倒序，第一条可能是还没开放的布置（看板是空的）；优先选进行中的。
+      const current = createdAssignments.value.find((item) => item.status === 'open') ?? createdAssignments.value[0];
+      selectedAssignmentId.value = current?.assignmentId ?? '';
+    }
+    assignmentsError.value = '';
+  } catch (caught) {
+    // 列表失败不阻塞看板，但要让教师知道，而不是误以为没有布置。
+    assignmentsError.value = messageOf(caught);
+  }
+}
+
 async function loadLive(): Promise<void> {
   liveLoading.value = true;
   try {
-    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live`);
+    const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live${query}`);
     liveError.value = '';
   } catch (caught) {
     live.value = null;
@@ -344,7 +367,7 @@ async function createAssignment(): Promise<void> {
     const closeAt = assignmentForm.value.closeAt === '' ? null : new Date(assignmentForm.value.closeAt);
     if (closeAt !== null && Number.isNaN(closeAt.getTime())) throw new Error('截止时间格式不对');
 
-    const payload = {
+    await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
       classId: classId.value,
       problemId: assignmentForm.value.problemId.trim(),
       version: Number(assignmentForm.value.version),
@@ -352,10 +375,8 @@ async function createAssignment(): Promise<void> {
       openAt: openAt.toISOString(),
       closeAt: closeAt === null ? null : closeAt.toISOString(),
       settings: normalizeAssignmentSettings(assignmentForm.value),
-    };
-    const card = await api.post<AssignmentCard>('/api/v1/teacher/assignments', payload);
-    assignmentPayloads.set(card.assignmentId, payload);
-    createdAssignments.value.unshift(card);
+    });
+    await loadAssignments();
     MessagePlugin.success('布置已创建');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
@@ -364,22 +385,26 @@ async function createAssignment(): Promise<void> {
   }
 }
 
+// PATCH 要完整字段（04 §7）：用列表卡片重建，刷新页面后同样能关闭；只有进行中的布置能关（未开放的 closeAt 会早于 openAt）。
 async function closeAssignment(card: AssignmentCard): Promise<void> {
-  const payload = assignmentPayloads.get(card.assignmentId);
-  if (payload === undefined) {
-    MessagePlugin.warning('该布置不是本次会话创建的，缺少修改所需字段');
-    return;
-  }
+  if (closingId.value !== null) return;
+  closingId.value = card.assignmentId;
   try {
-    const updated = await api.patch<AssignmentCard>(`/api/v1/teacher/assignments/${card.assignmentId}`, {
-      ...payload,
+    await api.patch<AssignmentCard>(`/api/v1/teacher/assignments/${card.assignmentId}`, {
+      classId: classId.value,
+      problemId: card.problemId,
+      version: card.version,
+      mode: card.mode,
+      openAt: card.openAt,
       closeAt: new Date().toISOString(),
+      settings: card.settings ?? {},
     });
-    const index = createdAssignments.value.findIndex((item) => item.assignmentId === updated.assignmentId);
-    if (index >= 0) createdAssignments.value[index] = updated;
+    await loadAssignments();
     MessagePlugin.success('布置已关闭');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
+  } finally {
+    closingId.value = null;
   }
 }
 
@@ -391,11 +416,19 @@ function flagLabel(flag: string): string {
   return FLAG_LABEL[flag] ?? flag;
 }
 
+watch(selectedAssignmentId, () => {
+  if (!pageReady) return;
+  void loadLive();
+  connectStream();
+});
+
 onMounted(async () => {
   await loadClassInfo();
+  await loadAssignments();
   await loadLive();
   connectStream();
   startPolling();
+  pageReady = true;
 });
 
 function onVisibility(): void {
@@ -441,6 +474,14 @@ onBeforeUnmount(() => {
     <t-tabs v-model="tab">
       <t-tab-panel value="live" label="实时看板">
         <t-alert v-if="liveError" theme="warning" :message="liveError" style="margin: 12px 0" />
+        <div v-if="createdAssignments.length > 0" class="live-toolbar">
+          <span class="page-sub">布置</span>
+          <t-select
+            v-model="selectedAssignmentId"
+            :options="createdAssignments.map((item) => ({ label: `${item.title}（${statusLabel(item.status)}）`, value: item.assignmentId }))"
+            style="width: 320px"
+          />
+        </div>
         <div class="stat-cards">
           <div
             v-for="item in stats"
@@ -546,6 +587,9 @@ onBeforeUnmount(() => {
           <t-form-item label="透露预算">
             <t-input-number v-model="assignmentForm.revealBudget" :min="0" :max="10" theme="normal" />
           </t-form-item>
+          <t-form-item label=" ">
+            <t-alert theme="warning" message="下面的拍照/求助/切出/限时目前只随布置保存，学生端尚未按它们生效；测验模式本身的关提示与切出锁定已生效。" />
+          </t-form-item>
           <t-form-item label="拍照">
             <t-switch v-model="assignmentForm.photoEnabled" />
           </t-form-item>
@@ -563,11 +607,7 @@ onBeforeUnmount(() => {
           </t-form-item>
         </t-form>
 
-        <t-alert
-          theme="info"
-          message="当前契约没有 GET 布置列表接口（见 #50 PR）；这里只显示本次会话创建的布置。列表接口补上后自动替换。"
-          style="margin: 12px 0"
-        />
+        <t-alert v-if="assignmentsError" theme="warning" :message="`布置列表加载失败：${assignmentsError}`" style="margin: 12px 0" />
         <t-table
           :data="createdAssignments"
           :columns="[
@@ -585,7 +625,7 @@ onBeforeUnmount(() => {
               <t-link theme="primary" :disabled="row.reviewPublished" @click="openPublish(row as AssignmentCard)">
                 {{ row.reviewPublished ? '已发布讲评' : '发布讲评' }}
               </t-link>
-              <t-link v-if="row.status === 'open' || row.status === 'scheduled'" theme="danger" @click="closeAssignment(row as AssignmentCard)">关闭</t-link>
+              <t-link v-if="row.status === 'open'" theme="danger" :disabled="closingId !== null" @click="closeAssignment(row as AssignmentCard)">关闭</t-link>
             </t-space>
           </template>
           <template #empty><div class="empty">还没有创建布置。</div></template>
@@ -610,7 +650,7 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="metrics" label="指标">
-        <MetricsPanel :class-id="classId" :assignment-id="live?.assignmentId ?? undefined" />
+        <MetricsPanel :class-id="classId" :assignment-id="selectedAssignmentId === '' ? undefined : selectedAssignmentId" />
       </t-tab-panel>
 
       <t-tab-panel value="export" label="导出">
@@ -627,6 +667,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.live-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
 .stat-card.clickable {
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
