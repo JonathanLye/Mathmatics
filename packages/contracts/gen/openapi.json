@@ -1219,7 +1219,13 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
           "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           },
           "429": {
@@ -1296,7 +1302,13 @@
           "413": {
             "$ref": "#/components/responses/Error"
           },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1308,6 +1320,7 @@
           "input"
         ],
         "summary": "学生确认（可改过）识别结果；之后才能用它提交",
+        "description": "手写：以最后一次确认为准。拍照：一张照片的 recogId 会被逐批确认（每批 `lines`），已确认的行累加（只增不减）。\n提交（`/lines` 等）时服务端核对：recogId 属于本人本次作答、已确认、来源类型一致、提交文字与确认文字 canon 后一致，否则 409 `RECOG_NOT_CONFIRMED`。\n没有结果的识别（status=empty）不能确认（422）。\n",
         "operationId": "confirmRecognition",
         "parameters": [
           {
@@ -1374,6 +1387,15 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           }
         }

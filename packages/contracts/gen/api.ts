@@ -529,7 +529,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 学生确认（可改过）识别结果；之后才能用它提交 */
+        /**
+         * 学生确认（可改过）识别结果；之后才能用它提交
+         * @description 手写：以最后一次确认为准。拍照：一张照片的 recogId 会被逐批确认（每批 `lines`），已确认的行累加（只增不减）。
+         *     提交（`/lines` 等）时服务端核对：recogId 属于本人本次作答、已确认、来源类型一致、提交文字与确认文字 canon 后一致，否则 409 `RECOG_NOT_CONFIRMED`。
+         *     没有结果的识别（status=empty）不能确认（422）。
+         */
         post: operations["confirmRecognition"];
         delete?: never;
         options?: never;
@@ -5378,7 +5383,9 @@ export interface operations {
                     "application/json": components["schemas"]["Recognition"];
                 };
             };
+            409: components["responses"]["Error"];
             413: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };
@@ -5420,7 +5427,9 @@ export interface operations {
             };
             403: components["responses"]["Error"];
             413: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     confirmRecognition: {
@@ -5458,6 +5467,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     requestHelp: {

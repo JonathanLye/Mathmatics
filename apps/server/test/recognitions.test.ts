@@ -4,6 +4,7 @@ import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { loadConfig } from '../src/config.ts';
+import { assertConfirmedInput } from '../src/recognition/provenance.ts';
 
 import { startHelpHarness, type HelpHarness } from './support/help.ts';
 import { WRITE_HEADERS } from './support/fixtures.ts';
@@ -22,6 +23,8 @@ interface Script {
   simple?: { latex: string; conf: number } | 'fail' | 'slow';
   std?: { latex: string; conf: number };
   qwen?: string | 'fail';
+  // simpletex_ocr（整页 document 模式）返回的 Markdown
+  page?: string | 'fail';
 }
 
 function scriptedFetch(script: Script): { fetchImpl: typeof fetch; calls: string[] } {
@@ -30,6 +33,10 @@ function scriptedFetch(script: Script): { fetchImpl: typeof fetch; calls: string
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetchImpl = (async (url: string) => {
     calls.push(url);
+    if (url.includes('simpletex_ocr')) {
+      if (script.page === 'fail' || script.page === undefined) return json({ status: false }, 500);
+      return json({ status: true, res: { content: script.page } });
+    }
     if (url.includes('latex_ocr_turbo')) {
       if (script.simple === 'fail' || script.simple === undefined) return json({ status: false }, 500);
       if (script.simple === 'slow') return new Promise<Response>(() => undefined);
@@ -313,5 +320,105 @@ describe('POST /recognitions/{id}/confirm 与提交来源核对', () => {
     const { h: harness } = await start({});
     const res = await submitDefinition(harness, '设数列收敛', { provenance: 'keyboard' });
     expect(res.statusCode, res.body).toBe(200);
+  });
+});
+
+
+// 最小的 JPEG：魔数 + 一个 SOF0 段（宽 640 高 480），足够通过类型嗅探
+const JPEG = Buffer.from('ffd8ffe000104a46494600010100000100010000ffc0000b08' + '01e0' + '0280' + '0100' + 'ffd9', 'hex');
+
+function multipartBody(fields: Record<string, string>, image?: Buffer): { payload: Buffer; headers: Record<string, string> } {
+  const boundary = '----pgtest' + randomUUID();
+  const parts: Buffer[] = [];
+  for (const [k, v] of Object.entries(fields)) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+  }
+  if (image) {
+    parts.push(
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
+      image,
+      Buffer.from('\r\n'),
+    );
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  return { payload: Buffer.concat(parts), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
+}
+
+function photo(harness: HelpHarness, image: Buffer | null = JPEG, extra: Record<string, string> = {}) {
+  const { payload, headers } = multipartBody(
+    { attemptId: harness.attemptId, draftId: randomUUID(), target: 'line_statement', source: 'camera', ...extra },
+    image ?? undefined,
+  );
+  return harness.app.inject({ method: 'POST', url: '/api/v1/recognitions/photo', headers: { cookie: harness.cookie, ...WRITE_HEADERS, ...headers }, payload });
+}
+
+describe('POST /recognitions/photo', () => {
+  it('整页切行：两路逐行一致 → agree=true；落库 app.photos / recognitions，原图落盘，写事件', async () => {
+    const { h: harness } = await start({ page: '$|a_n-3|=\\frac{5}{n+2}$\n\n通分得 $b=2$', qwen: '$|a_n-3|=\\frac{5}{n+2}$\n通分得 $b=2$' });
+    const res = await photo(harness);
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+    expect(body.status).toBe('ok');
+    expect(body.lines.map((l: { text: string }) => l.text)).toEqual(['$|a_n-3|=\\frac{5}{n+2}$', '通分得 $b=2$']);
+    expect(body.agree).toBe(true);
+    const ph = (await harness.db.query(`select source, bytes, w, h, storage_key from app.photos`)).rows[0] as Record<string, unknown>;
+    expect(ph).toMatchObject({ source: 'camera', bytes: JPEG.length, w: 640, h: 480 });
+    const { existsSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    expect(existsSync(resolve(KEYED.recognition.storageDir, String(ph.storage_key)))).toBe(true);
+    expect((await eventsOf(harness, 'recog.result'))[0]?.payload).toMatchObject({ lines: 2, agree: true, status: 'ok' });
+  });
+
+  it('行数对不上：agree=false（无法对齐，界面请学生逐行核对）；SimpleTex 失败时 Qwen 当主', async () => {
+    const a = await start({ page: '$x=1$\n$y=2$', qwen: '$x=1$' });
+    expect((await photo(a.h)).json().agree).toBe(false);
+    await a.h.close();
+    h = undefined;
+    const b = await start({ page: 'fail', qwen: '$x=1$\n$y=2$' });
+    const body = (await photo(b.h)).json();
+    expect(body).toMatchObject({ status: 'ok', agree: null });
+    expect(body.lines).toHaveLength(2);
+  });
+
+  it('两路都失败 503；测验模式 403 TEST_MODE_RESTRICTED；老师关了拍照 403 PHOTO_DISABLED；非图片 422；超过 2MB 413；缺字段 422', async () => {
+    const { h: harness } = await start({ page: 'fail', qwen: 'fail' });
+    expect((await photo(harness)).statusCode).toBe(503);
+    expect((await photo(harness, Buffer.from('not an image'))).statusCode).toBe(422);
+    expect((await photo(harness, null)).statusCode).toBe(422);
+    const big = await photo(harness, Buffer.concat([JPEG, Buffer.alloc(2 * 1024 * 1024 + 10)]));
+    expect(big.statusCode).toBe(413);
+    expect(big.json().error.code).toBe('PAYLOAD_TOO_LARGE');
+    const noTarget = await photo(harness, JPEG, { target: 'nope' });
+    expect(noTarget.statusCode).toBe(422);
+
+    await harness.db.query(`update app.classes set settings = jsonb_set(settings, '{photoEnabled}', 'false')`);
+    const off = await photo(harness);
+    expect(off.statusCode).toBe(403);
+    expect(off.json().error.code).toBe('PHOTO_DISABLED');
+    await harness.db.query(`update app.classes set settings = jsonb_set(settings, '{photoEnabled}', 'true')`);
+
+    await harness.db.query(`update app.attempts set mode = 'test' where id = $1`, [harness.attemptId]);
+    const test = await photo(harness);
+    expect(test.statusCode).toBe(403);
+    expect(test.json().error.code).toBe('TEST_MODE_RESTRICTED');
+  });
+
+  it('确认：一张照片的 recogId 可逐批确认（已确认的行累加），逐行提交只认确认过的行', async () => {
+    const { h: harness } = await start({ page: '$x=1$\n$y=2$\n$z=3$', qwen: '$x=1$\n$y=2$\n$z=3$' });
+    const recogId = (await photo(harness)).json().recogId as string;
+    const attemptId = harness.attemptId;
+    const userId = (await harness.db.query<{ user_id: string }>(`select user_id from app.attempts where id = $1`, [attemptId])).rows[0]!.user_id;
+    const input = { provenance: 'photo' as const, recogId };
+
+    await expect(assertConfirmedInput(harness.db, userId, attemptId, input, ['$x=1$'])).rejects.toMatchObject({ code: 'RECOG_NOT_CONFIRMED' });
+    expect((await confirm(harness, recogId, '$x=1$', ['$x=1$'])).statusCode).toBe(200);
+    await expect(assertConfirmedInput(harness.db, userId, attemptId, input, ['$x = 1$'])).resolves.toBeUndefined();
+    await expect(assertConfirmedInput(harness.db, userId, attemptId, input, ['$y=2$'])).rejects.toMatchObject({ code: 'RECOG_NOT_CONFIRMED' });
+    expect((await confirm(harness, recogId, '$y=2$', ['$y=2$'])).statusCode).toBe(200);
+    await expect(assertConfirmedInput(harness.db, userId, attemptId, input, ['$x=1$'])).resolves.toBeUndefined();
+    await expect(assertConfirmedInput(harness.db, userId, attemptId, input, ['$y=2$'])).resolves.toBeUndefined();
+    await expect(assertConfirmedInput(harness.db, userId, attemptId, input, ['$z=3$'])).rejects.toMatchObject({ code: 'RECOG_NOT_CONFIRMED' });
+    // 手写来源不能拿照片的 recogId
+    await expect(assertConfirmedInput(harness.db, userId, attemptId, { provenance: 'ink', recogId }, ['$x=1$'])).rejects.toMatchObject({ code: 'RECOG_NOT_CONFIRMED' });
   });
 });
