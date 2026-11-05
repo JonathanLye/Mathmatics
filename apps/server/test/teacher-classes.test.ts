@@ -372,6 +372,8 @@ describe('名单 CSV 导入（04 §10）', () => {
     await createTeacherAccount(db, { username: 'other.teacher', password: PASSWORD });
     const other = await teacherLogin('other.teacher');
     const hidden = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(other) });
+    expect(hidden.statusCode, hidden.body).toBe(404);
+  });
 
   it('PATCH 班级默认设置：白名单合并 + audit；非法枚举 422；非本班 404（#176）', async () => {
     const cookie = await teacherLogin();
