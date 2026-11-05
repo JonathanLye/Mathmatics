@@ -10,7 +10,7 @@ import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
 import { unlockAttempt } from '../src/integrity/unlock.ts';
 
-import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
+import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, setStudentAgeBand, type Fixture } from './support/fixtures.ts';
 
 const contract = loadContract();
 const SESSION_ID = randomUUID();
@@ -55,6 +55,8 @@ async function studentCookie(): Promise<string> {
 }
 
 async function signConsent(cookie: string): Promise<void> {
+  // #64：写接口要求年龄分档；测试默认 ge18。
+  await setStudentAgeBand(app, cookie);
   await app.inject({
     method: 'POST',
     url: '/api/v1/consents',

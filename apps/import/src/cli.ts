@@ -174,6 +174,62 @@ async function commandDraft(parsed: ParsedArgs): Promise<void> {
   if (outputs.some((out) => !out.ok)) process.exitCode = 1;
 }
 
+// 一条龙：S1（登记/渲染/OCR）→ S4（切条目）→ S6/S7/S8（起草/仲裁/校验）→ 可选 S9 前的 DB 暂存。
+// 复用四条命令的实现，保证行为一致；job 目录/报告仍由各步骤落盘。
+async function commandRun(parsed: ParsedArgs): Promise<void> {
+  const jobId = optional(parsed, 'job') === undefined ? newJobId() : assertJobId(optional(parsed, 'job') as string);
+  const withJob = (): ParsedArgs => {
+    const flags = new Map(parsed.flags);
+    flags.set('job', jobId);
+    return { positionals: [], flags };
+  };
+
+  await commandPdf(withJob());
+  commandItems(withJob());
+  await commandDraft(withJob());
+
+  const job = readJob(jobId);
+  const drafts = job.stages.drafts ?? [];
+  const dir = jobDir(jobId);
+  const databaseUrl = optional(parsed, 'database-url') ?? process.env.DATABASE_URL;
+
+  if (parsed.flags.has('submit') !== true) {
+    console.log(JSON.stringify({ jobId, dir, drafts, submitted: false }, null, 2));
+    console.log('未加 --submit：草稿留在 imports/ 下，教师端审核前可先人工检查 report.md。');
+    return;
+  }
+  if (databaseUrl === undefined || databaseUrl.trim() === '') {
+    console.log(JSON.stringify({ jobId, dir, drafts, submitted: false, reason: 'no DATABASE_URL' }, null, 2));
+    console.log('--submit 需要 --database-url / DATABASE_URL；本次只生成草稿与报告。');
+    return;
+  }
+
+  const { stageDraft } = await import('./db.ts');
+  const { Client } = await import('pg');
+  const { readdirSync } = await import('node:fs');
+  const files = readdirSync(dir).filter(
+    (name) => name.endsWith('.json') && name !== 'job.json' && name !== 'items.json' && !name.endsWith('.report.json'),
+  );
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  const staged: unknown[] = [];
+  try {
+    await client.query('BEGIN');
+    for (const name of files) {
+      const pkg = readJson<import('@proof-gym/engine').ProblemPackage>(join(dir, name));
+      if (!drafts.includes(pkg.id)) continue;
+      staged.push(await stageDraft(pkg, client));
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    await client.end();
+  }
+  console.log(JSON.stringify({ jobId, dir, drafts, submitted: true, staged }, null, 2));
+}
+
 async function commandSubmit(parsed: ParsedArgs): Promise<void> {
   const file = parsed.positionals[0] ?? optional(parsed, 'file');
   if (file === undefined) throw new Error('用法：pnpm import:submit <imports/.../problem.json> [--database-url …]');
@@ -226,6 +282,7 @@ function usage(): void {
   pnpm import:draft --job <jobId> [--items id1,id2] [--max 4] [--concepts concepts.json] [--draft-fixture-a a.json --draft-fixture-b b.json]
   pnpm import:publish imports/<jobId>/<problemId>.json --reviewer T-01 --minutes 90 [--concepts concepts.json]
   pnpm import:submit imports/<jobId>/<problemId>.json [--database-url postgres://…] [--concepts concepts.json]
+  pnpm import:run --file <pdf> --pages 27-58 --ocr-fixture <dir> [--max 4] [--draft-fixture-a/b …] [--submit]
 
 仓库内自带的最小 fixtures：apps/import/fixtures/ch2（OCR）、fixtures/epsN.json 与 epsN-alt.json（两稿）。
 离线模式：OCR 用 --ocr-fixture，起草用 --draft-fixture-a/b；真实 OCR 需 SIMPLETEX_API_KEY / DASHSCOPE_API_KEY 并渲染页面；起草需 DEEPSEEK_API_KEY。`);
@@ -253,6 +310,9 @@ export async function run(argv: string[]): Promise<void> {
       break;
     case 'submit':
       await commandSubmit(parsed);
+      break;
+    case 'run':
+      await commandRun(parsed);
       break;
     default:
       usage();

@@ -24,6 +24,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/student/age-band": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 学生自选年龄段（13 §4；未分档的学生在开始练习前必须选择）
+         * @description ≥18 / 14–17 / <14 三档，记录到 `app.student_profiles.age_band`。**只能设置一次**：
+         *     已记录时返回 409 `AGE_BAND_LOCKED`，防止 <14 学生通过重新提交自我解锁（13 §4 的"不开通"是硬约束）；
+         *     需要修改请联系教师（教师端改档为后续工作）。
+         *     `<14` 记录后仍返回 200 + Me（ageBand=lt14），但学生写接口（作答/求助等）返回 403 `AGE_RESTRICTED`，
+         *     `POST /consents` 与 `POST /events/batch` 同样拒绝。
+         *     14–17 的 `GET /consents` 会附加「建议告知监护人」段（key=guardianNotice，非必选、不签署）。
+         *     名单导入暂不支持年龄段（后续补）；未带时由本接口让学生自选。
+         */
+        post: operations["setStudentAgeBand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/teacher/login": {
         parameters: {
             query?: never;
@@ -609,7 +635,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/teacher/classes/{classId}/roster": {
+    "/teacher/classes/{classId}/settings": {
         parameters: {
             query?: never;
             header?: never;
@@ -618,9 +644,44 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出） */
+        patch: operations["updateClassSettings"];
+        trace?: never;
+    };
+    "/teacher/classes/{classId}/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 名单列表（认领状态；学号只存哈希不返回） */
+        get: operations["listRoster"];
+        put?: never;
         /** 导入名单（CSV：学号,姓名；姓名可空） */
         post: operations["importRoster"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teacher/classes/{classId}/roster/{rosterId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 解除认领（学生换设备/异常时；写 audit_log） */
+        delete: operations["unclaimRoster"];
         options?: never;
         head?: never;
         patch?: never;
@@ -669,7 +730,7 @@ export interface paths {
         };
         /**
          * 实时看板推送（SSE）
-         * @description 事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线后用 `Last-Event-ID` 续传。
+         * @description 事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线重连后重推当前快照；前端另有 5s 轮询兜底。
          */
         get: operations["streamLive"];
         put?: never;
@@ -725,6 +786,23 @@ export interface paths {
         get: operations["getAttemptEvents"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teacher/attempts/{attemptId}/lines/{lineId}/reclassify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4） */
+        post: operations["reclassifyLine"];
         delete?: never;
         options?: never;
         head?: never;
@@ -826,7 +904,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 班级布置列表（按开放时间倒序；状态按数据库时钟推导） */
+        get: operations["listAssignments"];
         put?: never;
         /** 布置练习或测验 */
         post: operations["createAssignment"];
@@ -1030,7 +1109,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL";
+                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "AGE_BAND_REQUIRED" | "AGE_RESTRICTED" | "AGE_BAND_LOCKED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL";
                 /** @description 可直接展示给用户的中文 */
                 message: string;
                 /** @description 如 { waitSec, softLanding: [...], state } */
@@ -1056,6 +1135,11 @@ export interface components {
                 name?: string;
             }[];
             consentRequired: boolean;
+            /**
+             * @description 年龄分档（13 §4）；学生必返。null=尚未选择，需先调 POST /auth/student/age-band；lt14 不开通（写接口 403 AGE_RESTRICTED）
+             * @enum {string|null}
+             */
+            ageBand?: "lt14" | "14to17" | "ge18" | null;
             /** @description 功能开关：photo, lessonGenerated, mirror, testMode … */
             features?: {
                 [key: string]: boolean;
@@ -1077,7 +1161,7 @@ export interface components {
             version: string;
             sections: {
                 /** @enum {string} */
-                key: "service" | "crossBorderHosting" | "crossBorderModel" | "monitoring" | "research";
+                key: "service" | "crossBorderHosting" | "crossBorderModel" | "monitoring" | "research" | "guardianNotice";
                 title: string;
                 body: string;
                 required: boolean;
@@ -1118,6 +1202,11 @@ export interface components {
             /** @enum {string|null} */
             attemptStatus?: "active" | "parked" | "locked" | "completed" | "abandoned" | null;
             currentLayer?: components["schemas"]["LayerId"] | null;
+            problemId?: string;
+            version?: number;
+            settings?: {
+                [key: string]: unknown;
+            };
             reviewPublished?: boolean;
         };
         PublicProblemView: {
@@ -1376,6 +1465,17 @@ export interface components {
             review: components["schemas"]["Review"];
             provenance?: components["schemas"]["Provenance"];
         };
+        RosterEntry: {
+            /** Format: uuid */
+            rosterId: string;
+            /** @description 名单导入的姓名（解密后）；未提供为 null */
+            name?: string | null;
+            claimed: boolean;
+            /** Format: date-time */
+            claimedAt?: string | null;
+            /** @description 认领学生的匿名码 */
+            claimedByAnon?: string | null;
+        };
         ClassSettings: {
             /** @default true */
             photoEnabled: boolean;
@@ -1608,6 +1708,10 @@ export interface components {
             status: "draft" | "pending" | "returned" | "published" | "retired";
             autoChecks?: Record<string, never>;
             source?: string;
+            /** @description 最近一次审核人（display_name/anon_code） */
+            reviewedBy?: string | null;
+            /** Format: date-time */
+            reviewedAt?: string | null;
         };
         ImportJob: {
             /** Format: uuid */
@@ -4578,6 +4682,37 @@ export interface operations {
             429: components["responses"]["Error"];
         };
     };
+    setStudentAgeBand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    ageBand: "lt14" | "14to17" | "ge18";
+                };
+            };
+        };
+        responses: {
+            /** @description 已记录，返回最新 Me */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
     teacherLogin: {
         parameters: {
             query?: never;
@@ -5484,6 +5619,59 @@ export interface operations {
             401: components["responses"]["Error"];
         };
     };
+    updateClassSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSettings"];
+            };
+        };
+        responses: {
+            /** @description 已更新 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSummary"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    listRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 名单 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterEntry"][];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
     importRoster: {
         parameters: {
             query?: never;
@@ -5516,6 +5704,29 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    unclaimRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+                rosterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已解除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     rotateInvite: {
@@ -5568,7 +5779,10 @@ export interface operations {
     };
     streamLive: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 缺省为最近开放的布置 */
+                assignmentId?: string;
+            };
             header?: never;
             path: {
                 classId: components["parameters"]["classId"];
@@ -5664,6 +5878,52 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    reclassifyLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attemptId: components["parameters"]["attemptId"];
+                lineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    cls: "match" | "error" | "unknown" | "lowconf" | "demo_needs_reason" | "pass" | "fail";
+                    /** @description 必须是本题题目包里的关键步骤 ID；match 时必须非空 */
+                    keys?: string[];
+                    /** @description 必须是本题题目包里的错误 ID；仅 cls=error 时可传且必传 */
+                    errorId?: string | null;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 改判结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        lineId: string;
+                        cls: string;
+                        keys: string[];
+                        errorId: string | null;
+                        classifierPath: string;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     streamAttempt: {
@@ -5811,6 +6071,31 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Error"];
+        };
+    };
+    listAssignments: {
+        parameters: {
+            query: {
+                classId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 布置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentCard"][];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     createAssignment: {

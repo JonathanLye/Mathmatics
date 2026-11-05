@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 
+import { getAgeBand } from '../auth/age-band.ts';
 import { bySession, requireAuth } from '../auth/session.ts';
 import { AppError } from '../errors.ts';
 import { ingestBatch } from '../events/ingest.ts';
@@ -17,6 +18,10 @@ export const eventRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { d
     { bodyLimit: MAX_BODY_BYTES, config: { rateLimit: { max: config.rateLimits.events, timeWindow: '1 minute', keyGenerator: bySession } } },
     async (request) => {
     const auth = await requireAuth(db, request);
+    // 13 §4：<14 不开通，连过程监测事件也不采集（数据最小化）。
+    if (auth.role === 'student' && (await getAgeBand(db, auth.userId)) === 'lt14') {
+      throw new AppError('AGE_RESTRICTED', 403, '本服务暂未向 14 岁以下学生开放');
+    }
     const body = request.body as { events?: unknown } | undefined;
     const events = body?.events;
     if (!Array.isArray(events)) throw new AppError('VALIDATION_FAILED', 422, '需要 events 数组');

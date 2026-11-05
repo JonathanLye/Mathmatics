@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type { ProblemPackage } from '@proof-gym/engine';
 import { describe, expect, it } from 'vitest';
 
-import { checkPackage } from '../src/checks.ts';
+import { checkCategories, checkPackage } from '../src/checks.ts';
 import { publishPackage } from '../src/publish.ts';
 import { arbitrateDrafts, revealTotal, writeDraftOutputs } from '../src/report.ts';
 import { splitItems } from '../src/split.ts';
@@ -71,6 +71,16 @@ describe('导入 CLI（#36 / 10 §6）', () => {
     const result = checkPackage(seed());
     expect(result.issues).toEqual([]);
     expect(result.ok).toBe(true);
+  });
+
+  it('S8 四项布尔与审核门禁一致（#128 approve 要求）', () => {
+    const result = checkCategories(seed());
+    expect(result.categories).toEqual({
+      schema: true,
+      katex: true,
+      leakExhaustive: true,
+      patternSelfTest: true,
+    });
   });
 
   it('S8 结构与提示阶梯：H0..H4 / 透露量 / keyCount / 正则 / 规则自测', () => {
@@ -155,6 +165,35 @@ describe('导入 CLI（#36 / 10 §6）', () => {
       mode: 'dry-run',
       issues: [],
     });
+  });
+
+  it('import:run 一条龙（S1→items→draft，离线 fixtures）', () => {
+    const root = tempDir();
+    const pdf = join(root, 'fake.pdf');
+    writeFileSync(pdf, '%PDF-1.4\n%%EOF\n');
+    const res = runCli(root, [
+      'run',
+      '--file',
+      pdf,
+      '--pages',
+      '27-28',
+      '--skip-render',
+      '--ocr-fixture',
+      join(FIXTURES, 'ch2'),
+      '--job',
+      'run1',
+      '--max',
+      '2',
+      '--draft-fixture-a',
+      join(FIXTURES, 'epsN.json'),
+      '--draft-fixture-b',
+      join(FIXTURES, 'epsN-alt.json'),
+    ]);
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout).toContain('"drafts"');
+    const jobDir = join(root, 'imports', 'run1');
+    expect(existsSync(join(jobDir, 'report.md'))).toBe(true);
+    expect(existsSync(join(jobDir, 'job.json'))).toBe(true);
   });
 
   it(

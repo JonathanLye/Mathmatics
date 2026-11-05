@@ -36,11 +36,25 @@ describe('mock /help：与真接口结构对齐', () => {
     expect(res.state.notes.some((n) => n.kind === 'student' && n.text.includes('老师可以直接给我答案吗'))).toBe(true)
   })
 
-  it('concept / check_line 也把 note 作为 res.note 返回（页面不再从 state.notes 兜底）', async () => {
-    const concept = await requestHelp(createMockState('l3-active'), 'concept')
+  it('concept / check_line 也把 note 作为 res.note 返回；check_line 不写 state.notes（与 #141 真接口一致）', async () => {
+    const state = createMockState('l3-active')
+    const concept = await requestHelp(state, 'concept')
     expect(concept.note?.kind).toBe('concept')
-    const checkLine = await requestHelp(createMockState('l3-active'), 'check_line')
+
+    const lines = state.steps?.lines ?? []
+    const latestLineId = lines[lines.length - 1]?.lineId
+    const checkLine = await requestHelp(state, 'check_line')
     expect(checkLine.note?.kind).toBe('annotation')
+    // 缺省批注最新一行（B #141 的约定；前端据此把批注挂到对应行下方）
+    expect(checkLine.note?.lineId).toBe(latestLineId)
+    // #141 真接口只回 res.note、不写 state.notes → mock 与之一致，便于验证 A 端本地渲染与 B 落库依赖
+    expect(checkLine.state.notes).toHaveLength(state.notes.length)
+
+    // 可显式指定 lineId（多行场景）：另一行的批注 lineId 不同，前端分组不会串
+    const firstLineId = lines[0]?.lineId
+    const other = await requestHelp(state, 'check_line', '', firstLineId)
+    expect(other.note?.lineId).toBe(firstLineId)
+    expect(other.note?.lineId).not.toBe(latestLineId)
   })
 
   it('claimHint 对缺 cost/level 的 preview 不崩（防御契约可选字段）', async () => {

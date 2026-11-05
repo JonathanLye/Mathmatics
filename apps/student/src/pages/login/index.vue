@@ -3,7 +3,9 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { isMockMode } from '@/api/client'
+import { ageGateFor } from '@/auth/ageBand'
 import { useSession } from '@/stores/session'
+import WechatHint from '@/components/WechatHint.vue'
 
 const session = useSession()
 const loading = session.loading
@@ -12,8 +14,16 @@ const invite = ref('')
 const studentNo = ref('')
 const error = ref('')
 
+/** 登录后的去向：先看年龄分档（null/<14 → 年龄页），再按 consentRequired 去同意页或首页。 */
 function redirectAfterLogin() {
-  uni.redirectTo({ url: session.consented.value ? '/pages/home/index' : '/pages/consent/index' })
+  const target = session.consented.value ? '/pages/home/index' : '/pages/consent/index'
+  const decision = ageGateFor(session.me.value?.ageBand)
+  if (decision === 'need-age' || decision === 'blocked') {
+    session.setPendingRoute(target)
+    uni.redirectTo({ url: '/pages/age/index' })
+    return
+  }
+  uni.redirectTo({ url: target })
 }
 
 onLoad(async (query) => {
@@ -34,17 +44,18 @@ async function submit() {
 
 <template>
   <view class="pg-page pg-login">
+    <WechatHint />
     <view class="pg-login__brand">
       <text class="pg-login__title">证明陪练场</text>
       <text class="pg-login__sub pg-small">一张稿纸，一支红笔。写证明，不抄答案。</text>
     </view>
     <view class="pg-login__form pg-sheet">
       <text class="pg-login__label pg-small">邀请码</text>
-      <input v-model="invite" class="pg-login__input pg-mono" maxlength="6" placeholder="6 位邀请码" />
+      <input v-model="invite" class="pg-login__input pg-mono" data-testid="login-invite" maxlength="6" placeholder="6 位邀请码" />
       <text class="pg-login__label pg-small">学号</text>
-      <input v-model="studentNo" class="pg-login__input" placeholder="你的学号" />
+      <input v-model="studentNo" class="pg-login__input" data-testid="login-studentno" placeholder="你的学号" />
       <text v-if="error" class="pg-login__error pg-small">{{ error }}</text>
-      <button class="pg-login__submit" :disabled="loading" @tap="submit">{{ loading ? '登录中…' : '进入' }}</button>
+      <button class="pg-login__submit" data-testid="login-submit" :disabled="loading" @tap="submit">{{ loading ? '登录中…' : '进入' }}</button>
     </view>
     <text class="pg-login__hint pg-small">
       {{ mockMode ? '当前为 mock 模式（离线演示）；接真实接口用 VITE_USE_MOCK=false 或 setMockMode(false)。' : '登录走服务端 #18：邀请码 + 学号认领名单，服务端写 HttpOnly 会话 Cookie。' }}
@@ -67,7 +78,7 @@ async function submit() {
 .pg-login__error { color: var(--margin); margin-top: var(--sp-1); }
 .pg-login__submit {
   margin-top: var(--sp-3); min-height: 48px; border-radius: var(--radius-input);
-  background: var(--accent); color: #fff; border: 0; font-size: 16px;
+  background: var(--accent); color: var(--on-accent); border: 0; font-size: 16px;
 }
 .pg-login__submit:disabled { opacity: 0.5; }
 .pg-login__hint { margin-top: var(--sp-4); color: var(--ink-2); text-align: center; }

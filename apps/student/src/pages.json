@@ -8,6 +8,13 @@
       }
     },
     {
+      "path": "pages/age/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "年龄分档"
+      }
+    },
+    {
       "path": "pages/consent/index",
       "style": {
         "navigationStyle": "custom",

@@ -82,12 +82,17 @@ emits: {
 }
 ```
 
-### `<ProofLineList>`（#12）
+### `<ProofLineList>`（#12；#151 补 dismiss-note）
 ```ts
-props: { lines: ProofLine[]; notes: Note[]; busy?: boolean }
-emits: { 'write-next': [] }
+props: { lines: ProofLine[]; notes: Note[]; busy?: boolean; readonly?: boolean }
+emits: {
+  'write-next': []
+  'dismiss-note': [noteId: string]   // 学生关闭某条批注：父级用 filterDismissedNotes 只隐藏本页展示，不回写服务端
+}
 ```
 - 依据可空；红笔批注按 `note.lineId` 挂在对应行下方（找不到行则挂在列表末尾）；分组逻辑在 `layers/proofLines.ts`，有 vitest 单测（CI 生效）。
+- 批注卡片显示 署名 / 时间 / 正文，带 `role=note` 与 `aria-label`；`readonly=false`（默认）时渲染关闭按钮（触控目标 ≥44px），`readonly`（教师镜像只读页）不渲染。
+- 时间显示 `MM-DD HH:mm`（`formatNoteTime`，本地时区）。`check_line` 返回的 `res.note` 在 **B #141 落库 `state.notes` 前**只由父级在本次会话展示：父级 `mergeNotes(state.notes, res.note)` 按 `noteId` 去重，刷新/重连后以服务端下发的 `state.notes` 为准。
 - `note.kind === 'annotation'` 一律 `--margin`，hint/concept 用各自颜色；不出现红叉/红色错误徽标。
 - **颜色不读批注文案**：等 B 在契约加结构化字段（如 `note.linked` / `note.cls`）后再表达「衔接上了」的绿色；在此之前前端不解析 `note.text`（PR #90 复审第 3 条）。
 - **≥600px（平板/桌面）行内只渲染颜色标记**，批注正文由页面页边栏渲染，避免同一条批注在两处重复渲染全文（02 §3.2；PR #90 复审第 4 条）。

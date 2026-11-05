@@ -9,7 +9,7 @@ import { ATTEMPTS_COLUMNS, buildAttemptsCsv, csvField } from '../src/export/atte
 import { computeAttemptMetrics } from '../src/metrics/attempt.ts';
 import { refreshAttemptMetrics } from '../src/metrics/refresh.ts';
 
-import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
+import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, setStudentAgeBand, type Fixture } from './support/fixtures.ts';
 
 const SESSION_ID = randomUUID();
 const DEVICE = randomUUID();
@@ -46,6 +46,7 @@ afterEach(async () => {
 async function studentAttempt(): Promise<{ cookie: string; id: string }> {
   const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
   const cookie = cookieFrom(login.headers['set-cookie']);
+  await setStudentAgeBand(app, cookie);
   await app.inject({
     method: 'POST',
     url: '/api/v1/consents',

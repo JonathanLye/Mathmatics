@@ -63,7 +63,7 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
     expect(bad.statusCode).toBe(422);
   });
 
-  it('POST review：approve 要求四项 S8 全绿并发布；return 记退回；edit 未实现 422', async () => {
+  it('POST review：approve 要求四项 S8 全绿并发布；return 记退回；edit 空包 422', async () => {
     const seedPkg = (await db.query<{ public: unknown }>(`select public from content.problem_versions where problem_id='epsN' and version=1`)).rows[0];
     const insertDraft = async (version: number, checks: Record<string, boolean>) => {
       await db.query(
@@ -101,6 +101,26 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
     const records = await db.query(`select decision, minutes_spent from content.review_records where problem_id='epsN' and version=2`);
     expect(records.rows[0]).toMatchObject({ decision: 'approve', minutes_spent: 12 });
 
+    // 审核记录回读（#159）：reviewer / reviewedAt / comments 随题目包返回。
+    await db.query(
+      `insert into vault.problem_secrets (problem_id, version, secret)
+       select 'epsN', 2, secret from vault.problem_secrets where problem_id='epsN' and version=1`,
+    );
+    const detail = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems/epsN/versions/2', headers: { cookie } });
+    expect(detail.statusCode, detail.body).toBe(200);
+    const review = (detail.json() as { review: { reviewer?: string; reviewedAt?: string; comments?: string } }).review;
+    expect(review.reviewer).toBeTruthy();
+    expect(review.reviewedAt).toBeTruthy();
+    expect(review.comments).toBe('ok');
+
+    // #178：列表返回最近审核人/时间（04 §8.1）。
+    const listAfter = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems?status=published', headers: { cookie } });
+    const row = (listAfter.json() as Array<{ problemId: string; version: number; reviewedBy?: string; reviewedAt?: string }>).find(
+      (item) => item.problemId === 'epsN' && item.version === 2,
+    );
+    expect(row?.reviewedBy).toBeTruthy();
+    expect(row?.reviewedAt).toMatch(/Z$/);
+
     // return 记录退回
     await insertDraft(3, allGreen);
     const returned = await app.inject({
@@ -119,6 +139,42 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
       payload: { decision: 'edit', edited: {} },
     });
     expect(edit.statusCode).toBe(422);
+  });
+
+  it('POST review edit：服务端重跑 S8 全绿后发布为新版本；失败 422', async () => {
+    const current = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems/epsN/versions/1', headers: { cookie } });
+    expect(current.statusCode, current.body).toBe(200);
+    const pkg = current.json() as Record<string, unknown> & { public: Record<string, unknown>; secret: Record<string, unknown> };
+    pkg.public.title = '数列极限 · ε-N（教师修改）';
+
+    const edited = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/problems/epsN/versions/1/review',
+      headers: { ...WRITE_HEADERS, cookie },
+      payload: { decision: 'edit', edited: pkg, comments: '改标题', minutes: 5 },
+    });
+    expect(edited.statusCode, edited.body).toBe(200);
+    const item = edited.json() as { version: number; status: string; title: string };
+    expect(item.version).toBe(2);
+    expect(item.status).toBe('published');
+    expect(item.title).toContain('教师修改');
+    const problems = await db.query(`select current_version from content.problems where id='epsN'`);
+    expect(Number(problems.rows[0]?.current_version)).toBe(2);
+    const record = await db.query(`select decision from content.review_records where problem_id='epsN' and version=2`);
+    expect(record.rows[0]?.decision).toBe('edit');
+    const secret = await db.query(`select 1 from vault.problem_secrets where problem_id='epsN' and version=2`);
+    expect(secret.rows.length).toBe(1);
+
+    // 结构不合法 → 422，不写新版本
+    const bad = structuredClone(pkg);
+    (bad.public as Record<string, unknown>).keyCount = Number((bad.public as Record<string, unknown>).keyCount) + 1;
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/problems/epsN/versions/1/review',
+      headers: { ...WRITE_HEADERS, cookie },
+      payload: { decision: 'edit', edited: bad },
+    });
+    expect(rejected.statusCode, rejected.body).toBe(422);
   });
 
   it('GET 完整题目包：含 secret，读操作写 audit_log；404/422', async () => {

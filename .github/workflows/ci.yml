@@ -144,8 +144,13 @@ jobs:
           if (!tables.rows[0].users || !tables.rows[0].attempts) throw new Error('schema.sql 未生效');
           await client.end();
           NODE
+      # #74 / 复审报告 P1-4：同一套代码在真实 PostgreSQL 上验证「两批事件反向引用同一批作答」不死锁、
+      # seq 不重不漏。DATABASE_URL 已由 job env 提供；本地无 DATABASE_URL 时该测试退化为 PGlite 逻辑校验。
+      - name: Concurrency test on real PostgreSQL
+        working-directory: apps/server
+        run: npx vitest run test/postgres-concurrency.test.ts
 
-  # 学生端 e2e（可选，**不进 ci-gate**）：真实浏览器跑 3 档布局截图 + mock 状态 DOM 断言。
+  # 学生端 e2e（可选，**不进 ci-gate**）：真实浏览器跑 3 档布局截图（浅色 + 深色）+ mock 状态 DOM 断言。
   # 用 continue-on-error：e2e 失败只给信号、不拖挂必过门禁；稳定后再考虑并入 ci-gate。
   # PR #87 审计：此前 e2e 只认 Windows 本机浏览器、且不进 CI，Linux 上直接 exit=2。
   student-e2e:
@@ -177,8 +182,11 @@ jobs:
           CHROME_BIN=$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)
           if [ -z "$CHROME_BIN" ]; then echo 'chromium binary not found'; exit 1; fi
           echo "PG_CHROMIUM=$CHROME_BIN" >> "$GITHUB_ENV"
-      - name: Screens + mock 状态断言（390/768/1280）
+      - name: Screens + mock 状态断言（390/768/1280，浅色）
         run: pnpm --filter @proof-gym/student run e2e:screens
+      - name: Screens + mock 状态断言（390/768/1280，深色）
+        # #155 的深色 33/33 此前只在本地；CI 也要跑，避免「CI 绿」不覆盖深色（--dark → .artifacts/screens-dark）
+        run: pnpm --filter @proof-gym/student run e2e:screens:dark
       - name: Flows（本分支有脚本才跑；#88/#89 等后续 PR 接入）
         run: |
           node -e "const s=require('./apps/student/package.json').scripts||{};process.stdout.write(Object.keys(s).filter(k=>k.startsWith('e2e:flows')).join(' '))" > /tmp/e2e-flows.txt

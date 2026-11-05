@@ -1,6 +1,6 @@
 /**
  * 求助三意图端到端（issue #16 DoD：mock 下三种意图都能走通）。
- * 用法：先 npm run build:h5，再 npm run e2e:flows:help
+ * 用法：先 npm run build:mock，再 npm run e2e:flows:help
  * 依赖：playwright-core + 本机 ms-playwright 的 chromium（可用 PG_CHROMIUM 指定），与 tests/screenshots.mjs 同一套。
  *
  * 覆盖（PR #91 审计修复后）：
@@ -295,7 +295,7 @@ async function desktopFlows(browser, baseURL) {
 
 async function main() {
   if (!fs.existsSync(distDir)) {
-    console.error('[help] 缺少构建产物：' + distDir + '，先运行 npm run build:h5')
+    console.error('[help] 缺少构建产物：' + distDir + '，先运行 npm run build:mock')
     process.exit(2)
   }
   const exe = findChromium()
