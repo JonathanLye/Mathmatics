@@ -67,6 +67,7 @@ interface PublishedProblem {
   title: string;
   chapter?: string;
   version: number;
+  kind: 'main' | 'transfer';
 }
 const publishedProblems = ref<PublishedProblem[]>([]);
 const selectedProblem = ref('');
@@ -347,7 +348,9 @@ async function loadPublishedProblems(): Promise<void> {
   problemsLoading.value = true;
   problemsError.value = '';
   try {
-    publishedProblems.value = await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published');
+    publishedProblems.value = (
+      await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published')
+    ).filter((item) => item.kind === 'main');
     if (!publishedProblems.value.some((item) => problemKey(item) === selectedProblem.value)) {
       const first = publishedProblems.value[0];
       selectedProblem.value = first === undefined ? '' : problemKey(first);
