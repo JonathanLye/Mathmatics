@@ -74,7 +74,8 @@ const DERIVED_STATUS_SQL = `
 async function assignmentCardById(q: Queryable, assignmentId: string): Promise<Record<string, unknown>> {
   const row = (
     await q.query<AssignmentCardRow>(
-      `select a.id, pv.public, a.mode, ${DERIVED_STATUS_SQL} as status,
+      `select a.id, pv.public, a.problem_id, a.problem_version, a.settings,
+              a.mode, ${DERIVED_STATUS_SQL} as status,
               a.open_at, a.close_at, a.review_published_at
          from app.assignments a
          join content.problem_versions pv
@@ -297,4 +298,28 @@ export async function publishReview(
   });
 
   return assignmentCardById(db, assignmentId);
+}
+
+
+// 04 §6/§7：班级布置列表（教师端发布讲评/关闭/查看状态的入口）。
+export async function listAssignments(
+  db: Queryable,
+  auth: AuthContext,
+  classId: string,
+): Promise<Record<string, unknown>[]> {
+  await assertClassTeacher(db, auth, classId);
+  const rows = (
+    await db.query<AssignmentCardRow>(
+      `select a.id, pv.public, a.problem_id, a.problem_version, a.settings,
+              a.mode, ${DERIVED_STATUS_SQL} as status,
+              a.open_at, a.close_at, a.review_published_at
+         from app.assignments a
+         join content.problem_versions pv
+           on pv.problem_id = a.problem_id and pv.version = a.problem_version
+        where a.class_id = $1
+        order by a.open_at desc, a.id desc`,
+      [classId],
+    )
+  ).rows;
+  return rows.map(toAssignmentCard);
 }
