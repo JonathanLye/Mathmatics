@@ -70,6 +70,9 @@ type PackageRow = {
   auto_checks: Record<string, unknown> | null;
   provenance: Record<string, unknown> | null;
   secret: Record<string, unknown> | null;
+  reviewer: string | null;
+  reviewed_at: string | null;
+  comments: string | null;
 };
 
 // 完整题目包：public 来自 content.problem_versions，secret 来自 vault.problem_secrets（B 的发布路径）。
@@ -82,9 +85,18 @@ export async function getProblemVersion(
 ): Promise<Record<string, unknown>> {
   const row = (
     await db.query<PackageRow>(
-      `select v.public, v.review_status, v.auto_checks, v.provenance, s.secret
+      `select v.public, v.review_status, v.auto_checks, v.provenance, s.secret,
+              coalesce(u.display_name, u.anon_code) as reviewer,
+              v.reviewed_at::text as reviewed_at,
+              r.comments
          from content.problem_versions v
          left join vault.problem_secrets s on s.problem_id = v.problem_id and s.version = v.version
+         left join app.users u on u.id = v.reviewed_by
+         left join lateral (
+           select comments from content.review_records
+            where problem_id = v.problem_id and version = v.version
+            order by at desc limit 1
+         ) r on true
         where v.problem_id = $1 and v.version = $2`,
       [problemId, version],
     )
@@ -111,7 +123,13 @@ export async function getProblemVersion(
     kind: problem?.kind ?? 'main',
     public: row.public,
     secret: row.secret,
-    review: { status: row.review_status, autoChecks: row.auto_checks ?? {} },
+    review: {
+      status: row.review_status,
+      autoChecks: row.auto_checks ?? {},
+      ...(row.reviewer === null ? {} : { reviewer: row.reviewer }),
+      ...(row.reviewed_at === null ? {} : { reviewedAt: row.reviewed_at }),
+      ...(row.comments === null ? {} : { comments: row.comments }),
+    },
     ...(row.provenance === null ? {} : { provenance: row.provenance }),
   };
 }

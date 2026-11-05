@@ -852,7 +852,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 班级布置列表（按开放时间倒序；状态按数据库时钟推导） */
+        get: operations["listAssignments"];
         put?: never;
         /** 布置练习或测验 */
         post: operations["createAssignment"];
@@ -1149,6 +1150,11 @@ export interface components {
             /** @enum {string|null} */
             attemptStatus?: "active" | "parked" | "locked" | "completed" | "abandoned" | null;
             currentLayer?: components["schemas"]["LayerId"] | null;
+            problemId?: string;
+            version?: number;
+            settings?: {
+                [key: string]: unknown;
+            };
             reviewPublished?: boolean;
         };
         PublicProblemView: {
@@ -5876,6 +5882,31 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Error"];
+        };
+    };
+    listAssignments: {
+        parameters: {
+            query: {
+                classId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 布置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentCard"][];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     createAssignment: {

@@ -26,6 +26,7 @@ import {
 import { createMockState, DEFAULT_MOCK, mockRecognition, type MockKey } from '@/mocks/attemptStates'
 import { AGE_BAND_LOCKED_MESSAGE, ageBandFromQuery } from '@/auth/ageBand'
 import {
+  mockGeneratedLesson,
   mockLesson,
   mockNotebook,
   mockSelfcheckItems,
@@ -1124,15 +1125,31 @@ function mockUuid(): string {
 }
 
 /**
+ * 测试/演示开关（仅 H5 + mock）：URL 带 ?aigc=1 时给 mock 微课塞一条 generated 占位文本，
+ * 用于验证 AIGC 显式标识的渲染；默认关闭（不启用真实生成、不伪造内容）。
+ * 真实模式（USE_MOCK=false）不读取该开关，服务端是否下发 generated 才是唯一来源。
+ */
+function mockAigcPreviewEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  for (const source of [window.location.hash, window.location.search]) {
+    const index = source.indexOf('?')
+    if (index < 0) continue
+    if (new URLSearchParams(source.slice(index + 1)).get('aigc') === '1') return true
+  }
+  return false
+}
+
+/**
  * 第 1–2 层：取微课（GET /attempts/{id}/lesson/{conceptId}）。
  * mock 返回概念库的预写微课（seed concepts.json 的 seq-limit）；真实接口 #24 按 conceptId 下发。
- * 微课文本已由服务端过闸门，前端只渲染。
+ * 微课文本已由服务端过闸门，前端只渲染；?aigc=1 仅供测试/演示 AIGC 标识（见 mocks/README.md）。
  */
 export async function fetchLesson(state: AttemptState, conceptId?: string): Promise<LessonView> {
   const topic = conceptId ?? state.def?.conceptId ?? mockLesson.conceptId
   if (USE_MOCK) {
     await sleep()
-    return clone({ ...mockLesson, conceptId: topic })
+    const lesson = mockAigcPreviewEnabled() ? mockGeneratedLesson : mockLesson
+    return clone({ ...lesson, conceptId: topic })
   }
   return withRetry(() =>
     activeHttp.get<LessonView>(`/attempts/${state.attemptId}/lesson/${encodeURIComponent(topic)}`),
