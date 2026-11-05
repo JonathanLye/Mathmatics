@@ -15,3 +15,6 @@ research_notes
 .npm-cache
 .local-backup
 .deps
+
+# 真实环境变量文件绝不进镜像（infra/.env 由 compose env_file 注入）
+**/.env

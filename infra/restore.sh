@@ -24,14 +24,24 @@ COMPOSE=(docker compose -f "$COMPOSE_DIR/docker-compose.yml")
 
 echo "恢复中..."
 "${COMPOSE[@]}" exec -T postgres \
-  pg_restore -U proof_gym -d proof_gym --clean --if-exists --no-owner < "$DUMP"
+  pg_restore -U proof_gym -d proof_gym --clean --if-exists --no-owner --single-transaction < "$DUMP"
+
+# 数据校验：users/attempts 行数与迁移版本（恢复后应非空且版本表存在）
+COUNT=$("${COMPOSE[@]}" exec -T postgres psql -U proof_gym -d proof_gym -tAc "select count(*) from app.users")
+echo "users=$COUNT"
+VERSIONS=$("${COMPOSE[@]}" exec -T postgres psql -U proof_gym -d proof_gym -tAc "select count(*) from public.schema_migrations")
+echo "schema_migrations=$VERSIONS"
+if [ "$VERSIONS" -lt 1 ]; then
+  echo "恢复后 schema_migrations 为空：数据可能不完整" >&2
+  exit 1
+fi
 
 echo "恢复完成，启动服务..."
 "${COMPOSE[@]}" start server worker caddy
 
 # 等 server 健康后自检；失败则提示人工排查。
 for _ in $(seq 1 30); do
-  if "${COMPOSE[@]}" exec -T caddy wget -q -O /dev/null "http://server:3000/health" 2>/dev/null; then
+  if curl -fsS "http://127.0.0.1/health" >/dev/null 2>&1; then
     echo "restore done: $DUMP；/health 正常。"
     exit 0
   fi

@@ -5,18 +5,19 @@
 	# 因此 script-src 必须保留 'unsafe-inline'；外链仍被 default-src/connect-src 限制在 'self'。
 	header {
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
+		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'"
 	}
 
 	# /t（无尾斜杠）不匹配下面的 /t/*，会落到学生端 catch-all；显式重定向到 /t/。
 	redir /t /t/ 308
 
-	# 班级看板 SSE（#48 / #144）：需要逐帧 flush；不缓冲（flush_interval -1）。
-	# 放在 /api/* 之前，更具体的路径优先。
-	handle /api/v1/teacher/*/stream {
+	# SSE（#48 / #144 班级看板；attempts 详情未来同类）：需要逐帧 flush；不缓冲（flush_interval -1）。
+	# 用 path_regexp 匹配 /api/v1/teacher/<任意>/stream，覆盖 classes 与 attempts 两类端点。
+	@teacher_stream path_regexp teacher_stream ^/api/v1/teacher/[^/]+/stream$
+	handle @teacher_stream {
 		reverse_proxy server:3000 {
 			flush_interval -1
 		}

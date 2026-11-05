@@ -217,6 +217,8 @@ jobs:
         run: docker build -f infra/Dockerfile --target runtime -t proof-gym-runtime:ci .
       - name: Runtime image smoke
         run: docker run --rm proof-gym-runtime:ci node -v
+      - name: Validate Caddyfile
+        run: docker run --rm -v "$PWD/infra/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
 
   ci-gate:
     name: ci-gate
