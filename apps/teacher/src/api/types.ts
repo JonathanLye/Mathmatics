@@ -11,6 +11,7 @@ export type LiveRow = components['schemas']['LiveRow'];
 export type AttemptDetail = components['schemas']['AttemptDetail'];
 export type MetricsView = components['schemas']['MetricsView'];
 export type ExportJob = components['schemas']['ExportJob'];
+export type RosterEntry = components['schemas']['RosterEntry'];
 
 // 04 §10：名单导入结果（openapi 里的内联响应，不是命名 schema）
 export interface RosterImportResult {

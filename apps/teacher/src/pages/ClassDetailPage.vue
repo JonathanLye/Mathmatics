@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
-import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterImportResult } from '../api/types.ts';
+import type { AssignmentCard, ClassSettings, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
 import ExportPanel from '../components/ExportPanel.vue';
 import MetricsPanel from '../components/MetricsPanel.vue';
 import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
@@ -15,6 +15,14 @@ const classId = computed(() => String(route.params.classId ?? ''));
 const tab = ref('live');
 const classInfo = ref<ClassSummary | null>(null);
 const pageError = ref('');
+const classSettings = ref({
+  photoEnabled: true,
+  lessonGenerated: false,
+  revealBudget: 2,
+  integrityPractice: 'log_and_notice',
+  testMaxSwitches: 3,
+});
+const savingSettings = ref(false);
 
 // 学生详情抽屉（#35：解锁 / 发一句话 / 处理标记）
 const drawerVisible = ref(false);
@@ -46,14 +54,28 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const importResult = ref<RosterImportResult | null>(null);
 const rotating = ref(false);
+const rosterEntries = ref<RosterEntry[]>([]);
+const rosterLoading = ref(false);
+const rosterError = ref('');
+const unclaiming = ref<string | null>(null);
 
 // 布置（04 §7）
 const createdAssignments = ref<AssignmentCard[]>([]);
 const creating = ref(false);
+interface PublishedProblem {
+  problemId: string;
+  title: string;
+  chapter?: string;
+  version: number;
+}
+const publishedProblems = ref<PublishedProblem[]>([]);
+const selectedProblem = ref('');
+const problemsLoading = ref(false);
+const problemsError = ref('');
+const problemKey = (item: PublishedProblem): string => `${item.problemId}@${item.version}`;
+
 const closingId = ref<string | null>(null);
 const assignmentForm = ref({
-  problemId: 'epsN',
-  version: 1,
   mode: 'practice' as 'practice' | 'test',
   openAt: toLocalInput(new Date()),
   closeAt: '',
@@ -182,11 +204,29 @@ function messageOf(caught: unknown): string {
   return caught instanceof ApiError ? caught.message : caught instanceof Error ? caught.message : '请求失败';
 }
 
+// 04 §7：班级默认设置作为新布置表单的初值，教师仍可逐次修改。
+function applyClassDefaultsToForm(): void {
+  assignmentForm.value.revealBudget = classSettings.value.revealBudget;
+  assignmentForm.value.maxSwitches = classSettings.value.testMaxSwitches;
+  if (assignmentForm.value.mode === 'practice') assignmentForm.value.photoEnabled = classSettings.value.photoEnabled;
+}
+
 async function loadClassInfo(): Promise<void> {
   try {
     const list = await api.get<ClassSummary[]>('/api/v1/teacher/classes');
     classInfo.value = list.find((item) => item.classId === classId.value) ?? null;
     if (classInfo.value === null) pageError.value = '班级不存在或不属于你';
+    const settings = classInfo.value?.settings as ClassSettings | undefined;
+    if (settings !== undefined) {
+      Object.assign(classSettings.value, {
+        photoEnabled: settings.photoEnabled ?? true,
+        lessonGenerated: settings.lessonGenerated ?? false,
+        revealBudget: settings.revealBudget ?? 2,
+        integrityPractice: settings.integrityPractice ?? 'log_and_notice',
+        testMaxSwitches: settings.testMaxSwitches ?? 3,
+      });
+      applyClassDefaultsToForm();
+    }
   } catch (caught) {
     pageError.value = messageOf(caught);
   }
@@ -261,6 +301,65 @@ function disconnectStream(): void {
   streamConnected.value = false;
 }
 
+async function saveClassSettings(): Promise<void> {
+  savingSettings.value = true;
+  try {
+    const updated = await api.patch<ClassSummary>(`/api/v1/teacher/classes/${classId.value}/settings`, classSettings.value);
+    classInfo.value = updated;
+    applyClassDefaultsToForm();
+    MessagePlugin.success('班级默认设置已保存');
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    savingSettings.value = false;
+  }
+}
+
+async function loadRoster(): Promise<void> {
+  if (classId.value === '') return;
+  rosterLoading.value = true;
+  rosterError.value = '';
+  try {
+    rosterEntries.value = await api.get<RosterEntry[]>(`/api/v1/teacher/classes/${classId.value}/roster`);
+  } catch (caught) {
+    rosterEntries.value = [];
+    rosterError.value = caught instanceof ApiError ? caught.message : '名单加载失败，请重试';
+  } finally {
+    rosterLoading.value = false;
+  }
+}
+
+async function unclaim(rosterId: string): Promise<void> {
+  if (unclaiming.value !== null) return;
+  unclaiming.value = rosterId;
+  try {
+    await api.delete(`/api/v1/teacher/classes/${classId.value}/roster/${rosterId}`);
+    MessagePlugin.success('已解除认领');
+    await Promise.all([loadRoster(), loadClassInfo()]);
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    unclaiming.value = null;
+  }
+}
+
+async function loadPublishedProblems(): Promise<void> {
+  problemsLoading.value = true;
+  problemsError.value = '';
+  try {
+    publishedProblems.value = await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published');
+    if (!publishedProblems.value.some((item) => problemKey(item) === selectedProblem.value)) {
+      const first = publishedProblems.value[0];
+      selectedProblem.value = first === undefined ? '' : problemKey(first);
+    }
+  } catch (caught) {
+    publishedProblems.value = [];
+    problemsError.value = messageOf(caught);
+  } finally {
+    problemsLoading.value = false;
+  }
+}
+
 async function loadAssignments(): Promise<void> {
   if (classId.value === '') return;
   try {
@@ -323,7 +422,7 @@ async function onFileChange(event: Event): Promise<void> {
     const result = await api.postCsv<RosterImportResult>(`/api/v1/teacher/classes/${classId.value}/roster`, file);
     importResult.value = result;
     MessagePlugin.success(`导入完成：新增 ${result.added}，重复 ${result.duplicates}，非法 ${result.invalid.length}`);
-    await loadClassInfo();
+    await Promise.all([loadClassInfo(), loadRoster()]);
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
   } finally {
@@ -356,8 +455,9 @@ async function copyInvite(): Promise<void> {
 }
 
 async function createAssignment(): Promise<void> {
-  if (assignmentForm.value.problemId.trim() === '') {
-    MessagePlugin.warning('请填写题目 ID');
+  const problem = publishedProblems.value.find((item) => problemKey(item) === selectedProblem.value);
+  if (problem === undefined) {
+    MessagePlugin.warning('请选择已发布的题目（无已发布题目请先在题库发布）');
     return;
   }
   creating.value = true;
@@ -369,8 +469,8 @@ async function createAssignment(): Promise<void> {
 
     await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
       classId: classId.value,
-      problemId: assignmentForm.value.problemId.trim(),
-      version: Number(assignmentForm.value.version),
+      problemId: problem.problemId,
+      version: problem.version,
       mode: assignmentForm.value.mode,
       openAt: openAt.toISOString(),
       closeAt: closeAt === null ? null : closeAt.toISOString(),
@@ -424,8 +524,10 @@ watch(selectedAssignmentId, () => {
 
 onMounted(async () => {
   await loadClassInfo();
+  void loadPublishedProblems();
   await loadAssignments();
   await loadLive();
+  await loadRoster();
   connectStream();
   startPolling();
   pageReady = true;
@@ -488,8 +590,13 @@ onBeforeUnmount(() => {
             :key="item.key"
             class="stat-card clickable"
             :class="{ selected: liveFilter === item.key }"
+            role="button"
+            tabindex="0"
+            :aria-pressed="liveFilter === item.key"
             :title="`筛选：${item.label}（再次点击取消）`"
             @click="toggleFilter(item.key)"
+            @keydown.enter="toggleFilter(item.key)"
+            @keydown.space.prevent="toggleFilter(item.key)"
           >
             <div class="value">{{ item.value }}</div>
             <div class="label">{{ item.label }}</div>
@@ -529,7 +636,7 @@ onBeforeUnmount(() => {
           </template>
           <template #empty>
             <div class="empty">
-              {{ liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
+              {{ liveFilter ? '当前筛选下没有学生。' : liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
             </div>
           </template>
         </t-table>
@@ -537,11 +644,37 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="roster" label="名单">
-        <t-alert
-          theme="info"
-          message="当前契约没有 GET 名单列表接口（见 #50 PR 的缺口说明）；本页提供导入与认领人数，列表待 B 补契约后展示。"
-          style="margin: 12px 0"
-        />
+        <h4 style="margin: 16px 0 8px">名单列表</h4>
+        <t-alert v-if="rosterError" theme="warning" :message="rosterError" style="margin-bottom: 8px">
+          <template #operation><t-link theme="primary" @click="loadRoster">重试</t-link></template>
+        </t-alert>
+        <t-table
+          :data="rosterEntries"
+          :columns="[
+            { colKey: 'name', title: '姓名' },
+            { colKey: 'claimed', title: '认领' },
+            { colKey: 'claimedAt', title: '认领时间' },
+            { colKey: 'claimedByAnon', title: '学生匿名码' },
+            { colKey: 'actions', title: '操作', width: 120 },
+          ]"
+          :loading="rosterLoading"
+          row-key="rosterId"
+          size="small"
+        >
+          <template #name="{ row }">{{ row.name ?? '未提供' }}</template>
+          <template #claimed="{ row }">
+            <t-tag :theme="row.claimed ? 'success' : 'default'" variant="light">{{ row.claimed ? '已认领' : '未认领' }}</t-tag>
+          </template>
+          <template #claimedAt="{ row }">{{ row.claimedAt ? new Date(row.claimedAt).toLocaleString('zh-CN') : '—' }}</template>
+          <template #claimedByAnon="{ row }">{{ row.claimedByAnon ?? '—' }}</template>
+          <template #actions="{ row }">
+            <t-popconfirm v-if="row.claimed" content="解除后学生需重新用邀请码认领，确定？" @confirm="unclaim(row.rosterId)">
+              <t-link theme="danger" :disabled="unclaiming !== null">解除认领</t-link>
+            </t-popconfirm>
+            <span v-else class="page-sub">—</span>
+          </template>
+          <template #empty><div class="empty">名单为空，先导入 CSV。</div></template>
+        </t-table>
         <div class="inline-actions" style="margin-bottom: 16px">
           <span>邀请码 <b class="mono">{{ classInfo?.inviteCode ?? '—' }}</b></span>
           <t-button size="small" variant="outline" @click="copyInvite">复制</t-button>
@@ -569,11 +702,21 @@ onBeforeUnmount(() => {
 
       <t-tab-panel value="assignments" label="布置">
         <t-form label-width="90px" style="max-width: 560px; margin-top: 12px">
-          <t-form-item label="题目 ID">
-            <t-input v-model="assignmentForm.problemId" placeholder="如：epsN" />
+          <t-form-item label="题目">
+            <t-select
+              v-model="selectedProblem"
+              :loading="problemsLoading"
+              placeholder="选择已发布的题目版本"
+              style="width: 360px"
+              filterable
+              :options="publishedProblems.map((item) => ({
+                label: `${item.title}${item.chapter ? ' · ' + item.chapter : ''} · v${item.version}`,
+                value: problemKey(item),
+              }))"
+            />
           </t-form-item>
-          <t-form-item label="版本">
-            <t-input-number v-model="assignmentForm.version" :min="1" theme="normal" />
+          <t-form-item v-if="publishedProblems.length === 0 && !problemsLoading" label=" ">
+            <t-alert theme="warning" :message="problemsError === '' ? '没有已发布题目：请先在题库完成审核发布。' : `题目列表加载失败：${problemsError}`" />
           </t-form-item>
           <t-form-item label="模式">
             <t-select v-model="assignmentForm.mode" :options="[{ label: '练习', value: 'practice' }, { label: '测验', value: 'test' }]" />
@@ -656,6 +799,38 @@ onBeforeUnmount(() => {
       <t-tab-panel value="export" label="导出">
         <ExportPanel :class-id="classId" />
       </t-tab-panel>
+
+      <t-tab-panel value="settings" label="设置">
+        <t-alert theme="warning" message="这些默认值用作新建布置表单的初值；目前只保存，学生端尚未按它们生效。" style="margin: 12px 0" />
+        <t-form label-width="140px" style="max-width: 560px; margin-top: 12px">
+          <t-form-item label="拍照">
+            <t-switch v-model="classSettings.photoEnabled" />
+          </t-form-item>
+          <t-form-item label="生成补充讲解">
+            <t-switch v-model="classSettings.lessonGenerated" />
+            <span class="page-sub" style="margin-left: 8px">P0 默认关（fail-closed，09 §2）</span>
+          </t-form-item>
+          <t-form-item label="默认透露预算">
+            <t-input-number v-model="classSettings.revealBudget" :min="0" :max="10" theme="normal" />
+          </t-form-item>
+          <t-form-item label="诚信策略">
+            <t-select
+              v-model="classSettings.integrityPractice"
+              :options="[
+                { label: '记录 + 轻提醒', value: 'log_and_notice' },
+                { label: '仅记录', value: 'log_only' },
+              ]"
+              style="width: 200px"
+            />
+          </t-form-item>
+          <t-form-item label="测验切出锁定">
+            <t-input-number v-model="classSettings.testMaxSwitches" :min="0" :max="10" theme="normal" suffix="次" />
+          </t-form-item>
+          <t-form-item label=" ">
+            <t-button theme="primary" :loading="savingSettings" @click="saveClassSettings">保存</t-button>
+          </t-form-item>
+        </t-form>
+      </t-tab-panel>
     </t-tabs>
 
     <StudentDetailDrawer
@@ -667,12 +842,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.live-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 8px 0;
-}
 .stat-card.clickable {
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
@@ -683,6 +852,12 @@ onBeforeUnmount(() => {
 .stat-card.selected {
   border-color: var(--td-brand-color, #0052d9);
   background: var(--td-brand-color-light, #ecf2fe);
+}
+.live-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
 }
 .native-input {
   height: 32px;

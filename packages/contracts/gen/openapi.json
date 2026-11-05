@@ -1696,7 +1696,85 @@
         }
       }
     },
+    "/teacher/classes/{classId}/settings": {
+      "patch": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出）",
+        "operationId": "updateClassSettings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已更新",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/teacher/classes/{classId}/roster": {
+      "get": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "名单列表（认领状态；学号只存哈希不返回）",
+        "operationId": "listRoster",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "名单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RosterEntry"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "tags": [
           "teacher"
@@ -1757,6 +1835,40 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/teacher/classes/{classId}/roster/{rosterId}": {
+      "delete": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "解除认领（学生换设备/异常时；写 audit_log）",
+        "operationId": "unclaimRoster",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          },
+          {
+            "name": "rosterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已解除"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1993,6 +2105,130 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/teacher/attempts/{attemptId}/lines/{lineId}/reclassify": {
+      "post": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4）",
+        "operationId": "reclassifyLine",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "name": "lineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "cls"
+                ],
+                "properties": {
+                  "cls": {
+                    "type": "string",
+                    "enum": [
+                      "match",
+                      "error",
+                      "unknown",
+                      "lowconf",
+                      "demo_needs_reason",
+                      "pass",
+                      "fail"
+                    ]
+                  },
+                  "keys": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "必须是本题题目包里的关键步骤 ID；match 时必须非空"
+                  },
+                  "errorId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "必须是本题题目包里的错误 ID；仅 cls=error 时可传且必传"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "改判结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "lineId",
+                    "cls",
+                    "keys",
+                    "errorId",
+                    "classifierPath"
+                  ],
+                  "properties": {
+                    "lineId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "cls": {
+                      "type": "string"
+                    },
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "errorId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "classifierPath": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -4391,6 +4627,43 @@
           }
         }
       },
+      "RosterEntry": {
+        "type": "object",
+        "required": [
+          "rosterId",
+          "claimed"
+        ],
+        "properties": {
+          "rosterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "名单导入的姓名（解密后）；未提供为 null"
+          },
+          "claimed": {
+            "type": "boolean"
+          },
+          "claimedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "claimedByAnon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "认领学生的匿名码"
+          }
+        }
+      },
       "ClassSettings": {
         "type": "object",
         "properties": {
@@ -4405,6 +4678,8 @@
           },
           "revealBudget": {
             "type": "number",
+            "minimum": 0,
+            "maximum": 10,
             "default": 2
           },
           "integrityPractice": {
@@ -4417,6 +4692,8 @@
           },
           "testMaxSwitches": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
             "default": 3
           }
         }
@@ -5131,6 +5408,20 @@
           },
           "source": {
             "type": "string"
+          },
+          "reviewedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最近一次审核人（display_name/anon_code）"
+          },
+          "reviewedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },

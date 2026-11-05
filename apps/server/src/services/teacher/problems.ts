@@ -25,6 +25,8 @@ type ListRow = {
   review_status: ProblemListItemDto['status'];
   auto_checks: Record<string, unknown> | null;
   provenance: Record<string, unknown> | null;
+  reviewer: string | null;
+  reviewed_at: string | null;
 };
 
 export async function listProblems(
@@ -34,11 +36,19 @@ export async function listProblems(
   const rows = (
     await db.query<ListRow>(
       `select p.id as problem_id, p.title, p.chapter, p.kind, v.version,
-              v.review_status, v.auto_checks, v.provenance
+              v.review_status, v.auto_checks, v.provenance,
+              coalesce(ru.display_name, ru.anon_code) as reviewer,
+              rr.at::text as reviewed_at
          from content.problems p
          join content.problem_versions v
            on v.problem_id = p.id
           and (v.version = p.current_version or v.review_status in ('draft', 'pending', 'returned'))
+         left join lateral (
+           select r.reviewer_id, r.at from content.review_records r
+            where r.problem_id = v.problem_id and r.version = v.version
+            order by r.at desc limit 1
+         ) rr on true
+         left join app.users ru on ru.id = rr.reviewer_id
         where ($1::text is null or v.review_status = $1)
           and ($2::text is null or p.chapter = $2)
         order by p.id, v.version`,
@@ -59,6 +69,8 @@ export async function listProblems(
             status: row.review_status,
             autoChecks: row.auto_checks ?? {},
             ...(typeof row.provenance?.source === 'string' ? { source: row.provenance.source } : {}),
+            ...(row.reviewer === null ? {} : { reviewedBy: row.reviewer }),
+            ...(row.reviewed_at === null ? {} : { reviewedAt: new Date(row.reviewed_at).toISOString() }),
           },
         ],
   );
