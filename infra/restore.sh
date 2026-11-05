@@ -41,12 +41,14 @@ echo "恢复完成，启动服务..."
 
 # 等 server 健康后自检；失败则提示人工排查。
 for _ in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1/health" >/dev/null 2>&1; then
+  # 在 server 容器里查（node:24-slim 无 curl，用内置 fetch）：走宿主机 http://127.0.0.1 时 Caddy 会 308 到 https，
+  # curl -f 把 308 当成功，恢复失败也会报"正常"。
+  if "${COMPOSE[@]}" exec -T server node -e "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))" >/dev/null 2>&1; then
     echo "restore done: $DUMP；/health 正常。"
     exit 0
   fi
   sleep 2
 done
 
-echo "恢复完成但 /health 未就绪，请人工检查：docker compose -f "$COMPOSE_DIR/docker-compose.yml" logs server caddy" >&2
+echo "恢复完成但 /health 未就绪，请人工检查：docker compose -f '$COMPOSE_DIR/docker-compose.yml' logs server caddy" >&2
 exit 1

@@ -3,7 +3,9 @@
 # 用法：infra/smoke.sh [https://your.domain]
 set -uo pipefail
 
-BASE=${1:-${PUBLIC_ORIGIN:-http://localhost}}
+BASE=${1:-${PUBLIC_ORIGIN:-localhost}}
+# PUBLIC_ORIGIN 是 Caddy 站点地址（不带协议）；缺协议时补 https://（Caddy 会把 http 308 到 https，状态码断言全错）。
+case "$BASE" in http://*|https://*) ;; *) BASE="https://$BASE" ;; esac
 fail=0
 
 check() {
@@ -25,9 +27,17 @@ check "/health" 200 "$BASE/health"
 # 学生端（Caddy 静态文件，index.html）与教师端（vite base=/t/）。
 check "学生端首页 /" 200 "$BASE/"
 check "教师端 /t/" 200 "$BASE/t/"
+check "教师端 /t 重定向" 308 "$BASE/t"
+check "镜像入口 /s/mirror（SPA 兜底）" 200 "$BASE/s/mirror"
 # 未登录：/me 401；写接口缺 CSRF 头 403（05 §7）。
 check "未登录 /me" 401 "$BASE/api/v1/me"
 check "写接口缺 CSRF 头" 403 "$BASE/api/v1/events/batch" POST
+
+# 安全头（05 §7）：同源可嵌（教师镜像 iframe），其余 origin 不可嵌。
+headers=$(curl -sI "$BASE/" | tr -d '\r')
+for want in 'content-security-policy:.*frame-ancestors .self.' 'x-frame-options: *sameorigin' 'x-content-type-options: *nosniff'; do
+  if echo "$headers" | grep -qi "^$want"; then echo "ok   安全头 $want"; else echo "FAIL 缺安全头 $want"; fail=1; fi
+done
 
 # AIGC 标识（13 §2）：AI 生成文本的响应带 X-AIGC: 1；/health 不要求，缺失只提示。
 aigc=$(curl -sI "$BASE/health" | tr -d '\r' | grep -i '^x-aigc:' || true)

@@ -89,7 +89,7 @@ jobs:
       # 这里提前在干净环境验证它们可用（否则首次 docker compose build 才会暴露问题）。
       - name: Build web (student H5 + teacher)
         run: |
-          VITE_USE_MOCK=false pnpm --filter @proof-gym/student build:h5
+          pnpm --filter @proof-gym/student build:prod
           pnpm --filter @proof-gym/teacher build
 
   # PGlite 覆盖不到 node-postgres 驱动路径与真实 advisory 锁；这个 job 只做迁移/种子冒烟，不进 ci-gate。
@@ -199,9 +199,8 @@ jobs:
             echo "本分支没有 e2e:flows 脚本，跳过"
           fi
 
-  # 唯一 required status check：子 job 跳过也算过，真实失败才红。
   # #135 P0 拦截：compose 的 build target 缺失（server/worker/migrate 会构建成 caddy 镜像）或
-  # runtime 镜像起不来时，CI 直接失败；web 阶段的前端构建由 workspace 的 Build web 步骤验证命令。
+  # runtime / web 镜像起不来时，CI 直接失败。部署链路此前从未真实构建过，这里是它的第一道真实验证。
   docker:
     name: docker
     runs-on: ubuntu-latest
@@ -224,6 +223,28 @@ jobs:
         run: docker run --rm proof-gym-runtime:ci node -v
       - name: Validate Caddyfile
         run: docker run --rm -v "$PWD/infra/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
+      - name: Build web image（镜像内构建学生端/教师端）
+        run: docker build -f infra/Dockerfile --target web -t proof-gym-web:ci .
+      - name: Web image smoke（静态路由、SPA 兜底、安全头、镜像 iframe 所需 CORS）
+        run: |
+          docker run -d --name web -e PUBLIC_ORIGIN=:80 -p 8080:80 proof-gym-web:ci
+          trap 'docker logs web; docker rm -f web' EXIT
+          for _ in $(seq 1 15); do curl -fs -o /dev/null http://127.0.0.1:8080/ && break; sleep 1; done
+          code() { curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$1"; }
+          test "$(code /)" = 200
+          test "$(code /t/)" = 200
+          test "$(code /t/classes/x)" = 200
+          test "$(code /s/mirror)" = 200
+          test "$(code /t)" = 308
+          curl -sI http://127.0.0.1:8080/ | grep -qi '^content-security-policy:.*frame-ancestors .self.'
+          curl -sI http://127.0.0.1:8080/ | grep -qi '^x-frame-options: *sameorigin'
+          curl -sI http://127.0.0.1:8080/ | grep -qi '^cache-control: *no-cache'
+          asset=$(curl -s http://127.0.0.1:8080/ | grep -o '/assets/index-[^"]*\.js' | head -n 1)
+          test -n "$asset"
+          curl -sI "http://127.0.0.1:8080$asset" | grep -qi '^access-control-allow-origin: *\*'
+          curl -sI "http://127.0.0.1:8080$asset" | grep -qi '^cache-control:.*immutable'
+
+  # 唯一 required status check：子 job 跳过也算过，真实失败才红。
 
   ci-gate:
     name: ci-gate

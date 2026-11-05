@@ -1,27 +1,34 @@
 {$PUBLIC_ORIGIN:localhost} {
 	encode gzip
 
-	# 安全头（05 §7）。CSP：学生端 H5 的 index.html 有 uni-app 的内联 script（viewport document.write），
-	# 因此 script-src 必须保留 'unsafe-inline'；外链仍被 default-src/connect-src 限制在 'self'。
+	# 安全头（05 §7）。script-src 不含 'unsafe-inline'（内联脚本已外移到 /static/boot.js）；
+	# style-src 保留 'unsafe-inline'：uni-app/TDesign 运行时注入样式。
 	header {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'"
 	}
 
 	# /t（无尾斜杠）不匹配下面的 /t/*，会落到学生端 catch-all；显式重定向到 /t/。
 	redir /t /t/ 308
 
-	# SSE（#48 / #144 班级看板；attempts 详情未来同类）：需要逐帧 flush；不缓冲（flush_interval -1）。
-	# 用 path_regexp 匹配 /api/v1/teacher/<任意>/stream，覆盖 classes 与 attempts 两类端点。
-	@teacher_stream path_regexp teacher_stream ^/api/v1/teacher/[^/]+/stream$
-	handle @teacher_stream {
-		reverse_proxy server:3000 {
-			flush_interval -1
-		}
-	}
+	# SSE（#48 / #144 班级看板、attempts 详情）：不需要专门路由。Caddy 对 Content-Type: text/event-stream
+	# 自动逐帧 flush（reverse_proxy 文档 flush_interval 一节），经 encode gzip 也不缓冲（2026-11-05 用 2.10 实测）。
+	# 不要写 flush_interval -1：显式 -1 会让客户端断开后仍不取消上游请求。
+
+	# 镜像预览（04 §5）iframe 是 sandbox="allow-scripts"（不含 allow-same-origin），文档 origin 为 null；
+	# uni-app 产物的 <script type=module crossorigin> 与 <link crossorigin> 走 CORS，没有 ACAO 会被拦、页面白屏。
+	# /assets/* 只有带 hash 的公开静态资源（不带凭据、不含数据），放开是安全的。
+	header /assets/* Access-Control-Allow-Origin "*"
+
+	# 缓存：带 hash 的产物长缓存；其余静态入口（index.html 与 SPA 兜底）每次校验，
+	# 否则发版后旧 index.html 指向已删除的 hash 文件，学生端白屏。
+	@hashed path /assets/* /t/assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@entry not path /assets/* /t/assets/* /api/* /health
+	header @entry Cache-Control "no-cache"
 
 	handle /api/* {
 		reverse_proxy server:3000

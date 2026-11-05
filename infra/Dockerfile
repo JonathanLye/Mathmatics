@@ -2,7 +2,7 @@
 
 # ---------------------------------------------------------------- 前端构建（学生端 H5 + 教师端）
 # 在镜像内构建静态产物，部署机只需 docker compose build/up（05 §8）；
-# 学生端默认 mock，生产构建必须显式 VITE_USE_MOCK=false 走真实 API。
+# 学生端 build:prod 读 .env.production（VITE_USE_MOCK=false、关闭 mock 入口），走真实 API（#157）。
 FROM node:24-slim AS web-builder
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -14,7 +14,7 @@ COPY apps ./apps
 COPY packages ./packages
 # 构建需要 devDependencies（uni-app / vite / vue-tsc 等），不能用 --prod。
 RUN pnpm install --frozen-lockfile
-RUN VITE_USE_MOCK=false pnpm --filter @proof-gym/student build:h5 \
+RUN pnpm --filter @proof-gym/student build:prod \
  && pnpm --filter @proof-gym/teacher build
 
 # ---------------------------------------------------------------- 服务端 / worker 运行时
