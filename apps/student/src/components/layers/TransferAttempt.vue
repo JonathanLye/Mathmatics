@@ -281,7 +281,7 @@ function remove(line: ProofLine) {
   font-size: 15px;
   line-height: 1.2;
 }
-.pg-layer__btn--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pg-layer__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .pg-layer__btn[disabled] { opacity: 0.45; }
 .pg-attempt__task { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3); font-family: var(--font-serif); color: var(--ink); }
 .pg-attempt__label { color: var(--ink-2); font-family: var(--font-sans); }

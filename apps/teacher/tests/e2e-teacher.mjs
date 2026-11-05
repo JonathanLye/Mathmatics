@@ -123,6 +123,11 @@ async function main() {
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(6500);
   await shot('02-live-1280');
+  // #169：数字卡筛选（在线）
+  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
+  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
+  await shot('02c-live-filter-1280');
+  await page.getByText('清除', { exact: true }).click();
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
@@ -148,6 +153,13 @@ async function main() {
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');
+  // #171：题库状态筛选（草稿）
+  await page.locator('.problem-filters .t-select').first().click();
+  await page.locator('.t-select-option').filter({ hasText: '草稿' }).first().click();
+  await page.getByText(/共 \d+ 行/).waitFor({ timeout: 10000 });
+  const draftRows = await page.locator('tbody tr').count();
+  assert(draftRows >= 1, '题库筛选草稿应为至少 1 行');
+  await shot('06a-problems-filter-1280');
   await page.goto(`${BASE}/t/settings`, { waitUntil: 'networkidle' });
   await page.getByText('默认策略（04 §7）').waitFor({ timeout: 10000 });
   await shot('06b-settings-1280');

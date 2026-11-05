@@ -208,7 +208,7 @@ function showTemplate() {
 .pg-layer__btn--primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .pg-layer__btn[disabled] { opacity: 0.45; }
 .pg-layer__row { display: flex; gap: var(--sp-2); }
