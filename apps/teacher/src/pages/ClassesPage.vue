@@ -80,7 +80,7 @@ onMounted(refresh);
       row-key="classId"
       :loading="loading"
       hover
-      @row-click="(row: ClassSummary) => openClass(row)"
+      @row-click="(ctx: { row: ClassSummary }) => openClass(ctx.row)"
     >
       <template #empty>
         <div class="empty">还没有班级。点右上角“建班”，10 分钟走通“建班 → 导名单 → 布置”。</div>
