@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
-import type { ExportFormat, ExportJob, ExportTable } from '../api/types.ts';
+import type { AssignmentCard, ExportFormat, ExportJob, ExportTable } from '../api/types.ts';
 
 const props = defineProps<{ classId: string }>();
 
 const format = ref<ExportFormat>('csv');
 const tables = ref<ExportTable[]>(['attempts', 'lines', 'hints', 'help', 'recognitions', 'integrity', 'events']);
 const anonymized = ref(true);
+const assignments = ref<AssignmentCard[]>([]);
+const selectedAssignmentIds = ref<string[]>([]);
+const assignmentsLoading = ref(false);
 const submitting = ref(false);
 const job = ref<ExportJob | null>(null);
 const error = ref('');
@@ -44,6 +47,19 @@ const tableOptions: Array<{ label: string; value: ExportTable }> = [
   { label: '事件 events.jsonl', value: 'events' },
 ];
 
+async function loadAssignments(): Promise<void> {
+  assignmentsLoading.value = true;
+  try {
+    assignments.value = await api.get<AssignmentCard[]>(`/api/v1/teacher/assignments?classId=${encodeURIComponent(props.classId)}`);
+  } catch {
+    assignments.value = [];
+  } finally {
+    assignmentsLoading.value = false;
+  }
+}
+
+onMounted(loadAssignments);
+
 async function submit(): Promise<void> {
   error.value = '';
   submitting.value = true;
@@ -53,6 +69,7 @@ async function submit(): Promise<void> {
       format: format.value,
       tables: tables.value,
       anonymized: anonymized.value,
+      ...(selectedAssignmentIds.value.length > 0 ? { assignmentIds: selectedAssignmentIds.value } : {}),
     });
     MessagePlugin.success('导出任务已排队');
     startPolling();
@@ -104,6 +121,17 @@ onBeforeUnmount(stopPolling);
     <t-form label-width="90px" style="max-width: 620px">
       <t-form-item label="班级">
         <span class="mono">{{ classId }}</span>
+      </t-form-item>
+      <t-form-item label="布置">
+        <t-select
+          v-model="selectedAssignmentIds"
+          :options="assignments.map((item) => ({ label: `${item.title} · ${item.mode === 'test' ? '测验' : '练习'} · ${item.status}`, value: item.assignmentId }))"
+          :loading="assignmentsLoading"
+          multiple
+          clearable
+          placeholder="默认全班全部布置"
+          style="width: 320px"
+        />
       </t-form-item>
       <t-form-item label="格式">
         <t-select v-model="format" :options="formatOptions" style="width: 220px" />
