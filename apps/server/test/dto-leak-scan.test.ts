@@ -68,6 +68,8 @@ const MAIN_OPS = [
   'POST /recognitions/ink',
   'POST /recognitions/photo',
   'POST /recognitions/{recogId}/confirm',
+  'GET /attempts/{attemptId}/lesson/{conceptId}',
+  'POST /attempts/{attemptId}/lesson/{conceptId}/check',
 ] as const;
 
 // 迁移题子作答（kind=transfer，从第 3 层开始）走到的接口。
@@ -370,6 +372,7 @@ interface Walk {
   ladder: Record<string, { delivered: string[]; expected: string[] }>;
   concept: Record<string, Record<string, any>>;
   errorNotes: Record<string, Array<{ errorId: string; lineId: string; note: unknown }>>;
+  lesson: Record<string, any>;
   recognition: { ink: Record<string, any>; photo: Record<string, any>; confirm: Record<string, any>; photoConfirm: Record<string, any> };
   app: FastifyInstance;
   close(): Promise<void>;
@@ -459,6 +462,17 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
     params: { recogId: photo.json.recogId as string },
     payload: { text: (photo.json.lines as Array<{ text: string }>).map((l) => l.text).join('\n'), lines: (photo.json.lines as Array<{ text: string }>).map((l) => l.text) },
   });
+
+  // —— 预写微课：整份讲义与每一步的小核验（答对、答错各一次）都过扫描。
+  const conceptId = (publicOf[main]?.def as { conceptId: string }).conceptId;
+  const lessonParams = { attemptId, conceptId };
+  const lesson = (await call(ctx, 'GET /attempts/{attemptId}/lesson/{conceptId}', main, { params: lessonParams })).json;
+  for (const step of lesson.steps as Array<{ id: string; check?: { options: string[] } }>) {
+    if (!step.check) continue;
+    for (let choice = 0; choice < step.check.options.length; choice++) {
+      await call(ctx, 'POST /attempts/{attemptId}/lesson/{conceptId}/check', main, { params: lessonParams, payload: { stepId: step.id, choice } });
+    }
+  }
 
   // —— 第 1、2 层
   await call(ctx, 'POST /attempts/{attemptId}/definition', main, { params, payload: { text: NEUTRAL_LINE, input: INPUT } });
@@ -556,6 +570,7 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
     ladder,
     concept,
     errorNotes,
+    lesson,
     recognition: { ink: ink.json, photo: photo.json, confirm: confirmed.json, photoConfirm: photoConfirmed.json },
     app,
     close: async () => {
@@ -706,6 +721,17 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
           expect(note).toMatchObject({ kind: 'annotation', lineId, text: secret.errors.find((e) => e.id === errorId)?.question });
         }
       }
+    });
+  });
+
+  describe.each(PROBLEMS)('$main：预写微课', ({ main }) => {
+    it('下发真实讲义（不是空响应假绿）；答对答错两种反馈都被扫描', () => {
+      const walk = walkOf(main);
+      expect(walk.lesson.steps.length).toBeGreaterThan(1);
+      expect(walk.lesson.steps.some((s: { check?: unknown }) => s.check !== undefined)).toBe(true);
+      const checks = walk.records.filter((r) => r.op === 'POST /attempts/{attemptId}/lesson/{conceptId}/check');
+      expect(checks.filter((r) => ok(r) && JSON.parse(r.body).correct === true).length).toBeGreaterThan(0);
+      expect(checks.filter((r) => ok(r) && JSON.parse(r.body).correct === false).length).toBeGreaterThan(0);
     });
   });
 

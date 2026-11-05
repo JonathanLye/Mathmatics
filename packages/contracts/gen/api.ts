@@ -264,7 +264,7 @@ export interface paths {
         };
         /**
          * 第 1–2 层：取微课（直观卡 + 分步讲解 + 图解）
-         * @description 文本已按当前作答过闸门；按学生原话生成的补充讲解放在 `generated` 里（可能为空）。
+         * @description 文本已按当前作答过闸门（被拦的字符串换成回退文案）；小核验题只下发 q/options，答案由 `/check` 判定；按学生原话生成的补充讲解放在 `generated` 里（P0 恒为 null）。
          */
         get: operations["getLesson"];
         put?: never;
@@ -5039,6 +5039,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     lessonCheck: {
@@ -5075,6 +5076,8 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     submitFramework: {

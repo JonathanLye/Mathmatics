@@ -19,11 +19,17 @@ import FuncBandDiagram from '@/components/diagrams/FuncBandDiagram.vue'
 import MonotoneStepsDiagram from '@/components/diagrams/MonotoneStepsDiagram.vue'
 import type { LessonStep, LessonView } from '@/types/attempt'
 
-const props = withDefaults(defineProps<{ open?: boolean; lesson?: LessonView | null; busy?: boolean }>(), {
-  open: false,
-  lesson: null,
-  busy: false,
-})
+type CheckVerdict = { correct: boolean; feedback: string } | null
+const props = withDefaults(
+  defineProps<{
+    open?: boolean
+    lesson?: LessonView | null
+    busy?: boolean
+    /** 服务端判定小核验（真实接口不下发答案）；缺省或返回 null 时用题目自带的 answer/right/wrong 本地判定（mock）。 */
+    check?: (stepId: string, choice: number) => Promise<CheckVerdict>
+  }>(),
+  { open: false, lesson: null, busy: false, check: undefined },
+)
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -39,6 +45,8 @@ const KIND_LABEL: Record<LessonStep['kind'], string> = {
 const stepIndex = ref(0)
 const choices = ref<Record<string, number>>({})
 const checkStatus = ref<Record<string, 'idle' | 'wrong' | 'right'>>({})
+/** 服务端给的反馈文案（真实接口）；没有时回退到题目自带的 right/wrong。 */
+const feedbackText = ref<Record<string, string>>({})
 
 const steps = computed(() => props.lesson?.steps ?? [])
 /**
@@ -88,14 +96,28 @@ function reset() {
   stepIndex.value = 0
   choices.value = {}
   checkStatus.value = {}
+  feedbackText.value = {}
 }
 watch(() => props.open, (open) => { if (open) reset() })
 watch(() => props.lesson, () => reset())
 
-function choose(index: number) {
+async function choose(index: number) {
   const s = step.value
   if (!s?.check || status.value === 'right') return
   choices.value = { ...choices.value, [s.id]: index }
+  let verdict: CheckVerdict = null
+  if (props.check) {
+    try {
+      verdict = await props.check(s.id, index)
+    } catch {
+      return // 网络失败：不改判定，学生可以再点一次
+    }
+  }
+  if (verdict) {
+    feedbackText.value = { ...feedbackText.value, [s.id]: verdict.feedback }
+    checkStatus.value = { ...checkStatus.value, [s.id]: verdict.correct ? 'right' : 'wrong' }
+    return
+  }
   checkStatus.value = { ...checkStatus.value, [s.id]: index === s.check.answer ? 'right' : 'wrong' }
 }
 
@@ -193,10 +215,10 @@ function close() {
             </button>
           </view>
           <view v-if="status === 'wrong'" class="pg-micro__feedback pg-micro__feedback--wrong" data-testid="micro-feedback-wrong">
-            <MathText :text="step.check.wrong" block />
+            <MathText :text="feedbackText[step.id] ?? step.check.wrong ?? ''" block />
           </view>
           <view v-if="status === 'right'" class="pg-micro__feedback pg-micro__feedback--right" data-testid="micro-feedback-right">
-            <MathText :text="'对。' + step.check.right" block />
+            <MathText :text="feedbackText[step.id] ?? '对。' + (step.check.right ?? '')" block />
           </view>
         </view>
       </view>

@@ -74,6 +74,7 @@ import {
   deleteTransferLine,
   editTransferLine,
   fetchLesson,
+  checkLesson,
   finishSteps,
   finishTransfer,
   confirmRecognition,
@@ -622,6 +623,12 @@ async function handleLesson() {
     return
   }
   show('本层的讲解入口在 #24 接入')
+}
+
+async function checkMicro(stepId: string, choice: number) {
+  const lesson = microLesson.value
+  if (!lesson) return null
+  return checkLesson(state.value, lesson.conceptId, stepId, choice)
 }
 
 function closeMicro() {
@@ -1602,7 +1609,7 @@ function backHome() {
       @confirm="handleRecogConfirm"
       @discard="handleRecogDiscard"
     />
-    <MicroCourse :open="microOpen" :lesson="microLesson" @close="closeMicro" />
+    <MicroCourse :open="microOpen" :lesson="microLesson" :check="checkMicro" @close="closeMicro" />
 
     <!-- 真实模式不显示 mock 状态切换（#24） -->
     <MockSwitcher v-if="mockEnabled && !realMode" :model-value="mockKey" @update:model-value="onSwitchMock" />

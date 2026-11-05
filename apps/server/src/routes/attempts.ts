@@ -10,6 +10,7 @@ import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
 import type { RouteInput } from '../help/intent.ts';
 import { createIdempotency } from '../idempotency.ts';
+import { createLessonService } from '../help/lesson.ts';
 import { createHelpService } from '../help/service.ts';
 import { assertConfirmedInput } from '../recognition/provenance.ts';
 
@@ -83,6 +84,12 @@ function parseBody<T>(contract: ContractValidator, path: string, request: Fastif
 export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
   const svc = createAttemptService(db, contract);
   const helpSvc = createHelpService({ db, attempts: svc, secret: config.sessionSecret });
+  const lessonSvc = createLessonService({ db, attempts: svc });
+  const conceptParam = (request: FastifyRequest): string => {
+    const raw = (request.params as Record<string, string>).conceptId ?? '';
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(raw)) throw new AppError('NOT_FOUND', 404, '没有这个概念');
+    return raw;
+  };
   // 06 §1：写接口带 Idempotency-Key 时，同键重放返回首次响应。先鉴权/同意书，再占位。
   const idempotency = createIdempotency(db);
   const writable = { preHandler: [requireStudentConsent(db), idempotency.preHandler], onSend: idempotency.onSend };
@@ -109,6 +116,18 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.get('/attempts/:attemptId', async (request) => {
     const auth = await requireAuth(db, request);
     return { state: await svc.get(auth.userId, attemptId(request)) };
+  });
+
+  // 预写微课（06 §4.4）：只读，已过闸门；小核验的答案不下发，由 /check 判定。
+  app.get('/attempts/:attemptId/lesson/:conceptId', async (request) => {
+    const auth = await requireAuth(db, request);
+    return lessonSvc.get(auth.userId, attemptId(request), conceptParam(request));
+  });
+
+  app.post('/attempts/:attemptId/lesson/:conceptId/check', { preHandler: [requireStudentConsent(db)] }, async (request) => {
+    const auth = await requireAuth(db, request);
+    const body = parseBody<{ stepId: string; choice: number }>(contract, '/attempts/{attemptId}/lesson/{conceptId}/check', request);
+    return lessonSvc.check(auth.userId, attemptId(request), conceptParam(request), body);
   });
 
   app.post('/attempts/:attemptId/definition', writable, async (request) => {

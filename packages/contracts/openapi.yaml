@@ -286,11 +286,12 @@ paths:
     get:
       tags: [attempt]
       summary: 第 1–2 层：取微课（直观卡 + 分步讲解 + 图解）
-      description: 文本已按当前作答过闸门；按学生原话生成的补充讲解放在 `generated` 里（可能为空）。
+      description: 文本已按当前作答过闸门（被拦的字符串换成回退文案）；小核验题只下发 q/options，答案由 `/check` 判定；按学生原话生成的补充讲解放在 `generated` 里（P0 恒为 null）。
       operationId: getLesson
       parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/conceptId' }]
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' } # 作答不属于本人，或概念没有已发布的微课
         '200':
           description: 微课
           content:
@@ -314,6 +315,8 @@ paths:
                 choice: { type: integer, minimum: 0 }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' } # 该步没有小核验 / 选项越界 / 步骤不存在
         '200':
           description: 判定与反馈
           content:

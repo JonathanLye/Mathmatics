@@ -1304,6 +1304,26 @@ export async function fetchLesson(state: AttemptState, conceptId?: string): Prom
 }
 
 /**
+ * 微课小核验（POST /attempts/{id}/lesson/{conceptId}/check）：服务端判定，不下发答案。
+ * mock 返回 null，表示由 MicroCourse 用 mock 题里自带的 answer/right/wrong 本地判定。
+ */
+export async function checkLesson(
+  state: AttemptState,
+  conceptId: string,
+  stepId: string,
+  choice: number,
+): Promise<{ correct: boolean; feedback: string } | null> {
+  if (USE_MOCK) return null
+  const result = await withRetry(() =>
+    activeHttp.request<{ correct: boolean; feedback: string }>(
+      `/attempts/${state.attemptId}/lesson/${encodeURIComponent(conceptId)}/check`,
+      { method: 'POST', body: { stepId, choice }, idempotencyKey: newUuid() },
+    ),
+  )
+  return { correct: result.data.correct, feedback: result.data.feedback }
+}
+
+/**
  * 第 4 层：回答一道自检题（POST /attempts/{id}/selfcheck/{itemId}）。
  *
  * mock 判定口径（P0 规则兜底，01 §L4）：≥4 字即 accepted；不足 4 字 followup（只追问、不给答案）。
