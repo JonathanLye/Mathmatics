@@ -183,9 +183,24 @@ async function main() {
   await page.getByText('题目详情（含 secret，仅教师可见）').waitFor({ timeout: 10000 });
   await page.getByText('学生视角预览', { exact: false }).first().click();
   await page.getByText('L1 定义').first().waitFor({ timeout: 10000 });
-  const previewTabs = await page.locator('.t-tabs__nav-item-text-wrapper').allInnerTexts();
-  for (const label of ['L1 定义', 'L3 骨架', '额度用完', 'L6 总结']) {
-    assert(previewTabs.some((item) => item.trim() === label), `学生视角预览缺少：${label}`);
+  // 逐个点开，断言各自内容；预览区只能出现 public 字段，不得出现 secret.keys 的文本（#183 A 复审）。
+  const preview = page.locator('details').filter({ hasText: '学生视角预览' });
+  const previewChecks = [
+    ['L1 定义', null],
+    ['L3 构造与推导', 'L3：'],
+    ['额度用完', '透露上限（题目包配置）'],
+    ['L6 总结', 'L6：'],
+  ];
+  for (const [label, text] of previewChecks) {
+    await preview.locator('.t-tabs__nav-item').filter({ hasText: label }).click();
+    if (text) await preview.getByText(text, { exact: false }).first().waitFor({ state: 'visible', timeout: 5000 });
+  }
+  const rawPackage = JSON.parse((await page.locator('.pkg-json').textContent()) ?? '{}');
+  const secretTexts = (rawPackage.secret?.keys ?? []).flatMap((key) => [key.label, ...(key.examples ?? [])]).filter((t) => typeof t === 'string' && t.length >= 4);
+  assert(secretTexts.length > 0, '题目包 secret.keys 应有文本可供负向断言');
+  const previewText = (await preview.textContent()) ?? '';
+  for (const secretText of secretTexts) {
+    assert(!previewText.includes(secretText), `学生视角预览泄露 secret：${secretText}`);
   }
   await shot('06c-review-preview-1280');
   await page.keyboard.press('Escape');
