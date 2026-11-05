@@ -163,7 +163,7 @@ async function buildRows(
            join app.users u on u.id = t.user_id
            left join app.student_profiles sp on sp.user_id = t.user_id
            left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
-           ${options.anonymized ? '' : 'left join app.roster_entries re on re.class_id = asg.class_id and re.claimed_by = t.user_id'}
+           ${options.anonymized ? '' : 'left join lateral (select name_enc from app.roster_entries where class_id = asg.class_id and claimed_by = t.user_id limit 1) re on true'}
            left join content.problem_versions pv on pv.problem_id = t.problem_id and pv.version = t.problem_version
           where asg.class_id = $1 ${scopeClause}
           order by t.started_at, t.id`,
@@ -500,15 +500,17 @@ export async function createExport(
     );
     return id;
   });
-  if (status === 'queued') {
-    // 后台任务的异常不能变成未处理的 rejection（Node 默认会让进程退出）。
-    setImmediate(() => {
-      runExport(db, exportId, log, piiKey).catch((error: unknown) => {
-        log?.error({ exportId, name: (error as Error).name }, 'export job crashed');
-      });
-    });
-  }
+  if (status === 'queued') scheduleExport(db, exportId, log, piiKey);
   return { exportId, status, url: null, rows: null };
+}
+
+// 后台生成：异常不能变成未处理 rejection（Node 默认会让进程退出）。
+function scheduleExport(db: Db, exportId: string, log?: ExportLogger, piiKey?: Buffer): void {
+  setImmediate(() => {
+    runExport(db, exportId, log, piiKey).catch((error: unknown) => {
+      log?.error({ exportId, name: (error as Error).name }, 'export job crashed');
+    });
+  });
 }
 
 // 管理员审批实名导出：仅 admin；pending_approval → queued，记录 approved_by + audit，再后台生成。
@@ -529,6 +531,8 @@ export async function approveExport(
     ).rows[0];
     if (row === undefined) throw new AppError('NOT_FOUND', 404, '导出任务不存在');
     if (row.status !== 'pending_approval') throw new AppError('VALIDATION_FAILED', 422, '该导出任务不在待审批状态');
+    // 归档班级不允许再审批/生成；admin 的 assertClassTeacher 也要求未归档。
+    await assertClassTeacher(tx, auth, row.scope.classId);
     await tx.query(`update app.exports set status = 'queued', approved_by = $2 where id = $1`, [exportId, auth.userId]);
     await tx.query(
       `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'export_approve', $2, $3::jsonb)`,
@@ -536,11 +540,7 @@ export async function approveExport(
     );
   });
   const job = await getExport(db, auth, exportId);
-  setImmediate(() => {
-    runExport(db, exportId, log, piiKey).catch((error: unknown) => {
-      log?.error({ exportId, name: (error as Error).name }, 'approved export job crashed');
-    });
-  });
+  scheduleExport(db, exportId, log, piiKey);
   return job;
 }
 

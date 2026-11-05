@@ -101,6 +101,17 @@ async function approveJob(): Promise<void> {
   }
 }
 
+async function refreshJob(): Promise<void> {
+  const current = job.value;
+  if (current === null) return;
+  try {
+    job.value = await api.get<ExportJob>(`/api/v1/teacher/exports/${current.exportId}`);
+    if (job.value.status === 'done') startPolling();
+  } catch (caught) {
+    MessagePlugin.error(caught instanceof ApiError ? caught.message : '刷新失败');
+  }
+}
+
 function startPolling(): void {
   stopPolling();
   timer = window.setInterval(async () => {
@@ -171,6 +182,7 @@ onBeforeUnmount(stopPolling);
       <div v-else-if="job.status === 'pending_approval'" class="page-sub">
         实名导出等待管理员审批。
         <t-button v-if="session.me?.role === 'admin'" size="small" theme="primary" :loading="approving" @click="approveJob">审批并生成</t-button>
+        <t-button size="small" variant="outline" @click="refreshJob">刷新</t-button>
       </div>
     </div>
     <div class="page-sub">说明：导出字段字典随文件提供（Excel 第二工作表 / CSV 同名 .dictionary.csv）。文件 24 小时后删除，过期请重新导出。</div>
