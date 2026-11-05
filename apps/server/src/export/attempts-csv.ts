@@ -27,12 +27,13 @@ export const ATTEMPTS_COLUMNS = [
 const BOM = '﻿';
 
 // RFC 4180：含逗号、引号、换行的字段加双引号，内部引号加倍。
-// 字符串以 = + - @ 或制表符/回车开头时前置单引号，避免研究者用 Excel 打开时被当成公式（OWASP CSV injection）。
+// 字符串以 = + - @、制表符/回车/换行或它们的全角形式开头时前置单引号，避免研究者用 Excel 打开时被当成公式（OWASP CSV injection）。
 // 只处理 string：数字（含负数）和日期是我们自己格式化的，不会被当成公式。
+// jsonb 列（payload、evidence、keys）序列化成 JSON；String(object) 只会得到 [object Object]，数据就丢了。
 export function csvField(value: unknown): string {
   if (value === null || value === undefined) return '';
-  let text = value instanceof Date ? value.toISOString() : String(value);
-  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  let text = value instanceof Date ? value.toISOString() : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  if (typeof value === 'string' && /^[=+\-@\t\r\n＝＋－＠]/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
