@@ -6,6 +6,7 @@ import type { HelpFlagItem, IntegrityItem, TeacherAttemptDetail, TeacherLine } f
 import { MIRROR_IFRAME_SANDBOX, isMirrorPageUrl } from '../utils/mirror.ts';
 import ReplayDialog from './ReplayDialog.vue';
 import MathTextView from './MathTextView.vue';
+import Icon from './ui/Icon.vue';
 
 const props = defineProps<{ visible: boolean; attemptId: string | null }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean]; refresh: [] }>();
@@ -36,13 +37,28 @@ const STATUS_LABEL: Record<string, string> = {
   completed: '已完成',
   abandoned: '已放弃',
 };
-const PROVENANCE_LABEL: Record<string, string> = {
-  ink: '✍ 手写',
-  keyboard: '⌨ 键盘',
-  photo: '📷 拍照',
-  mixed: '✍⌨ 混合',
-  paste: '📋 粘贴',
+type ProvIcon = 'pen' | 'keys' | 'camera' | 'flag';
+const PROVENANCE: Record<string, { label: string; icons: ProvIcon[] }> = {
+  ink: { label: '手写', icons: ['pen'] },
+  keyboard: { label: '键盘', icons: ['keys'] },
+  photo: { label: '拍照', icons: ['camera'] },
+  mixed: { label: '混合', icons: ['pen', 'keys'] },
+  paste: { label: '粘贴', icons: ['flag'] },
 };
+function provOf(key: string): { label: string; icons: ProvIcon[] } {
+  return PROVENANCE[key] ?? { label: key, icons: [] };
+}
+
+// 时间线圆点语义色：蓝=学生/系统动作，黄=提示，红=求助/锁，绿=提交/完成。
+function dotTone(type: string): string {
+  if (/hint/.test(type)) return 'bee';
+  if (/help|lock|flag|integrity/.test(type)) return 'chili';
+  if (/complete|pass|submit|confirm/.test(type)) return 'grass';
+  return 'sea';
+}
+function timeOf(at: string): string {
+  return new Date(at).toLocaleTimeString('zh-CN');
+}
 
 const lineColumns = [
   { colKey: 'layer', title: '层', width: 60 },
@@ -225,13 +241,14 @@ function lineMeta(line: TeacherLine): string {
     </div>
     <div v-else>
       <div class="detail-head">
-        <div>
-          <b>{{ detail.displayName ?? detail.anonCode }}</b>
-          <span class="page-sub"> {{ detail.anonCode }} · {{ detail.problem.title }} · {{ detail.mode === 'test' ? '测验' : '练习' }}</span>
+        <span class="pg-avatar detail-head__av">{{ (detail.displayName ?? detail.anonCode).slice(0, 1) }}</span>
+        <div class="detail-head__who">
+          <b class="detail-head__name">{{ detail.displayName ?? detail.anonCode }}</b>
+          <span class="page-sub detail-head__sub">{{ detail.anonCode }} · {{ detail.problem.title }} · {{ detail.mode === 'test' ? '测验' : '练习' }}</span>
         </div>
-        <t-tag :theme="detail.status === 'locked' ? 'danger' : detail.status === 'completed' ? 'success' : 'default'">
+        <span class="pg-pill" :class="`pg-pill--${detail.status === 'locked' ? 'chili' : detail.status === 'completed' ? 'grass' : 'sea'}`">
           {{ STATUS_LABEL[detail.status] ?? detail.status }}
-        </t-tag>
+        </span>
       </div>
 
       <div class="intervene">
@@ -249,7 +266,7 @@ function lineMeta(line: TeacherLine): string {
         </div>
       </div>
 
-      <h4>证明行</h4>
+      <h4 class="sec">证明行</h4>
       <t-table :data="detail.lines" :columns="lineColumns" row-key="lineId" size="small">
         <template #statement="{ row }"><MathTextView :text="row.statement" /></template>
         <template #justification="{ row }"><MathTextView :text="row.justification" /></template>
@@ -261,7 +278,10 @@ function lineMeta(line: TeacherLine): string {
         </template>
         <template #meta="{ row }">
           <div class="line-meta">
-            <span>{{ PROVENANCE_LABEL[row.provenance] ?? row.provenance }}</span>
+            <span class="prov">
+            <Icon v-for="ic in provOf(row.provenance).icons" :key="ic" :name="ic" :size="14" />
+            {{ provOf(row.provenance).label }}
+          </span>
             <span v-if="lineMeta(row)">{{ lineMeta(row) }}</span>
           </div>
         </template>
@@ -271,14 +291,18 @@ function lineMeta(line: TeacherLine): string {
         <template #empty><div class="empty">还没有证明行。</div></template>
       </t-table>
 
-      <h4>提示（{{ detail.hints.length }}）</h4>
+      <h4 class="sec">提示 <span class="sec__n">{{ detail.hints.length }}</span></h4>
       <div v-if="detail.hints.length === 0" class="empty">还没有领取提示。</div>
       <div v-for="hint in detail.hints" :key="hint.hintId" class="hint-item">
-        <div class="hint-meta">{{ hint.level }} · 透露 {{ hint.cost }} · {{ new Date(hint.deliveredAt).toLocaleTimeString('zh-CN') }}</div>
+        <div class="hint-meta">
+          <span class="pg-pill pg-pill--bee">{{ hint.level }}</span>
+          <span>透露 {{ hint.cost }}</span>
+          <span>{{ timeOf(hint.deliveredAt) }}</span>
+        </div>
         <MathTextView :text="hint.text" />
       </div>
 
-      <h4>诚信信号（只记录，不自动处罚）</h4>
+      <h4 class="sec">诚信信号（只记录，不自动处罚）</h4>
       <div v-if="detail.integrity.length === 0" class="empty">没有诚信信号。</div>
       <div v-for="(signal, index) in detail.integrity" :key="`${signal.signal}-${index}`" class="flag-item">
         <div>
@@ -294,7 +318,7 @@ function lineMeta(line: TeacherLine): string {
         </t-space>
       </div>
 
-      <h4>求助标记</h4>
+      <h4 class="sec">求助标记</h4>
       <div v-if="detail.helpFlags.length === 0" class="empty">没有待处理的求助标记。</div>
       <div v-for="flag in detail.helpFlags" :key="flag.flagId" class="flag-item">
         <div>
@@ -309,10 +333,11 @@ function lineMeta(line: TeacherLine): string {
         </t-space>
       </div>
 
-      <h4>时间线（最近 100 条）</h4>
+      <h4 class="sec">时间线（最近 100 条）</h4>
       <div class="timeline">
         <div v-for="item in detail.timeline.slice(0, 100)" :key="item.seq" class="timeline-item">
-          <span class="timeline-time">{{ new Date(item.at).toLocaleTimeString('zh-CN') }}</span>
+          <span class="timeline-time">{{ timeOf(item.at) }}</span>
+          <i class="timeline-dot" :class="`timeline-dot--${dotTone(item.type)}`" />
           <span class="mono">{{ item.type }}</span>
           <span class="page-sub">{{ item.layer ?? '' }}</span>
         </div>
@@ -377,24 +402,54 @@ function lineMeta(line: TeacherLine): string {
 .detail-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
+.detail-head__av { width: 40px; height: 40px; font-size: 18px; }
+.detail-head__who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.detail-head__name { font-size: 18px; font-weight: 900; }
+.detail-head__sub { margin: 0; font-size: 12px; }
 .intervene {
+  position: sticky;
+  top: -8px;
+  z-index: 3;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
   padding: 10px 12px;
-  background: var(--td-bg-color-container-hover, #f7f8fa);
-  border-radius: 8px;
-  margin-bottom: 8px;
+  background: var(--td-bg-color-container, #fff);
+  border: 2px solid var(--td-component-border, #e5e5e5);
+  border-bottom-width: 4px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+}
+.empty {
+  padding: 10px 0;
+  text-align: left;
 }
 .nudge-box {
   display: flex;
   gap: 8px;
   flex: 1;
   min-width: 260px;
+}
+.sec {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 8px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.9px;
+  color: var(--td-text-color-secondary, #6b6b6b);
+}
+.sec__n {
+  background: var(--td-bg-color-component, rgba(127, 127, 127, 0.18));
+  border-radius: 9px;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 18px;
 }
 .line-meta {
   display: flex;
@@ -403,36 +458,43 @@ function lineMeta(line: TeacherLine): string {
   font-size: 12px;
   color: var(--td-text-color-secondary, #5e6670);
 }
+.prov { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: var(--td-text-color-primary); }
 .hint-item {
-  padding: 8px 12px;
-  border-left: 3px solid var(--td-brand-color, #006eff);
+  padding: 10px 12px;
+  border: 2px solid var(--pg-bee, #ffc800);
+  border-bottom-width: 4px;
+  border-radius: 14px;
   margin-bottom: 8px;
-  background: var(--td-bg-color-container-hover, #f7f8fa);
 }
 .hint-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 12px;
   color: var(--td-text-color-secondary, #5e6670);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .flag-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border: 1px solid var(--td-component-border, #e3e6eb);
-  border-radius: 8px;
+  border: 2px solid var(--td-component-border, #e5e5e5);
+  border-bottom-width: 4px;
+  border-radius: 14px;
   margin-bottom: 8px;
 }
 .timeline {
-  max-height: 240px;
+  max-height: 260px;
   overflow: auto;
-  border: 1px solid var(--td-component-border, #e3e6eb);
-  border-radius: 8px;
+  border: 2px solid var(--td-component-border, #e5e5e5);
+  border-radius: 14px;
   padding: 8px 12px;
 }
 .timeline-item {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   padding: 3px 0;
   font-size: 12px;
 }
@@ -440,6 +502,10 @@ function lineMeta(line: TeacherLine): string {
   color: var(--td-text-color-secondary, #5e6670);
   min-width: 72px;
 }
+.timeline-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: #1cb0f6; }
+.timeline-dot--bee { background: #ffc800; }
+.timeline-dot--chili { background: #ff4b4b; }
+.timeline-dot--grass { background: #58cc02; }
 .mirror-frame {
   width: 100%;
   height: 70vh;

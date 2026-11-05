@@ -37,3 +37,21 @@ export function layerFunnelData(funnel: Record<string, number> | undefined): Arr
   const source = funnel ?? {};
   return ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].map((layer) => ({ name: layer, value: Number(source[layer] ?? 0) }));
 }
+
+export interface KeyHeatRow {
+  label: string;
+  own: number;
+  viaHint: number;
+  total: number;
+}
+
+// 关键步骤卡点：保持服务端顺序；缺省/非有限数按 0；total 用于画条形宽度（口径不重算，只是排版）。
+export function keyHeatRows(
+  items: ReadonlyArray<{ key?: string; label?: string; own?: number; viaHint?: number }> | undefined,
+): KeyHeatRow[] {
+  return (items ?? []).map((item) => {
+    const own = Number.isFinite(item.own) ? Number(item.own) : 0;
+    const viaHint = Number.isFinite(item.viaHint) ? Number(item.viaHint) : 0;
+    return { label: String(item.label ?? item.key ?? ''), own, viaHint, total: own + viaHint };
+  });
+}

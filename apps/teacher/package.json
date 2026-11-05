@@ -12,22 +12,22 @@
     "e2e:teacher": "node tests/e2e-teacher.mjs"
   },
   "dependencies": {
+    "@fontsource/nunito": "^5.3.0",
     "@proof-gym/contracts": "workspace:*",
-    "echarts": "^6.1.0",
-    "tdesign-vue-next": "^1.20.10",
-    "vue": "^3.5.44",
-    "vue-router": "^4.6.4",
+    "@proof-gym/engine": "workspace:*",
     "@proof-gym/ui-math": "workspace:*",
     "katex": "^0.19.1",
-    "@proof-gym/engine": "workspace:*"
+    "tdesign-vue-next": "^1.20.10",
+    "vue": "^3.5.44",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "@vitejs/plugin-vue": "^6.0.10",
+    "playwright-core": "^1.49.0",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",
-    "vue-tsc": "^3.3.14",
-    "playwright-core": "^1.49.0"
+    "vue-tsc": "^3.3.14"
   }
 }

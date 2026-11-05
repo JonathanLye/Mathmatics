@@ -6,9 +6,11 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
 import type { AssignmentCard, ClassSettings, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
 import ExportPanel from '../components/ExportPanel.vue';
+import LiveBoard from '../components/LiveBoard.vue';
 import MetricsPanel from '../components/MetricsPanel.vue';
 import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
 import { defaultsForMode, normalizeAssignmentSettings, parseProofIds } from '../utils/assignments.ts';
+import { filterRows, sortRows, type BoardFilter } from '../utils/liveBoard.ts';
 
 const route = useRoute();
 const classId = computed(() => String(route.params.classId ?? ''));
@@ -160,41 +162,12 @@ const liveColumns = [
   { colKey: 'actions', title: '操作', width: 90 },
 ];
 
-type LiveFilter = 'online' | 'started' | 'completed' | 'stuck' | 'flagged';
-const liveFilter = ref<LiveFilter | null>(null);
+// v2：筛选键即看板状态（help/stuck/write/away/done/idle），KPI 点击切换；同一份筛选同时作用于卡片与表格视图。
+const liveFilter = ref<BoardFilter>(null);
+const liveView = ref<'tiles' | 'table'>('tiles');
+const FILTER_LABEL: Record<string, string> = { help: '需要你', stuck: '卡住', write: '在写', away: '离开中', done: '已完成', idle: '未开始' };
 
-const stats = computed(() => {
-  const summary = live.value?.summary;
-  return [
-    { key: 'online' as const, label: '在线', value: summary?.online ?? 0 },
-    { key: 'started' as const, label: '已开始', value: summary?.started ?? 0 },
-    { key: 'completed' as const, label: '已完成', value: summary?.completed ?? 0 },
-    { key: 'stuck' as const, label: '卡住', value: summary?.stuck ?? 0 },
-    { key: 'flagged' as const, label: '标记', value: summary?.flagged ?? 0 },
-  ];
-});
-
-function toggleFilter(key: LiveFilter): void {
-  liveFilter.value = liveFilter.value === key ? null : key;
-}
-
-const filteredRows = computed(() => {
-  const rows = live.value?.rows ?? [];
-  switch (liveFilter.value) {
-    case 'online':
-      return rows.filter((row) => row.status === 'active');
-    case 'started':
-      return rows.filter((row) => row.attemptId !== null);
-    case 'completed':
-      return rows.filter((row) => row.status === 'completed');
-    case 'stuck':
-      return rows.filter((row) => (row.stuckSec ?? 0) >= 180);
-    case 'flagged':
-      return rows.filter((row) => (row.flags?.length ?? 0) > 0);
-    default:
-      return rows;
-  }
-});
+const filteredRows = computed(() => sortRows(filterRows(live.value?.rows ?? [], liveFilter.value)));
 
 function toLocalInput(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -587,29 +560,24 @@ onBeforeUnmount(() => {
             style="width: 320px"
           />
         </div>
-        <div class="stat-cards">
-          <div
-            v-for="item in stats"
-            :key="item.key"
-            class="stat-card clickable"
-            :class="{ selected: liveFilter === item.key }"
-            role="button"
-            tabindex="0"
-            :aria-pressed="liveFilter === item.key"
-            :title="`筛选：${item.label}（再次点击取消）`"
-            @click="toggleFilter(item.key)"
-            @keydown.enter="toggleFilter(item.key)"
-            @keydown.space.prevent="toggleFilter(item.key)"
-          >
-            <div class="value">{{ item.value }}</div>
-            <div class="label">{{ item.label }}</div>
-          </div>
-        </div>
         <div v-if="liveFilter" class="page-sub" style="margin: 4px 0 8px">
-          筛选：{{ stats.find((item) => item.key === liveFilter)?.label }}（{{ filteredRows.length }} 人）
+          筛选：{{ FILTER_LABEL[liveFilter] }}（{{ filteredRows.length }} 人）
           <t-link theme="primary" @click="liveFilter = null">清除</t-link>
         </div>
+        <div class="live-viewtoggle">
+          <button type="button" class="pg-pill" :class="{ on: liveView === 'tiles' }" @click="liveView = 'tiles'">卡片</button>
+          <button type="button" class="pg-pill" :class="{ on: liveView === 'table' }" @click="liveView = 'table'">表格</button>
+          <span class="page-sub" style="margin: 0 0 0 8px">学生按「需要你」的程度排序</span>
+        </div>
+        <LiveBoard
+          v-if="liveView === 'tiles'"
+          v-model:filter="liveFilter"
+          :rows="live?.rows ?? []"
+          :reveal-max="classSettings.revealBudget"
+          @open="openAttempt"
+        />
         <t-table
+          v-else
           :data="filteredRows"
           :columns="liveColumns"
           row-key="anonCode"
@@ -845,16 +813,23 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.stat-card.clickable {
+.live-viewtoggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.live-viewtoggle .pg-pill {
+  border: 2px solid var(--pg-rule);
+  background: var(--pg-surface);
+  color: var(--pg-ink-3);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  font-family: inherit;
 }
-.stat-card.clickable:hover {
-  border-color: var(--td-brand-color, #0052d9);
-}
-.stat-card.selected {
-  border-color: var(--td-brand-color, #0052d9);
-  background: var(--td-brand-color-light, #ecf2fe);
+.live-viewtoggle .pg-pill.on {
+  border-color: var(--pg-sea);
+  background: var(--pg-sea-soft);
+  color: var(--pg-sea-text);
 }
 .live-toolbar {
   display: flex;

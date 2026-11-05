@@ -2,14 +2,15 @@
 import { computed, onMounted, ref } from 'vue';
 import { api, ApiError } from '../api/client.ts';
 import type { MetricsView } from '../api/types.ts';
-import FunnelChart from '../charts/FunnelChart.vue';
-import HeatmapChart from '../charts/HeatmapChart.vue';
+import KeyHeatBars from '../charts/KeyHeatBars.vue';
+import LayerSteps from '../charts/LayerSteps.vue';
 import {
   METRIC_EXPLAIN,
   formatCount,
   formatRate,
   formatSeconds,
   independenceBand,
+  keyHeatRows,
   layerFunnelData,
 } from '../utils/metrics.ts';
 
@@ -61,10 +62,7 @@ const lowSample = computed(() => metrics.value !== null && sample.value < 10);
 
 const funnel = computed(() => layerFunnelData(metrics.value?.layerFunnel as Record<string, number> | undefined));
 
-const keyItems = computed(() => metrics.value?.keyHeat ?? []);
-const keyLabels = computed(() => keyItems.value.map((item) => String(item.label ?? item.key ?? '')));
-const keyOwn = computed(() => keyItems.value.map((item) => Number(item.own ?? 0)));
-const keyVia = computed(() => keyItems.value.map((item) => Number(item.viaHint ?? 0)));
+const keyRows = computed(() => keyHeatRows(metrics.value?.keyHeat));
 
 defineExpose({ load });
 </script>
@@ -110,7 +108,7 @@ defineExpose({ load });
           层漏斗（L1–L6 当前人数）
           <t-tooltip :content="METRIC_EXPLAIN.layerFunnel"><span class="info-icon">ⓘ</span></t-tooltip>
         </div>
-        <FunnelChart v-if="sample > 0" :data="funnel" :height="240" />
+        <LayerSteps v-if="sample > 0" :data="funnel" />
         <div v-else class="empty">暂无数据</div>
       </div>
       <div class="chart-card">
@@ -118,13 +116,7 @@ defineExpose({ load });
           关键步骤卡点
           <t-tooltip :content="METRIC_EXPLAIN.keyHeat"><span class="info-icon">ⓘ</span></t-tooltip>
         </div>
-        <HeatmapChart
-          v-if="keyLabels.length > 0"
-          :labels="keyLabels"
-          :own="keyOwn"
-          :via-hint="keyVia"
-          :height="240"
-        />
+        <KeyHeatBars v-if="keyRows.length > 0" :rows="keyRows" />
         <div v-else class="empty">暂无关键步骤匹配数据</div>
       </div>
     </div>
