@@ -3,7 +3,12 @@
 
 services:
   caddy:
-    image: caddy:2
+    # 静态文件（学生端 /、教师端 /t/）在镜像内构建（infra/Dockerfile 的 web 阶段），
+    # 部署机只需要 docker compose build/up；Caddyfile 也已 COPY 进镜像。
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: web
     restart: unless-stopped
     depends_on:
       server:
@@ -14,7 +19,6 @@ services:
     environment:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-localhost}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 
@@ -39,6 +43,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      target: runtime
     command: ["node", "apps/server/src/db/cli.ts", "migrate"]
     restart: "no"
     env_file:
@@ -54,6 +59,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      target: runtime
     restart: unless-stopped
     env_file:
       - .env
@@ -80,6 +86,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      target: runtime
     command: ["node", "apps/worker/src/main.ts"]
     restart: unless-stopped
     env_file:
