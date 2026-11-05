@@ -40,6 +40,8 @@ interface ProblemPackageView {
 }
 
 const items = ref<ProblemItem[]>([]);
+const statusFilter = ref<string>('');
+const chapterFilter = ref('');
 const loading = ref(false);
 const error = ref('');
 const selected = ref<ProblemItem | null>(null);
@@ -68,15 +70,24 @@ const columns = [
   { colKey: 'actions', title: '操作', width: 90 },
 ];
 
+// 快速切换筛选时只认最后一次请求，避免慢响应覆盖新结果。
+let loadSeq = 0;
+
 async function load(): Promise<void> {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = '';
   try {
-    items.value = await api.get<ProblemItem[]>('/api/v1/teacher/problems');
+    const params = new URLSearchParams();
+    if (statusFilter.value !== '') params.set('status', statusFilter.value);
+    if (chapterFilter.value.trim() !== '') params.set('chapter', chapterFilter.value.trim());
+    const query = params.toString();
+    const result = await api.get<ProblemItem[]>(`/api/v1/teacher/problems${query === '' ? '' : `?${query}`}`);
+    if (seq === loadSeq) items.value = result;
   } catch (caught) {
-    error.value = caught instanceof ApiError ? caught.message : '加载题库失败';
+    if (seq === loadSeq) error.value = caught instanceof ApiError ? caught.message : '加载题库失败';
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -196,6 +207,26 @@ onMounted(load);
     </div>
     <div class="page-sub">审核屏（04 §8）：看题目、四项自动校验与审核记录；支持通过 / 退回 / 编辑 JSON。</div>
     <t-alert v-if="error" theme="error" :message="error" style="margin: 12px 0" />
+
+    <div class="problem-filters">
+      <t-select
+        v-model="statusFilter"
+        :options="[
+          { label: '全部状态', value: '' },
+          { label: '草稿', value: 'draft' },
+          { label: '待审核', value: 'pending' },
+          { label: '退回', value: 'returned' },
+          { label: '已发布', value: 'published' },
+          { label: '已下线', value: 'retired' },
+        ]"
+        style="width: 150px"
+        @change="load"
+      />
+      <t-input v-model="chapterFilter" placeholder="完整章节名（如 第二章 数列极限）" clearable style="width: 260px" @enter="load" />
+      <t-button size="small" theme="primary" @click="load">查询</t-button>
+      <t-button size="small" variant="outline" @click="statusFilter = ''; chapterFilter = ''; load()">重置</t-button>
+      <span class="page-sub">共 {{ items.length }} 行</span>
+    </div>
 
     <t-table
       :data="items"
@@ -341,6 +372,13 @@ onMounted(load);
 </template>
 
 <style scoped>
+.problem-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+  flex-wrap: wrap;
+}
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

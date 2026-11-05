@@ -745,7 +745,42 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ClassSummary' }
+  /teacher/classes/{classId}/settings:
+    patch:
+      tags: [teacher]
+      summary: 更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出）
+      operationId: updateClassSettings
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClassSettings' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassSummary' }
   /teacher/classes/{classId}/roster:
+    get:
+      tags: [teacher]
+      summary: 名单列表（认领状态；学号只存哈希不返回）
+      operationId: listRoster
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 名单
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RosterEntry' }
     post:
       tags: [teacher]
       summary: 导入名单（CSV：学号,姓名；姓名可空）
@@ -769,6 +804,18 @@ paths:
                   added: { type: integer }
                   duplicates: { type: integer }
                   invalid: { type: array, items: { type: object, properties: { row: { type: integer }, reason: { type: string } } } }
+  /teacher/classes/{classId}/roster/{rosterId}:
+    delete:
+      tags: [teacher]
+      summary: 解除认领（学生换设备/异常时；写 audit_log）
+      operationId: unclaimRoster
+      parameters:
+        - { $ref: '#/components/parameters/classId' }
+        - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '204': { description: 已解除 }
   /teacher/classes/{classId}/invite-code:
     post:
       tags: [teacher]
@@ -960,6 +1007,23 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '204': { description: 已处理 }
   /teacher/assignments:
+    get:
+      tags: [teacher]
+      summary: 班级布置列表（按开放时间倒序；状态按数据库时钟推导）
+      operationId: listAssignments
+      parameters:
+        - { name: classId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 布置
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AssignmentCard' }
     post:
       tags: [teacher]
       summary: 布置练习或测验
@@ -1345,6 +1409,9 @@ components:
         attemptId: { type: [string, 'null'], format: uuid }
         attemptStatus: { type: [string, 'null'], enum: [active, parked, locked, completed, abandoned, null] }
         currentLayer: { oneOf: [{ $ref: '#/components/schemas/LayerId' }, { type: 'null' }] }
+        problemId: { type: string }
+        version: { type: integer }
+        settings: { type: object, additionalProperties: true }
         reviewPublished: { type: boolean }
     PublicProblemView:
       type: object
@@ -1595,14 +1662,23 @@ components:
         secret: { type: object, description: 'SecretPart 去掉 referenceProofs；教师/审核角色可见，学生接口不得返回' }
         review: { $ref: './problem-package.schema.json#/$defs/Review' }
         provenance: { $ref: './problem-package.schema.json#/$defs/Provenance' }
+    RosterEntry:
+      type: object
+      required: [rosterId, claimed]
+      properties:
+        rosterId: { type: string, format: uuid }
+        name: { type: [string, 'null'], description: 名单导入的姓名（解密后）；未提供为 null }
+        claimed: { type: boolean }
+        claimedAt: { type: [string, 'null'], format: date-time }
+        claimedByAnon: { type: [string, 'null'], description: 认领学生的匿名码 }
     ClassSettings:
       type: object
       properties:
         photoEnabled: { type: boolean, default: true }
         lessonGenerated: { type: boolean, default: false, description: '第 1–2 层是否允许按学生原话生成补充讲解；P0 默认关（fail-closed，09 §2）' }
-        revealBudget: { type: number, default: 2 }
+        revealBudget: { type: number, minimum: 0, maximum: 10, default: 2 }
         integrityPractice: { type: string, enum: [log_and_notice, log_only], default: log_and_notice }
-        testMaxSwitches: { type: integer, default: 3 }
+        testMaxSwitches: { type: integer, minimum: 0, maximum: 10, default: 3 }
     ClassSummary:
       type: object
       required: [classId, name, term, inviteCode, students]

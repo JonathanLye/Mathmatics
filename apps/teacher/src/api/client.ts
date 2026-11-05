@@ -65,6 +65,13 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handle<T>);
   },
+  delete<T>(path: string): Promise<T> {
+    return fetch(path, {
+      method: 'DELETE',
+      headers: headersFor('DELETE', false),
+      credentials: 'include',
+    }).then(handle<T>);
+  },
   // 名单 CSV 用原始字节上传（服务端做 UTF-8/GBK 探测，04 §10）。
   postCsv<T>(path: string, file: File): Promise<T> {
     return file.arrayBuffer().then((buffer) =>
