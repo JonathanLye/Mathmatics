@@ -7,7 +7,7 @@ import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
 import { ATTEMPTS_COLUMNS, buildAttemptsCsv, csvField } from '../src/export/attempts-csv.ts';
 import { computeAttemptMetrics } from '../src/metrics/attempt.ts';
-import { refreshAttemptMetrics } from '../src/metrics/refresh.ts';
+import { refreshAttemptMetrics, refreshStaleMetrics } from '../src/metrics/refresh.ts';
 
 import { buildTestApp, cookieFrom, loginBody, setupFixture, WRITE_HEADERS, setStudentAgeBand, type Fixture } from './support/fixtures.ts';
 
@@ -107,6 +107,28 @@ describe('作答级指标（08 §4.1 的子集）', () => {
     );
     expect(rows.rows).toHaveLength(1);
     expect(rows.rows[0]?.metrics.awayCount).toBe(1);
+  });
+});
+
+describe('refreshStaleMetrics：定时刷新只算需要算的作答', () => {
+  it('没算过的作答会被算；已是最新的跳过；之后又有新事件才再算', async () => {
+    const { cookie, id } = await studentAttempt();
+    const send = (state: 'hidden' | 'visible') =>
+      app.inject({ method: 'POST', url: '/api/v1/events/batch', headers: { cookie, ...WRITE_HEADERS }, payload: { events: [visibility(id, state)] } });
+    await send('hidden');
+    expect(await refreshStaleMetrics(db)).toBe(1);
+    const first = (await db.query<{ metrics: { awayCount: number } }>(`select metrics from app.attempt_metrics where attempt_id = $1`, [id])).rows[0];
+    expect(first?.metrics.awayCount).toBe(1);
+
+    expect(await refreshStaleMetrics(db)).toBe(0); // 没有新事件：不重复算
+    await new Promise((resolve) => setTimeout(resolve, 20)); // ts_server 要晚于 computed_at
+    await send('visible');
+    expect(await refreshStaleMetrics(db)).toBe(1);
+  });
+
+  it('limit 限制单轮数量', async () => {
+    await studentAttempt();
+    expect(await refreshStaleMetrics(db, 0)).toBe(0);
   });
 });
 
