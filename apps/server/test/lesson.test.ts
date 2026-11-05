@@ -70,13 +70,13 @@ describe('GET /attempts/{id}/lesson/{conceptId}（06 §4.4）', () => {
 });
 
 describe('POST /attempts/{id}/lesson/{conceptId}/check', () => {
-  it('答对：correct=true，feedback 以"对。"开头，nextStepId 指向下一步，并带最新 AttemptState', async () => {
+  it('答对：correct=true，feedback 是预写的 right 文本，nextStepId 指向下一步，并带最新 AttemptState', async () => {
     h = await startHelpHarness('epsN');
     const res = await check(h, 's1', 0);
     expect(res.statusCode, res.body).toBe(200);
     const body = res.json();
     expect(body).toMatchObject({ correct: true, nextStepId: 's2' });
-    expect(body.feedback.startsWith('对。')).toBe(true);
+    expect(body.feedback).toBe('对。带子越窄，要等得越久，所以 $N$ 跟着 $\\varepsilon$ 变。');
     contract.validate('AttemptState', body.state);
   });
 

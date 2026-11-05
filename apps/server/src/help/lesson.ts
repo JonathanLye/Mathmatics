@@ -94,7 +94,7 @@ export function createLessonService(deps: { db: Db; attempts: AttemptService }):
       const correct = choice === step.check.answer;
       return {
         correct,
-        feedback: gate(correct ? `对。${step.check.right}` : step.check.wrong),
+        feedback: gate(correct ? step.check.right : step.check.wrong),
         nextStepId: correct ? (steps[index + 1]?.id ?? null) : stepId,
         state: await attempts.get(userId, attemptId),
       };
