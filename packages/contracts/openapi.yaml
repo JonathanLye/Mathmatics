@@ -905,6 +905,44 @@ paths:
                 properties:
                   events: { type: array, items: { $ref: './events.schema.json' } }
                   nextSeq: { type: [integer, 'null'] }
+  /teacher/attempts/{attemptId}/lines/{lineId}/reclassify:
+    post:
+      tags: [teacher]
+      summary: 教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4）
+      operationId: reclassifyLine
+      parameters:
+        - { $ref: '#/components/parameters/attemptId' }
+        - { name: lineId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cls]
+              properties:
+                cls: { type: string, enum: [match, error, unknown, lowconf, demo_needs_reason, pass, fail] }
+                keys: { type: array, maxItems: 50, items: { type: string }, description: 必须是本题题目包里的关键步骤 ID；match 时必须非空 }
+                errorId: { type: [string, 'null'], description: 必须是本题题目包里的错误 ID；仅 cls=error 时可传且必传 }
+                note: { type: string, maxLength: 200 }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 改判结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lineId, cls, keys, errorId, classifierPath]
+                properties:
+                  lineId: { type: string, format: uuid }
+                  cls: { type: string }
+                  keys: { type: array, items: { type: string } }
+                  errorId: { type: [string, 'null'] }
+                  classifierPath: { type: string }
   /teacher/attempts/{attemptId}/stream:
     get:
       tags: [teacher]
