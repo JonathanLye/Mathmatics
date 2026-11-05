@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { AppError } from '../../errors.ts';
 import { requireTeacher, uuidParam, loadTeacherAttempt } from '../../services/teacher/auth.ts';
-import { loadAttemptDetail, loadAttemptEvents } from '../../services/teacher/attempts.ts';
+import { loadAttemptDetail, loadAttemptEvents, reclassifyLine, type ReclassifyInput } from '../../services/teacher/attempts.ts';
 import { nudgeStudent, unlockForTeacher } from '../../services/teacher/interventions.ts';
 import {
   appendMirrorEvent,
@@ -53,6 +53,15 @@ export const teacherAttemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
     const detail = await loadAttemptDetail(db, config, auth, attemptId);
     contract.validate('AttemptDetail', detail);
     return detail;
+  });
+
+  // 04 §4：教师改判一行归类（audit_log；不改学生已见内容）。
+  app.post('/teacher/attempts/:attemptId/lines/:lineId/reclassify', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const attemptId = uuidParam((request.params as AttemptIdParams).attemptId, '作答');
+    const lineId = uuidParam((request.params as { lineId: string }).lineId, '证明行');
+    contract.validateRequest('/teacher/attempts/{attemptId}/lines/{lineId}/reclassify', 'post', request.body);
+    return reclassifyLine(db, auth, attemptId, lineId, request.body as ReclassifyInput);
   });
 
   // 08 §2/§6：回放/时间线用；按 seq 分页，不返回 user_id。

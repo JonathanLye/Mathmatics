@@ -325,4 +325,45 @@ describe('发一句话 / 处理标记 / 解锁（#51）', () => {
     const again = await post(teacherCookie, `/teacher/attempts/${attemptId}/unlock`, {});
     expect(again.statusCode).toBe(409);
   });
+
+  it('教师改判行归类：更新 cls/keys/path=teacher + audit；学生 403、错行 404（#174）', async () => {
+    const detail = await app.inject({ method: 'GET', url: `/api/v1/teacher/attempts/${attemptId}`, headers: { cookie: teacherCookie } });
+    const lineId = (detail.json() as { lines: Array<{ lineId: string }> }).lines[0]?.lineId as string;
+    expect(lineId).toBeTruthy();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/teacher/attempts/${attemptId}/lines/${lineId}/reclassify`,
+      headers: auth(teacherCookie),
+      payload: { cls: 'match', keys: ['K1'], note: '抽检改判' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ lineId, cls: 'match', keys: ['K1'], classifierPath: 'teacher' });
+
+    const stored = await db.query<{ cls: string; classifier_path: string }>(
+      `select cls, classifier_path from app.attempt_lines where id = $1`,
+      [lineId],
+    );
+    expect(stored.rows[0]).toMatchObject({ cls: 'match', classifier_path: 'teacher' });
+    const audit = await db.query(`select action, detail from app.audit_log where action = 'reclassify_line' and target = $1`, [
+      `${attemptId}:${lineId}`,
+    ]);
+    expect(audit.rows).toHaveLength(1);
+
+    const asStudent = await app.inject({
+      method: 'POST',
+      url: `/api/v1/teacher/attempts/${attemptId}/lines/${lineId}/reclassify`,
+      headers: auth(studentCookie),
+      payload: { cls: 'match' },
+    });
+    expect(asStudent.statusCode, asStudent.body).toBe(403);
+
+    const wrongLine = await app.inject({
+      method: 'POST',
+      url: `/api/v1/teacher/attempts/${attemptId}/lines/00000000-0000-4000-8000-000000000999/reclassify`,
+      headers: auth(teacherCookie),
+      payload: { cls: 'error', errorId: 'E1' },
+    });
+    expect(wrongLine.statusCode, wrongLine.body).toBe(404);
+  });
 });

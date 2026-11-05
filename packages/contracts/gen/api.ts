@@ -757,6 +757,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/attempts/{attemptId}/lines/{lineId}/reclassify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4） */
+        post: operations["reclassifyLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/teacher/attempts/{attemptId}/stream": {
         parameters: {
             query?: never;
@@ -5729,6 +5746,49 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    reclassifyLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attemptId: components["parameters"]["attemptId"];
+                lineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    cls: "match" | "error" | "unknown" | "lowconf" | "demo_needs_reason" | "pass" | "fail";
+                    keys?: string[];
+                    errorId?: string | null;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 改判结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        lineId: string;
+                        cls: string;
+                        keys: string[];
+                        errorId: string | null;
+                        classifierPath: string;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     streamAttempt: {
