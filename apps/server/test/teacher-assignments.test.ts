@@ -382,4 +382,25 @@ describe('发布讲评（#50 / 04 §6）', () => {
     });
     expect(hidden.statusCode, hidden.body).toBe(404);
   });
+
+  it('迁移题不能直接布置：createAssignment 返回 422（#185 / #184 No-Go 根因）', async () => {
+    const cookie = await teacherLogin();
+    const classId = await createClass(cookie);
+    const transfer = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/assignments',
+      headers: auth(cookie),
+      payload: assignmentBody(classId, { problemId: 'epsN-T1', version: 1 }),
+    });
+    expect(transfer.statusCode, transfer.body).toBe(422);
+    expect(transfer.json().error.message).toContain('迁移题');
+
+    const main = await app.inject({
+      method: 'POST',
+      url: '/api/v1/teacher/assignments',
+      headers: auth(cookie),
+      payload: assignmentBody(classId),
+    });
+    expect(main.statusCode, main.body).toBe(201);
+  });
 });
