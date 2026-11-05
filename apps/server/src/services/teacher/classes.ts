@@ -1,5 +1,7 @@
 import { randomInt } from 'node:crypto';
 
+import { decryptPii } from '../../auth/crypto.ts';
+import type { AppConfig } from '../../config.ts';
 import type { AuthContext } from '../../auth/session.ts';
 import type { Db, Queryable } from '../../db/index.ts';
 import { AppError } from '../../errors.ts';
@@ -137,7 +139,7 @@ export async function rotateInviteCode(
 }
 
 
-// 04 §1/§7：班级默认设置（只存白名单键；未知键忽略）。写 audit_log。
+// 04 §1/§7：班级默认设置。PATCH 语义：只改传入的键，没传的保持原值（只存白名单键；未知键忽略）。写 audit_log。
 export async function updateClassSettings(
   db: Db,
   auth: AuthContext,
@@ -145,8 +147,11 @@ export async function updateClassSettings(
   input: unknown,
 ): Promise<Record<string, unknown>> {
   await assertClassTeacher(db, auth, classId);
-  const settings = normalizeClassSettings(input);
   await db.tx(async (tx) => {
+    const current = (
+      await tx.query<{ settings: Record<string, unknown> | null }>(`select settings from app.classes where id = $1 for update`, [classId])
+    ).rows[0]?.settings;
+    const settings = normalizeClassSettings({ ...(current ?? {}), ...(input as Record<string, unknown>) });
     await tx.query(`update app.classes set settings = $2::jsonb where id = $1`, [classId, JSON.stringify(settings)]);
     await tx.query(
       `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'update_class_settings', $2, $3::jsonb)`,
@@ -154,4 +159,90 @@ export async function updateClassSettings(
     );
   });
   return classSummaryById(db, classId);
+}
+
+// 04 §10：名单列表（认领状态）。学号只存哈希，不返回；姓名按 PII key 解密（没有姓名则 null）。
+export async function listRoster(
+  db: Queryable,
+  config: AppConfig,
+  auth: AuthContext,
+  classId: string,
+): Promise<Record<string, unknown>[]> {
+  await assertClassTeacher(db, auth, classId);
+  const rows = (
+    await db.query<{
+      id: string;
+      name_enc: Buffer | null;
+      claimed_by: string | null;
+      claimed_at: string | null;
+      anon_code: string | null;
+    }>(
+      `select r.id, r.name_enc, r.claimed_by, r.claimed_at::text as claimed_at, u.anon_code
+         from app.roster_entries r
+         left join app.users u on u.id = r.claimed_by
+        where r.class_id = $1
+        order by r.imported_at, r.id`,
+      [classId],
+    )
+  ).rows;
+  return rows.map((row) => {
+    // PII 解密失败（key 轮换/脏数据）不应拖垮整个名单：姓名置 null，教师仍可看认领状态。
+    let name: string | null = null;
+    if (row.name_enc !== null) {
+      try {
+        name = decryptPii(config.piiKey, Buffer.from(row.name_enc));
+      } catch {
+        name = null;
+      }
+    }
+    return {
+      rosterId: row.id,
+      name,
+      claimed: row.claimed_by !== null,
+      claimedAt: row.claimed_at === null ? null : new Date(row.claimed_at).toISOString(),
+      claimedByAnon: row.anon_code,
+    };
+  });
+}
+
+// 04 §10：解除认领（学生换手机/换设备异常）；只清 claimed_by/claimed_at，不删名单行。
+export async function unclaimRoster(
+  db: Db,
+  auth: AuthContext,
+  classId: string,
+  rosterId: string,
+): Promise<void> {
+  await assertClassTeacher(db, auth, classId);
+  await db.tx(async (tx) => {
+    const before = (
+      await tx.query<{ claimed_by: string | null; claimed_at: string | null; anon_code: string | null }>(
+        `select r.claimed_by, r.claimed_at::text as claimed_at,
+                (select u.anon_code from app.users u where u.id = r.claimed_by) as anon_code
+           from app.roster_entries r
+          where r.id = $1 and r.class_id = $2
+          for update`,
+        [rosterId, classId],
+      )
+    ).rows[0];
+    if (before === undefined) throw new AppError('NOT_FOUND', 404, '名单行不存在');
+    if (before.claimed_by === null) throw new AppError('NOT_FOUND', 404, '该名单行尚未认领');
+    await tx.query(
+      `update app.roster_entries set claimed_by = null, claimed_at = null where id = $1 and class_id = $2`,
+      [rosterId, classId],
+    );
+    // 解除后名单行不再关联学生，审计里保留被解除的学生匿名码以便追溯。
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'unclaim_roster', $2, $3::jsonb)`,
+      [
+        auth.userId,
+        rosterId,
+        JSON.stringify({
+          classId,
+          unclaimedBy: before.claimed_by,
+          unclaimedAnon: before.anon_code,
+          previousClaimedAt: before.claimed_at,
+        }),
+      ],
+    );
+  });
 }

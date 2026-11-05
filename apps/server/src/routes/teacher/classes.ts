@@ -5,7 +5,9 @@ import { assertClassTeacher, requireTeacher, uuidParam } from '../../services/te
 import {
   createClass,
   listClasses,
+  listRoster,
   rotateInviteCode,
+  unclaimRoster,
   updateClassSettings,
   type CreateClassInput,
 } from '../../services/teacher/classes.ts';
@@ -55,6 +57,24 @@ export const teacherClassRoutes: FastifyPluginAsync<AuthRouteOptions> = async (a
       throw new AppError('VALIDATION_FAILED', 422, '请求体必须是 CSV 文件（text/csv）');
     }
     return importRoster(db, config, classId, request.body);
+  });
+
+  // 名单列表（04 §10）
+  app.get('/teacher/classes/:classId/roster', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
+    const entries = await listRoster(db, config, auth, classId);
+    for (const entry of entries) contract.validate('RosterEntry', entry);
+    return entries;
+  });
+
+  // 解除认领（04 §10）
+  app.delete('/teacher/classes/:classId/roster/:rosterId', async (request, reply) => {
+    const auth = await requireTeacher(db, request);
+    const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
+    const rosterId = uuidParam((request.params as { rosterId: string }).rosterId, '名单行');
+    await unclaimRoster(db, auth, classId, rosterId);
+    return reply.status(204).send();
   });
 
   // 重置邀请码（04 §10：旧码立即失效，已登录学生不受影响）

@@ -345,13 +345,25 @@ describe('名单 CSV 导入（04 §10）', () => {
     const audit = await db.query(`select action from app.audit_log where action = 'update_class_settings' and target = $1`, [classId]);
     expect(audit.rows).toHaveLength(1);
 
-    const invalid = await app.inject({
+    // PATCH 语义：只改传入的键，之前保存的 revealBudget/photoEnabled 不能被重置回默认值。
+    const partial = await app.inject({
       method: 'PATCH',
       url: `/api/v1/teacher/classes/${classId}/settings`,
       headers: auth(cookie),
-      payload: { integrityPractice: 'nope' },
+      payload: { testMaxSwitches: 5 },
     });
-    expect(invalid.statusCode, invalid.body).toBe(422);
+    expect(partial.statusCode, partial.body).toBe(200);
+    expect(partial.json().settings).toMatchObject({ testMaxSwitches: 5, revealBudget: 5, photoEnabled: false, lessonGenerated: true });
+
+    for (const payload of [{ integrityPractice: 'nope' }, { revealBudget: -1 }, { revealBudget: 99 }, { testMaxSwitches: -1 }]) {
+      const invalid = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/teacher/classes/${classId}/settings`,
+        headers: auth(cookie),
+        payload,
+      });
+      expect(invalid.statusCode, invalid.body).toBe(422);
+    }
 
     await createTeacherAccount(db, { username: 'other.teacher', password: PASSWORD });
     const other = await teacherLogin('other.teacher');
@@ -361,6 +373,59 @@ describe('名单 CSV 导入（04 §10）', () => {
       headers: auth(other),
       payload: { photoEnabled: true },
     });
+    expect(hidden.statusCode, hidden.body).toBe(404);
+  });
+
+  it('名单列表：姓名/认领状态；解除认领写审计；非本班 404（#167）', async () => {
+    const cookie = await teacherLogin();
+    const { classId, inviteCode } = await createClass(cookie);
+    const imported = await importCsv(cookie, classId, '2026001,张三\n2026002,\n');
+    expect(imported.statusCode, imported.body).toBe(200);
+
+    const before = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(cookie) });
+    expect(before.statusCode, before.body).toBe(200);
+    const entries = before.json() as Array<{ rosterId: string; name: string | null; claimed: boolean; claimedByAnon: string | null }>;
+    expect(entries).toHaveLength(2);
+    expect(entries.map((entry) => entry.name)).toContain('张三');
+    expect(entries.map((entry) => entry.name)).toContain(null);
+    expect(entries.every((entry) => !entry.claimed)).toBe(true);
+    const raw = entries[0] as unknown as Record<string, unknown>;
+    expect(raw).not.toHaveProperty('studentNo');
+    expect(raw).not.toHaveProperty('student_no_hash');
+
+    await studentLogin(inviteCode, '2026001');
+    const afterLogin = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(cookie) });
+    const claimedEntry = (afterLogin.json() as Array<{ rosterId: string; claimed: boolean; claimedByAnon: string | null }>).find(
+      (entry) => entry.claimed,
+    );
+    expect(claimedEntry).toBeTruthy();
+    expect(claimedEntry?.claimedByAnon).toMatch(/^S-/);
+    expect(String((claimedEntry as unknown as { claimedAt?: string }).claimedAt)).toMatch(/Z$/);
+
+    const unclaimed = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/teacher/classes/${classId}/roster/${claimedEntry?.rosterId}`,
+      headers: auth(cookie),
+    });
+    expect(unclaimed.statusCode, unclaimed.body).toBe(204);
+    const afterUnclaim = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(cookie) });
+    expect((afterUnclaim.json() as Array<{ claimed: boolean }>).every((entry) => !entry.claimed)).toBe(true);
+    const again = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/teacher/classes/${classId}/roster/${claimedEntry?.rosterId}`,
+      headers: auth(cookie),
+    });
+    expect(again.statusCode, again.body).toBe(404);
+    const audit = await db.query<{ detail: { unclaimedAnon?: string } }>(
+      `select detail from app.audit_log where action = 'unclaim_roster' and target = $1`,
+      [claimedEntry?.rosterId],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.detail.unclaimedAnon).toMatch(/^S-/);
+
+    await createTeacherAccount(db, { username: 'other.teacher', password: PASSWORD });
+    const other = await teacherLogin('other.teacher');
+    const hidden = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(other) });
     expect(hidden.statusCode, hidden.body).toBe(404);
   });
 });

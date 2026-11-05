@@ -1742,6 +1742,39 @@
       }
     },
     "/teacher/classes/{classId}/roster": {
+      "get": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "名单列表（认领状态；学号只存哈希不返回）",
+        "operationId": "listRoster",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "名单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RosterEntry"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "tags": [
           "teacher"
@@ -1802,6 +1835,40 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/teacher/classes/{classId}/roster/{rosterId}": {
+      "delete": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "解除认领（学生换设备/异常时；写 audit_log）",
+        "operationId": "unclaimRoster",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          },
+          {
+            "name": "rosterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已解除"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -2287,6 +2354,48 @@
       }
     },
     "/teacher/assignments": {
+      "get": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "班级布置列表（按开放时间倒序；状态按数据库时钟推导）",
+        "operationId": "listAssignments",
+        "parameters": [
+          {
+            "name": "classId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "布置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssignmentCard"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "tags": [
           "teacher"
@@ -3441,6 +3550,16 @@
               }
             ]
           },
+          "problemId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": true
+          },
           "reviewPublished": {
             "type": "boolean"
           }
@@ -4384,6 +4503,43 @@
           }
         }
       },
+      "RosterEntry": {
+        "type": "object",
+        "required": [
+          "rosterId",
+          "claimed"
+        ],
+        "properties": {
+          "rosterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "名单导入的姓名（解密后）；未提供为 null"
+          },
+          "claimed": {
+            "type": "boolean"
+          },
+          "claimedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "claimedByAnon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "认领学生的匿名码"
+          }
+        }
+      },
       "ClassSettings": {
         "type": "object",
         "properties": {
@@ -4398,6 +4554,8 @@
           },
           "revealBudget": {
             "type": "number",
+            "minimum": 0,
+            "maximum": 10,
             "default": 2
           },
           "integrityPractice": {
@@ -4410,6 +4568,8 @@
           },
           "testMaxSwitches": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
             "default": 3
           }
         }

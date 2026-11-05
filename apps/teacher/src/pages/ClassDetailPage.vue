@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
-import type { AssignmentCard, ClassSettings, ClassSummary, LiveRow, LiveSnapshot, RosterImportResult } from '../api/types.ts';
+import type { AssignmentCard, ClassSettings, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
 import ExportPanel from '../components/ExportPanel.vue';
 import MetricsPanel from '../components/MetricsPanel.vue';
 import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
+import { defaultsForMode, normalizeAssignmentSettings, parseProofIds } from '../utils/assignments.ts';
 
 const route = useRoute();
 const classId = computed(() => String(route.params.classId ?? ''));
@@ -43,24 +44,92 @@ let retryTimer: number | undefined;
 let retryDelay = 1000;
 const streamConnected = ref(false);
 const streamError = ref('');
+const selectedAssignmentId = ref('');
+const assignmentsError = ref('');
+// 首屏由 onMounted 顺序加载；watch 只响应之后教师的切换，避免首屏重复请求。
+let pageReady = false;
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const importResult = ref<RosterImportResult | null>(null);
 const rotating = ref(false);
+const rosterEntries = ref<RosterEntry[]>([]);
+const rosterLoading = ref(false);
+const rosterError = ref('');
+const unclaiming = ref<string | null>(null);
 
 // 布置（04 §7）
 const createdAssignments = ref<AssignmentCard[]>([]);
 const creating = ref(false);
+interface PublishedProblem {
+  problemId: string;
+  title: string;
+  chapter?: string;
+  version: number;
+}
+const publishedProblems = ref<PublishedProblem[]>([]);
+const selectedProblem = ref('');
+const problemsLoading = ref(false);
+const problemsError = ref('');
+const problemKey = (item: PublishedProblem): string => `${item.problemId}@${item.version}`;
+
+const closingId = ref<string | null>(null);
 const assignmentForm = ref({
-  problemId: 'epsN',
-  version: 1,
   mode: 'practice' as 'practice' | 'test',
   openAt: toLocalInput(new Date()),
   closeAt: '',
   revealBudget: 2,
+  photoEnabled: true,
+  hintsEnabled: true,
+  maxSwitches: 3,
+  durationMin: 0,
 });
+
+// 04 §7：切模式时重置默认（测验求助/拍照默认关）。
+watch(
+  () => assignmentForm.value.mode,
+  (mode) => {
+    Object.assign(assignmentForm.value, defaultsForMode(mode));
+  },
+);
+
+// 04 §6：关闭布置后发布参考证明与讲评（A/B 组同时发布）
+const publishVisible = ref(false);
+const publishTarget = ref<AssignmentCard | null>(null);
+const publishProofIds = ref('');
+const publishNote = ref('');
+const publishError = ref('');
+const publishing = ref(false);
+
+function openPublish(card: AssignmentCard): void {
+  publishTarget.value = card;
+  publishProofIds.value = '';
+  publishNote.value = '';
+  publishError.value = '';
+  publishVisible.value = true;
+}
+
+async function submitPublish(): Promise<void> {
+  if (publishTarget.value === null || publishing.value) return;
+  publishing.value = true;
+  publishError.value = '';
+  try {
+    const proofIds = parseProofIds(publishProofIds.value);
+    await api.post<AssignmentCard>(
+      `/api/v1/teacher/assignments/${publishTarget.value.assignmentId}/publish-review`,
+      { ...(proofIds.length > 0 ? { proofIds } : {}), ...(publishNote.value.trim() === '' ? {} : { note: publishNote.value.trim() }) },
+    );
+    await loadAssignments();
+    MessagePlugin.success('讲评已发布');
+    publishVisible.value = false;
+  } catch (caught) {
+    publishError.value =
+      caught instanceof ApiError && caught.status === 409 ? '布置尚未关闭，不能发布讲评：请先关闭该布置' : messageOf(caught);
+  } finally {
+    publishing.value = false;
+  }
+}
 
 const STATUS_LABEL: Record<string, string> = {
   not_started: '未开始',
@@ -90,15 +159,40 @@ const liveColumns = [
   { colKey: 'actions', title: '操作', width: 90 },
 ];
 
+type LiveFilter = 'online' | 'started' | 'completed' | 'stuck' | 'flagged';
+const liveFilter = ref<LiveFilter | null>(null);
+
 const stats = computed(() => {
   const summary = live.value?.summary;
   return [
-    { label: '在线', value: summary?.online ?? 0 },
-    { label: '已开始', value: summary?.started ?? 0 },
-    { label: '已完成', value: summary?.completed ?? 0 },
-    { label: '卡住', value: summary?.stuck ?? 0 },
-    { label: '标记', value: summary?.flagged ?? 0 },
+    { key: 'online' as const, label: '在线', value: summary?.online ?? 0 },
+    { key: 'started' as const, label: '已开始', value: summary?.started ?? 0 },
+    { key: 'completed' as const, label: '已完成', value: summary?.completed ?? 0 },
+    { key: 'stuck' as const, label: '卡住', value: summary?.stuck ?? 0 },
+    { key: 'flagged' as const, label: '标记', value: summary?.flagged ?? 0 },
   ];
+});
+
+function toggleFilter(key: LiveFilter): void {
+  liveFilter.value = liveFilter.value === key ? null : key;
+}
+
+const filteredRows = computed(() => {
+  const rows = live.value?.rows ?? [];
+  switch (liveFilter.value) {
+    case 'online':
+      return rows.filter((row) => row.status === 'active');
+    case 'started':
+      return rows.filter((row) => row.attemptId !== null);
+    case 'completed':
+      return rows.filter((row) => row.status === 'completed');
+    case 'stuck':
+      return rows.filter((row) => (row.stuckSec ?? 0) >= 180);
+    case 'flagged':
+      return rows.filter((row) => (row.flags?.length ?? 0) > 0);
+    default:
+      return rows;
+  }
 });
 
 function toLocalInput(date: Date): string {
@@ -108,6 +202,13 @@ function toLocalInput(date: Date): string {
 
 function messageOf(caught: unknown): string {
   return caught instanceof ApiError ? caught.message : caught instanceof Error ? caught.message : '请求失败';
+}
+
+// 04 §7：班级默认设置作为新布置表单的初值，教师仍可逐次修改。
+function applyClassDefaultsToForm(): void {
+  assignmentForm.value.revealBudget = classSettings.value.revealBudget;
+  assignmentForm.value.maxSwitches = classSettings.value.testMaxSwitches;
+  if (assignmentForm.value.mode === 'practice') assignmentForm.value.photoEnabled = classSettings.value.photoEnabled;
 }
 
 async function loadClassInfo(): Promise<void> {
@@ -124,6 +225,7 @@ async function loadClassInfo(): Promise<void> {
         integrityPractice: settings.integrityPractice ?? 'log_and_notice',
         testMaxSwitches: settings.testMaxSwitches ?? 3,
       });
+      applyClassDefaultsToForm();
     }
   } catch (caught) {
     pageError.value = messageOf(caught);
@@ -158,7 +260,8 @@ function connectStream(): void {
     retryTimer = undefined;
   }
   stream?.close();
-  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream`);
+  const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream${query}`);
   stream.onopen = () => {
     streamConnected.value = true;
     streamError.value = '';
@@ -203,6 +306,7 @@ async function saveClassSettings(): Promise<void> {
   try {
     const updated = await api.patch<ClassSummary>(`/api/v1/teacher/classes/${classId.value}/settings`, classSettings.value);
     classInfo.value = updated;
+    applyClassDefaultsToForm();
     MessagePlugin.success('班级默认设置已保存');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
@@ -211,10 +315,74 @@ async function saveClassSettings(): Promise<void> {
   }
 }
 
+async function loadRoster(): Promise<void> {
+  if (classId.value === '') return;
+  rosterLoading.value = true;
+  rosterError.value = '';
+  try {
+    rosterEntries.value = await api.get<RosterEntry[]>(`/api/v1/teacher/classes/${classId.value}/roster`);
+  } catch (caught) {
+    rosterEntries.value = [];
+    rosterError.value = caught instanceof ApiError ? caught.message : '名单加载失败，请重试';
+  } finally {
+    rosterLoading.value = false;
+  }
+}
+
+async function unclaim(rosterId: string): Promise<void> {
+  if (unclaiming.value !== null) return;
+  unclaiming.value = rosterId;
+  try {
+    await api.delete(`/api/v1/teacher/classes/${classId.value}/roster/${rosterId}`);
+    MessagePlugin.success('已解除认领');
+    await Promise.all([loadRoster(), loadClassInfo()]);
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    unclaiming.value = null;
+  }
+}
+
+async function loadPublishedProblems(): Promise<void> {
+  problemsLoading.value = true;
+  problemsError.value = '';
+  try {
+    publishedProblems.value = await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published');
+    if (!publishedProblems.value.some((item) => problemKey(item) === selectedProblem.value)) {
+      const first = publishedProblems.value[0];
+      selectedProblem.value = first === undefined ? '' : problemKey(first);
+    }
+  } catch (caught) {
+    publishedProblems.value = [];
+    problemsError.value = messageOf(caught);
+  } finally {
+    problemsLoading.value = false;
+  }
+}
+
+async function loadAssignments(): Promise<void> {
+  if (classId.value === '') return;
+  try {
+    createdAssignments.value = await api.get<AssignmentCard[]>(
+      `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
+    );
+    if (selectedAssignmentId.value === '' || !createdAssignments.value.some((item) => item.assignmentId === selectedAssignmentId.value)) {
+      // 列表按开放时间倒序，第一条可能是还没开放的布置（看板是空的）；优先选进行中的。
+      const current = createdAssignments.value.find((item) => item.status === 'open') ?? createdAssignments.value[0];
+      selectedAssignmentId.value = current?.assignmentId ?? '';
+    }
+    assignmentsError.value = '';
+  } catch (caught) {
+    // 列表失败不阻塞看板，但要让教师知道，而不是误以为没有布置。
+    assignmentsError.value = messageOf(caught);
+  }
+}
+
 async function loadLive(): Promise<void> {
   liveLoading.value = true;
   try {
-    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live`);
+    const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live${query}`);
     liveError.value = '';
   } catch (caught) {
     live.value = null;
@@ -254,7 +422,7 @@ async function onFileChange(event: Event): Promise<void> {
     const result = await api.postCsv<RosterImportResult>(`/api/v1/teacher/classes/${classId.value}/roster`, file);
     importResult.value = result;
     MessagePlugin.success(`导入完成：新增 ${result.added}，重复 ${result.duplicates}，非法 ${result.invalid.length}`);
-    await loadClassInfo();
+    await Promise.all([loadClassInfo(), loadRoster()]);
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
   } finally {
@@ -287,8 +455,9 @@ async function copyInvite(): Promise<void> {
 }
 
 async function createAssignment(): Promise<void> {
-  if (assignmentForm.value.problemId.trim() === '') {
-    MessagePlugin.warning('请填写题目 ID');
+  const problem = publishedProblems.value.find((item) => problemKey(item) === selectedProblem.value);
+  if (problem === undefined) {
+    MessagePlugin.warning('请选择已发布的题目（无已发布题目请先在题库发布）');
     return;
   }
   creating.value = true;
@@ -298,21 +467,44 @@ async function createAssignment(): Promise<void> {
     const closeAt = assignmentForm.value.closeAt === '' ? null : new Date(assignmentForm.value.closeAt);
     if (closeAt !== null && Number.isNaN(closeAt.getTime())) throw new Error('截止时间格式不对');
 
-    const card = await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
+    await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
       classId: classId.value,
-      problemId: assignmentForm.value.problemId.trim(),
-      version: Number(assignmentForm.value.version),
+      problemId: problem.problemId,
+      version: problem.version,
       mode: assignmentForm.value.mode,
       openAt: openAt.toISOString(),
       closeAt: closeAt === null ? null : closeAt.toISOString(),
-      settings: { revealBudget: Number(assignmentForm.value.revealBudget) },
+      settings: normalizeAssignmentSettings(assignmentForm.value),
     });
-    createdAssignments.value.unshift(card);
+    await loadAssignments();
     MessagePlugin.success('布置已创建');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
   } finally {
     creating.value = false;
+  }
+}
+
+// PATCH 要完整字段（04 §7）：用列表卡片重建，刷新页面后同样能关闭；只有进行中的布置能关（未开放的 closeAt 会早于 openAt）。
+async function closeAssignment(card: AssignmentCard): Promise<void> {
+  if (closingId.value !== null) return;
+  closingId.value = card.assignmentId;
+  try {
+    await api.patch<AssignmentCard>(`/api/v1/teacher/assignments/${card.assignmentId}`, {
+      classId: classId.value,
+      problemId: card.problemId,
+      version: card.version,
+      mode: card.mode,
+      openAt: card.openAt,
+      closeAt: new Date().toISOString(),
+      settings: card.settings ?? {},
+    });
+    await loadAssignments();
+    MessagePlugin.success('布置已关闭');
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    closingId.value = null;
   }
 }
 
@@ -324,11 +516,21 @@ function flagLabel(flag: string): string {
   return FLAG_LABEL[flag] ?? flag;
 }
 
+watch(selectedAssignmentId, () => {
+  if (!pageReady) return;
+  void loadLive();
+  connectStream();
+});
+
 onMounted(async () => {
   await loadClassInfo();
+  void loadPublishedProblems();
+  await loadAssignments();
   await loadLive();
+  await loadRoster();
   connectStream();
   startPolling();
+  pageReady = true;
 });
 
 function onVisibility(): void {
@@ -374,14 +576,38 @@ onBeforeUnmount(() => {
     <t-tabs v-model="tab">
       <t-tab-panel value="live" label="实时看板">
         <t-alert v-if="liveError" theme="warning" :message="liveError" style="margin: 12px 0" />
+        <div v-if="createdAssignments.length > 0" class="live-toolbar">
+          <span class="page-sub">布置</span>
+          <t-select
+            v-model="selectedAssignmentId"
+            :options="createdAssignments.map((item) => ({ label: `${item.title}（${statusLabel(item.status)}）`, value: item.assignmentId }))"
+            style="width: 320px"
+          />
+        </div>
         <div class="stat-cards">
-          <div v-for="item in stats" :key="item.label" class="stat-card">
+          <div
+            v-for="item in stats"
+            :key="item.key"
+            class="stat-card clickable"
+            :class="{ selected: liveFilter === item.key }"
+            role="button"
+            tabindex="0"
+            :aria-pressed="liveFilter === item.key"
+            :title="`筛选：${item.label}（再次点击取消）`"
+            @click="toggleFilter(item.key)"
+            @keydown.enter="toggleFilter(item.key)"
+            @keydown.space.prevent="toggleFilter(item.key)"
+          >
             <div class="value">{{ item.value }}</div>
             <div class="label">{{ item.label }}</div>
           </div>
         </div>
+        <div v-if="liveFilter" class="page-sub" style="margin: 4px 0 8px">
+          筛选：{{ stats.find((item) => item.key === liveFilter)?.label }}（{{ filteredRows.length }} 人）
+          <t-link theme="primary" @click="liveFilter = null">清除</t-link>
+        </div>
         <t-table
-          :data="live?.rows ?? []"
+          :data="filteredRows"
           :columns="liveColumns"
           row-key="anonCode"
           :loading="liveLoading"
@@ -410,7 +636,7 @@ onBeforeUnmount(() => {
           </template>
           <template #empty>
             <div class="empty">
-              {{ liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
+              {{ liveFilter ? '当前筛选下没有学生。' : liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
             </div>
           </template>
         </t-table>
@@ -418,11 +644,37 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="roster" label="名单">
-        <t-alert
-          theme="info"
-          message="当前契约没有 GET 名单列表接口（见 #50 PR 的缺口说明）；本页提供导入与认领人数，列表待 B 补契约后展示。"
-          style="margin: 12px 0"
-        />
+        <h4 style="margin: 16px 0 8px">名单列表</h4>
+        <t-alert v-if="rosterError" theme="warning" :message="rosterError" style="margin-bottom: 8px">
+          <template #operation><t-link theme="primary" @click="loadRoster">重试</t-link></template>
+        </t-alert>
+        <t-table
+          :data="rosterEntries"
+          :columns="[
+            { colKey: 'name', title: '姓名' },
+            { colKey: 'claimed', title: '认领' },
+            { colKey: 'claimedAt', title: '认领时间' },
+            { colKey: 'claimedByAnon', title: '学生匿名码' },
+            { colKey: 'actions', title: '操作', width: 120 },
+          ]"
+          :loading="rosterLoading"
+          row-key="rosterId"
+          size="small"
+        >
+          <template #name="{ row }">{{ row.name ?? '未提供' }}</template>
+          <template #claimed="{ row }">
+            <t-tag :theme="row.claimed ? 'success' : 'default'" variant="light">{{ row.claimed ? '已认领' : '未认领' }}</t-tag>
+          </template>
+          <template #claimedAt="{ row }">{{ row.claimedAt ? new Date(row.claimedAt).toLocaleString('zh-CN') : '—' }}</template>
+          <template #claimedByAnon="{ row }">{{ row.claimedByAnon ?? '—' }}</template>
+          <template #actions="{ row }">
+            <t-popconfirm v-if="row.claimed" content="解除后学生需重新用邀请码认领，确定？" @confirm="unclaim(row.rosterId)">
+              <t-link theme="danger" :disabled="unclaiming !== null">解除认领</t-link>
+            </t-popconfirm>
+            <span v-else class="page-sub">—</span>
+          </template>
+          <template #empty><div class="empty">名单为空，先导入 CSV。</div></template>
+        </t-table>
         <div class="inline-actions" style="margin-bottom: 16px">
           <span>邀请码 <b class="mono">{{ classInfo?.inviteCode ?? '—' }}</b></span>
           <t-button size="small" variant="outline" @click="copyInvite">复制</t-button>
@@ -450,11 +702,21 @@ onBeforeUnmount(() => {
 
       <t-tab-panel value="assignments" label="布置">
         <t-form label-width="90px" style="max-width: 560px; margin-top: 12px">
-          <t-form-item label="题目 ID">
-            <t-input v-model="assignmentForm.problemId" placeholder="如：epsN" />
+          <t-form-item label="题目">
+            <t-select
+              v-model="selectedProblem"
+              :loading="problemsLoading"
+              placeholder="选择已发布的题目版本"
+              style="width: 360px"
+              filterable
+              :options="publishedProblems.map((item) => ({
+                label: `${item.title}${item.chapter ? ' · ' + item.chapter : ''} · v${item.version}`,
+                value: problemKey(item),
+              }))"
+            />
           </t-form-item>
-          <t-form-item label="版本">
-            <t-input-number v-model="assignmentForm.version" :min="1" theme="normal" />
+          <t-form-item v-if="publishedProblems.length === 0 && !problemsLoading" label=" ">
+            <t-alert theme="warning" :message="problemsError === '' ? '没有已发布题目：请先在题库完成审核发布。' : `题目列表加载失败：${problemsError}`" />
           </t-form-item>
           <t-form-item label="模式">
             <t-select v-model="assignmentForm.mode" :options="[{ label: '练习', value: 'practice' }, { label: '测验', value: 'test' }]" />
@@ -469,15 +731,26 @@ onBeforeUnmount(() => {
             <t-input-number v-model="assignmentForm.revealBudget" :min="0" :max="10" theme="normal" />
           </t-form-item>
           <t-form-item label=" ">
+            <t-alert theme="warning" message="下面的拍照/求助/切出/限时目前只随布置保存，学生端尚未按它们生效；测验模式本身的关提示与切出锁定已生效。" />
+          </t-form-item>
+          <t-form-item label="拍照">
+            <t-switch v-model="assignmentForm.photoEnabled" />
+          </t-form-item>
+          <t-form-item label="求助">
+            <t-switch v-model="assignmentForm.hintsEnabled" />
+          </t-form-item>
+          <t-form-item v-if="assignmentForm.mode === 'test'" label="切出锁定">
+            <t-input-number v-model="assignmentForm.maxSwitches" :min="0" :max="10" theme="normal" suffix="次" />
+          </t-form-item>
+          <t-form-item v-if="assignmentForm.mode === 'test'" label="限时">
+            <t-input-number v-model="assignmentForm.durationMin" :min="0" :max="300" theme="normal" suffix="分钟" />
+          </t-form-item>
+          <t-form-item label=" ">
             <t-button theme="primary" :loading="creating" @click="createAssignment">布置</t-button>
           </t-form-item>
         </t-form>
 
-        <t-alert
-          theme="info"
-          message="当前契约没有 GET 布置列表接口（见 #50 PR）；这里只显示本次会话创建的布置。列表接口补上后自动替换。"
-          style="margin: 12px 0"
-        />
+        <t-alert v-if="assignmentsError" theme="warning" :message="`布置列表加载失败：${assignmentsError}`" style="margin: 12px 0" />
         <t-table
           :data="createdAssignments"
           :columns="[
@@ -485,16 +758,42 @@ onBeforeUnmount(() => {
             { colKey: 'mode', title: '模式' },
             { colKey: 'status', title: '状态' },
             { colKey: 'openAt', title: '开放' },
+            { colKey: 'actions', title: '操作', width: 160 },
           ]"
           row-key="assignmentId"
           size="small"
         >
+          <template #actions="{ row }">
+            <t-space size="small">
+              <t-link theme="primary" :disabled="row.reviewPublished" @click="openPublish(row as AssignmentCard)">
+                {{ row.reviewPublished ? '已发布讲评' : '发布讲评' }}
+              </t-link>
+              <t-link v-if="row.status === 'open'" theme="danger" :disabled="closingId !== null" @click="closeAssignment(row as AssignmentCard)">关闭</t-link>
+            </t-space>
+          </template>
           <template #empty><div class="empty">还没有创建布置。</div></template>
         </t-table>
+
+        <t-dialog v-model:visible="publishVisible" header="发布讲评（参考证明 + 说明）" :footer="false">
+          <t-alert v-if="publishError" theme="error" :message="publishError" style="margin-bottom: 8px" />
+          <t-alert theme="info" message="布置关闭后才可发布；A/B 两组同时可见。P0 会发布该版本全部可发布参考证明；下方 ID 仅用于审计校验，不改变发布选择。" style="margin-bottom: 8px" />
+          <t-form label-width="90px">
+            <t-form-item label="参考证明 ID">
+              <t-input v-model="publishProofIds" placeholder="可空，多个用逗号分隔；仅审计校验，不改变发布选择" />
+            </t-form-item>
+            <t-form-item label="讲评">
+              <t-textarea v-model="publishNote" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="讲评说明（MathText，可空）" />
+            </t-form-item>
+          </t-form>
+          <div class="dialog-actions">
+            <t-button variant="outline" :disabled="publishing" @click="publishVisible = false">取消</t-button>
+            <t-button theme="primary" :loading="publishing" @click="submitPublish">发布讲评</t-button>
+          </div>
+        </t-dialog>
       </t-tab-panel>
 
       <t-tab-panel value="metrics" label="指标">
-        <MetricsPanel :class-id="classId" :assignment-id="live?.assignmentId ?? undefined" />
+        <MetricsPanel :class-id="classId" :assignment-id="selectedAssignmentId === '' ? undefined : selectedAssignmentId" />
       </t-tab-panel>
 
       <t-tab-panel value="export" label="导出">
@@ -502,6 +801,7 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="settings" label="设置">
+        <t-alert theme="warning" message="这些默认值用作新建布置表单的初值；目前只保存，学生端尚未按它们生效。" style="margin: 12px 0" />
         <t-form label-width="140px" style="max-width: 560px; margin-top: 12px">
           <t-form-item label="拍照">
             <t-switch v-model="classSettings.photoEnabled" />
@@ -542,6 +842,23 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.stat-card.clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.stat-card.clickable:hover {
+  border-color: var(--td-brand-color, #0052d9);
+}
+.stat-card.selected {
+  border-color: var(--td-brand-color, #0052d9);
+  background: var(--td-brand-color-light, #ecf2fe);
+}
+.live-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
 .native-input {
   height: 32px;
   padding: 0 8px;
