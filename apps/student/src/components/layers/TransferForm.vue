@@ -92,6 +92,6 @@ const status = computed(() => props.view?.status ?? 'not_started')
   font-size: 15px;
   line-height: 1.2;
 }
-.pg-layer__btn--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pg-layer__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .pg-layer__btn[disabled] { opacity: 0.45; }
 </style>

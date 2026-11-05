@@ -143,17 +143,15 @@ describe('学生登录（邀请码 + 学号，认领名单）', () => {
     expect(res.json().error.code).toBe('FORBIDDEN');
   });
 
-  it('同一 IP（校园出口）一分钟内 60 人登录都不被限流；超过上限后 429 RATE_LIMITED', async () => {
-    for (let i = 0; i < 60; i += 1) {
+  it('同一 IP（校园出口）一分钟内 120 次登录都不被限流；超过上限后 429 RATE_LIMITED', async () => {
+    // 用成功登录凑满配额：失败尝试会先触发「登录失败锁定」（#61，5 次/10 分钟），
+    // 那是另一层保护（login-protection.test.ts 覆盖），这里只验证同 IP 的 rateLimit。
+    for (let i = 0; i < LOGIN_MAX_PER_MINUTE; i += 1) {
       const res = await login(loginBody());
       expect(res.statusCode).toBe(200);
     }
-    for (let i = 60; i < LOGIN_MAX_PER_MINUTE; i += 1) {
-      const res = await login(loginBody({ inviteCode: 'ZZZZZZ' }));
-      expect(res.statusCode).toBe(401);
-    }
 
-    const res = await login(loginBody({ inviteCode: 'ZZZZZZ' }));
+    const res = await login(loginBody());
     expect(res.statusCode).toBe(429);
     expect(res.json().error.code).toBe('RATE_LIMITED');
   });

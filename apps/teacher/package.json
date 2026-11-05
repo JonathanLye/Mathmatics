@@ -18,7 +18,8 @@
     "vue": "^3.5.44",
     "vue-router": "^4.6.4",
     "@proof-gym/ui-math": "workspace:*",
-    "katex": "^0.19.1"
+    "katex": "^0.19.1",
+    "@proof-gym/engine": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

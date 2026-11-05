@@ -3,6 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
 
+import { getAgeBand } from './age-band.ts';
 import { requireAuth } from './session.ts';
 
 // 13 §2：同意书改文案必须升版本；旧版本的签署不再满足练习条件，学生需重新确认。
@@ -12,12 +13,23 @@ export const CONSENT_VERSION = 'p0-v1';
 export type ConsentKey = 'service' | 'crossBorderHosting' | 'crossBorderModel' | 'monitoring' | 'research';
 export type ConsentItems = Record<ConsentKey, boolean>;
 
+// guardianNotice 只展示、不签署（14–17 岁的附加提示，13 §4）。
+export type ConsentSectionKey = ConsentKey | 'guardianNotice';
+
 export interface ConsentSection {
-  key: ConsentKey;
+  key: ConsentSectionKey;
   title: string;
   body: string;
   required: boolean;
 }
+
+// 13 §4：14–17 岁可用，同意书附加一句「建议告知监护人」；非必选、不进入 ConsentItems。
+export const GUARDIAN_NOTICE_SECTION: ConsentSection = {
+  key: 'guardianNotice',
+  title: '建议告知监护人',
+  body: '你未满 18 岁：建议把使用本服务（含数据存储在中国香港服务器）的事告诉家长或监护人。不同意本段不影响使用。',
+  required: false,
+};
 
 export const CONSENT_SECTIONS: readonly ConsentSection[] = [
   {
@@ -108,11 +120,15 @@ export async function recordConsent(db: Queryable, input: RecordConsentInput): P
   );
 }
 
-// 作答接口（#19）挂载此守卫：未登录 401；非学生 403；未签当前版本同意书 403 CONSENT_REQUIRED。
+// 作答接口（#19）挂载此守卫：未登录 401；非学生 403；未选择年龄段 409；<14 岁 403；未签当前版本同意书 403 CONSENT_REQUIRED。
 export function requireStudentConsent(db: Db) {
   return async (request: FastifyRequest): Promise<void> => {
     const auth = await requireAuth(db, request);
     if (auth.role !== 'student') throw new AppError('FORBIDDEN', 403, '只有学生可以进行练习');
+    // 13 §4：年龄分档先于同意书（14–17 的同意书多一段「建议告知监护人」；<14 不开通）。
+    const ageBand = await getAgeBand(db, auth.userId);
+    if (ageBand === null) throw new AppError('AGE_BAND_REQUIRED', 409, '请先选择年龄段');
+    if (ageBand === 'lt14') throw new AppError('AGE_RESTRICTED', 403, '本服务暂未向 14 岁以下学生开放');
     if (!(await hasValidConsent(db, auth.userId))) {
       throw new AppError('CONSENT_REQUIRED', 403, '请先阅读并签署知情同意书');
     }

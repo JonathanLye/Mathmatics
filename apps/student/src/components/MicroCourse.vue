@@ -8,6 +8,8 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import AiGeneratedTag from '@/components/AiGeneratedTag.vue'
+import { generatedTextOf } from '@/components/aigc'
 // #98 已提供统一的图解组件（N(ε) 只由 diagrams/seqBand.ts 计算）；#26 微课 + #47 图解接线共用。
 import SeqBandDiagram from '@/components/diagrams/SeqBandDiagram.vue'
 import AbsTriangleDiagram from '@/components/diagrams/AbsTriangleDiagram.vue'
@@ -39,6 +41,11 @@ const choices = ref<Record<string, number>>({})
 const checkStatus = ref<Record<string, 'idle' | 'wrong' | 'right'>>({})
 
 const steps = computed(() => props.lesson?.steps ?? [])
+/**
+ * AI 生成补充讲解（LessonView.generated，已过闸门与异厂商复核；01 §3.1：放在微课第一步上方）。
+ * 默认为空（P0 不启用生成）；非空时显示正文 + AIGC 显式标识，具体内容不加工、不伪造。
+ */
+const generatedText = computed(() => generatedTextOf(props.lesson?.generated))
 const total = computed(() => steps.value.length)
 const step = computed<LessonStep | null>(() => steps.value[stepIndex.value] ?? null)
 const isLast = computed(() => total.value > 0 && stepIndex.value >= total.value - 1)
@@ -125,6 +132,16 @@ function close() {
             'pg-micro__dot--current': i === stepIndex,
           }"
         />
+      </view>
+
+      <view
+        v-if="generatedText && stepIndex === 0"
+        class="pg-micro__generated"
+        data-testid="micro-generated"
+      >
+        <text class="pg-micro__generatedtitle pg-small">补充讲解</text>
+        <MathText :text="generatedText" block />
+        <AiGeneratedTag />
       </view>
 
       <view v-if="step" class="pg-micro__card pg-sheet">
@@ -252,6 +269,17 @@ function close() {
 .pg-micro__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
 .pg-micro__dot--done { background: var(--ok); }
 .pg-micro__dot--current { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* AI 生成补充讲解：与系统消息同底色（accent-soft），标识在正文下方（12 §7）。 */
+.pg-micro__generated {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-card) var(--radius-card) 0;
+  background: var(--accent-soft);
+}
+.pg-micro__generatedtitle { color: var(--ink-2); }
 .pg-micro__card {
   display: flex;
   flex-direction: column;
@@ -314,6 +342,6 @@ function close() {
   font-size: 15px;
   line-height: 1.2;
 }
-.pg-micro__btn--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pg-micro__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .pg-micro__btn[disabled] { opacity: 0.45; }
 </style>

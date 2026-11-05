@@ -12,7 +12,7 @@ import {
   STALE_CLAIM_SECONDS,
 } from '../src/idempotency.ts';
 
-import { buildTestApp, cookieFrom, loginBody, setupFixture, testConfig, WRITE_HEADERS, type Fixture } from './support/fixtures.ts';
+import { buildTestApp, cookieFrom, loginBody, setupFixture, testConfig, WRITE_HEADERS, setStudentAgeBand, type Fixture } from './support/fixtures.ts';
 
 const CONSENT = { service: true, crossBorderHosting: true, crossBorderModel: false, monitoring: true, research: false };
 const KEY_A = '11111111-1111-4111-8111-111111111111';
@@ -55,6 +55,7 @@ async function student(studentNo = '2026001'): Promise<{ cookie: string; attempt
     payload: loginBody({ studentNo }),
   });
   const cookie = cookieFrom(login.headers['set-cookie']);
+  await setStudentAgeBand(app, cookie);
   await post(cookie, '/consents', { version: 'p0-v1', items: CONSENT });
   const start = await post(cookie, `/student/assignments/${assignmentId}/attempt`);
   return { cookie, attemptId: start.json().state.attemptId as string };
@@ -225,6 +226,7 @@ describe('Idempotency-Key（06 §1）', () => {
       payload: loginBody({ studentNo: '2026001' }),
     });
     const cookie = cookieFrom(login.headers['set-cookie']);
+    await setStudentAgeBand(app, cookie);
     await post(cookie, '/consents', { version: 'p0-v1', items: CONSENT });
     const first = await post(cookie, `/student/assignments/${assignmentId}/attempt`, undefined, { 'idempotency-key': KEY_A });
     const attemptId = first.json().state.attemptId as string;

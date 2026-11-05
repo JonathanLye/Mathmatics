@@ -150,6 +150,11 @@ jobs:
           if (!tables.rows[0].users || !tables.rows[0].attempts) throw new Error('schema.sql 未生效');
           await client.end();
           NODE
+      # #74 / 复审报告 P1-4：同一套代码在真实 PostgreSQL 上验证「两批事件反向引用同一批作答」不死锁、
+      # seq 不重不漏。DATABASE_URL 已由 job env 提供；本地无 DATABASE_URL 时该测试退化为 PGlite 逻辑校验。
+      - name: Concurrency test on real PostgreSQL
+        working-directory: apps/server
+        run: npx vitest run test/postgres-concurrency.test.ts
 
   # 学生端 e2e（可选，**不进 ci-gate**）：真实浏览器跑 3 档布局截图 + mock 状态 DOM 断言。
   # 用 continue-on-error：e2e 失败只给信号、不拖挂必过门禁；稳定后再考虑并入 ci-gate。

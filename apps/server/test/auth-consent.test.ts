@@ -13,6 +13,7 @@ import {
   loginBody,
   setupFixture,
   WRITE_HEADERS,
+  setStudentAgeBand,
   type Fixture,
 } from './support/fixtures.ts';
 
@@ -50,7 +51,10 @@ async function studentCookie(): Promise<string> {
     headers: WRITE_HEADERS,
     payload: loginBody(),
   });
-  return cookieFrom(res.headers['set-cookie']);
+  const cookie = cookieFrom(res.headers['set-cookie']);
+  // #64：先分档（默认 ge18），未签同意书的用例仍应得到 CONSENT_REQUIRED。
+  await setStudentAgeBand(app, cookie);
+  return cookie;
 }
 
 async function teacherCookie(): Promise<string> {

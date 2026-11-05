@@ -4,7 +4,22 @@ import { useAttempt } from '@/stores/attempt'
 
 // #9 DoD：4 份典型 AttemptState 必须存在，且结构符合学生端渲染需要。
 // #26 追加 l3-ready / l4-active / l5-active / l6-active 四份，用来走 L3→L4→L5→L6→完成页 全流程。
-const KEYS: MockKey[] = ['l1-active', 'l3-active', 'l3-exhausted', 'l3-ready', 'l4-active', 'l5-active', 'l6-active', 'completed']
+const KEYS: MockKey[] = [
+  'l1-active',
+  'l3-active',
+  'l3-exhausted',
+  'l3-ready',
+  'l4-active',
+  'l5-active',
+  'l6-active',
+  'completed',
+  // #46 严格测验 mock（test 模式；真实字段待 B 补，见 mocks/attemptStates.ts examState 注释）
+  'exam-active',
+  'exam-warn-1',
+  'exam-warn-2',
+  'exam-locked',
+  'exam-unlocked',
+]
 
 describe('典型 AttemptState（issue #9 / #26）', () => {
   it('状态都有中文标签与默认 mock', () => {

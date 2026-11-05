@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 /**
  * ε–N 配对关系图（03 §7 的 seq-band；#47 P1 图解模板 + #26 微课接线收敛版）。
  *
@@ -13,6 +13,11 @@
 import { computed, ref, watch } from 'vue'
 
 import { bandOf, minN, nTicks, projectN, projectPoint, sampleSeqPoints, SAMPLE_A, type SeqPoint } from './seqBand'
+import { useThemeToken } from '@/composables/useThemeToken'
+import { FALLBACK_TOKEN } from '@/utils/themeTokens'
+
+const sliderAccent = useThemeToken('--accent', FALLBACK_TOKEN.accent)
+const sliderRule = useThemeToken('--rule', FALLBACK_TOKEN.rule)
 
 const props = withDefaults(
   defineProps<{
@@ -203,8 +208,8 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
       :step="step"
       :value="localEps"
       :show-value="false"
-      active-color="#2b4fa3"
-      background-color="#e2e4e8"
+      :active-color="sliderAccent"
+      :background-color="sliderRule"
       block-size="20"
       @changing="onSlider"
       @change="onSlider"
