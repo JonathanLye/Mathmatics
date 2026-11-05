@@ -922,11 +922,12 @@ paths:
               required: [cls]
               properties:
                 cls: { type: string, enum: [match, error, unknown, lowconf, demo_needs_reason, pass, fail] }
-                keys: { type: array, items: { type: string } }
-                errorId: { type: [string, 'null'] }
+                keys: { type: array, maxItems: 50, items: { type: string }, description: 必须是本题题目包里的关键步骤 ID；match 时必须非空 }
+                errorId: { type: [string, 'null'], description: 必须是本题题目包里的错误 ID；仅 cls=error 时可传且必传 }
                 note: { type: string, maxLength: 200 }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
         '200':

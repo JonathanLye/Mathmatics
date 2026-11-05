@@ -289,7 +289,7 @@ export interface ReclassifyInput {
 }
 
 // 04 §4：低置信/错误归类的教师改判。只改 teacher 侧归类（classifier_path='teacher'）并写 audit_log，
-// 不写事件/注解，学生已看到的内容不变。
+// 不写事件/注解，学生已看到的内容不变。keys/errorId 必须是本题题目包里定义过的，否则研究导出里会出现不存在的 ID。
 export async function reclassifyLine(
   db: Db,
   auth: AuthContext,
@@ -297,7 +297,17 @@ export async function reclassifyLine(
   lineId: string,
   input: ReclassifyInput,
 ): Promise<Record<string, unknown>> {
-  await loadTeacherAttempt(db, auth, attemptId);
+  const attempt = await loadTeacherAttempt(db, auth, attemptId);
+  const { secret } = (await loadProblem(db, attempt.problem_id, attempt.problem_version)).ctx.pkg;
+  const unknownKey = (input.keys ?? []).find((key) => !secret.keys.some((item) => item.id === key));
+  if (unknownKey !== undefined) throw new AppError('VALIDATION_FAILED', 422, `本题没有关键步骤 ${unknownKey}`);
+  const errorId = input.errorId ?? null;
+  if (input.cls === 'error') {
+    if (errorId === null) throw new AppError('VALIDATION_FAILED', 422, '归类为错误时必须指定错误 ID');
+    if (!secret.errors.some((item) => item.id === errorId)) throw new AppError('VALIDATION_FAILED', 422, `本题没有错误类型 ${errorId}`);
+  } else if (errorId !== null) {
+    throw new AppError('VALIDATION_FAILED', 422, '只有归类为错误时才能指定错误 ID');
+  }
   return db.tx(async (tx) => {
     const before = (
       await tx.query<{ cls: string | null; keys: string[]; error_id: string | null }>(
@@ -308,13 +318,16 @@ export async function reclassifyLine(
       )
     ).rows[0];
     if (before === undefined) throw new AppError('NOT_FOUND', 404, '证明行不存在');
+    // 改判为"命中"沿用未传的 keys；其余归类不再算命中，没传就清空，避免 cls 与 keys 自相矛盾。
+    const keys = input.keys ?? (input.cls === 'match' ? before.keys : []);
+    if (input.cls === 'match' && keys.length === 0) throw new AppError('VALIDATION_FAILED', 422, '归类为命中时必须指定关键步骤');
     const after = (
       await tx.query<{ cls: string; keys: string[]; error_id: string | null; classifier_path: string }>(
         `update app.attempt_lines
-            set cls = $3, keys = coalesce($4::text[], keys), error_id = $5, classifier_path = 'teacher'
+            set cls = $3, keys = $4::text[], error_id = $5, classifier_path = 'teacher'
           where id = $1 and attempt_id = $2
           returning cls, keys, error_id, classifier_path`,
-        [lineId, attemptId, input.cls, input.keys ?? null, input.errorId ?? null],
+        [lineId, attemptId, input.cls, keys, errorId],
       )
     ).rows[0]!;
     await tx.query(

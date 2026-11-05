@@ -2155,15 +2155,18 @@
                   },
                   "keys": {
                     "type": "array",
+                    "maxItems": 50,
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "description": "必须是本题题目包里的关键步骤 ID；match 时必须非空"
                   },
                   "errorId": {
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "description": "必须是本题题目包里的错误 ID；仅 cls=error 时可传且必传"
                   },
                   "note": {
                     "type": "string",
@@ -2217,6 +2220,9 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
             "$ref": "#/components/responses/Error"
           },
           "404": {

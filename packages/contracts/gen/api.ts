@@ -5895,7 +5895,9 @@ export interface operations {
                 "application/json": {
                     /** @enum {string} */
                     cls: "match" | "error" | "unknown" | "lowconf" | "demo_needs_reason" | "pass" | "fail";
+                    /** @description 必须是本题题目包里的关键步骤 ID；match 时必须非空 */
                     keys?: string[];
+                    /** @description 必须是本题题目包里的错误 ID；仅 cls=error 时可传且必传 */
                     errorId?: string | null;
                     note?: string;
                 };
@@ -5919,6 +5921,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
