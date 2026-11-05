@@ -3,6 +3,7 @@ import pino from 'pino';
 import { buildApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { openDb } from './db/index.ts';
+import { sweepExports } from './services/teacher/exports.ts';
 import { cleanupExpiredIdempotencyKeys } from './idempotency.ts';
 import { requestSerializer } from './logging.ts';
 
@@ -21,6 +22,10 @@ const cleanupTimer = setInterval(
   () => {
     cleanupExpiredIdempotencyKeys(db).catch((error: unknown) => {
       app.log.error({ err: error }, 'idempotency: 清理过期键失败');
+    });
+    // 导出文件是学生数据副本，过期删除（04 §9）；进程重启遗留的任务标失败。
+    sweepExports(db).catch((error: unknown) => {
+      app.log.error({ err: error }, 'exports: 清理过期导出失败');
     });
   },
   60 * 60 * 1000,
