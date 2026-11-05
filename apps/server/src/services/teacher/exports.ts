@@ -157,13 +157,13 @@ async function buildRows(
                 t.problem_id, t.problem_version, pv.public,
                 t.mode, t.kind, t.parent_attempt_id,
                 t.started_at, t.completed_at, t.reveal, t.keys_own, t.keys_total, t.independence,
-                t.active_ms, t.status, re.name_enc
+                t.active_ms, t.status${options.anonymized ? '' : ', re.name_enc'}
            from app.attempts t
            join app.assignments asg on asg.id = t.assignment_id
            join app.users u on u.id = t.user_id
            left join app.student_profiles sp on sp.user_id = t.user_id
            left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
-           left join app.roster_entries re on re.class_id = asg.class_id and re.claimed_by = t.user_id
+           ${options.anonymized ? '' : 'left join app.roster_entries re on re.class_id = asg.class_id and re.claimed_by = t.user_id'}
            left join content.problem_versions pv on pv.problem_id = t.problem_id and pv.version = t.problem_version
           where asg.class_id = $1 ${scopeClause}
           order by t.started_at, t.id`,
@@ -216,7 +216,8 @@ async function buildRows(
           try {
             name = decryptPii(options.piiKey, Buffer.from(row.name_enc as Buffer));
           } catch {
-            name = null;
+            // 实名导出必须保证姓名正确；解密失败让任务 failed，而不是静默输出空名。
+            throw new AppError('INTERNAL', 500, '实名导出姓名解密失败');
           }
         }
         result.push({
@@ -527,19 +528,20 @@ export async function approveExport(
       )
     ).rows[0];
     if (row === undefined) throw new AppError('NOT_FOUND', 404, '导出任务不存在');
-    if (row.status !== 'pending_approval') throw new AppError('VALIDATION_FAILED', 409, '该导出任务不在待审批状态');
+    if (row.status !== 'pending_approval') throw new AppError('VALIDATION_FAILED', 422, '该导出任务不在待审批状态');
     await tx.query(`update app.exports set status = 'queued', approved_by = $2 where id = $1`, [exportId, auth.userId]);
     await tx.query(
       `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'export_approve', $2, $3::jsonb)`,
       [auth.userId, exportId, JSON.stringify({ requestedBy: row.requested_by, classId: row.scope.classId })],
     );
   });
+  const job = await getExport(db, auth, exportId);
   setImmediate(() => {
     runExport(db, exportId, log, piiKey).catch((error: unknown) => {
       log?.error({ exportId, name: (error as Error).name }, 'approved export job crashed');
     });
   });
-  return getExport(db, auth, exportId);
+  return job;
 }
 
 type ExportRow = {

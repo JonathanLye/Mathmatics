@@ -337,4 +337,40 @@ describe('导出任务（#35 / 04 §9 / 08 §5）', () => {
     const anonHeader = ((await anonZip.file('attempts.csv')?.async('string')) ?? '').split('\r\n')[0] ?? '';
     expect(anonHeader).not.toContain('name');
   });
+
+  it('审批幂等/失败：重复审批 422；实名姓名解密失败→任务 failed 而不是空名（自审补充）', async () => {
+    await createTeacherAccount(db, { username: 'admin.second', password: PASSWORD });
+    await db.query(
+      `update app.users u set role = 'admin'
+         from app.teacher_accounts t
+        where t.user_id = u.id and t.username = 'admin.second'`,
+    );
+    const adminCookie = await teacherLogin('admin.second');
+
+    const created = await post(teacherCookie, '/teacher/exports', {
+      classId,
+      format: 'csv',
+      tables: ['attempts'],
+      anonymized: false,
+    });
+    const exportId = (created.json() as { exportId: string }).exportId;
+    const first = await post(adminCookie, `/teacher/exports/${exportId}/approve`);
+    expect(first.statusCode, first.body).toBe(200);
+    await waitDone(exportId);
+    const second = await post(adminCookie, `/teacher/exports/${exportId}/approve`);
+    expect(second.statusCode, second.body).toBe(422);
+
+    const broken = await post(teacherCookie, '/teacher/exports', {
+      classId,
+      format: 'csv',
+      tables: ['attempts'],
+      anonymized: false,
+    });
+    const brokenId = (broken.json() as { exportId: string }).exportId;
+    await db.query(`update app.roster_entries set name_enc = '\xdeadbeef'::bytea where class_id = $1`, [classId]);
+    const approved = await post(adminCookie, `/teacher/exports/${brokenId}/approve`);
+    expect(approved.statusCode, approved.body).toBe(200);
+    const failed = await waitDone(brokenId);
+    expect(failed.status).toBe('failed');
+  });
 });

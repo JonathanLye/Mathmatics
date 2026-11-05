@@ -6294,7 +6294,7 @@ export interface operations {
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     downloadExport: {
