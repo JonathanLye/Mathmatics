@@ -137,6 +137,12 @@ async function main() {
   await shot('02b-roster-1280');
   await page.getByText('实时看板', { exact: true }).first().click();
   await page.waitForTimeout(500);
+  // #180：布置表单从已发布题目选择
+  await page.locator('.t-tabs').getByText('布置', { exact: true }).click();
+  await page.getByPlaceholder('选择已发布的题目版本').waitFor({ timeout: 10000 });
+  await shot('02d-assignment-form-1280');
+  await page.locator('.t-tabs').getByText('实时看板', { exact: true }).click();
+  await page.waitForTimeout(400);
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
