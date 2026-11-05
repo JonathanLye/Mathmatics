@@ -148,6 +148,18 @@ async function main() {
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');
+  // #182：学生视角预览四种典型状态
+  const draftRow = page.locator('tbody tr').filter({ hasText: '草稿' }).first();
+  await draftRow.locator('.t-link').last().click();
+  await page.getByText('题目详情（含 secret，仅教师可见）').waitFor({ timeout: 10000 });
+  await page.getByText('学生视角预览', { exact: false }).first().click();
+  await page.getByText('L1 定义').first().waitFor({ timeout: 10000 });
+  const previewTabs = await page.locator('.t-tabs__nav-item-text-wrapper').allInnerTexts();
+  for (const label of ['L1 定义', 'L3 骨架', '额度用完', 'L6 总结']) {
+    assert(previewTabs.some((item) => item.trim() === label), `学生视角预览缺少：${label}`);
+  }
+  await shot('06c-review-preview-1280');
+  await page.keyboard.press('Escape');
 
   // 5) 三档 + 深色
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });

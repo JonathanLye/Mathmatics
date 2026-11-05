@@ -26,6 +26,8 @@ interface ProblemPackageView {
     chapter?: string;
     def?: { task?: string; conceptId?: string };
     frame?: { task?: string; template?: string };
+    budget?: { reveal?: number };
+    layers?: Record<string, { enabled?: boolean; skippable?: boolean }>;
   };
   secret: { keys?: unknown[]; routes?: unknown[] };
   review?: {
@@ -120,8 +122,16 @@ const leanCheck = (): string | null => {
   const lean = pkg.value?.review?.autoChecks?.lean;
   return typeof lean === 'string' ? lean : null;
 };
+const previewTab = ref('L1');
 const hasStudentPreview = (): boolean =>
-  (pkg.value?.public.def?.task ?? '') !== '' || (pkg.value?.public.frame?.task ?? '') !== '';
+  (pkg.value?.public.def?.task ?? '') !== '' ||
+  (pkg.value?.public.frame?.task ?? '') !== '' ||
+  pkg.value?.public.layers !== undefined;
+const layerLabel = (layer: string): string => {
+  const config = pkg.value?.public.layers?.[layer];
+  if (config === undefined) return '未配置';
+  return `${config.enabled === false ? '未启用' : '启用'}${config.skippable === true ? ' · 可跳过' : ' · 不可跳过'}`;
+};
 
 function openAction(decision: 'approve' | 'return'): void {
   actionDecision.value = decision;
@@ -270,17 +280,35 @@ onMounted(load);
           style="margin-top: 12px"
         />
         <details v-if="hasStudentPreview()" style="margin-top: 12px">
-          <summary>学生视角预览（L1 定义 / L3 骨架）</summary>
-          <div class="preview-block">
-            <b>L1 定义</b>
-            <MathTextView v-if="pkg.public.def?.task" :text="pkg.public.def.task" />
-          </div>
-          <div v-if="pkg.public.frame?.task" class="preview-block">
-            <b>L3 骨架</b>
-            <MathTextView :text="pkg.public.frame.task" />
-            <MathTextView v-if="pkg.public.frame.template" :text="pkg.public.frame.template" />
-          </div>
-          <div class="page-sub">仅题目包 public 字段；完整学生视图（受层/预算影响）由引擎在作答时投影。</div>
+          <summary>学生视角预览（L1 / L3 / 额度用完 / L6）</summary>
+          <t-tabs v-model="previewTab" size="small" style="margin-top: 8px">
+            <t-tab-panel value="L1" label="L1 定义">
+              <div class="preview-block">
+                <MathTextView v-if="pkg.public.def?.task" :text="pkg.public.def.task" />
+                <span v-else class="page-sub">题目包未配置 L1 定义任务。</span>
+              </div>
+            </t-tab-panel>
+            <t-tab-panel value="L3" label="L3 骨架">
+              <div class="preview-block">
+                <MathTextView v-if="pkg.public.frame?.task" :text="pkg.public.frame.task" />
+                <MathTextView v-if="pkg.public.frame?.template" :text="pkg.public.frame.template" />
+                <span v-if="!pkg.public.frame?.task" class="page-sub">题目包未配置 L3 骨架任务。</span>
+              </div>
+            </t-tab-panel>
+            <t-tab-panel value="budget" label="额度用完">
+              <div class="preview-block">
+                <b>透露预算：{{ pkg.public.budget?.reveal ?? '—' }}</b>
+                <span class="page-sub">学生看到的软着陆出口（09 §3）：回看定义 / 打开微课 / 标记老师 / 先做下一题。</span>
+              </div>
+            </t-tab-panel>
+            <t-tab-panel value="L6" label="L6 总结">
+              <div class="preview-block">
+                <b>L6：{{ layerLabel('L6') }}</b>
+                <span class="page-sub">学生提交总结后完成作答；总结缺失点会写入 summary_missing_points（导出可见）。</span>
+              </div>
+            </t-tab-panel>
+          </t-tabs>
+          <div class="page-sub">仅题目包 public 字段；完整学生视图（受层/预算/事件影响）由引擎在作答时投影。</div>
         </details>
         <details style="margin-top: 12px">
           <summary>原始题目包 JSON</summary>
