@@ -75,10 +75,12 @@ export function loadModelRegistry(path: string, env: NodeJS.ProcessEnv): ModelRe
     if (typeof provider !== 'string' || providers[provider] === undefined) {
       throw new Error(`models.${role} 引用了未知的 provider：${String(provider)}`);
     }
+    // 部署时可用 MODEL_<ROLE>（如 MODEL_CROSS=qwen-flash）覆盖模型 ID，不必改 yaml；模型名不是密钥，可写日志。
+    const override = env[`MODEL_${role.toUpperCase()}`];
     models[role] = {
       role,
       provider,
-      model: typeof rawModel.model === 'string' ? rawModel.model : null,
+      model: override !== undefined && override !== '' ? override : typeof rawModel.model === 'string' ? rawModel.model : null,
       endpoint: typeof rawModel.endpoint === 'string' ? rawModel.endpoint : null,
       thinking: typeof rawModel.thinking === 'boolean' ? rawModel.thinking : null,
     };

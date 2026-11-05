@@ -18,7 +18,8 @@ export interface AppConfig {
   databaseUrl?: string;
   pgliteDir: string;
   // 每分钟、每会话的请求上限（见 routes/events.ts、routes/attempts.ts）。
-  rateLimits: { events: number; help: number };
+  // login = 每 IP 每分钟学生登录上限（校园共用出口 IP，多个班同时登录时调大）；缺省 120。
+  rateLimits: { events: number; help: number; login?: number };
   // 识别（03 §3、09 §10）：每生每日上限、全局并发（= 已购 SimpleTex QPS）、每生同时在途数、照片落盘目录。
   recognition: { inkPerDay: number; photoPerDay: number; concurrency: number; perUserConcurrency: number; storageDir: string };
   // 含各 provider 的密钥（见 ai/registry.ts）：不得打印或序列化。
@@ -89,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     rateLimits: {
       events: positiveInt(env.RATE_LIMIT_EVENTS_PER_MIN, 120, 'RATE_LIMIT_EVENTS_PER_MIN'),
       help: positiveInt(env.RATE_LIMIT_HELP_PER_MIN, 60, 'RATE_LIMIT_HELP_PER_MIN'),
+      login: positiveInt(env.RATE_LIMIT_LOGIN_PER_MIN, 120, 'RATE_LIMIT_LOGIN_PER_MIN'),
     },
     recognition: {
       inkPerDay: positiveInt(env.RECOG_INK_PER_DAY, 300, 'RECOG_INK_PER_DAY'),
