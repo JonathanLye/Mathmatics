@@ -859,6 +859,17 @@ onBeforeUnmount(() => {
   gap: 10px;
   margin: 8px 0;
 }
+.stat-card.clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.stat-card.clickable:hover {
+  border-color: var(--td-brand-color, #0052d9);
+}
+.stat-card.selected {
+  border-color: var(--td-brand-color, #0052d9);
+  background: var(--td-brand-color-light, #ecf2fe);
+}
 .native-input {
   height: 32px;
   padding: 0 8px;
