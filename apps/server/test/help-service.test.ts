@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { loadProblem } from '../src/attempts/problem.ts';
 import { REFUSAL_TEXT } from '../src/help/hints.ts';
 import { signPreview } from '../src/help/token.ts';
 
 import {
-import { loadProblem } from '../src/attempts/problem.ts';
   assertHelpResult,
   postClaim,
   postHelp,
