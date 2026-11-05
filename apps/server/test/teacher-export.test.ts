@@ -5,7 +5,10 @@ import JSZip from 'jszip';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import ExcelJS from 'exceljs';
+
 import { createTeacherAccount } from '../src/auth/teacher-login.ts';
+import { sweepExports } from '../src/services/teacher/exports.ts';
 import type { Db } from '../src/db/index.ts';
 import { seedContent } from '../src/db/seed.ts';
 
@@ -166,5 +169,90 @@ describe('导出任务（#35 / 04 §9 / 08 §5）', () => {
     const job = created.json() as { exportId: string };
     const hide = await app.inject({ method: 'GET', url: `/api/v1/teacher/exports/${job.exportId}`, headers: { cookie: other } });
     expect(hide.statusCode).toBe(404);
+  });
+
+  async function exportAndUnzip(format: 'csv' | 'jsonl', tables: string[]) {
+    const created = await post(teacherCookie, '/teacher/exports', { classId, format, tables });
+    expect(created.statusCode, created.body).toBe(202);
+    const job = created.json() as { exportId: string };
+    const done = await waitDone(job.exportId);
+    expect(done.status).toBe('done');
+    const res = await fetch(`${base}${done.url}`, { headers: { cookie: teacherCookie } });
+    return { exportId: job.exportId, url: done.url as string, zip: await JSZip.loadAsync(Buffer.from(await res.arrayBuffer())) };
+  }
+
+  it('CSV：jsonb 列是 JSON 而不是 [object Object]；attempts 带 attempt_id 能与 lines/events 关联', async () => {
+    const { zip } = await exportAndUnzip('csv', ['attempts', 'events']);
+    const events = (await zip.file('events.csv')?.async('string')) ?? '';
+    expect(events).not.toContain('[object Object]');
+    const attempts = (await zip.file('attempts.csv')?.async('string')) ?? '';
+    const [header, first] = attempts.replace(/^\uFEFF/, '').split('\r\n');
+    const columns = (header ?? '').split(',');
+    const attemptId = (first ?? '').split(',')[columns.indexOf('attempt_id')];
+    expect(attemptId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(events).toContain(attemptId as string);
+    // 这些列数据已有，应导出 0 而不是留空
+    for (const column of ['hints_total', 'help_stuck', 'pressure_count', 'recog_requests']) {
+      expect((first ?? '').split(',')[columns.indexOf(column)], column).toBe('0');
+    }
+  });
+
+  it('公式注入：半角/全角开头的学生文本都被转义；xlsx 写成文本单元格', async () => {
+    const attempt = await db.query<{ id: string }>(`select id from app.attempts limit 1`);
+    const attemptId = attempt.rows[0]?.id;
+    for (const [idx, statement] of ['=HYPERLINK("http://x")', '＝1+1', '@SUM(1)'].entries()) {
+      await db.query(
+        `insert into app.attempt_lines (attempt_id, layer, role, idx, statement, statement_canon, provenance)
+         values ($1, 'L3', 'step', $2, $3, 'x', 'keyboard')`,
+        [attemptId, idx + 1, statement],
+      );
+    }
+    const { zip } = await exportAndUnzip('csv', ['lines']);
+    const lines = (await zip.file('lines.csv')?.async('string')) ?? '';
+    expect(lines).toContain(`"'=HYPERLINK(""http://x"")"`);
+    expect(lines).toContain(`'＝1+1`);
+    expect(lines).toContain(`'@SUM(1)`);
+
+    const created = await post(teacherCookie, '/teacher/exports', { classId, format: 'xlsx', tables: ['lines'] });
+    const done = await waitDone((created.json() as { exportId: string }).exportId);
+    expect(done.status).toBe('done');
+    const res = await fetch(`${base}${done.url}`, { headers: { cookie: teacherCookie } });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(await res.arrayBuffer()) as never);
+    const sheet = workbook.getWorksheet('lines');
+    const statementCol = (sheet?.getRow(1).values as unknown[]).indexOf('statement');
+    const cell = sheet?.getRow(2).getCell(statementCol);
+    expect(cell?.type).toBe(ExcelJS.ValueType.String);
+    expect(cell?.value).toBe('=HYPERLINK("http://x")');
+  });
+
+  it('教师被移出班级后不能再查询或下载之前的导出', async () => {
+    const { exportId, url } = await exportAndUnzip('csv', ['attempts']);
+    await createTeacherAccount(db, { username: 'export.next', password: PASSWORD });
+    await db.query(
+      `update app.classes set owner_id = (select u.id from app.teacher_accounts t join app.users u on u.id = t.user_id where t.username = 'export.next') where id = $1`,
+      [classId],
+    );
+    await db.query(`delete from app.class_members where class_id = $1 and role = 'teacher'`, [classId]);
+    const status = await app.inject({ method: 'GET', url: `/api/v1/teacher/exports/${exportId}`, headers: { cookie: teacherCookie } });
+    expect(status.statusCode).toBe(404);
+    expect((await fetch(`${base}${url}`, { headers: { cookie: teacherCookie } })).status).toBe(404);
+  });
+
+  it('过期清理：超过 24 小时删除文件并标 expired；遗留的 running 标 failed', async () => {
+    const { exportId, url } = await exportAndUnzip('csv', ['attempts']);
+    await db.query(`update app.exports set finished_at = now() - interval '25 hours' where id = $1`, [exportId]);
+    const stale = await post(teacherCookie, '/teacher/exports', { classId, format: 'csv', tables: ['attempts'] });
+    const staleId = (stale.json() as { exportId: string }).exportId;
+    await waitDone(staleId);
+    await db.query(`update app.exports set status = 'running', created_at = now() - interval '2 hours' where id = $1`, [staleId]);
+
+    await sweepExports(db);
+
+    const expired = await app.inject({ method: 'GET', url: `/api/v1/teacher/exports/${exportId}`, headers: { cookie: teacherCookie } });
+    expect(expired.json()).toMatchObject({ status: 'expired', url: null });
+    expect((await fetch(`${base}${url}`, { headers: { cookie: teacherCookie } })).status).toBe(404);
+    const failed = await app.inject({ method: 'GET', url: `/api/v1/teacher/exports/${staleId}`, headers: { cookie: teacherCookie } });
+    expect(failed.json()).toMatchObject({ status: 'failed' });
   });
 });

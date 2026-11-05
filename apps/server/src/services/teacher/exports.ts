@@ -1,16 +1,18 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 
+import type { AuthContext } from '../../auth/session.ts';
 import { AppError } from '../../errors.ts';
 import type { Db, Queryable } from '../../db/index.ts';
 import { computeAttemptMetrics } from '../../metrics/attempt.ts';
 import { csvField } from '../../export/attempts-csv.ts';
+import { assertClassTeacher } from './auth.ts';
 
 export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
 export type ExportTable = 'attempts' | 'lines' | 'hints' | 'help' | 'recognitions' | 'integrity' | 'events';
@@ -43,6 +45,10 @@ export interface ExportJobDto {
 const BOM = '\uFEFF';
 const FILE_DIR = process.env.EXPORT_DIR ?? path.join(tmpdir(), 'proof-gym-exports');
 const FILE_EXT: Record<ExportFormat, string> = { csv: 'zip', xlsx: 'xlsx', jsonl: 'zip' };
+// 导出文件是学生数据的副本：只留一天，过期删除；教师可随时重新生成（server 定时任务调 sweepExports）。
+const EXPORT_TTL_HOURS = 24;
+// 任务跑在 server 进程内，进程重启会留下永远 running 的任务；超时按失败处理，让教师重试。
+const EXPORT_STALE_HOURS = 1;
 
 export function classCodeOf(classId: string): string {
   return createHash('sha256').update(classId).digest('hex').slice(0, 8);
@@ -87,7 +93,7 @@ export function parseCreateExport(body: unknown): CreateExportInput {
 // 08 §5 字段字典（导出列名）；与 SQL 的 select 别名一一对应，缺数据的列导出为空而不是伪造。
 const DICTIONARY: Record<ExportTable, string[]> = {
   attempts: [
-    'anon_id', 'class_code', 'arm', 'arm_order', 'grade', 'problem_id', 'problem_version', 'chapter', 'tags',
+    'anon_id', 'attempt_id', 'class_code', 'arm', 'arm_order', 'grade', 'problem_id', 'problem_version', 'chapter', 'tags',
     'difficulty', 'role', 'mode', 'kind', 'parent_attempt_id', 'started_at', 'completed_at', 'duration_s',
     'active_s', 'submissions', 'layers_done', 'layers_skipped', 'def_attempts', 'lesson_opened', 'lines',
     'keys_total', 'keys_own', 'keys_autonomous', 'reveal', 'independence', 'hints_total', 'hint_max_level',
@@ -150,13 +156,32 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
       const result: Row[] = [];
       for (const row of rows) {
         const metrics = await computeAttemptMetrics(db, String(row.attempt_id));
-        const away = (
-          await db.query<{ away_count: string; away_ms: string | null }>(
-            `select count(*) filter (
-                      where payload->>'state' = 'visible' and coalesce((payload->>'awayMs')::bigint, 0) >= 2000
-                    )::text as away_count,
-                    coalesce(sum(case when payload->>'state' = 'visible' then coalesce((payload->>'awayMs')::bigint, 0) end), 0)::text as away_ms
-               from ev.events where attempt_id = $1 and type = 'integ.visibility'`,
+        // 08 §5.1：away_count / away_s 只算 awayMs ≥ 2000 的离开。
+        const stats = (
+          await db.query<{
+            away_count: number; away_ms: string | null; hints_total: number; hint_max_level: string | null;
+            help_stuck: number; help_concept: number; help_check: number; help_free: number; pressure_count: number;
+            first_help_at: Date | null; first_error: string | null;
+            recog_requests: number; recog_edit_rate: number | null; recog_disagree_rate: number | null;
+          }>(
+            `select
+               (select count(*)::int from ev.events e where e.attempt_id = $1 and e.type = 'integ.visibility'
+                  and e.payload->>'state' = 'visible' and coalesce((e.payload->>'awayMs')::bigint, 0) >= 2000) as away_count,
+               (select sum((e.payload->>'awayMs')::bigint)::text from ev.events e where e.attempt_id = $1 and e.type = 'integ.visibility'
+                  and e.payload->>'state' = 'visible' and coalesce((e.payload->>'awayMs')::bigint, 0) >= 2000) as away_ms,
+               (select count(*)::int from app.hint_deliveries h where h.attempt_id = $1) as hints_total,
+               (select max(h.level) from app.hint_deliveries h where h.attempt_id = $1) as hint_max_level,
+               (select count(*)::int from app.help_requests r where r.attempt_id = $1 and r.intent = 'stuck') as help_stuck,
+               (select count(*)::int from app.help_requests r where r.attempt_id = $1 and r.intent = 'concept') as help_concept,
+               (select count(*)::int from app.help_requests r where r.attempt_id = $1 and r.intent = 'check_line') as help_check,
+               (select count(*)::int from app.help_requests r where r.attempt_id = $1 and r.intent = 'free') as help_free,
+               (select count(*)::int from app.help_requests r where r.attempt_id = $1 and r.routed = 'pressure') as pressure_count,
+               (select min(r.created_at) from app.help_requests r where r.attempt_id = $1) as first_help_at,
+               (select l.error_id from app.attempt_lines l where l.attempt_id = $1 and l.cls = 'error' and l.error_id is not null
+                 order by l.created_at, l.idx limit 1) as first_error,
+               (select count(*)::int from app.recognitions c where c.attempt_id = $1) as recog_requests,
+               (select avg(case when c.edited then 1.0 else 0.0 end)::float8 from app.recognitions c where c.attempt_id = $1 and c.edited is not null) as recog_edit_rate,
+               (select avg(case when c.agree then 0.0 else 1.0 end)::float8 from app.recognitions c where c.attempt_id = $1 and c.agree is not null) as recog_disagree_rate`,
             [row.attempt_id],
           )
         ).rows[0];
@@ -167,6 +192,7 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
           completedAt !== null && startedAt !== null ? Math.round((completedAt.getTime() - startedAt.getTime()) / 1000) : null;
         result.push({
           anon_id: row.anon_id,
+          attempt_id: row.attempt_id,
           class_code: classCodeOf(classId),
           arm: row.arm,
           arm_order: row.arm_order,
@@ -195,27 +221,28 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
           keys_autonomous: null,
           reveal: row.reveal,
           independence: row.independence,
-          hints_total: null,
-          hint_max_level: null,
-          first_error: null,
-          first_help_latency_s: null,
+          hints_total: stats?.hints_total ?? 0,
+          hint_max_level: stats?.hint_max_level ?? null,
+          first_error: stats?.first_error ?? null,
+          first_help_latency_s:
+            stats?.first_help_at && startedAt !== null ? Math.round((new Date(stats.first_help_at).getTime() - startedAt.getTime()) / 1000) : null,
           post_hint_dwell_med_s: null,
           rapid_locks: null,
           stuck_offers: null,
-          pressure_count: null,
-          help_stuck: null,
-          help_concept: null,
-          help_check: null,
-          help_free: null,
+          pressure_count: stats?.pressure_count ?? 0,
+          help_stuck: stats?.help_stuck ?? 0,
+          help_concept: stats?.help_concept ?? 0,
+          help_check: stats?.help_check ?? 0,
+          help_free: stats?.help_free ?? 0,
           input_ink: metrics.provenance.ink ?? null,
           input_kbd: metrics.provenance.keyboard ?? null,
           input_photo: metrics.provenance.photo ?? null,
           input_paste: metrics.provenance.paste ?? null,
-          recog_requests: null,
-          recog_edit_rate: null,
-          recog_disagree_rate: null,
-          away_count: Number(away?.away_count ?? 0),
-          away_s: Math.round(Number(away?.away_ms ?? 0) / 1000),
+          recog_requests: stats?.recog_requests ?? 0,
+          recog_edit_rate: stats?.recog_edit_rate ?? null,
+          recog_disagree_rate: stats?.recog_disagree_rate ?? null,
+          away_count: stats?.away_count ?? 0,
+          away_s: Math.round(Number(stats?.away_ms ?? 0) / 1000),
           integrity_max_score: metrics.integrityMaxScore,
           integrity_signals: Object.keys(metrics.integrityFlags).sort().join(';'),
           completed: metrics.completed,
@@ -323,7 +350,12 @@ async function writeCsvZip(id: string, format: ExportFormat, tables: ExportTable
     zip.file(`${table}.dictionary.csv`, dictionaryCsv([table]));
   }
   zip.file('dictionary.csv', dictionaryCsv(tables));
-  zip.file('README.txt', '默认匿名导出；字段字典见 *.dictionary.csv（Excel 为“字段字典”工作表）。口径 08 §5。\n');
+  zip.file(
+    'README.txt',
+    '默认匿名导出；字段字典见 *.dictionary.csv（Excel 为“字段字典”工作表）。口径 08 §5。\n' +
+      '以 = + - @ 开头的文本已前置单引号，防止表格软件当成公式执行；统计分析时请去掉。\n' +
+      '文本中可能含 AI 生成内容（仅作学习提示，13 §AIGC 标识）。文件 24 小时后删除，请及时保存到安全位置。\n',
+  );
   const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   await writeFile(path.join(FILE_DIR, `${id}.${FILE_EXT[format]}`), buffer);
   return count;
@@ -356,13 +388,17 @@ async function writeXlsx(id: string, tables: ExportTable[], rows: Map<ExportTabl
   return count;
 }
 
-export async function runExport(db: Db, exportId: string): Promise<void> {
-  const row = (await db.query<{ scope: CreateExportInput; format: ExportFormat; anonymized: boolean; status: string }>(
-    `select scope, format, anonymized, status from app.exports where id = $1`,
+export interface ExportLogger {
+  error(detail: Record<string, unknown>, message: string): void;
+}
+
+export async function runExport(db: Db, exportId: string, log?: ExportLogger): Promise<void> {
+  // 只认 queued：实名导出（pending_approval）与已在跑的任务不能被触发生成。
+  const row = (await db.query<{ scope: CreateExportInput; format: ExportFormat }>(
+    `update app.exports set status = 'running' where id = $1 and status = 'queued' returning scope, format`,
     [exportId],
   )).rows[0];
   if (row === undefined) return;
-  await db.query(`update app.exports set status = 'running' where id = $1`, [exportId]);
   try {
     const rows = new Map<ExportTable, Row[]>();
     for (const table of row.scope.tables) {
@@ -376,41 +412,82 @@ export async function runExport(db: Db, exportId: string): Promise<void> {
       `update app.exports set status='done', file_key=$2, row_count=$3, finished_at=now() where id=$1`,
       [exportId, `${exportId}.${FILE_EXT[row.format]}`, count],
     );
-  } catch {
+  } catch (error) {
+    // 只记任务与错误类型，不记内容（日志不打印学生数据，CONTRIBUTING §8）。
+    log?.error({ exportId, code: (error as { code?: string }).code, name: (error as Error).name }, 'export failed');
     await db.query(`update app.exports set status='failed', finished_at=now() where id=$1`, [exportId]);
   }
 }
 
-export async function createExport(db: Db, actorId: string, role: string, input: CreateExportInput): Promise<ExportJobDto> {
-  const status = input.anonymized === false ? 'pending_approval' : 'queued';
-  const inserted = await db.query<{ id: string }>(
-    `insert into app.exports (requested_by, scope, format, anonymized, status)
-     values ($1, $2::jsonb, $3, $4, $5) returning id`,
-    [actorId, JSON.stringify({ classId: input.classId, assignmentIds: input.assignmentIds ?? [], tables: input.tables }), input.format, input.anonymized !== false, status],
-  );
-  const exportId = inserted.rows[0]!.id;
+// 定时清理（server 启动的小时任务）：过期文件删除并标 expired；进程重启遗留的任务标 failed。
+export async function sweepExports(db: Db): Promise<void> {
+  const expired = (await db.query<{ id: string; file_key: string | null }>(
+    `select id, file_key from app.exports
+      where status = 'done' and finished_at < now() - make_interval(hours => $1)`,
+    [EXPORT_TTL_HOURS],
+  )).rows;
+  for (const row of expired) {
+    if (row.file_key !== null) await rm(path.join(FILE_DIR, row.file_key), { force: true });
+    await db.query(`update app.exports set status = 'expired', file_key = null where id = $1`, [row.id]);
+  }
   await db.query(
-    `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'export_create', $2, $3::jsonb)`,
-    [actorId, exportId, JSON.stringify({ classId: input.classId, format: input.format, tables: input.tables, anonymized: input.anonymized !== false, role })],
+    `update app.exports set status = 'failed', finished_at = now()
+      where status in ('queued', 'running') and created_at < now() - make_interval(hours => $1)`,
+    [EXPORT_STALE_HOURS],
   );
+}
+
+export async function createExport(db: Db, auth: AuthContext, input: CreateExportInput, log?: ExportLogger): Promise<ExportJobDto> {
+  const status = input.anonymized === false ? 'pending_approval' : 'queued';
+  const exportId = await db.tx(async (tx) => {
+    const id = (await tx.query<{ id: string }>(
+      `insert into app.exports (requested_by, scope, format, anonymized, status)
+       values ($1, $2::jsonb, $3, $4, $5) returning id`,
+      [auth.userId, JSON.stringify({ classId: input.classId, assignmentIds: input.assignmentIds ?? [], tables: input.tables }), input.format, input.anonymized !== false, status],
+    )).rows[0]!.id;
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'export_create', $2, $3::jsonb)`,
+      [auth.userId, id, JSON.stringify({ classId: input.classId, format: input.format, tables: input.tables, anonymized: input.anonymized !== false, role: auth.role })],
+    );
+    return id;
+  });
   if (status === 'queued') {
+    // 后台任务的异常不能变成未处理的 rejection（Node 默认会让进程退出）。
     setImmediate(() => {
-      void runExport(db, exportId);
+      runExport(db, exportId, log).catch((error: unknown) => {
+        log?.error({ exportId, name: (error as Error).name }, 'export job crashed');
+      });
     });
   }
   return { exportId, status, url: null, rows: null };
 }
 
-export async function getExport(db: Db, actorId: string, role: string, exportId: string): Promise<ExportJobDto> {
-  const row = (await db.query<{
-    id: string;
-    requested_by: string;
-    status: ExportJobDto['status'];
-    file_key: string | null;
-    row_count: number | null;
-  }>(`select id, requested_by, status, file_key, row_count from app.exports where id = $1`, [exportId])).rows[0];
-  if (row === undefined) throw new AppError('NOT_FOUND', 404, '导出任务不存在');
-  if (row.requested_by !== actorId && role !== 'admin') throw new AppError('NOT_FOUND', 404, '导出任务不存在');
+type ExportRow = {
+  id: string;
+  requested_by: string;
+  status: ExportJobDto['status'];
+  file_key: string | null;
+  row_count: number | null;
+  format: ExportFormat;
+  scope: { classId: string };
+};
+
+// 对象级授权（OWASP API1）：导出是学生数据副本，每次查询/下载都重新校验——创建者或管理员，且当前仍是该班教师。
+// 教师被移出班级后，之前生成的文件也不能再下载。不属于一律 404，不泄露任务是否存在。
+async function loadAuthorizedExport(db: Queryable, auth: AuthContext, exportId: string): Promise<ExportRow> {
+  const row = (await db.query<ExportRow>(
+    `select id, requested_by, status, file_key, row_count, format, scope from app.exports where id = $1`,
+    [exportId],
+  )).rows[0];
+  if (row === undefined || (row.requested_by !== auth.userId && auth.role !== 'admin')) {
+    throw new AppError('NOT_FOUND', 404, '导出任务不存在');
+  }
+  await assertClassTeacher(db, auth, row.scope.classId);
+  return row;
+}
+
+export async function getExport(db: Queryable, auth: AuthContext, exportId: string): Promise<ExportJobDto> {
+  const row = await loadAuthorizedExport(db, auth, exportId);
   const done = row.status === 'done' && row.file_key !== null;
   return {
     exportId: row.id,
@@ -420,18 +497,16 @@ export async function getExport(db: Db, actorId: string, role: string, exportId:
   };
 }
 
-export async function exportFilePath(db: Db, actorId: string, role: string, exportId: string): Promise<string> {
-  const row = (await db.query<{ requested_by: string; status: string; file_key: string | null }>(
-    `select requested_by, status, file_key from app.exports where id = $1`,
-    [exportId],
-  )).rows[0];
-  if (row === undefined) throw new AppError('NOT_FOUND', 404, '导出任务不存在');
-  if (row.requested_by !== actorId && role !== 'admin') throw new AppError('NOT_FOUND', 404, '导出任务不存在');
-  if (row.status !== 'done' || row.file_key === null) throw new AppError('NOT_FOUND', 404, '导出文件尚未就绪');
-  mkdirSync(FILE_DIR, { recursive: true });
+export async function exportFile(
+  db: Queryable,
+  auth: AuthContext,
+  exportId: string,
+): Promise<{ file: string; format: ExportFormat; fileKey: string }> {
+  const row = await loadAuthorizedExport(db, auth, exportId);
+  if (row.status !== 'done' || row.file_key === null) throw new AppError('NOT_FOUND', 404, '导出文件尚未就绪或已过期');
   const file = path.join(FILE_DIR, row.file_key);
   if (!existsSync(file)) throw new AppError('NOT_FOUND', 404, '导出文件已过期或被清理');
-  return file;
+  return { file, format: row.format, fileKey: row.file_key };
 }
 
 export function contentTypeFor(format: ExportFormat): string {
