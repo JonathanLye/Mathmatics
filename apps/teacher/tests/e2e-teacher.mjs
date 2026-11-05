@@ -177,6 +177,9 @@ async function main() {
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');
+  // #178：来源与最近审核列确实显示（插槽没进 columns 时不会渲染）
+  await page.locator('thead').getByText('最近审核').waitFor({ timeout: 5000 });
+  await page.locator('thead').getByText('来源').waitFor({ timeout: 5000 });
   // #171：题库状态筛选（草稿）
   await page.locator('.problem-filters .t-select').first().click();
   await page.getByText('草稿', { exact: true }).last().click();

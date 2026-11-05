@@ -66,6 +66,8 @@ const columns = [
   { colKey: 'kind', title: '类型' },
   { colKey: 'version', title: '版本' },
   { colKey: 'status', title: '审核状态' },
+  { colKey: 'source', title: '来源' },
+  { colKey: 'reviewed', title: '最近审核' },
   { colKey: 'checks', title: '自动校验' },
   { colKey: 'actions', title: '操作', width: 90 },
 ];
