@@ -1,15 +1,9 @@
 /**
- * 识别确认面板端到端（issue #15 DoD：mock 识别结果能确认、能改、能放弃重写）。
- * 用法：先 npm run build:mock，再 npm run e2e:flows:recog
- * 依赖：playwright-core + 本机 ms-playwright chromium（PG_CHROMIUM 可指定），与 tests/screenshots.mjs 同一套。
+ * 识别确认面板端到端（#15/#25）：拍照 → 逐行确认面板（#25 起整页切行）→ 取消勾选/编辑 → 逐行加入/全部加入 → 忽略。
  *
- * 覆盖：
- *  拍照 → 识别确认面板出现（两路结果 + 服务端 agree/diff 驱动的不一致提示与高亮 + 选左/选右）
- *  → 选右/选左切换（横幅不变，证明前端不重算一致性）→ 重新识别
- *  → 改一下（MathTextEditor + 证明键盘，点 ε 改一处）
- *  → 确认加入 → 页面「识别结果（已确认）」草稿出现且文本包含改动
- *  → 再拍照 → 放弃重写 → 面板关闭且草稿不变；
- * 输出 PASS/FAIL；有失败时退出码 1。
+ * 说明：旧 #15 的两路对比 + 差异高亮面板仍保留给「单行识别」回退；#25 拍照接口返回 lines 后
+ * 使用 new PhotoRecognitionPanel（逐行 MathText/bbox/勾选/编辑）。
+ * 用法：先 npm run build:mock，再 npm run e2e:flows:recog（PG_CHROMIUM 可指定 chromium）。
  */
 import http from 'node:http'
 import fs from 'node:fs'
@@ -21,6 +15,7 @@ import { chromium } from 'playwright-core'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const appDir = path.resolve(__dirname, '..')
 const distDir = path.join(appDir, 'dist', 'build', 'h5')
+const outDir = path.join(__dirname, '.artifacts', 'flows-recog')
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -48,8 +43,8 @@ function findChromium() {
     if (!fs.existsSync(base)) continue
     const dirs = fs.readdirSync(base).filter((d) => d.startsWith('chromium-')).sort().reverse()
     for (const d of dirs) {
-      for (const sub of ['chrome-win64', 'chrome-win']) {
-        const exe = path.join(base, d, sub, 'chrome.exe')
+      for (const sub of ['chrome-win64', 'chrome-win', 'chrome-linux64', 'chrome-linux']) {
+        const exe = path.join(base, d, sub, sub.startsWith('chrome-win') ? 'chrome.exe' : 'chrome')
         if (fs.existsSync(exe)) return exe
       }
     }
@@ -57,7 +52,7 @@ function findChromium() {
   return null
 }
 
-function serve(root, port) {
+function serve(root) {
   const server = http.createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url || '/').split('?')[0])
     let file = path.join(root, urlPath)
@@ -67,46 +62,41 @@ function serve(root, port) {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' })
     fs.createReadStream(file).pipe(res)
   })
-  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)))
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)))
 }
 
 let pass = 0
 let fail = 0
 function ok(cond, name, detail = '') {
-  if (cond) {
-    pass++
-    console.log('PASS ' + name)
-  } else {
-    fail++
-    console.log('FAIL ' + name + (detail ? ' :: ' + detail : ''))
-  }
+  if (cond) { pass++; console.log('PASS ' + name) }
+  else { fail++; console.log('FAIL ' + name + (detail ? ' :: ' + detail : '')) }
 }
 function includes(name, haystack, needle) {
-  ok(String(haystack).includes(needle), name, '未找到「' + needle + '」，实际：' + String(haystack).replace(/\s+/g, ' ').slice(0, 240))
+  ok(String(haystack).includes(needle), name, '未找到「' + needle + '」，实际：' + String(haystack).replace(/\s+/g, ' ').slice(0, 220))
 }
 async function innerText(page, selector) {
-  try {
-    return await page.locator(selector).first().innerText({ timeout: 3000 })
-  } catch {
-    return ''
-  }
+  try { return await page.locator(selector).first().innerText({ timeout: 3000 }) } catch { return '' }
 }
-async function waitBody(page, needle, timeout = 10000) {
-  await page.waitForFunction((n) => document.body.innerText.includes(n), needle, { timeout })
-}
-async function waitGone(page, selector, timeout = 10000) {
-  await page.locator(selector).first().waitFor({ state: 'detached', timeout })
-}
-async function waitVisible(page, selector, timeout = 10000) {
+async function waitVisible(page, selector, timeout = 12000) {
   await page.locator(selector).first().waitFor({ state: 'visible', timeout })
 }
+async function waitGone(page, selector, timeout = 12000) {
+  await page.locator(selector).first().waitFor({ state: 'detached', timeout })
+}
+async function count(page, selector) {
+  return page.locator(selector).count()
+}
 
-async function openPractice(page, baseURL) {
-  // 先 about:blank 再进目标 hash，强制 SPA 重新启动（同路径不同 hash 不会完整加载）
-  await page.goto('about:blank')
-  await page.goto(baseURL + '/#/pages/practice/index?mock=l3-active', { waitUntil: 'networkidle' })
-  await waitBody(page, '构造与推导', 15000)
-  await page.waitForTimeout(300)
+const FIXTURE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
+  'base64',
+)
+
+async function takePhoto(page, fixturePath) {
+  const chooserPromise = page.waitForEvent('filechooser', { timeout: 15000 })
+  await page.locator('.pg-dock__btn--photo').first().click()
+  const chooser = await chooserPromise
+  await chooser.setFiles(fixturePath)
 }
 
 async function main() {
@@ -115,111 +105,86 @@ async function main() {
     process.exit(2)
   }
   const exe = findChromium()
-  if (!exe) {
-    console.error('[recog] 找不到 chromium，可设置 PG_CHROMIUM 指向 chrome.exe')
-    process.exit(2)
-  }
-  const server = await serve(distDir, 0)
-  const baseURL = 'http://127.0.0.1:' + server.address().port
+  if (!exe) { console.error('[recog] 找不到 chromium，可设置 PG_CHROMIUM 指向 chrome.exe'); process.exit(2) }
+  fs.mkdirSync(outDir, { recursive: true })
+  const fixturePath = path.join(outDir, 'photo-fixture.png')
+  fs.writeFileSync(fixturePath, FIXTURE_PNG)
+
+  const server = await serve(distDir)
+  const base = 'http://127.0.0.1:' + server.address().port
   const browser = await chromium.launch({ executablePath: exe, headless: true })
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 })
-  const page = await ctx.newPage()
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 })
+  const page = await context.newPage()
   const pageErrors = []
-  page.on('pageerror', (e) => pageErrors.push(String(e && e.message ? e.message : e)))
+  page.on('pageerror', (error) => pageErrors.push(error instanceof Error ? error.message : String(error)))
   try {
-    await openPractice(page, baseURL)
+    await page.goto('about:blank')
+    await page.goto(base + '/#/pages/practice/index?mock=l3-active', { waitUntil: 'networkidle' })
+    await page.waitForFunction(() => document.body.innerText.includes('构造与推导'), { timeout: 15000 })
+    await page.waitForTimeout(200)
+    const before = await count(page, '[data-testid="proof-line"]')
 
-    // 1) 拍照 → 识别确认面板
-    await page.locator('.pg-dock__btn--photo').click()
-    await waitVisible(page, '.ui-recog')
-    includes('面板标题', await innerText(page, '.ui-recog__title'), '识别结果 · 请核对')
-    includes('两路不一致提示（来自服务端 agree）', await innerText(page, '.ui-recog__summary'), '两路识别不一致')
-    // mock 的 Recognition 形状：agree=false、diff 只给 1 段；横幅/高亮数量必须与服务端字段一致
-    const recogPanel = page.locator('.ui-recog').first()
-    ok((await recogPanel.getAttribute('data-agree')) === 'false', '横幅读服务端 agree（data-agree=false）')
-    ok((await recogPanel.getAttribute('data-conflicts')) === '1', '高亮数量 = 服务端 diff 数量（1 处）')
-    ok((await recogPanel.getAttribute('data-simple')) === 'false', 'agree=false 不走「直接显示 + 单按钮」分支')
-    ok((await page.locator('.ui-recog__conflict').count()) === 1, '高亮块 = 服务端 diff 的 1 处（前端不自行切分）')
-    includes('左路（主识别）可见', await innerText(page, '.ui-recog__route--left'), '左 · 主识别')
-    includes('右路（交叉识别）可见', await innerText(page, '.ui-recog__route--right'), '右 · 交叉识别')
-    includes('右路文本由服务端 diff.alt 还原', await innerText(page, '.ui-recog__route--right'), 'z')
-    includes('高亮块文案', await innerText(page, '.ui-recog__conflict'), '这一处两种识别不一致')
-    includes('有选左按钮', await innerText(page, '.ui-recog__fragment--left'), '左')
-    includes('有选右按钮', await innerText(page, '.ui-recog__fragment--right'), '右')
-    includes('确认加入按钮', await innerText(page, '.ui-recog__confirm'), '确认加入')
-    includes('放弃重写按钮', await innerText(page, '.ui-recog__discard'), '放弃重写')
+    // 1) 拍照 → 逐行确认面板
+    await takePhoto(page, fixturePath)
+    await waitVisible(page, '[data-testid="photo-recognition-panel"]')
+    includes('面板标题', await innerText(page, '.pg-photo__title'), '拍照识别 · 逐行确认')
+    includes('3 行摘要', await innerText(page, '[data-testid="photo-lines-summary"]'), '识别出 3 行')
+    ok((await count(page, '.pg-photo__line')) === 3, '逐行条目渲染（3 行）')
+    includes('bbox 可见', await innerText(page, '[data-testid="photo-line-bbox-0"]'), '位置')
 
-    // 2) 选右 / 选左切换
-    await page.locator('.ui-recog__fragment--right').first().click()
-    let leftClass = (await page.locator('.ui-recog__fragment--left').first().getAttribute('class')) || ''
-    let rightClass = (await page.locator('.ui-recog__fragment--right').first().getAttribute('class')) || ''
-    ok(!leftClass.includes('ui-recog__fragment--active') && rightClass.includes('ui-recog__fragment--active'), '选右后高亮切到右路')
-    // 选左/选右只影响「采用哪一路」；一致与否仍以服务端 agree 为准，横幅不变
-    includes('切换选择后横幅仍读服务端 agree', await innerText(page, '.ui-recog__summary'), '两路识别不一致')
-    await page.locator('.ui-recog__fragment--left').first().click()
-    leftClass = (await page.locator('.ui-recog__fragment--left').first().getAttribute('class')) || ''
-    rightClass = (await page.locator('.ui-recog__fragment--right').first().getAttribute('class')) || ''
-    ok(leftClass.includes('ui-recog__fragment--active') && !rightClass.includes('ui-recog__fragment--active'), '再选左后高亮切回左路')
+    // 2) 取消勾选第 2 行 → 已选变 2
+    await page.getByTestId('photo-line-check-1').click()
+    includes('取消勾选后摘要更新', await innerText(page, '[data-testid="photo-lines-summary"]'), '已选 2 行')
 
-    // 3) 重新识别：面板先关（识别中），再带着结果回来
-    await page.locator('.ui-recog__rewrite').click()
-    await waitGone(page, '.ui-recog')
-    await waitVisible(page, '.ui-recog')
-    includes('重新识别后面板回来', await innerText(page, '.ui-recog__title'), '识别结果 · 请核对')
+    // 3) 编辑第 1 行文本
+    await page.getByTestId('photo-line-edit-0').click()
+    const textarea = page.getByTestId('photo-line-input-0').locator('textarea').first()
+    await textarea.fill('编辑后的第一行')
+    await page.getByTestId('photo-line-edit-done-0').click()
+    includes('编辑后行文本更新', await innerText(page, '[data-testid="photo-line-0"]'), '编辑后的第一行')
 
-    // 4) 改一下：MathTextEditor + 证明键盘，用键盘改一处
-    await page.locator('.ui-recog__editbtn').click()
-    await waitVisible(page, '.ui-mte')
-    await waitVisible(page, '.ui-pk')
-    const textarea = page.locator('.ui-mte__input textarea').first()
-    await textarea.waitFor({ state: 'visible', timeout: 8000 })
-    const beforeText = await textarea.inputValue()
-    await page.locator('[data-key-id="common.r0.k2"]').click() // 常用层的 ε
-    await page.waitForTimeout(300)
-    const afterText = await textarea.inputValue()
-    ok(afterText !== beforeText, '证明键盘输入改变了编辑文本', 'before=' + beforeText.slice(0, 80))
-    includes('改动包含 ε（\\varepsilon）', afterText, '\\varepsilon')
+    // 4) 全部加入（2 行）→ 面板仍在（剩 1 行）
+    await page.getByTestId('photo-add-selected').click()
+    await page.waitForFunction((n) => document.querySelectorAll('[data-testid="proof-line"]').length >= n, before + 2, { timeout: 15000 })
+    includes('加入后 toast', await innerText(page, '.pg-toast'), '已加入 2 行')
+    includes('面板剩余 1 行', await innerText(page, '[data-testid="photo-lines-summary"]'), '识别出 1 行')
 
-    // 5) 确认加入 → 结果进入页面草稿
-    await page.locator('.ui-recog__confirm').click()
-    await waitGone(page, '.ui-recog')
-    await waitVisible(page, '.pg-practice__draft')
-    const draftText = (await page.locator('.pg-practice__draft').getAttribute('data-draft-text')) || ''
-    ok(draftText.length > 0, '草稿包含确认文本', draftText.slice(0, 120))
-    includes('草稿文本包含键盘改动', draftText, '\\varepsilon')
-    includes('草稿卡标题', await innerText(page, '.pg-practice__drafttitle'), '识别结果（已确认）')
-    includes('确认 toast', await innerText(page, '.pg-toast'), '识别结果已放入草稿')
+    // 5) 逐行加入剩余 1 行 → 面板关闭、总 +3
+    // 上一批 add 之后 confirmRecognition 在途时面板按钮是禁用的；等它解除再点，避免点击落空。
+    await page.waitForFunction(() => {
+      const button = document.querySelector('[data-testid="photo-line-add-0"]')
+      return Boolean(button) && !button.hasAttribute('disabled')
+    }, { timeout: 10000 })
+    await page.getByTestId('photo-line-add-0').click()
+    await waitGone(page, '[data-testid="photo-recognition-panel"]')
+    await page.waitForFunction((n) => document.querySelectorAll('[data-testid="proof-line"]').length >= n, before + 3, { timeout: 15000 })
+    ok((await count(page, '[data-testid="proof-line"]')) === before + 3, '逐行加入后共新增 3 行')
 
-    // 6) 草稿回填行编辑器（沿用 EditorSheet 既有契约：initial-statement）
-    await page.locator('.pg-practice__draftbtn--continue').click()
-    await waitVisible(page, '.pg-editor')
-    await page.getByTestId('editor-cancel').click()
-    await waitGone(page, '.pg-editor')
-    ok(true, '草稿可回填到行编辑器（EditorSheet 既有契约）')
+    // 6) 再拍照 → 忽略 → 面板关闭、行数不变
+    // 上一批 add 的 confirmRecognition 可能仍在途（recogBusy），稍等再拍避免被 busy 挡掉。
+    await page.waitForTimeout(500)
+    await takePhoto(page, fixturePath)
+    await waitVisible(page, '[data-testid="photo-recognition-panel"]')
+    await page.getByTestId('photo-ignore').click()
+    await waitGone(page, '[data-testid="photo-recognition-panel"]')
+    ok((await count(page, '[data-testid="proof-line"]')) === before + 3, '忽略后不新增行')
+    includes('忽略 toast', await innerText(page, '.pg-toast'), '已忽略这次拍照识别')
 
-    // 7) 再拍照 → 放弃重写：面板关闭，草稿不变
-    await page.locator('.pg-dock__btn--photo').click()
-    await waitVisible(page, '.ui-recog')
-    await page.locator('.ui-recog__discard').click()
-    await waitGone(page, '.ui-recog')
-    const draftAfterDiscard = (await page.locator('.pg-practice__draft').getAttribute('data-draft-text')) || ''
-    ok(draftAfterDiscard === draftText, '放弃重写后草稿保持不变', draftAfterDiscard.slice(0, 80))
-    includes('放弃重写 toast', await innerText(page, '.pg-toast'), '已放弃这次识别')
-
-    ok(pageErrors.length === 0, '页面无 JS 异常', pageErrors.join(' | ').slice(0, 300))
-  } catch (e) {
+    await page.screenshot({ path: path.join(outDir, 'recog-final.png'), fullPage: true })
+    ok(pageErrors.length === 0, '页面无 JS 异常', pageErrors.slice(0, 2).join(' | '))
+  } catch (error) {
     fail++
-    console.log('FAIL 识别确认流程异常 :: ' + (e && e.stack ? e.stack.split('\n').slice(0, 5).join(' ') : String(e)))
+    console.log('FAIL 识别确认流程异常 :: ' + (error instanceof Error ? error.stack?.split('\n').slice(0, 4).join(' ') : String(error)))
   } finally {
-    await ctx.close()
+    await context.close()
     await browser.close()
-    await new Promise((r) => server.close(r))
+    await new Promise((resolve) => server.close(resolve))
   }
   console.log('[recog] PASS ' + pass + ' · FAIL ' + fail)
   if (fail > 0) process.exit(1)
 }
 
-main().catch((e) => {
-  console.error(e)
+main().catch((error) => {
+  console.error(error)
   process.exit(1)
 })
