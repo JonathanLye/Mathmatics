@@ -21,9 +21,14 @@ import { hintTextOf, REFUSAL_TEXT } from './hints.ts';
 import { routeIntent, type RouteInput } from './intent.ts';
 import { PREVIEW_TTL_MS, signPreview, verifyPreview } from './token.ts';
 
+// 文案来自 01 §4（批注）与 09 §7.2（闸门回退）。
+const MISSING_REASON_TEXT = '依据没写。它由哪条定义或已证结论得到？';
+const CONCEPT_GATE_FALLBACK = '我先不说这一点。你现在写到哪一行了？这一行的依据是什么？';
+const unclassifiedLineText = (idx: number): string => `第 ${idx} 行和要证的结论是什么关系？它的依据是哪条定义或定理？`;
+
 // 求助与领取提示（06 §4.2–4.3；09 §3 C4、C5）。
 // 服务端只下发题目包里预写的提示文本：不调用模型，不把学生文本发往任何外部服务。
-// 概念回答与行批注（concept / check_line）：从概念库与 app.attempt_lines 生成 Note（06 §4.2），不调用模型。
+// 概念回答与行批注（concept / check_line）：从已发布概念库与 app.attempt_lines 生成 Note（06 §4.2），不调用模型。
 // H0/H1 不计透露量，直接经引擎下发；H2 起先给预览与令牌，领取时由引擎重新检查（06 §4.2 的 /hints/claim）。
 // 测验模式关闭提示（11 §5.2 的测验时段"关提示"）：stuck 返回 preview.reason = test_mode。
 
@@ -124,42 +129,68 @@ export function createHelpService(deps: HelpDeps): HelpService {
     return { noteId: randomUUID(), kind, who, text, at: new Date(now()).toISOString() };
   }
 
-  // 概念解释（06 §4.2）：取本题 public.def.conceptId 对应的概念词条（最新版本），给白话要点；
-  // 概念库里没有该词条时返回 null（不假装有内容）。
+  // 概念解释（06 §4.2）：只取本题 public.def.conceptId 已发布的最新版本（10 §4：未审核内容不给学生）。
+  // 所有发给学生的字符串都过规则闸门（09 §7.1）；被拦时用 09 §7.2 的 concept 回退文案。词条缺失返回 null。
   async function conceptNote(owned: Owned): Promise<Record<string, unknown> | null> {
     const conceptId = owned.ctx.pkg.public.def?.conceptId;
     if (conceptId === undefined || conceptId === '') return null;
     const row = await db.query<{
       body: { title?: string; definition?: string; card?: { plain?: string } };
-    }>(`select body from content.concepts where id = $1 order by version desc limit 1`, [conceptId]);
+    }>(`select body from content.concepts where id = $1 and status = 'published' order by version desc limit 1`, [conceptId]);
     const concept = row.rows[0]?.body;
     if (!concept) return null;
     const plain = concept.card?.plain?.trim() ?? '';
     const text = plain !== '' ? `${concept.title ?? conceptId}：${plain}` : (concept.definition ?? concept.title ?? '').trim();
     if (text === '') return null;
-    return { ...noteOf('concept', '助教', text), level: 'H0', lessonConceptId: conceptId };
+    const shown = passesGate(owned, text) ? text : CONCEPT_GATE_FALLBACK;
+    return { ...noteOf('concept', '助教', shown), level: 'H0', lessonConceptId: conceptId };
   }
 
-  // 行批注（06 §4.2）：指向指定行（缺省最新一行）；依据缺失时追问，否则确认衔接。
-  async function checkLineNote(attemptId: string, lineId?: string): Promise<Record<string, unknown> | null> {
+  function passesGate(owned: Owned, text: string): boolean {
+    return gateRule(owned.ctx.pkg.secret, text, new Set(owned.state.hint.matched), []).ok;
+  }
+
+  // 批注被闸门拦下或低置信时的问句（09 §7.2：当前关键步骤的 H0；没有可用 H0 时退回"归不了类"的通用问句）。
+  function h0OrGeneric(owned: Owned, idx: number): string {
+    const key = nextKey(owned.ctx.pkg.secret, owned.state.hint.matched);
+    const h0 = key ? hintTextOf(owned.ctx.pkg.secret, key.id, 'H0') : null;
+    return h0 && passesGate(owned, h0) ? h0 : unclassifiedLineText(idx);
+  }
+
+  // 行批注（06 §4.2、01 §4）：指向指定行（缺省最新一行，已删除的行不算）。只用问句，不说对错：
+  // 命中错误 → 该错误预写的追问；低置信 → H0 式追问；没写依据 → 追问依据；命中关键步骤且有依据 → 衔接确认；
+  // 归不了类 → 通用问句。文本一律过闸门，被拦走 09 §7.2 的回退。
+  async function checkLineNote(owned: Owned, attemptId: string, lineId?: string): Promise<Record<string, unknown> | null> {
+    type LineRow = { id: string; idx: number; justification: string | null; cls: string | null; error_id: string | null };
+    const columns = 'id, idx, justification, cls, error_id';
     const row =
       lineId !== undefined
         ? (
-            await db.query<{ id: string; justification: string | null }>(
-              `select id, justification from app.attempt_lines where id = $1 and attempt_id = $2`,
+            await db.query<LineRow>(
+              `select ${columns} from app.attempt_lines where id = $1 and attempt_id = $2 and deleted_at is null`,
               [lineId, attemptId],
             )
           ).rows[0]
         : (
-            await db.query<{ id: string; justification: string | null }>(
-              `select id, justification from app.attempt_lines where attempt_id = $1 order by created_at desc, idx desc limit 1`,
+            await db.query<LineRow>(
+              `select ${columns} from app.attempt_lines
+                where attempt_id = $1 and deleted_at is null
+                order by created_at desc, idx desc limit 1`,
               [attemptId],
             )
           ).rows[0];
     if (!row) return null;
     const missing = row.justification === null || row.justification.trim() === '';
-    const text = missing ? '依据没写。它由哪条定义或已证结论得到？' : '这一行和前面衔接上了。';
-    return { ...noteOf('annotation', '批注', text), lineId: row.id };
+    const errorQuestion =
+      row.cls === 'error' ? owned.ctx.pkg.secret.errors.find((item) => item.id === row.error_id)?.question : undefined;
+    let text: string;
+    if (errorQuestion !== undefined) text = errorQuestion;
+    else if (row.cls === 'lowconf') text = h0OrGeneric(owned, row.idx);
+    else if (missing || row.cls === 'demo_needs_reason') text = MISSING_REASON_TEXT;
+    else if (row.cls === 'match' || row.cls === 'pass') text = `第 ${row.idx} 行和前面衔接上了。`;
+    else text = unclassifiedLineText(row.idx);
+    const shown = passesGate(owned, text) ? text : h0OrGeneric(owned, row.idx);
+    return { ...noteOf('annotation', '批注', shown), lineId: row.id };
   }
 
   function hintNote(owned: Owned, event: EngineEvent): Record<string, unknown> {
@@ -199,15 +230,15 @@ export function createHelpService(deps: HelpDeps): HelpService {
         await attempts.setHelpOutcome(helpId, 'refusal');
         return { routed, note: refusalNote(owned), state: await attempts.get(userId, attemptId) };
       }
-      if (routed === 'concept') {
-        const note = await conceptNote(owned);
-        await attempts.setHelpOutcome(helpId, 'concept');
-        const state = await attempts.get(userId, attemptId);
-        return note === null ? { routed, state } : { routed, note, state };
-      }
-      if (routed === 'check_line') {
-        const note = await checkLineNote(attemptId, extra.lineId);
-        await attempts.setHelpOutcome(helpId, 'annotation');
+      if (routed === 'concept' || routed === 'check_line') {
+        // 11 §5.2 测验作答中求助关闭：概念与行检查都不下发（文档允许"只留概念"，P0 取更严的一侧）。
+        if (owned.mode === 'test') {
+          await attempts.setHelpOutcome(helpId, 'denied');
+          return { routed, preview: blockedPreview({ reason: 'test_mode', waitSec: null }), state: await attempts.get(userId, attemptId) };
+        }
+        const note = routed === 'concept' ? await conceptNote(owned) : await checkLineNote(owned, attemptId, extra.lineId);
+        // 08 §5.4：outcome 只记实际发生的结局；没有内容下发就保持 NULL。
+        if (note !== null) await attempts.setHelpOutcome(helpId, routed === 'concept' ? 'concept' : 'annotation');
         const state = await attempts.get(userId, attemptId);
         return note === null ? { routed, state } : { routed, note, state };
       }

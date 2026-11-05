@@ -4,6 +4,7 @@ import { REFUSAL_TEXT } from '../src/help/hints.ts';
 import { signPreview } from '../src/help/token.ts';
 
 import {
+import { loadProblem } from '../src/attempts/problem.ts';
   assertHelpResult,
   postClaim,
   postHelp,
@@ -147,27 +148,86 @@ describe('求助与领取（响应均符合 HelpResult）', () => {
     expect(concept.json().preview).toBeUndefined();
   });
 
-  it('行批注：无依据的行返回追问（lineId 指向该行）；有依据的行返回衔接确认', async () => {
-    const bare = await h.db.query<{ id: string }>(
-      `insert into app.attempt_lines (attempt_id, layer, role, idx, statement, statement_canon, provenance)
-       values ($1, 'L3', 'step', 1, '任取 epsilon', '任取 ', 'keyboard') returning id`,
-      [h.attemptId],
+  async function insertLine(
+    idx: number,
+    fields: { justification?: string; cls?: string; errorId?: string; deleted?: boolean } = {},
+  ): Promise<string> {
+    const row = await h.db.query<{ id: string }>(
+      `insert into app.attempt_lines
+         (attempt_id, layer, role, idx, statement, justification, statement_canon, provenance, cls, error_id, deleted_at)
+       values ($1, 'L3', 'step', $2, '任取 epsilon', $3, '任取 ', 'keyboard', $4, $5, $6) returning id`,
+      [h.attemptId, idx, fields.justification ?? null, fields.cls ?? null, fields.errorId ?? null, fields.deleted ? new Date() : null],
     );
-    const bareId = bare.rows[0]?.id as string;
+    return row.rows[0]?.id as string;
+  }
+  const helpOutcomes = async (): Promise<(string | null)[]> =>
+    (
+      await h.db.query<{ outcome: string | null }>(
+        `select outcome from app.help_requests where attempt_id = $1 order by created_at desc limit 1`,
+        [h.attemptId],
+      )
+    ).rows.map((row) => row.outcome);
+
+  it('行批注（01 §4）：无依据追问 / 命中且有依据衔接 / 归不了类通用问句，lineId 指向该行', async () => {
+    const bareId = await insertLine(1, { cls: 'match' });
     const first = await postHelp(h, { intent: 'check_line', lineId: bareId });
     assertHelpResult(first);
     expect(first.json()).toMatchObject({ routed: 'check_line', note: { kind: 'annotation', lineId: bareId } });
-    expect(String(first.json().note.text)).toContain('依据');
+    expect(String(first.json().note.text)).toContain('依据没写');
+    expect(await helpOutcomes()).toEqual(['annotation']);
 
-    const withWhy = await h.db.query<{ id: string }>(
-      `insert into app.attempt_lines (attempt_id, layer, role, idx, statement, justification, statement_canon, provenance)
-       values ($1, 'L3', 'step', 2, '取 N=ceil(5/epsilon)', '由定义', '取 ', 'keyboard') returning id`,
+    const matchId = await insertLine(2, { justification: '由定义', cls: 'match' });
+    const second = await postHelp(h, { intent: 'check_line', lineId: matchId });
+    expect(second.json()).toMatchObject({ note: { kind: 'annotation', lineId: matchId, text: '第 2 行和前面衔接上了。' } });
+
+    const unknownId = await insertLine(3, { justification: '显然', cls: 'unknown' });
+    const third = await postHelp(h, { intent: 'check_line', lineId: unknownId });
+    expect(String(third.json().note.text)).toContain('第 3 行和要证的结论是什么关系');
+    expect(String(third.json().note.text)).not.toContain('衔接');
+  });
+
+  it('行批注：命中错误的行给该错误预写的追问，绝不说"衔接上了"（即使写了依据）', async () => {
+    const attempt = (await h.db.query<{ problem_id: string; problem_version: number }>(
+      `select problem_id, problem_version from app.attempts where id = $1`,
       [h.attemptId],
-    );
-    const whyId = withWhy.rows[0]?.id as string;
-    const second = await postHelp(h, { intent: 'check_line', lineId: whyId });
-    expect(second.json()).toMatchObject({ routed: 'check_line', note: { kind: 'annotation', lineId: whyId } });
-    expect(String(second.json().note.text)).toContain('衔接');
+    )).rows[0];
+    const problem = await loadProblem(h.db, attempt?.problem_id as string, attempt?.problem_version as number);
+    const err = problem.ctx.pkg.secret.errors[0];
+    expect(err).toBeTruthy();
+    const lineId = await insertLine(1, { justification: '由定义', cls: 'error', errorId: err?.id as string });
+    const res = await postHelp(h, { intent: 'check_line', lineId });
+    assertHelpResult(res);
+    expect(res.json().note.text).not.toContain('衔接');
+    expect(res.json().note.text).toBe(err?.question);
+  });
+
+  it('行批注：缺省取最新一行且跳过已删除的行；没有可看的行时不写 outcome', async () => {
+    expect((await postHelp(h, { intent: 'check_line' })).json().note).toBeUndefined();
+    expect(await helpOutcomes()).toEqual([null]);
+
+    const liveId = await insertLine(1, { justification: '由定义', cls: 'match' });
+    await insertLine(2, { justification: '由定义', cls: 'match', deleted: true });
+    expect((await postHelp(h, { intent: 'check_line' })).json().note.lineId).toBe(liveId);
+  });
+
+  it('概念回答只取已发布版本；只有草稿时不下发、不写 outcome', async () => {
+    await h.db.query(`update content.concepts set status = 'draft' where id = 'seq-limit'`);
+    const res = await postHelp(h, { intent: 'concept' });
+    assertHelpResult(res);
+    expect(res.json().note).toBeUndefined();
+    expect(await helpOutcomes()).toEqual([null]);
+  });
+
+  it('测验模式：概念与行检查都关闭（11 §5.2），outcome=denied', async () => {
+    const lineId = await insertLine(1, { justification: '由定义', cls: 'match' });
+    await h.db.query(`update app.attempts set mode = 'test' where id = $1`, [h.attemptId]);
+    for (const payload of [{ intent: 'concept' }, { intent: 'check_line', lineId }] as const) {
+      const res = await postHelp(h, payload);
+      assertHelpResult(res);
+      expect(res.json().note).toBeUndefined();
+      expect(res.json().preview).toMatchObject({ allowed: false, reason: 'test_mode' });
+      expect(await helpOutcomes()).toEqual(['denied']);
+    }
   });
 
   it('测验模式关闭提示：stuck 返回 test_mode，领取返回 403 TEST_MODE_RESTRICTED', async () => {
