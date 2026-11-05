@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: '/classes', name: 'classes', component: () => import('./pages/ClassesPage.vue') },
     { path: '/classes/:classId', name: 'class-detail', component: () => import('./pages/ClassDetailPage.vue') },
     { path: '/problems', name: 'problems', component: () => import('./pages/ProblemsPage.vue') },
+    { path: '/settings', name: 'settings', component: () => import('./pages/SettingsPage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/classes' },
   ],
 });
