@@ -186,7 +186,7 @@ async function checkMarker(page, marker) {
 
 async function main() {
   if (!fs.existsSync(distDir)) {
-    console.error('[screens] 缺少构建产物：' + distDir + '，先运行 npm run build:h5')
+    console.error('[screens] 缺少构建产物：' + distDir + '，先运行 npm run build:mock')
     process.exit(2)
   }
   const exe = findChromium()

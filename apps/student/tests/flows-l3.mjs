@@ -2,7 +2,7 @@
  * 第 3 层端到端流程（issue #12 DoD）：mock 下加行后，批注出现在该行下方。
  *
  * 用法（在 apps/student 下）：
- *   npm run build:h5
+ *   npm run build:mock
  *   npm run e2e:flows:l3
  * 依赖：playwright-core + 本机 ms-playwright 的 chromium（可用 PG_CHROMIUM 指定；
  *       这里同时探测 Windows / Linux / macOS 的默认缓存路径，方便在 CI/容器里跑）。
@@ -198,7 +198,7 @@ async function checkWideDedupe(browser, url) {
 
 async function main() {
   if (!fs.existsSync(distDir)) {
-    console.error('[flows-l3] 缺少构建产物：' + distDir + '，请先运行 npm run build:h5')
+    console.error('[flows-l3] 缺少构建产物：' + distDir + '，请先运行 npm run build:mock')
     process.exit(2)
   }
   const exe = findChromium()
