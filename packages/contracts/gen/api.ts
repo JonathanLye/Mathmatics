@@ -635,6 +635,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/classes/{classId}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出） */
+        patch: operations["updateClassSettings"];
+        trace?: never;
+    };
     "/teacher/classes/{classId}/roster": {
         parameters: {
             query?: never;
@@ -5596,6 +5613,35 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    updateClassSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSettings"];
+            };
+        };
+        responses: {
+            /** @description 已更新 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSummary"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     listRoster: {

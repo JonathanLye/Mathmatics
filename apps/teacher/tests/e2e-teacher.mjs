@@ -163,7 +163,10 @@ async function main() {
   await page.getByText('布置', { exact: true }).first().click();
   await page.getByText('数列极限 · ε-N').first().waitFor({ timeout: 10000 });
   await shot('05b-assignments-1280');
-
+  // #176：班级默认设置页签
+  await page.locator('.t-tabs').getByText('设置', { exact: true }).click();
+  await page.getByText('默认透露预算').waitFor({ timeout: 10000 });
+  await shot('05c-class-settings-1280');
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
   await page.getByText('题库与审核').waitFor({ timeout: 10000 });
   await shot('06-problems-1280');

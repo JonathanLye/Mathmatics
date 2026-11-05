@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
-import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
+import type { AssignmentCard, ClassSettings, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
 import ExportPanel from '../components/ExportPanel.vue';
 import MetricsPanel from '../components/MetricsPanel.vue';
 import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
@@ -15,6 +15,14 @@ const classId = computed(() => String(route.params.classId ?? ''));
 const tab = ref('live');
 const classInfo = ref<ClassSummary | null>(null);
 const pageError = ref('');
+const classSettings = ref({
+  photoEnabled: true,
+  lessonGenerated: false,
+  revealBudget: 2,
+  integrityPractice: 'log_and_notice',
+  testMaxSwitches: 3,
+});
+const savingSettings = ref(false);
 
 // 学生详情抽屉（#35：解锁 / 发一句话 / 处理标记）
 const drawerVisible = ref(false);
@@ -188,6 +196,16 @@ async function loadClassInfo(): Promise<void> {
     const list = await api.get<ClassSummary[]>('/api/v1/teacher/classes');
     classInfo.value = list.find((item) => item.classId === classId.value) ?? null;
     if (classInfo.value === null) pageError.value = '班级不存在或不属于你';
+    const settings = classInfo.value?.settings as ClassSettings | undefined;
+    if (settings !== undefined) {
+      Object.assign(classSettings.value, {
+        photoEnabled: settings.photoEnabled ?? true,
+        lessonGenerated: settings.lessonGenerated ?? false,
+        revealBudget: settings.revealBudget ?? 2,
+        integrityPractice: settings.integrityPractice ?? 'log_and_notice',
+        testMaxSwitches: settings.testMaxSwitches ?? 3,
+      });
+    }
   } catch (caught) {
     pageError.value = messageOf(caught);
   }
@@ -303,6 +321,17 @@ async function unclaim(rosterId: string): Promise<void> {
     unclaiming.value = null;
   }
 }
+
+async function saveClassSettings(): Promise<void> {
+  savingSettings.value = true;
+  try {
+    const updated = await api.patch<ClassSummary>(`/api/v1/teacher/classes/${classId.value}/settings`, classSettings.value);
+    classInfo.value = updated;
+    MessagePlugin.success('班级默认设置已保存');
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    savingSettings.value = false;
   }
 }
 
@@ -705,6 +734,37 @@ onBeforeUnmount(() => {
 
       <t-tab-panel value="export" label="导出">
         <ExportPanel :class-id="classId" />
+      </t-tab-panel>
+
+      <t-tab-panel value="settings" label="设置">
+        <t-form label-width="140px" style="max-width: 560px; margin-top: 12px">
+          <t-form-item label="拍照">
+            <t-switch v-model="classSettings.photoEnabled" />
+          </t-form-item>
+          <t-form-item label="生成补充讲解">
+            <t-switch v-model="classSettings.lessonGenerated" />
+            <span class="page-sub" style="margin-left: 8px">P0 默认关（fail-closed，09 §2）</span>
+          </t-form-item>
+          <t-form-item label="默认透露预算">
+            <t-input-number v-model="classSettings.revealBudget" :min="0" :max="10" theme="normal" />
+          </t-form-item>
+          <t-form-item label="诚信策略">
+            <t-select
+              v-model="classSettings.integrityPractice"
+              :options="[
+                { label: '记录 + 轻提醒', value: 'log_and_notice' },
+                { label: '仅记录', value: 'log_only' },
+              ]"
+              style="width: 200px"
+            />
+          </t-form-item>
+          <t-form-item label="测验切出锁定">
+            <t-input-number v-model="classSettings.testMaxSwitches" :min="0" :max="10" theme="normal" suffix="次" />
+          </t-form-item>
+          <t-form-item label=" ">
+            <t-button theme="primary" :loading="savingSettings" @click="saveClassSettings">保存</t-button>
+          </t-form-item>
+        </t-form>
       </t-tab-panel>
     </t-tabs>
 
