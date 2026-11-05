@@ -745,6 +745,26 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ClassSummary' }
+  /teacher/classes/{classId}/settings:
+    patch:
+      tags: [teacher]
+      summary: 更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出）
+      operationId: updateClassSettings
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClassSettings' }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassSummary' }
   /teacher/classes/{classId}/roster:
     get:
       tags: [teacher]
@@ -885,6 +905,43 @@ paths:
                 properties:
                   events: { type: array, items: { $ref: './events.schema.json' } }
                   nextSeq: { type: [integer, 'null'] }
+  /teacher/attempts/{attemptId}/lines/{lineId}/reclassify:
+    post:
+      tags: [teacher]
+      summary: 教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4）
+      operationId: reclassifyLine
+      parameters:
+        - { $ref: '#/components/parameters/attemptId' }
+        - { name: lineId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cls]
+              properties:
+                cls: { type: string, enum: [match, error, unknown, lowconf, demo_needs_reason, pass, fail] }
+                keys: { type: array, items: { type: string } }
+                errorId: { type: [string, 'null'] }
+                note: { type: string, maxLength: 200 }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 改判结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lineId, cls, keys, errorId, classifierPath]
+                properties:
+                  lineId: { type: string, format: uuid }
+                  cls: { type: string }
+                  keys: { type: array, items: { type: string } }
+                  errorId: { type: [string, 'null'] }
+                  classifierPath: { type: string }
   /teacher/attempts/{attemptId}/stream:
     get:
       tags: [teacher]
@@ -996,7 +1053,6 @@ paths:
       responses:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
         '200':
           description: 布置
           content:
@@ -1834,6 +1890,8 @@ components:
         status: { type: string, enum: [draft, pending, returned, published, retired] }
         autoChecks: { type: object }
         source: { type: string }
+        reviewedBy: { type: [string, 'null'], description: 最近一次审核人（display_name/anon_code） }
+        reviewedAt: { type: [string, 'null'], format: date-time }
     ImportJob:
       type: object
       required: [jobId, status]

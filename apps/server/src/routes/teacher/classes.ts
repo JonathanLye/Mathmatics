@@ -8,6 +8,7 @@ import {
   listRoster,
   rotateInviteCode,
   unclaimRoster,
+  updateClassSettings,
   type CreateClassInput,
 } from '../../services/teacher/classes.ts';
 import { importRoster } from '../../services/teacher/roster.ts';
@@ -35,6 +36,16 @@ export const teacherClassRoutes: FastifyPluginAsync<AuthRouteOptions> = async (a
     const summary = await createClass(db, auth, body);
     contract.validate('ClassSummary', summary);
     return reply.status(201).send(summary);
+  });
+
+  // 班级默认设置（04 §1/§7）
+  app.patch('/teacher/classes/:classId/settings', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
+    contract.validateRequest('/teacher/classes/{classId}/settings', 'patch', request.body);
+    const summary = await updateClassSettings(db, auth, classId, request.body);
+    contract.validate('ClassSummary', summary);
+    return summary;
   });
 
   // 名单 CSV 导入（04 §10）。契约的请求体是 text/csv，contract.validateRequest 只支持 JSON，这里不做 JSON 校验。

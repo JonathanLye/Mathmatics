@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
-import type { AssignmentCard, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
+import type { AssignmentCard, ClassSettings, ClassSummary, LiveRow, LiveSnapshot, RosterEntry, RosterImportResult } from '../api/types.ts';
 import ExportPanel from '../components/ExportPanel.vue';
 import MetricsPanel from '../components/MetricsPanel.vue';
 import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
@@ -15,6 +15,14 @@ const classId = computed(() => String(route.params.classId ?? ''));
 const tab = ref('live');
 const classInfo = ref<ClassSummary | null>(null);
 const pageError = ref('');
+const classSettings = ref({
+  photoEnabled: true,
+  lessonGenerated: false,
+  revealBudget: 2,
+  integrityPractice: 'log_and_notice',
+  testMaxSwitches: 3,
+});
+const savingSettings = ref(false);
 
 // 学生详情抽屉（#35：解锁 / 发一句话 / 处理标记）
 const drawerVisible = ref(false);
@@ -37,9 +45,6 @@ let retryDelay = 1000;
 const streamConnected = ref(false);
 const streamError = ref('');
 const selectedAssignmentId = ref('');
-const assignmentsError = ref('');
-// 首屏由 onMounted 顺序加载；watch 只响应之后教师的切换，避免首屏重复请求。
-let pageReady = false;
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -63,11 +68,10 @@ interface PublishedProblem {
 const publishedProblems = ref<PublishedProblem[]>([]);
 const selectedProblem = ref('');
 const problemsLoading = ref(false);
-const problemsError = ref('');
-const problemKey = (item: PublishedProblem): string => `${item.problemId}@${item.version}`;
 
-const closingId = ref<string | null>(null);
 const assignmentForm = ref({
+  problemId: 'epsN',
+  version: 1,
   mode: 'practice' as 'practice' | 'test',
   openAt: toLocalInput(new Date()),
   closeAt: '',
@@ -107,17 +111,18 @@ async function submitPublish(): Promise<void> {
   publishing.value = true;
   publishError.value = '';
   try {
-    const proofIds = parseProofIds(publishProofIds.value);
-    await api.post<AssignmentCard>(
+    const proofIds = publishProofIds.value.split(/[,，\s]+/).map((item) => item.trim()).filter((item) => item !== '');
+    const updated = await api.post<AssignmentCard>(
       `/api/v1/teacher/assignments/${publishTarget.value.assignmentId}/publish-review`,
       { ...(proofIds.length > 0 ? { proofIds } : {}), ...(publishNote.value.trim() === '' ? {} : { note: publishNote.value.trim() }) },
     );
-    await loadAssignments();
+    const index = createdAssignments.value.findIndex((item) => item.assignmentId === updated.assignmentId);
+    if (index >= 0) createdAssignments.value[index] = updated;
     MessagePlugin.success('讲评已发布');
     publishVisible.value = false;
   } catch (caught) {
     publishError.value =
-      caught instanceof ApiError && caught.status === 409 ? '布置尚未关闭，不能发布讲评：请先关闭该布置' : messageOf(caught);
+      caught instanceof ApiError && caught.status === 409 ? '布置尚未关闭，不能发布讲评（可把截止时间设为过去）' : messageOf(caught);
   } finally {
     publishing.value = false;
   }
@@ -201,6 +206,16 @@ async function loadClassInfo(): Promise<void> {
     const list = await api.get<ClassSummary[]>('/api/v1/teacher/classes');
     classInfo.value = list.find((item) => item.classId === classId.value) ?? null;
     if (classInfo.value === null) pageError.value = '班级不存在或不属于你';
+    const settings = classInfo.value?.settings as ClassSettings | undefined;
+    if (settings !== undefined) {
+      Object.assign(classSettings.value, {
+        photoEnabled: settings.photoEnabled ?? true,
+        lessonGenerated: settings.lessonGenerated ?? false,
+        revealBudget: settings.revealBudget ?? 2,
+        integrityPractice: settings.integrityPractice ?? 'log_and_notice',
+        testMaxSwitches: settings.testMaxSwitches ?? 3,
+      });
+    }
   } catch (caught) {
     pageError.value = messageOf(caught);
   }
@@ -275,6 +290,20 @@ function disconnectStream(): void {
   streamConnected.value = false;
 }
 
+async function loadAssignments(): Promise<void> {
+  if (classId.value === '') return;
+  try {
+    createdAssignments.value = await api.get<AssignmentCard[]>(
+      `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
+    );
+    if (selectedAssignmentId.value === '' || !createdAssignments.value.some((item) => item.assignmentId === selectedAssignmentId.value)) {
+      selectedAssignmentId.value = createdAssignments.value[0]?.assignmentId ?? '';
+    }
+  } catch {
+    // 列表失败不阻塞看板；保留空列表
+  }
+}
+
 async function loadRoster(): Promise<void> {
   if (classId.value === '') return;
   rosterLoading.value = true;
@@ -303,38 +332,31 @@ async function unclaim(rosterId: string): Promise<void> {
   }
 }
 
-async function loadPublishedProblems(): Promise<void> {
-  problemsLoading.value = true;
-  problemsError.value = '';
+async function saveClassSettings(): Promise<void> {
+  savingSettings.value = true;
   try {
-    publishedProblems.value = await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published');
-    if (!publishedProblems.value.some((item) => problemKey(item) === selectedProblem.value)) {
-      const first = publishedProblems.value[0];
-      selectedProblem.value = first === undefined ? '' : problemKey(first);
-    }
+    const updated = await api.patch<ClassSummary>(`/api/v1/teacher/classes/${classId.value}/settings`, classSettings.value);
+    classInfo.value = updated;
+    MessagePlugin.success('班级默认设置已保存');
   } catch (caught) {
-    publishedProblems.value = [];
-    problemsError.value = messageOf(caught);
+    MessagePlugin.error(messageOf(caught));
   } finally {
-    problemsLoading.value = false;
+    savingSettings.value = false;
   }
 }
 
-async function loadAssignments(): Promise<void> {
-  if (classId.value === '') return;
+async function loadPublishedProblems(): Promise<void> {
+  problemsLoading.value = true;
   try {
-    createdAssignments.value = await api.get<AssignmentCard[]>(
-      `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
-    );
-    if (selectedAssignmentId.value === '' || !createdAssignments.value.some((item) => item.assignmentId === selectedAssignmentId.value)) {
-      // 列表按开放时间倒序，第一条可能是还没开放的布置（看板是空的）；优先选进行中的。
-      const current = createdAssignments.value.find((item) => item.status === 'open') ?? createdAssignments.value[0];
-      selectedAssignmentId.value = current?.assignmentId ?? '';
+    publishedProblems.value = await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published');
+    if (selectedProblem.value === '' || !publishedProblems.value.some((item) => `${item.problemId}@${item.version}` === selectedProblem.value)) {
+      const first = publishedProblems.value[0];
+      selectedProblem.value = first === undefined ? '' : `${first.problemId}@${first.version}`;
     }
-    assignmentsError.value = '';
-  } catch (caught) {
-    // 列表失败不阻塞看板，但要让教师知道，而不是误以为没有布置。
-    assignmentsError.value = messageOf(caught);
+  } catch {
+    publishedProblems.value = [];
+  } finally {
+    problemsLoading.value = false;
   }
 }
 
@@ -415,9 +437,13 @@ async function copyInvite(): Promise<void> {
 }
 
 async function createAssignment(): Promise<void> {
-  const problem = publishedProblems.value.find((item) => problemKey(item) === selectedProblem.value);
-  if (problem === undefined) {
+  if (selectedProblem.value === '') {
     MessagePlugin.warning('请选择已发布的题目（无已发布题目请先在题库发布）');
+    return;
+  }
+  const [problemId, versionText] = selectedProblem.value.split('@');
+  if (problemId === undefined || problemId === '' || versionText === undefined) {
+    MessagePlugin.warning('题目选择不合法');
     return;
   }
   creating.value = true;
@@ -427,15 +453,16 @@ async function createAssignment(): Promise<void> {
     const closeAt = assignmentForm.value.closeAt === '' ? null : new Date(assignmentForm.value.closeAt);
     if (closeAt !== null && Number.isNaN(closeAt.getTime())) throw new Error('截止时间格式不对');
 
-    await api.post<AssignmentCard>('/api/v1/teacher/assignments', {
+    const payload = {
       classId: classId.value,
-      problemId: problem.problemId,
-      version: problem.version,
+      problemId,
+      version: Number(versionText),
       mode: assignmentForm.value.mode,
       openAt: openAt.toISOString(),
       closeAt: closeAt === null ? null : closeAt.toISOString(),
       settings: normalizeAssignmentSettings(assignmentForm.value),
-    });
+    };
+    await api.post<AssignmentCard>('/api/v1/teacher/assignments', payload);
     await loadAssignments();
     MessagePlugin.success('布置已创建');
   } catch (caught) {
@@ -445,10 +472,7 @@ async function createAssignment(): Promise<void> {
   }
 }
 
-// PATCH 要完整字段（04 §7）：用列表卡片重建，刷新页面后同样能关闭；只有进行中的布置能关（未开放的 closeAt 会早于 openAt）。
 async function closeAssignment(card: AssignmentCard): Promise<void> {
-  if (closingId.value !== null) return;
-  closingId.value = card.assignmentId;
   try {
     await api.patch<AssignmentCard>(`/api/v1/teacher/assignments/${card.assignmentId}`, {
       classId: classId.value,
@@ -463,8 +487,6 @@ async function closeAssignment(card: AssignmentCard): Promise<void> {
     MessagePlugin.success('布置已关闭');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
-  } finally {
-    closingId.value = null;
   }
 }
 
@@ -477,20 +499,18 @@ function flagLabel(flag: string): string {
 }
 
 watch(selectedAssignmentId, () => {
-  if (!pageReady) return;
   void loadLive();
-  connectStream();
+  if (stream !== undefined || streamConnected.value) connectStream();
 });
 
 onMounted(async () => {
   await loadClassInfo();
-  void loadPublishedProblems();
   await loadAssignments();
+  await loadPublishedProblems();
   await loadLive();
   await loadRoster();
   connectStream();
   startPolling();
-  pageReady = true;
 });
 
 function onVisibility(): void {
@@ -542,6 +562,7 @@ onBeforeUnmount(() => {
             v-model="selectedAssignmentId"
             :options="createdAssignments.map((item) => ({ label: `${item.title}（${statusLabel(item.status)}）`, value: item.assignmentId }))"
             style="width: 320px"
+            @change="() => { if (tab === 'live') { void loadLive(); connectStream(); } }"
           />
         </div>
         <div class="stat-cards">
@@ -550,13 +571,8 @@ onBeforeUnmount(() => {
             :key="item.key"
             class="stat-card clickable"
             :class="{ selected: liveFilter === item.key }"
-            role="button"
-            tabindex="0"
-            :aria-pressed="liveFilter === item.key"
             :title="`筛选：${item.label}（再次点击取消）`"
             @click="toggleFilter(item.key)"
-            @keydown.enter="toggleFilter(item.key)"
-            @keydown.space.prevent="toggleFilter(item.key)"
           >
             <div class="value">{{ item.value }}</div>
             <div class="label">{{ item.label }}</div>
@@ -596,7 +612,7 @@ onBeforeUnmount(() => {
           </template>
           <template #empty>
             <div class="empty">
-              {{ liveFilter ? '当前筛选下没有学生。' : liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
+              {{ liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
             </div>
           </template>
         </t-table>
@@ -629,7 +645,7 @@ onBeforeUnmount(() => {
           <template #claimedByAnon="{ row }">{{ row.claimedByAnon ?? '—' }}</template>
           <template #actions="{ row }">
             <t-popconfirm v-if="row.claimed" content="解除后学生需重新用邀请码认领，确定？" @confirm="unclaim(row.rosterId)">
-              <t-link theme="danger" :disabled="unclaiming !== null">解除认领</t-link>
+              <t-link theme="danger" :loading="unclaiming === row.rosterId">解除认领</t-link>
             </t-popconfirm>
             <span v-else class="page-sub">—</span>
           </template>
@@ -671,12 +687,12 @@ onBeforeUnmount(() => {
               filterable
               :options="publishedProblems.map((item) => ({
                 label: `${item.title}${item.chapter ? ' · ' + item.chapter : ''} · v${item.version}`,
-                value: problemKey(item),
+                value: `${item.problemId}@${item.version}`,
               }))"
             />
           </t-form-item>
-          <t-form-item v-if="publishedProblems.length === 0 && !problemsLoading" label=" ">
-            <t-alert theme="warning" :message="problemsError === '' ? '没有已发布题目：请先在题库完成审核发布。' : `题目列表加载失败：${problemsError}`" />
+          <t-form-item v-if="publishedProblems.length === 0" label=" ">
+            <t-alert theme="warning" message="没有已发布题目：请先在题库完成审核发布。" />
           </t-form-item>
           <t-form-item label="模式">
             <t-select v-model="assignmentForm.mode" :options="[{ label: '练习', value: 'practice' }, { label: '测验', value: 'test' }]" />
@@ -689,9 +705,6 @@ onBeforeUnmount(() => {
           </t-form-item>
           <t-form-item label="透露预算">
             <t-input-number v-model="assignmentForm.revealBudget" :min="0" :max="10" theme="normal" />
-          </t-form-item>
-          <t-form-item label=" ">
-            <t-alert theme="warning" message="下面的拍照/求助/切出/限时目前只随布置保存，学生端尚未按它们生效；测验模式本身的关提示与切出锁定已生效。" />
           </t-form-item>
           <t-form-item label="拍照">
             <t-switch v-model="assignmentForm.photoEnabled" />
@@ -710,7 +723,11 @@ onBeforeUnmount(() => {
           </t-form-item>
         </t-form>
 
-        <t-alert v-if="assignmentsError" theme="warning" :message="`布置列表加载失败：${assignmentsError}`" style="margin: 12px 0" />
+        <t-alert
+          theme="info"
+          message="列表来自 GET /teacher/assignments；关闭后可发布讲评（A/B 两组同时可见）。"
+          style="margin: 12px 0"
+        />
         <t-table
           :data="createdAssignments"
           :columns="[
@@ -728,7 +745,7 @@ onBeforeUnmount(() => {
               <t-link theme="primary" :disabled="row.reviewPublished" @click="openPublish(row as AssignmentCard)">
                 {{ row.reviewPublished ? '已发布讲评' : '发布讲评' }}
               </t-link>
-              <t-link v-if="row.status === 'open'" theme="danger" :disabled="closingId !== null" @click="closeAssignment(row as AssignmentCard)">关闭</t-link>
+              <t-link v-if="row.status === 'open' || row.status === 'scheduled'" theme="danger" @click="closeAssignment(row as AssignmentCard)">关闭</t-link>
             </t-space>
           </template>
           <template #empty><div class="empty">还没有创建布置。</div></template>
@@ -759,6 +776,37 @@ onBeforeUnmount(() => {
       <t-tab-panel value="export" label="导出">
         <ExportPanel :class-id="classId" />
       </t-tab-panel>
+
+      <t-tab-panel value="settings" label="设置">
+        <t-form label-width="140px" style="max-width: 560px; margin-top: 12px">
+          <t-form-item label="拍照">
+            <t-switch v-model="classSettings.photoEnabled" />
+          </t-form-item>
+          <t-form-item label="生成补充讲解">
+            <t-switch v-model="classSettings.lessonGenerated" />
+            <span class="page-sub" style="margin-left: 8px">P0 默认关（fail-closed，09 §2）</span>
+          </t-form-item>
+          <t-form-item label="默认透露预算">
+            <t-input-number v-model="classSettings.revealBudget" :min="0" :max="10" theme="normal" />
+          </t-form-item>
+          <t-form-item label="诚信策略">
+            <t-select
+              v-model="classSettings.integrityPractice"
+              :options="[
+                { label: '记录 + 轻提醒', value: 'log_and_notice' },
+                { label: '仅记录', value: 'log_only' },
+              ]"
+              style="width: 200px"
+            />
+          </t-form-item>
+          <t-form-item label="测验切出锁定">
+            <t-input-number v-model="classSettings.testMaxSwitches" :min="0" :max="10" theme="normal" suffix="次" />
+          </t-form-item>
+          <t-form-item label=" ">
+            <t-button theme="primary" :loading="savingSettings" @click="saveClassSettings">保存</t-button>
+          </t-form-item>
+        </t-form>
+      </t-tab-panel>
     </t-tabs>
 
     <StudentDetailDrawer
@@ -770,17 +818,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.stat-card.clickable {
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.stat-card.clickable:hover {
-  border-color: var(--td-brand-color, #0052d9);
-}
-.stat-card.selected {
-  border-color: var(--td-brand-color, #0052d9);
-  background: var(--td-brand-color-light, #ecf2fe);
-}
 .live-toolbar {
   display: flex;
   align-items: center;

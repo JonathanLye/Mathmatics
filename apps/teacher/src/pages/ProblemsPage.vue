@@ -14,6 +14,8 @@ interface ProblemItem {
   status: string;
   autoChecks?: Record<string, unknown>;
   source?: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
 }
 
 interface ProblemPackageView {
@@ -26,6 +28,8 @@ interface ProblemPackageView {
     chapter?: string;
     def?: { task?: string; conceptId?: string };
     frame?: { task?: string; template?: string };
+    budget?: { reveal?: number };
+    layers?: Record<string, { enabled?: boolean; skippable?: boolean }>;
   };
   secret: { keys?: unknown[]; routes?: unknown[] };
   review?: {
@@ -64,29 +68,37 @@ const columns = [
   { colKey: 'kind', title: '类型' },
   { colKey: 'version', title: '版本' },
   { colKey: 'status', title: '审核状态' },
+  { colKey: 'source', title: '来源' },
+  { colKey: 'reviewed', title: '最近审核' },
   { colKey: 'checks', title: '自动校验' },
   { colKey: 'actions', title: '操作', width: 90 },
 ];
 
+// 快速切换筛选时只认最后一次请求，避免慢响应覆盖新结果。
+let loadSeq = 0;
+
 async function load(): Promise<void> {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = '';
   try {
     const params = new URLSearchParams();
     if (statusFilter.value !== '') params.set('status', statusFilter.value);
     if (chapterFilter.value.trim() !== '') params.set('chapter', chapterFilter.value.trim());
-    const suffix = params.size > 0 ? `?${params.toString()}` : '';
-    items.value = await api.get<ProblemItem[]>(`/api/v1/teacher/problems${suffix}`);
+    const query = params.toString();
+    const result = await api.get<ProblemItem[]>(`/api/v1/teacher/problems${query === '' ? '' : `?${query}`}`);
+    if (seq === loadSeq) items.value = result;
   } catch (caught) {
-    error.value = caught instanceof ApiError ? caught.message : '加载题库失败';
+    if (seq === loadSeq) error.value = caught instanceof ApiError ? caught.message : '加载题库失败';
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
 async function open(item: ProblemItem): Promise<void> {
   selected.value = item;
   pkg.value = null;
+  previewTab.value = 'L1';
   pkgError.value = '';
   pkgLoading.value = true;
   try {
@@ -126,8 +138,16 @@ const leanCheck = (): string | null => {
   const lean = pkg.value?.review?.autoChecks?.lean;
   return typeof lean === 'string' ? lean : null;
 };
+const previewTab = ref('L1');
 const hasStudentPreview = (): boolean =>
-  (pkg.value?.public.def?.task ?? '') !== '' || (pkg.value?.public.frame?.task ?? '') !== '';
+  (pkg.value?.public.def?.task ?? '') !== '' ||
+  (pkg.value?.public.frame?.task ?? '') !== '' ||
+  pkg.value?.public.layers !== undefined;
+const layerLabel = (layer: string): string => {
+  const config = pkg.value?.public.layers?.[layer];
+  if (config === undefined) return '未配置';
+  return `${config.enabled === false ? '未启用' : '启用'}${config.skippable === true ? ' · 可跳过' : ' · 不可跳过'}`;
+};
 
 function openAction(decision: 'approve' | 'return'): void {
   actionDecision.value = decision;
@@ -215,7 +235,7 @@ onMounted(load);
         style="width: 150px"
         @change="load"
       />
-      <t-input v-model="chapterFilter" placeholder="章节（如 第二章）" clearable style="width: 200px" @enter="load" />
+      <t-input v-model="chapterFilter" placeholder="完整章节名（如 第二章 数列极限）" clearable style="width: 260px" @enter="load" />
       <t-button size="small" theme="primary" @click="load">查询</t-button>
       <t-button size="small" variant="outline" @click="statusFilter = ''; chapterFilter = ''; load()">重置</t-button>
       <span class="page-sub">共 {{ items.length }} 行</span>
@@ -234,6 +254,14 @@ onMounted(load);
       <template #kind="{ row }">{{ row.kind === 'transfer' ? '迁移题' : '主题' }}</template>
       <template #status="{ row }">
         <t-tag :theme="statusTheme(row.status)" variant="light">{{ statusLabel(row.status) }}</t-tag>
+      </template>
+      <template #source="{ row }">{{ row.source ?? '—' }}</template>
+      <template #reviewed="{ row }">
+        <div v-if="row.reviewedBy" class="page-sub">
+          {{ row.reviewedBy }}<br />
+          <span v-if="row.reviewedAt">{{ new Date(row.reviewedAt).toLocaleString('zh-CN') }}</span>
+        </div>
+        <span v-else>—</span>
       </template>
       <template #checks="{ row }">
         <t-tag v-if="autoChecksSummary(row.autoChecks).total === 0" variant="light">未提供</t-tag>
@@ -296,17 +324,40 @@ onMounted(load);
           style="margin-top: 12px"
         />
         <details v-if="hasStudentPreview()" style="margin-top: 12px">
-          <summary>学生视角预览（L1 定义 / L3 骨架）</summary>
-          <div class="preview-block">
-            <b>L1 定义</b>
-            <MathTextView v-if="pkg.public.def?.task" :text="pkg.public.def.task" />
-          </div>
-          <div v-if="pkg.public.frame?.task" class="preview-block">
-            <b>L3 骨架</b>
-            <MathTextView :text="pkg.public.frame.task" />
-            <MathTextView v-if="pkg.public.frame.template" :text="pkg.public.frame.template" />
-          </div>
-          <div class="page-sub">仅题目包 public 字段；完整学生视图（受层/预算影响）由引擎在作答时投影。</div>
+          <summary>学生视角预览（L1 / L3 / 额度用完 / L6）</summary>
+          <t-tabs v-model="previewTab" size="small" style="margin-top: 8px">
+            <t-tab-panel value="L1" label="L1 定义">
+              <div class="preview-block">
+                <MathTextView v-if="pkg.public.def?.task" :text="pkg.public.def.task" />
+                <span v-else class="page-sub">题目包未配置 L1 定义任务。</span>
+              </div>
+            </t-tab-panel>
+            <t-tab-panel value="L3" label="L3 构造与推导">
+              <div class="preview-block">
+                <b>L3：{{ layerLabel('L3') }}</b>
+                <MathTextView v-if="pkg.public.stem" :text="pkg.public.stem" />
+                <template v-if="pkg.public.frame?.task">
+                  <span class="page-sub">L2 骨架（学生进入 L3 前已完成）：</span>
+                  <MathTextView :text="pkg.public.frame.task" />
+                  <MathTextView v-if="pkg.public.frame.template" :text="pkg.public.frame.template" />
+                </template>
+                <span class="page-sub">“已写出 K1”等写到一半的状态（04 §8.2）需引擎按作答投影，这里不模拟。</span>
+              </div>
+            </t-tab-panel>
+            <t-tab-panel value="budget" label="额度用完">
+              <div class="preview-block">
+                <b>透露上限（题目包配置）：{{ pkg.public.budget?.reveal ?? '—' }}</b>
+                <span class="page-sub">额度用完后学生看到的出路（06 §3.4）：回到定义 / 看讲解 / 先做下一题 / 求助老师（即将上线）。</span>
+              </div>
+            </t-tab-panel>
+            <t-tab-panel value="L6" label="L6 总结">
+              <div class="preview-block">
+                <b>L6：{{ layerLabel('L6') }}</b>
+                <span class="page-sub">学生提交总结后完成作答；总结缺失点会写入 summary_missing_points（导出可见）。</span>
+              </div>
+            </t-tab-panel>
+          </t-tabs>
+          <div class="page-sub">仅题目包 public 字段；完整学生视图（受层/预算/事件影响）由引擎在作答时投影。</div>
         </details>
         <details style="margin-top: 12px">
           <summary>原始题目包 JSON</summary>

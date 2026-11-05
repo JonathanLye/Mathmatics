@@ -635,6 +635,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/classes/{classId}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出） */
+        patch: operations["updateClassSettings"];
+        trace?: never;
+    };
     "/teacher/classes/{classId}/roster": {
         parameters: {
             query?: never;
@@ -769,6 +786,23 @@ export interface paths {
         get: operations["getAttemptEvents"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teacher/attempts/{attemptId}/lines/{lineId}/reclassify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4） */
+        post: operations["reclassifyLine"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1674,6 +1708,10 @@ export interface components {
             status: "draft" | "pending" | "returned" | "published" | "retired";
             autoChecks?: Record<string, never>;
             source?: string;
+            /** @description 最近一次审核人（display_name/anon_code） */
+            reviewedBy?: string | null;
+            /** Format: date-time */
+            reviewedAt?: string | null;
         };
         ImportJob: {
             /** Format: uuid */
@@ -5581,6 +5619,35 @@ export interface operations {
             401: components["responses"]["Error"];
         };
     };
+    updateClassSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassSettings"];
+            };
+        };
+        responses: {
+            /** @description 已更新 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassSummary"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
     listRoster: {
         parameters: {
             query?: never;
@@ -5813,6 +5880,49 @@ export interface operations {
             401: components["responses"]["Error"];
         };
     };
+    reclassifyLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attemptId: components["parameters"]["attemptId"];
+                lineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    cls: "match" | "error" | "unknown" | "lowconf" | "demo_needs_reason" | "pass" | "fail";
+                    keys?: string[];
+                    errorId?: string | null;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 改判结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        lineId: string;
+                        cls: string;
+                        keys: string[];
+                        errorId: string | null;
+                        classifierPath: string;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
     streamAttempt: {
         parameters: {
             query?: {
@@ -5982,7 +6092,6 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            422: components["responses"]["Error"];
         };
     };
     createAssignment: {

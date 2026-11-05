@@ -374,4 +374,46 @@ describe('名单 CSV 导入（04 §10）', () => {
     const hidden = await app.inject({ method: 'GET', url: `/api/v1/teacher/classes/${classId}/roster`, headers: auth(other) });
     expect(hidden.statusCode, hidden.body).toBe(404);
   });
+
+  it('PATCH 班级默认设置：白名单合并 + audit；非法枚举 422；非本班 404（#176）', async () => {
+    const cookie = await teacherLogin();
+    const { classId } = await createClass(cookie);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/teacher/classes/${classId}/settings`,
+      headers: auth(cookie),
+      payload: { photoEnabled: false, revealBudget: 5, integrityPractice: 'log_only', lessonGenerated: true, unknownKey: 'x' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().settings).toMatchObject({
+      photoEnabled: false,
+      revealBudget: 5,
+      integrityPractice: 'log_only',
+      lessonGenerated: true,
+      testMaxSwitches: 3,
+    });
+    expect(res.json().settings).not.toHaveProperty('unknownKey');
+    const stored = await db.query<{ settings: Record<string, unknown> }>(`select settings from app.classes where id = $1`, [classId]);
+    expect(stored.rows[0]?.settings).toMatchObject({ photoEnabled: false, revealBudget: 5 });
+    const audit = await db.query(`select action from app.audit_log where action = 'update_class_settings' and target = $1`, [classId]);
+    expect(audit.rows).toHaveLength(1);
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/teacher/classes/${classId}/settings`,
+      headers: auth(cookie),
+      payload: { integrityPractice: 'nope' },
+    });
+    expect(invalid.statusCode, invalid.body).toBe(422);
+
+    await createTeacherAccount(db, { username: 'other.teacher', password: PASSWORD });
+    const other = await teacherLogin('other.teacher');
+    const hidden = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/teacher/classes/${classId}/settings`,
+      headers: auth(other),
+      payload: { photoEnabled: true },
+    });
+    expect(hidden.statusCode, hidden.body).toBe(404);
+  });
 });
