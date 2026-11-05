@@ -64,6 +64,7 @@ async function logout(): Promise<void> {
       <nav class="app-nav">
         <router-link class="app-nav-item" to="/classes">我的班级</router-link>
         <router-link class="app-nav-item" to="/problems">题库审核</router-link>
+        <router-link class="app-nav-item" to="/settings">设置</router-link>
       </nav>
     </aside>
     <div class="app-main">
