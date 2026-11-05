@@ -23,6 +23,7 @@ import {
   loginBody,
   setupFixture,
   WRITE_HEADERS,
+  setStudentAgeBand,
   type Fixture,
 } from './support/fixtures.ts';
 
@@ -116,6 +117,8 @@ async function studentCookie(): Promise<string> {
 }
 
 async function signConsent(cookie: string): Promise<void> {
+  // #64：写接口要求年龄分档；测试默认 ge18。
+  await setStudentAgeBand(app, cookie);
   const res = await app.inject({
     method: 'POST',
     url: '/api/v1/consents',
@@ -208,6 +211,8 @@ function strings(value: unknown): string[] {
 describe('作答接口（#19）', () => {
   it('未签同意书：开始作答与写接口都返回 CONSENT_REQUIRED（#18 的 DoD）', async () => {
     const cookie = await studentCookie();
+    // #64：年龄分档先于同意书；先分档（ge18）才能走到「未签同意书」的检查。
+    await setStudentAgeBand(app, cookie);
     const start = await post(cookie, `/student/assignments/${assignmentId}/attempt`);
     expect(start.statusCode).toBe(403);
     expect(start.json().error.code).toBe('CONSENT_REQUIRED');

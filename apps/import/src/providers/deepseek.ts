@@ -46,15 +46,22 @@ export function createDeepSeekDraftProvider(options: DeepSeekOptions): DraftProv
     }
   }
 
+  function promptFor(item: { itemId: string; body: string }): string {
+    return [
+      `为下面的题干起草完整的题目包（public + secret）。JSON 需符合 problem-package.schema.json。`,
+      `条目：${item.itemId}`,
+      item.body,
+      '要求：关键步骤 ≤6、多条路线、H0–H4 与 leak、定义成分、框架检查、自检题、参考证明。',
+    ].join('\n');
+  }
+
   return {
     name: 'deepseek',
+    async draftOnce(item): Promise<ProblemPackage> {
+      return call(promptFor(item), 0.2);
+    },
     async twoDrafts(item): Promise<DraftPair> {
-      const prompt = [
-        `为下面的题干起草完整的题目包（public + secret）。JSON 需符合 problem-package.schema.json。`,
-        `条目：${item.itemId}`,
-        item.body,
-        '要求：关键步骤 ≤6、多条路线、H0–H4 与 leak、定义成分、框架检查、自检题、参考证明。',
-      ].join('\n');
+      const prompt = promptFor(item);
       const a = await call(prompt, 0.2);
       const b = await call(prompt, 0.8);
       return { a, b };

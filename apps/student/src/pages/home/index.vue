@@ -23,7 +23,9 @@ import {
 } from '@/api/client'
 import type { AssignmentCardView } from '@/types/attempt'
 import OfflineBar from '@/components/OfflineBar.vue'
+import WechatHint from '@/components/WechatHint.vue'
 import { initIntegrity } from '@/integrity/sdk'
+import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { maskStudentNo, useSession } from '@/stores/session'
 
 const session = useSession()
@@ -43,11 +45,13 @@ const notice = ref('')
 let slowTimer: ReturnType<typeof setTimeout> | null = null
 let noticeTimer: ReturnType<typeof setTimeout> | null = null
 
-onLoad((q) => {
+onLoad(async (q) => {
   if (q?.api === 'real') {
     setMockMode(false)
     mockMode.value = false
   }
+  // #145 年龄门：Me.ageBand=null → 年龄选择页；lt14 → 暂不开通（守卫内重定向）。
+  if (!ageGatePassed(await enforceAgeGate())) return
 })
 
 onShow(() => {
@@ -144,6 +148,8 @@ function addToNotebook(card: AssignmentCardView): void {
   <view class="pg-page pg-home" data-testid="home-page">
     <!-- #27 离线提示条：正常文档流，不遮 44px 操作区 -->
     <OfflineBar @retry="handleOfflineRetry" />
+    <!-- #37 微信内打开提示：非阻塞横条，非微信 UA 不渲染 -->
+    <WechatHint />
     <view class="pg-home__head">
       <text class="pg-home__hello" data-testid="home-greeting">{{ greeting }}</text>
       <text v-if="home?.week" class="pg-home__stat pg-small" data-testid="home-week">
@@ -315,7 +321,7 @@ function addToNotebook(card: AssignmentCardView): void {
   line-height: 1.2;
 }
 .pg-home__btn--small { min-height: 36px; font-size: 13px; padding: 0 var(--sp-2); }
-.pg-home__btn--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pg-home__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .pg-home__btn--disabled { opacity: 0.45; }
 .pg-home__empty { color: var(--ink-2); padding: var(--sp-2) 0; }
 .pg-home__notebook { padding: var(--sp-3); margin-top: var(--sp-3); display: flex; flex-direction: column; gap: 2px; }

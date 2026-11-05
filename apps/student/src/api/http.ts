@@ -10,6 +10,8 @@
  *
  * 这里只做「传输 + 错误分类」，不做任何业务判定；`api/client.ts` 负责把返回值映射成 state。
  */
+import { ageBandErrorMessage } from '@/auth/ageBand'
+
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -23,6 +25,9 @@ export type ApiErrorCode =
   | 'NOT_IN_ROSTER'
   | 'INVALID_INVITE'
   | 'CONSENT_REQUIRED'
+  | 'AGE_BAND_REQUIRED'
+  | 'AGE_RESTRICTED'
+  | 'AGE_BAND_LOCKED'
   | 'WRONG_LAYER'
   | 'LAYER_LOCKED'
   | 'STATE_STALE'
@@ -48,6 +53,9 @@ const TERMINAL_CODES: ReadonlySet<string> = new Set([
   'UNAUTHORIZED',
   'FORBIDDEN',
   'CONSENT_REQUIRED',
+  // 年龄门（#131 / 13 §4）：14 岁以下或已锁定改档，重试/刷新都不会改善；需联系老师或先选档。
+  'AGE_RESTRICTED',
+  'AGE_BAND_LOCKED',
   'NOT_IN_ROSTER',
   'INVALID_INVITE',
   'ASSIGNMENT_CLOSED',
@@ -101,9 +109,13 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError
 }
 
-/** 把任意异常转成可展示的中文文案；服务端 message 可直接给学生看。 */
+/** 把任意异常转成可展示的中文文案；服务端 message 可直接给学生看，年龄门错误统一成规范文案。 */
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message
+  if (error instanceof ApiError) {
+    const ageCopy = ageBandErrorMessage(error.code)
+    if (ageCopy) return ageCopy
+    return error.message
+  }
   if (error instanceof Error) return error.message
   return String(error)
 }

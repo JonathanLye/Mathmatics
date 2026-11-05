@@ -10,6 +10,11 @@ import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import type { VisualSpec } from '@/types/attempt'
 import { clampInt, computePartialSums, projectPartialSum, type PartialSumsView } from './partialSums'
+import { useThemeToken } from '@/composables/useThemeToken'
+import { FALLBACK_TOKEN } from '@/utils/themeTokens'
+
+const sliderAccent = useThemeToken('--accent', FALLBACK_TOKEN.accent)
+const sliderRule = useThemeToken('--rule', FALLBACK_TOKEN.rule)
 
 const props = withDefaults(defineProps<{ spec?: VisualSpec | null; width?: number; height?: number }>(), {
   spec: null,
@@ -152,8 +157,8 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
         :step="1"
         :value="localN"
         :show-value="false"
-        active-color="#2b4fa3"
-        background-color="#e2e4e8"
+        :active-color="sliderAccent"
+        :background-color="sliderRule"
         block-size="20"
         @changing="onSlider"
         @change="onSlider"

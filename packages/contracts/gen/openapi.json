@@ -124,6 +124,64 @@
         }
       }
     },
+    "/auth/student/age-band": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "学生自选年龄段（13 §4；未分档的学生在开始练习前必须选择）",
+        "description": "≥18 / 14–17 / <14 三档，记录到 `app.student_profiles.age_band`。**只能设置一次**：\n已记录时返回 409 `AGE_BAND_LOCKED`，防止 <14 学生通过重新提交自我解锁（13 §4 的\"不开通\"是硬约束）；\n需要修改请联系教师（教师端改档为后续工作）。\n`<14` 记录后仍返回 200 + Me（ageBand=lt14），但学生写接口（作答/求助等）返回 403 `AGE_RESTRICTED`，\n`POST /consents` 与 `POST /events/batch` 同样拒绝。\n14–17 的 `GET /consents` 会附加「建议告知监护人」段（key=guardianNotice，非必选、不签署）。\n名单导入暂不支持年龄段（后续补）；未带时由本接口让学生自选。\n",
+        "operationId": "setStudentAgeBand",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ageBand"
+                ],
+                "properties": {
+                  "ageBand": {
+                    "type": "string",
+                    "enum": [
+                      "lt14",
+                      "14to17",
+                      "ge18"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已记录，返回最新 Me",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/auth/teacher/login": {
       "post": {
         "tags": [
@@ -1776,11 +1834,20 @@
           "teacher"
         ],
         "summary": "实时看板推送（SSE）",
-        "description": "事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线后用 `Last-Event-ID` 续传。",
+        "description": "事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线重连后重推当前快照；前端另有 5s 轮询兜底。",
         "operationId": "streamLive",
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
+          },
+          {
+            "name": "assignmentId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "缺省为最近开放的布置"
           }
         ],
         "responses": {
@@ -2977,6 +3044,9 @@
                   "NOT_IN_ROSTER",
                   "INVALID_INVITE",
                   "CONSENT_REQUIRED",
+                  "AGE_BAND_REQUIRED",
+                  "AGE_RESTRICTED",
+                  "AGE_BAND_LOCKED",
                   "WRONG_LAYER",
                   "LAYER_LOCKED",
                   "STATE_STALE",
@@ -3084,6 +3154,19 @@
           "consentRequired": {
             "type": "boolean"
           },
+          "ageBand": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "lt14",
+              "14to17",
+              "ge18",
+              null
+            ],
+            "description": "年龄分档（13 §4）；学生必返。null=尚未选择，需先调 POST /auth/student/age-band；lt14 不开通（写接口 403 AGE_RESTRICTED）"
+          },
           "features": {
             "type": "object",
             "additionalProperties": {
@@ -3155,7 +3238,8 @@
                     "crossBorderHosting",
                     "crossBorderModel",
                     "monitoring",
-                    "research"
+                    "research",
+                    "guardianNotice"
                   ]
                 },
                 "title": {

@@ -15,7 +15,8 @@
     "ajv-formats": "catalog:",
     "katex": "^0.19.1",
     "pg": "catalog:",
-    "yaml": "catalog:"
+    "yaml": "catalog:",
+    "@proof-gym/content-checks": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
