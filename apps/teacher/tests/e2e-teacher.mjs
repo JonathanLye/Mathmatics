@@ -126,6 +126,12 @@ async function main() {
   // #166：按布置筛选看板
   await page.locator('.live-toolbar .t-select').first().waitFor({ timeout: 10000 });
   await shot('02a-live-switcher-1280');
+  // #167：名单列表（姓名/认领状态）
+  await page.getByText('名单', { exact: true }).first().click();
+  await page.getByText('测试学生').first().waitFor({ timeout: 10000 });
+  await shot('02b-roster-1280');
+  await page.getByText('实时看板', { exact: true }).first().click();
+  await page.waitForTimeout(500);
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
   await page.locator('tbody tr').first().click();
