@@ -83,15 +83,40 @@ const liveColumns = [
   { colKey: 'actions', title: '操作', width: 90 },
 ];
 
+type LiveFilter = 'online' | 'started' | 'completed' | 'stuck' | 'flagged';
+const liveFilter = ref<LiveFilter | null>(null);
+
 const stats = computed(() => {
   const summary = live.value?.summary;
   return [
-    { label: '在线', value: summary?.online ?? 0 },
-    { label: '已开始', value: summary?.started ?? 0 },
-    { label: '已完成', value: summary?.completed ?? 0 },
-    { label: '卡住', value: summary?.stuck ?? 0 },
-    { label: '标记', value: summary?.flagged ?? 0 },
+    { key: 'online' as const, label: '在线', value: summary?.online ?? 0 },
+    { key: 'started' as const, label: '已开始', value: summary?.started ?? 0 },
+    { key: 'completed' as const, label: '已完成', value: summary?.completed ?? 0 },
+    { key: 'stuck' as const, label: '卡住', value: summary?.stuck ?? 0 },
+    { key: 'flagged' as const, label: '标记', value: summary?.flagged ?? 0 },
   ];
+});
+
+function toggleFilter(key: LiveFilter): void {
+  liveFilter.value = liveFilter.value === key ? null : key;
+}
+
+const filteredRows = computed(() => {
+  const rows = live.value?.rows ?? [];
+  switch (liveFilter.value) {
+    case 'online':
+      return rows.filter((row) => row.status === 'active');
+    case 'started':
+      return rows.filter((row) => row.attemptId !== null);
+    case 'completed':
+      return rows.filter((row) => row.status === 'completed');
+    case 'stuck':
+      return rows.filter((row) => (row.stuckSec ?? 0) >= 180);
+    case 'flagged':
+      return rows.filter((row) => (row.flags?.length ?? 0) > 0);
+    default:
+      return rows;
+  }
 });
 
 function toLocalInput(date: Date): string {
@@ -376,13 +401,24 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="stat-cards">
-          <div v-for="item in stats" :key="item.label" class="stat-card">
+          <div
+            v-for="item in stats"
+            :key="item.key"
+            class="stat-card clickable"
+            :class="{ selected: liveFilter === item.key }"
+            :title="`筛选：${item.label}（再次点击取消）`"
+            @click="toggleFilter(item.key)"
+          >
             <div class="value">{{ item.value }}</div>
             <div class="label">{{ item.label }}</div>
           </div>
         </div>
+        <div v-if="liveFilter" class="page-sub" style="margin: 4px 0 8px">
+          筛选：{{ stats.find((item) => item.key === liveFilter)?.label }}（{{ filteredRows.length }} 人）
+          <t-link theme="primary" @click="liveFilter = null">清除</t-link>
+        </div>
         <t-table
-          :data="live?.rows ?? []"
+          :data="filteredRows"
           :columns="liveColumns"
           row-key="anonCode"
           :loading="liveLoading"
@@ -517,6 +553,17 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   margin: 8px 0;
+}
+.stat-card.clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.stat-card.clickable:hover {
+  border-color: var(--td-brand-color, #0052d9);
+}
+.stat-card.selected {
+  border-color: var(--td-brand-color, #0052d9);
+  background: var(--td-brand-color-light, #ecf2fe);
 }
 .native-input {
   height: 32px;
