@@ -5395,6 +5395,20 @@
           },
           "source": {
             "type": "string"
+          },
+          "reviewedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "最近一次审核人（display_name/anon_code）"
+          },
+          "reviewedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },

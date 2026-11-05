@@ -113,6 +113,14 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
     expect(review.reviewedAt).toBeTruthy();
     expect(review.comments).toBe('ok');
 
+    // #178：列表返回最近审核人/时间（04 §8.1）。
+    const listAfter = await app.inject({ method: 'GET', url: '/api/v1/teacher/problems?status=published', headers: { cookie } });
+    const row = (listAfter.json() as Array<{ problemId: string; version: number; reviewedBy?: string; reviewedAt?: string }>).find(
+      (item) => item.problemId === 'epsN' && item.version === 2,
+    );
+    expect(row?.reviewedBy).toBeTruthy();
+    expect(row?.reviewedAt).toMatch(/Z$/);
+
     // return 记录退回
     await insertDraft(3, allGreen);
     const returned = await app.inject({

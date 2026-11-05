@@ -1708,6 +1708,10 @@ export interface components {
             status: "draft" | "pending" | "returned" | "published" | "retired";
             autoChecks?: Record<string, never>;
             source?: string;
+            /** @description 最近一次审核人（display_name/anon_code） */
+            reviewedBy?: string | null;
+            /** Format: date-time */
+            reviewedAt?: string | null;
         };
         ImportJob: {
             /** Format: uuid */
