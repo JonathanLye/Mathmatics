@@ -36,6 +36,7 @@ let retryTimer: number | undefined;
 let retryDelay = 1000;
 const streamConnected = ref(false);
 const streamError = ref('');
+const selectedAssignmentId = ref('');
 
 // 名单（04 §10）
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -45,7 +46,6 @@ const rotating = ref(false);
 
 // 布置（04 §7）
 const createdAssignments = ref<AssignmentCard[]>([]);
-const assignmentPayloads = new Map<string, Record<string, unknown>>();
 const creating = ref(false);
 const assignmentForm = ref({
   problemId: 'epsN',
@@ -192,7 +192,8 @@ function connectStream(): void {
     retryTimer = undefined;
   }
   stream?.close();
-  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream`);
+  const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+  stream = new EventSource(`/api/v1/teacher/classes/${classId.value}/stream${query}`);
   stream.onopen = () => {
     streamConnected.value = true;
     streamError.value = '';
@@ -232,10 +233,25 @@ function disconnectStream(): void {
   streamConnected.value = false;
 }
 
+async function loadAssignments(): Promise<void> {
+  if (classId.value === '') return;
+  try {
+    createdAssignments.value = await api.get<AssignmentCard[]>(
+      `/api/v1/teacher/assignments?classId=${encodeURIComponent(classId.value)}`,
+    );
+    if (selectedAssignmentId.value === '' || !createdAssignments.value.some((item) => item.assignmentId === selectedAssignmentId.value)) {
+      selectedAssignmentId.value = createdAssignments.value[0]?.assignmentId ?? '';
+    }
+  } catch {
+    // 列表失败不阻塞看板；保留空列表
+  }
+}
+
 async function loadLive(): Promise<void> {
   liveLoading.value = true;
   try {
-    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live`);
+    const query = selectedAssignmentId.value === '' ? '' : `?assignmentId=${encodeURIComponent(selectedAssignmentId.value)}`;
+    live.value = await api.get<LiveSnapshot>(`/api/v1/teacher/classes/${classId.value}/live${query}`);
     liveError.value = '';
   } catch (caught) {
     live.value = null;
@@ -328,9 +344,8 @@ async function createAssignment(): Promise<void> {
       closeAt: closeAt === null ? null : closeAt.toISOString(),
       settings: normalizeAssignmentSettings(assignmentForm.value),
     };
-    const card = await api.post<AssignmentCard>('/api/v1/teacher/assignments', payload);
-    assignmentPayloads.set(card.assignmentId, payload);
-    createdAssignments.value.unshift(card);
+    await api.post<AssignmentCard>('/api/v1/teacher/assignments', payload);
+    await loadAssignments();
     MessagePlugin.success('布置已创建');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
@@ -340,18 +355,17 @@ async function createAssignment(): Promise<void> {
 }
 
 async function closeAssignment(card: AssignmentCard): Promise<void> {
-  const payload = assignmentPayloads.get(card.assignmentId);
-  if (payload === undefined) {
-    MessagePlugin.warning('该布置不是本次会话创建的，缺少修改所需字段');
-    return;
-  }
   try {
-    const updated = await api.patch<AssignmentCard>(`/api/v1/teacher/assignments/${card.assignmentId}`, {
-      ...payload,
+    await api.patch<AssignmentCard>(`/api/v1/teacher/assignments/${card.assignmentId}`, {
+      classId: classId.value,
+      problemId: card.problemId,
+      version: card.version,
+      mode: card.mode,
+      openAt: card.openAt,
       closeAt: new Date().toISOString(),
+      settings: card.settings ?? {},
     });
-    const index = createdAssignments.value.findIndex((item) => item.assignmentId === updated.assignmentId);
-    if (index >= 0) createdAssignments.value[index] = updated;
+    await loadAssignments();
     MessagePlugin.success('布置已关闭');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
@@ -366,8 +380,14 @@ function flagLabel(flag: string): string {
   return FLAG_LABEL[flag] ?? flag;
 }
 
+watch(selectedAssignmentId, () => {
+  void loadLive();
+  if (stream !== undefined || streamConnected.value) connectStream();
+});
+
 onMounted(async () => {
   await loadClassInfo();
+  await loadAssignments();
   await loadLive();
   connectStream();
   startPolling();
@@ -416,6 +436,15 @@ onBeforeUnmount(() => {
     <t-tabs v-model="tab">
       <t-tab-panel value="live" label="实时看板">
         <t-alert v-if="liveError" theme="warning" :message="liveError" style="margin: 12px 0" />
+        <div v-if="createdAssignments.length > 0" class="live-toolbar">
+          <span class="page-sub">布置</span>
+          <t-select
+            v-model="selectedAssignmentId"
+            :options="createdAssignments.map((item) => ({ label: `${item.title}（${statusLabel(item.status)}）`, value: item.assignmentId }))"
+            style="width: 320px"
+            @change="() => { if (tab === 'live') { void loadLive(); connectStream(); } }"
+          />
+        </div>
         <div class="stat-cards">
           <div v-for="item in stats" :key="item.label" class="stat-card">
             <div class="value">{{ item.value }}</div>
@@ -529,7 +558,7 @@ onBeforeUnmount(() => {
 
         <t-alert
           theme="info"
-          message="当前契约没有 GET 布置列表接口（见 #50 PR）；这里只显示本次会话创建的布置。列表接口补上后自动替换。"
+          message="列表来自 GET /teacher/assignments；关闭后可发布讲评（A/B 两组同时可见）。"
           style="margin: 12px 0"
         />
         <t-table
@@ -574,7 +603,7 @@ onBeforeUnmount(() => {
       </t-tab-panel>
 
       <t-tab-panel value="metrics" label="指标">
-        <MetricsPanel :class-id="classId" :assignment-id="live?.assignmentId ?? undefined" />
+        <MetricsPanel :class-id="classId" :assignment-id="selectedAssignmentId === '' ? undefined : selectedAssignmentId" />
       </t-tab-panel>
 
       <t-tab-panel value="export" label="导出">
@@ -591,6 +620,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.live-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
 .native-input {
   height: 32px;
   padding: 0 8px;
