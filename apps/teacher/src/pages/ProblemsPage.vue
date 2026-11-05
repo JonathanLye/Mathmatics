@@ -332,17 +332,22 @@ onMounted(load);
                 <span v-else class="page-sub">题目包未配置 L1 定义任务。</span>
               </div>
             </t-tab-panel>
-            <t-tab-panel value="L3" label="L3 骨架">
+            <t-tab-panel value="L3" label="L3 构造与推导">
               <div class="preview-block">
-                <MathTextView v-if="pkg.public.frame?.task" :text="pkg.public.frame.task" />
-                <MathTextView v-if="pkg.public.frame?.template" :text="pkg.public.frame.template" />
-                <span v-if="!pkg.public.frame?.task" class="page-sub">题目包未配置 L3 骨架任务。</span>
+                <b>L3：{{ layerLabel('L3') }}</b>
+                <MathTextView v-if="pkg.public.stem" :text="pkg.public.stem" />
+                <template v-if="pkg.public.frame?.task">
+                  <span class="page-sub">L2 骨架（学生进入 L3 前已完成）：</span>
+                  <MathTextView :text="pkg.public.frame.task" />
+                  <MathTextView v-if="pkg.public.frame.template" :text="pkg.public.frame.template" />
+                </template>
+                <span class="page-sub">“已写出 K1”等写到一半的状态（04 §8.2）需引擎按作答投影，这里不模拟。</span>
               </div>
             </t-tab-panel>
             <t-tab-panel value="budget" label="额度用完">
               <div class="preview-block">
-                <b>透露预算：{{ pkg.public.budget?.reveal ?? '—' }}</b>
-                <span class="page-sub">学生看到的软着陆出口（09 §3）：回看定义 / 打开微课 / 标记老师 / 先做下一题。</span>
+                <b>透露上限（题目包配置）：{{ pkg.public.budget?.reveal ?? '—' }}</b>
+                <span class="page-sub">额度用完后学生看到的出路（06 §3.4）：回到定义 / 看讲解 / 先做下一题 / 求助老师（即将上线）。</span>
               </div>
             </t-tab-panel>
             <t-tab-panel value="L6" label="L6 总结">
