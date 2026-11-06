@@ -39,3 +39,6 @@ imports/
 
 # 教师端 E2E 产物（截图/results，不入库）
 apps/teacher/tests/.artifacts/
+
+# 学生端 E2E 产物（截图/report，不入库）
+apps/student/.artifacts/
