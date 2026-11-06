@@ -3200,7 +3200,7 @@
         "tags": [
           "ops"
         ],
-        "summary": "健康检查（各外部依赖可用性与降级开关状态）",
+        "summary": "健康检查（公开，只回答服务是否在运行；不含依赖与开关明细）",
         "operationId": "health",
         "security": [],
         "responses": {
@@ -3210,12 +3210,88 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "ok",
+                    "status",
+                    "service"
+                  ],
                   "properties": {
                     "ok": {
                       "type": "boolean"
                     },
-                    "version": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "service": {
                       "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/health/details": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "健康明细（各外部依赖可用性与降级开关状态；需 x-health-token，值守/监控用）",
+        "description": "请求头 x-health-token 必须等于服务端环境变量 HEALTH_TOKEN；未配置 HEALTH_TOKEN 或令牌不符都返回 404（不暴露该路径存在）。反代只放行 /health，不要把 /health/details 暴露到公网。",
+        "operationId": "healthDetails",
+        "security": [],
+        "parameters": [
+          {
+            "name": "x-health-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "状态明细",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "status",
+                    "service",
+                    "env",
+                    "uptimeSec",
+                    "deps",
+                    "flags"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "env": {
+                      "type": "string"
+                    },
+                    "uptimeSec": {
+                      "type": "integer"
                     },
                     "deps": {
                       "type": "object",
@@ -3240,7 +3316,7 @@
               }
             }
           },
-          "401": {
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }

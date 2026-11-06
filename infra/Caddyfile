@@ -34,6 +34,7 @@
 		reverse_proxy server:3000
 	}
 
+	# 只放行公开的 /health；/health/details（依赖与开关明细）不反代，落到下面的静态站点。
 	handle /health {
 		reverse_proxy server:3000
 	}

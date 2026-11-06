@@ -1114,8 +1114,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 健康检查（各外部依赖可用性与降级开关状态） */
+        /** 健康检查（公开，只回答服务是否在运行；不含依赖与开关明细） */
         get: operations["health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 健康明细（各外部依赖可用性与降级开关状态；需 x-health-token，值守/监控用）
+         * @description 请求头 x-health-token 必须等于服务端环境变量 HEALTH_TOKEN；未配置 HEALTH_TOKEN 或令牌不符都返回 404（不暴露该路径存在）。反代只放行 /health，不要把 /health/details 暴露到公网。
+         */
+        get: operations["healthDetails"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6493,18 +6513,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        ok?: boolean;
-                        version?: string;
-                        deps?: {
+                        ok: boolean;
+                        /** @enum {string} */
+                        status: "ok";
+                        service: string;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    healthDetails: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-health-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 状态明细 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        /** @enum {string} */
+                        status: "ok";
+                        service: string;
+                        env: string;
+                        uptimeSec: number;
+                        deps: {
                             [key: string]: "ok" | "degraded" | "down" | "disabled";
                         };
-                        flags?: {
+                        flags: {
                             [key: string]: boolean;
                         };
                     };
                 };
             };
-            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
 }

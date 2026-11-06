@@ -49,7 +49,8 @@
    ```bash
    cd /var/www/proofgym && TAG=<步骤 2 的 TAG> docker compose -p proofgym up -d
    TAG=<TAG> docker compose -p proofgym ps
-   curl -s http://127.0.0.1:18081/health
+   curl -s http://127.0.0.1:18081/health                                               # 公开：{ok,status,service}
+   curl -s -H "x-health-token: $HEALTH_TOKEN" http://127.0.0.1:18081/health/details    # 明细：依赖、开关（.env 里的 HEALTH_TOKEN）
    ```
 
 5. **导入种子题**（首次）：
@@ -119,11 +120,11 @@ free -h
 cd /var/www/proofgym && TAG=<TAG> docker compose -p proofgym down        # 保留数据卷
 ```
 
-撤销 nginx：删除 `/etc/nginx/conf.d/<SUB>.conf` → `nginx -t` → `nginx -s reload`。数据卷 `proofgym_postgres_data` 仅在确认不要数据时用 `docker volume rm` 删除。
+撤销 nginx：删除 `/etc/nginx/conf.d/<SUB>.conf` → `nginx -t` → `nginx -s reload`。数据卷 `proofgym_postgres_data`、`proofgym_server_data`（学生拍照原图，容器内 `/data/files`）仅在确认不要数据时用 `docker volume rm` 删除。
 
 ## 备份
 
-`backup.sh` 依赖 compose 在运行；`BACKUP_DIR` 建议放数据盘（`/var/www/proofgym-backups`）。示例 cron：`0 */6 * * * BACKUP_DIR=/var/www/proofgym-backups /var/www/proofgym/backup.sh`。
+`backup.sh` 只备份数据库，不含 `proofgym_server_data` 里的拍照原图（识别后的文字已在库里，原图丢失只影响回看）；`backup.sh` 依赖 compose 在运行；`BACKUP_DIR` 建议放数据盘（`/var/www/proofgym-backups`）。示例 cron：`0 */6 * * * BACKUP_DIR=/var/www/proofgym-backups /var/www/proofgym/backup.sh`。
 
 ## 已知局限
 

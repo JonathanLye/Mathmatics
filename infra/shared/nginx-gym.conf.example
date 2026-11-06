@@ -66,6 +66,8 @@ server {
         proxy_read_timeout 3600s;
     }
 
+    # 只放行公开的 /health（{ok,status,service}）。/health/details 带依赖与开关明细，故意不反代：
+    # 精确匹配 = 不含子路径，/health/details 会落到下面的 location /（静态站点），公网拿不到明细。
     location = /health {
         proxy_pass http://127.0.0.1:18081;
         proxy_http_version 1.1;

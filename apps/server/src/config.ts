@@ -17,6 +17,8 @@ export interface AppConfig {
   studentNoPepper: string;
   databaseUrl?: string;
   pgliteDir: string;
+  // GET /health/details 的访问令牌（请求头 x-health-token）。未配置则明细接口一律 404。
+  healthToken?: string;
   // 每分钟、每会话的请求上限（见 routes/events.ts、routes/attempts.ts）。
   // login = 每 IP 每分钟学生登录上限（校园共用出口 IP，多个班同时登录时调大）；缺省 120。
   rateLimits: { events: number; help: number; login?: number };
@@ -87,6 +89,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     studentNoPepper,
     databaseUrl: env.DATABASE_URL === undefined || env.DATABASE_URL === '' ? undefined : env.DATABASE_URL,
     pgliteDir: env.PGLITE_DIR ?? '.data/pglite',
+    ...(configured(env.HEALTH_TOKEN) ? { healthToken: env.HEALTH_TOKEN } : {}),
     rateLimits: {
       events: positiveInt(env.RATE_LIMIT_EVENTS_PER_MIN, 120, 'RATE_LIMIT_EVENTS_PER_MIN'),
       help: positiveInt(env.RATE_LIMIT_HELP_PER_MIN, 60, 'RATE_LIMIT_HELP_PER_MIN'),

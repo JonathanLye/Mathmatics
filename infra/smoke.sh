@@ -22,7 +22,7 @@ check() {
 
 echo "冒烟：$BASE"
 
-# 服务端健康（含数据库/队列/依赖状态；degraded 也算 200，需人工看 body）。
+# 服务端健康（公开，只回 {ok,status,service}；依赖与开关明细在 /health/details，需 x-health-token，且反代不对外放行）。
 check "/health" 200 "$BASE/health"
 # 学生端（Caddy 静态文件，index.html）与教师端（vite base=/t/）。
 check "学生端首页 /" 200 "$BASE/"
@@ -43,10 +43,18 @@ done
 aigc=$(curl -sI "$BASE/health" | tr -d '\r' | grep -i '^x-aigc:' || true)
 if [ -n "$aigc" ]; then echo "ok   X-AIGC 头：$aigc"; else echo "info /health 无 X-AIGC 头（AI 文本响应才需要）"; fi
 
-# /health 的依赖状态（JSON）打到屏幕，便于值守判断降级。
+# 明细不得经公网反代泄露：/health/details 的响应里不能出现 deps（Caddy/nginx 不放行时落到静态站点，返回的是 HTML）。
+if curl -s "$BASE/health/details" | grep -q '"deps"'; then echo "FAIL /health/details 经公网可达并返回了依赖明细"; fail=1; else echo "ok   /health/details 未对外暴露"; fi
+
 echo "--- /health body ---"
 curl -s "$BASE/health" || true
 echo
+# 依赖状态明细（可选）：HEALTH_DETAILS_URL 指向内网/回环的 server（如 http://127.0.0.1:18081/health/details），HEALTH_TOKEN 同服务端。
+if [ -n "${HEALTH_DETAILS_URL:-}" ] && [ -n "${HEALTH_TOKEN:-}" ]; then
+  echo "--- /health/details body ---"
+  curl -s -H "x-health-token: $HEALTH_TOKEN" "$HEALTH_DETAILS_URL" || true
+  echo
+fi
 echo "--- 结果 ---"
 if [ "$fail" = 0 ]; then echo "冒烟通过"; else echo "冒烟失败：请检查 Caddy/server 日志"; fi
 exit "$fail"
