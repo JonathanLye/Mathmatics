@@ -493,7 +493,7 @@ export const MOCK_CONSENT_SECTIONS: ConsentDoc['sections'] = [
 ]
 
 export const mockConsentDoc: ConsentDoc = {
-  version: 'p0-v1',
+  version: 'v2',
   sections: MOCK_CONSENT_SECTIONS,
   signed: null,
 }
@@ -880,6 +880,21 @@ export async function flagTeacher(state: AttemptState, options: WriteOptions = {
   return writeState(`/attempts/${state.attemptId}/flag-teacher`, undefined, {
     idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
+}
+
+/** POST /student/notes/{noteId}/feedback：对一条 AI 回答点“有用 / 没用”（13 §5）；失败不打断学习。 */
+export async function noteFeedback(noteId: string, useful: boolean): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await withRetry(() =>
+    activeHttp.request<unknown>(`/student/notes/${encodeURIComponent(noteId)}/feedback`, {
+      method: 'POST',
+      body: { useful },
+      idempotencyKey: newUuid(),
+    }),
+  )
 }
 
 /** POST /attempts/{attemptId}/layers/{layer}/enter：回到已完成的层（只能去已解锁的层）。 */

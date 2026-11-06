@@ -619,6 +619,7 @@ paths:
         - `concept`：概念解释（词条/微课入口），不计透露量。
         - `check_line`：对指定行（缺省最新一行）给批注。
         - `free`：自由提问，服务端判意图后按上面三类处理；索要答案/施压一句拒绝 + H0。
+        - 开了 `help.llm` 时，`concept` / `free` / `check_line` 的回答由模型生成（已过三重闸门），`note.aiGenerated = true`，响应头 `X-AIGC: 1`；闸门拦下或模型不可用时回退模板回答（`aiGenerated` 缺省）。
       operationId: requestHelp
       parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       requestBody:
@@ -683,6 +684,31 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '200': { $ref: '#/components/responses/StateReplay' }
+
+  /student/notes/{noteId}/feedback:
+    post:
+      tags: [help]
+      summary: 对一条 AI 回答点“有用 / 没用”（13 §5）
+      description: 只能点自己作答里的批注（`Note.noteId`）；可以改主意，以最后一次为准。
+      operationId: noteFeedback
+      parameters:
+        - { name: noteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/idempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [useful]
+              additionalProperties: false
+              properties:
+                useful: { type: boolean }
+      responses:
+        '204': { description: 已记录 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 
   # ------------------------------------------------------------------ events
   /events/batch:

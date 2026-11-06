@@ -70,6 +70,7 @@ const MAIN_OPS = [
   'POST /attempts/{attemptId}/park',
   'POST /attempts/{attemptId}/help',
   'POST /attempts/{attemptId}/hints/claim',
+  'POST /student/notes/{noteId}/feedback',
   'POST /events/batch',
   'POST /recognitions/ink',
   'POST /recognitions/photo',
@@ -535,6 +536,9 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   for (const text of (publicOf[main]?.askChips ?? []) as string[]) {
     await call(ctx, 'POST /attempts/{attemptId}/help', main, { params, payload: { intent: 'free', text }, tag: 'chip' });
   }
+  // —— 对一条回答点“有用 / 没用”（模型回答的反馈入口；204 无正文，但仍要走到并扫描）
+  const asked = await call(ctx, 'POST /attempts/{attemptId}/help', main, { params, payload: { intent: 'concept' } });
+  await call(ctx, 'POST /student/notes/{noteId}/feedback', main, { params: { noteId: asked.json.note.noteId as string }, payload: { useful: true } });
   ladder[main] = { delivered: await walkHintLadder(ctx, main, attemptId, secret), expected: hintsOf(secret) };
   await call(ctx, 'POST /attempts/{attemptId}/finish', main, { params });
   await call(ctx, 'POST /attempts/{attemptId}/park', main, { params });
@@ -817,7 +821,7 @@ describe.each(PROBLEMS)('跨题门槛：$main 缺任一 key 都到不了 $transf
       const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
       ctx.cookie = cookieFrom(login.headers['set-cookie']);
       await call(ctx, 'POST /auth/student/age-band', main, { payload: { ageBand: 'ge18' } });
-      await call(ctx, 'POST /consents', main, { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
+      await call(ctx, 'POST /consents', main, { payload: { version: 'v2', items: ALL_REQUIRED } });
       const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', main, { params: { assignmentId } });
       const attemptId = started.json.state.attemptId as string;
       const params = { attemptId };
@@ -891,7 +895,7 @@ describe('教师补发 H4（grantH4）后的学生响应', { timeout: 60_000 }, 
       const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
       ctx.cookie = cookieFrom(login.headers['set-cookie']);
       await call(ctx, 'POST /auth/student/age-band', 'epsN', { payload: { ageBand: 'ge18' } });
-      await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
+      await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'v2', items: ALL_REQUIRED } });
       const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', 'epsN', { params: { assignmentId } });
       const attemptId = started.json.state.attemptId as string;
 
@@ -962,7 +966,7 @@ describe('负面对照：扫描真的能报出泄露', { timeout: 60_000 }, () =
     const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
     ctx.cookie = cookieFrom(login.headers['set-cookie']);
     await call(ctx, 'POST /auth/student/age-band', 'epsN', { payload: { ageBand: 'ge18' } });
-    await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
+    await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'v2', items: ALL_REQUIRED } });
     const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', 'epsN', { params: { assignmentId: opened.assignmentId } });
     attemptId = started.json.state.attemptId as string;
   }, 60_000);

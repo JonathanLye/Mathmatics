@@ -33,13 +33,14 @@ export interface AnnotationInput {
   text: string;
   helpId?: string | null;
   aiGenerated?: boolean;
+  gateId?: string | null;
 }
 
 export async function insertAnnotation(q: Queryable, input: AnnotationInput): Promise<void> {
   await q.query(
-    `insert into app.annotations (id, attempt_id, line_id, kind, source, text_shown, help_id, ai_generated)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [input.id, input.attemptId, input.lineId, input.kind, input.source, input.text, input.helpId ?? null, input.aiGenerated ?? false],
+    `insert into app.annotations (id, attempt_id, line_id, kind, source, text_shown, help_id, ai_generated, gate_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [input.id, input.attemptId, input.lineId, input.kind, input.source, input.text, input.helpId ?? null, input.aiGenerated ?? false, input.gateId ?? null],
   );
 }
 

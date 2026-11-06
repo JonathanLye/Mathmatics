@@ -110,7 +110,7 @@ beforeEach(async () => {
   });
   studentCookie = cookieFrom(studentLogin.headers['set-cookie']);
   await setStudentAgeBand(app, studentCookie);
-  await post(studentCookie, '/consents', { version: 'p0-v1', items: ALL_REQUIRED });
+  await post(studentCookie, '/consents', { version: 'v2', items: ALL_REQUIRED });
   const start = await post(studentCookie, `/student/assignments/${assignmentId}/attempt`);
   attemptId = start.json().state.attemptId as string;
 });

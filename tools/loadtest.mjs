@@ -68,7 +68,7 @@ async function student(i) {
   const jar = { cookie: '' };
   await call(jar, 's.login', 'POST', '/auth/student/login', { inviteCode: cls.inviteCode, studentNo: nos[i], deviceId: uuid(i, 0) });
   await call(jar, 's.ageBand', 'POST', '/auth/student/age-band', { ageBand: 'ge18' });
-  await call(jar, 's.consent', 'POST', '/consents', { version: 'p0-v1', items: REQUIRED });
+  await call(jar, 's.consent', 'POST', '/consents', { version: 'v2', items: REQUIRED });
   const started = await call(jar, 's.start', 'POST', `/student/assignments/${assignment.assignmentId}/attempt`);
   const attemptId = started?.state?.attemptId;
   if (!attemptId) return;

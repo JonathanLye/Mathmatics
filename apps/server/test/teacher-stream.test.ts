@@ -109,7 +109,7 @@ beforeEach(async () => {
   studentCookie = cookieFrom(login.headers['set-cookie']);
   // #64/#152：学生写接口前必须先选年龄段（<14 会 403）。
   await setStudentAgeBand(app, studentCookie);
-  await post(studentCookie, '/consents', { version: 'p0-v1', items: REQUIRED });
+  await post(studentCookie, '/consents', { version: 'v2', items: REQUIRED });
   const started = await post(studentCookie, `/student/assignments/${assignment.json().assignmentId as string}/attempt`);
   expect(started.statusCode, started.body).toBe(200);
 });

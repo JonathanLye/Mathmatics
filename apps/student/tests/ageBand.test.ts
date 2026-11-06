@@ -74,7 +74,7 @@ const ME: MeView = {
 const CONSENT_KEYS = ['service', 'crossBorderHosting', 'crossBorderModel', 'monitoring', 'research']
 
 const CONSENT_DOC = {
-  version: 'p0-v1',
+  version: 'v2',
   sections: [
     { key: 'service', title: '服务所需处理', body: '正文 A', required: true },
     { key: 'crossBorderHosting', title: '中国香港服务器', body: '正文 B', required: true },

@@ -557,6 +557,7 @@ export interface paths {
          *     - `concept`：概念解释（词条/微课入口），不计透露量。
          *     - `check_line`：对指定行（缺省最新一行）给批注。
          *     - `free`：自由提问，服务端判意图后按上面三类处理；索要答案/施压一句拒绝 + H0。
+         *     - 开了 `help.llm` 时，`concept` / `free` / `check_line` 的回答由模型生成（已过三重闸门），`note.aiGenerated = true`，响应头 `X-AIGC: 1`；闸门拦下或模型不可用时回退模板回答（`aiGenerated` 缺省）。
          */
         post: operations["requestHelp"];
         delete?: never;
@@ -599,6 +600,26 @@ export interface paths {
          * @description 写入 `app.help_flags`，教师看板显示求助；重复调用返回当前状态（幂等）。测验模式 403。
          */
         post: operations["flagTeacher"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/notes/{noteId}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 对一条 AI 回答点“有用 / 没用”（13 §5）
+         * @description 只能点自己作答里的批注（`Note.noteId`）；可以改主意，以最后一次为准。
+         */
+        post: operations["noteFeedback"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5619,6 +5640,38 @@ export interface operations {
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             409: components["responses"]["Error"];
+        };
+    };
+    noteFeedback: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    useful: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 已记录 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     ingestEvents: {

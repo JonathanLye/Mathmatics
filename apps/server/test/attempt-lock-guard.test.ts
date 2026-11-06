@@ -64,7 +64,7 @@ async function lockedAttempt(): Promise<{ cookie: string; id: string }> {
     url: '/api/v1/consents',
     headers: { cookie, ...WRITE_HEADERS },
     payload: {
-      version: 'p0-v1',
+      version: 'v2',
       items: { service: true, crossBorderHosting: true, crossBorderModel: false, monitoring: true, research: false },
     },
   });

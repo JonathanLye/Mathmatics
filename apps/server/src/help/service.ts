@@ -19,8 +19,14 @@ import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
 
 import { hintTextOf, REFUSAL_TEXT, SOFT_RAPID_TEXT } from './hints.ts';
-import { routeIntent, type RouteInput } from './intent.ts';
+import { isHardPressure, isSoftPressure, classifySoft, routeIntent, type Routed, type RouteInput } from './intent.ts';
 import { insertHintDelivery, upsertAnnotation } from './store.ts';
+import { produceAnswer, type AnswerContext, type StudentLine } from './answer.ts';
+import { recheckSoft } from './semantic.ts';
+import { modelAllowed as budgetAllowed } from './budget.ts';
+import { RecogLimiter } from '../recognition/limiter.ts';
+import type { ModelGateway } from '../ai/gateway.ts';
+import type { AppConfig } from '../config.ts';
 import { PREVIEW_TTL_MS, signPreview, verifyPreview } from './token.ts';
 
 // 文案来自 01 §4（批注）与 09 §7.2（闸门回退）。
@@ -39,12 +45,19 @@ export interface HelpDeps {
   attempts: AttemptService;
   secret: string;
   now?: () => number;
+  // 模型回答（U15）。没有网关或 help.llm / help.llm.shadow 都关时，行为与模板一致。
+  gateway?: ModelGateway;
+  flags?: () => Record<string, boolean | string>;
+  ai?: AppConfig['ai'];
+  parsesMath?: (math: string) => boolean;
 }
 
 export interface HelpService {
   // extra.lineId：check_line 指向的行（只作记录，不参与路由）。
   help(userId: string, attemptId: string, input: RouteInput, extra?: { lineId?: string }): Promise<Record<string, unknown>>;
   claim(userId: string, attemptId: string, previewToken: string): Promise<Record<string, unknown>>;
+  // 影子模式的后台任务（测试用：等它们跑完）。
+  idle(): Promise<void>;
   // 找老师（U15）：额度用完，或卡住满 stuckMs。写 app.help_flags，返回最新状态。已经找过则原样返回状态。
   flagTeacher(userId: string, attemptId: string): Promise<Record<string, unknown>>;
 }
@@ -142,7 +155,7 @@ export function createHelpService(deps: HelpDeps): HelpService {
 
   // 概念解释（06 §4.2）：只取本题 public.def.conceptId 已发布的最新版本（10 §4：未审核内容不给学生）。
   // 所有发给学生的字符串都过规则闸门（09 §7.1）；被拦时用 09 §7.2 的 concept 回退文案。词条缺失返回 null。
-  async function conceptNote(owned: Owned, attemptId: string, helpId: string | null): Promise<Record<string, unknown> | null> {
+  async function conceptDraft(owned: Owned): Promise<{ text: string; conceptId: string } | null> {
     const conceptId = owned.ctx.pkg.public.def?.conceptId;
     if (conceptId === undefined || conceptId === '') return null;
     const row = await db.query<{
@@ -153,9 +166,12 @@ export function createHelpService(deps: HelpDeps): HelpService {
     const plain = concept.card?.plain?.trim() ?? '';
     const text = plain !== '' ? `${concept.title ?? conceptId}：${plain}` : (concept.definition ?? concept.title ?? '').trim();
     if (text === '') return null;
-    const shown = passesGate(owned, text) ? text : CONCEPT_GATE_FALLBACK;
-    const saved = await upsertAnnotation(db, { id: randomUUID(), attemptId, lineId: null, kind: 'concept', source: 'rule', text: shown, helpId });
-    return { ...noteOf('concept', '助教', shown, saved.id, saved.at), level: 'H0', lessonConceptId: conceptId };
+    return { text: passesGate(owned, text) ? text : CONCEPT_GATE_FALLBACK, conceptId };
+  }
+
+  async function conceptNote(draft: { text: string; conceptId: string }, attemptId: string, helpId: string | null): Promise<Record<string, unknown>> {
+    const saved = await upsertAnnotation(db, { id: randomUUID(), attemptId, lineId: null, kind: 'concept', source: 'rule', text: draft.text, helpId });
+    return { ...noteOf('concept', '助教', draft.text, saved.id, saved.at), level: 'H0', lessonConceptId: draft.conceptId };
   }
 
   function passesGate(owned: Owned, text: string): boolean {
@@ -172,9 +188,10 @@ export function createHelpService(deps: HelpDeps): HelpService {
   // 行批注（06 §4.2、01 §4）：指向指定行（缺省最新一行，已删除的行不算）。只用问句，不说对错：
   // 命中错误 → 该错误预写的追问；低置信 → H0 式追问；没写依据 → 追问依据；命中关键步骤且有依据 → 衔接确认；
   // 归不了类 → 通用问句。文本一律过闸门，被拦走 09 §7.2 的回退。
-  async function checkLineNote(owned: Owned, attemptId: string, helpId: string | null, lineId?: string): Promise<Record<string, unknown> | null> {
-    type LineRow = { id: string; idx: number; justification: string | null; cls: string | null; error_id: string | null };
-    const columns = 'id, idx, justification, cls, error_id';
+  type LineDraft = { text: string; line: { id: string; n: number; statement: string; justification: string | null } };
+  async function checkLineDraft(owned: Owned, attemptId: string, lineId?: string): Promise<LineDraft | null> {
+    type LineRow = { id: string; idx: number; statement: string; justification: string | null; cls: string | null; error_id: string | null };
+    const columns = 'id, idx, statement, justification, cls, error_id';
     const row =
       lineId !== undefined
         ? (
@@ -202,8 +219,115 @@ export function createHelpService(deps: HelpDeps): HelpService {
     else if (row.cls === 'match' || row.cls === 'pass') text = `第 ${row.idx} 行和前面衔接上了。`;
     else text = unclassifiedLineText(row.idx);
     const shown = passesGate(owned, text) ? text : h0OrGeneric(owned, row.idx);
-    const saved = await upsertAnnotation(db, { id: randomUUID(), attemptId, lineId: row.id, kind: 'annotation', source: 'rule', text: shown, helpId });
-    return { ...noteOf('annotation', '批注', shown, saved.id, saved.at), lineId: row.id };
+    return { text: shown, line: { id: row.id, n: row.idx, statement: row.statement, justification: row.justification } };
+  }
+
+  async function checkLineNote(draft: LineDraft, attemptId: string, helpId: string | null): Promise<Record<string, unknown>> {
+    const saved = await upsertAnnotation(db, { id: randomUUID(), attemptId, lineId: draft.line.id, kind: 'annotation', source: 'rule', text: draft.text, helpId });
+    return { ...noteOf('annotation', '批注', draft.text, saved.id, saved.at), lineId: draft.line.id };
+  }
+
+  // ---- 模型回答（U15）----------------------------------------------------------------------------------------------
+  const flags = (): Record<string, boolean | string> => deps.flags?.() ?? {};
+  const llmLive = (): boolean => deps.gateway !== undefined && flags()['help.llm'] === true;
+  const llmShadow = (): boolean => deps.gateway !== undefined && !llmLive() && flags()['help.llm.shadow'] === true;
+  const aiCfg = deps.ai;
+  const limiter = new RecogLimiter(aiCfg?.concurrency ?? 6, aiCfg?.perUserConcurrency ?? 2);
+  const parsesMath = deps.parsesMath ?? (() => true);
+  const pending = new Set<Promise<unknown>>();
+
+  // 每生限流（10 分钟内的回答次数）与每日预算（model_calls 的费用合计）。超了就不调用模型，走模板。
+  const modelAllowed = (userId: string): Promise<boolean> =>
+    budgetAllowed(db, { dailyBudgetCny: aiCfg?.dailyBudgetCny ?? null, studentCallsPer10Min: aiCfg?.studentCallsPer10Min ?? 20 }, userId, ['help_answer', 'route_help']);
+
+  async function answerContext(
+    owned: Owned,
+    attemptId: string,
+    kind: 'free' | 'concept' | 'check_line',
+    question: string | undefined,
+    card: string | null,
+    target?: LineDraft['line'],
+  ): Promise<AnswerContext> {
+    const lines = (
+      await db.query<{ idx: number; statement: string; justification: string | null }>(
+        `select idx, statement, justification from app.attempt_lines where attempt_id = $1 and role = 'step' and deleted_at is null order by idx`,
+        [attemptId],
+      )
+    ).rows;
+    const revealed = (
+      await db.query<{ text_shown: string }>(`select text_shown from app.hint_deliveries where attempt_id = $1 order by created_at`, [attemptId])
+    ).rows.map((r) => r.text_shown);
+    const studentLines: StudentLine[] = lines.map((l) => ({ n: l.idx, statement: l.statement, justification: l.justification }));
+    return {
+      kind,
+      stem: owned.ctx.pkg.public.stem,
+      ...(question === undefined ? {} : { question }),
+      ...(target ? { target: { n: target.n, statement: target.statement, justification: target.justification } } : {}),
+      lines: studentLines,
+      conceptCard: card,
+      revealed,
+    };
+  }
+
+  // 生成 + 闸门。返回通过闸门的回答文本，否则 null（调用方回退模板）。shadow=true 时只记录。
+  async function modelAnswer(
+    userId: string,
+    attemptId: string,
+    owned: Owned,
+    context: AnswerContext,
+    shadow: boolean,
+  ): Promise<{ text: string; gateId: string } | null> {
+    if (!deps.gateway || !(await modelAllowed(userId))) return null;
+    const waited = await limiter.acquire(userId, 1500);
+    if (!waited.ok) return null;
+    try {
+      const total = (aiCfg?.totalMs ?? 12000) - waited.slot.queueMs;
+      const result = await produceAnswer(
+        {
+          gateway: deps.gateway,
+          db,
+          parsesMath,
+          totalMs: total,
+          ...(aiCfg ? { genTimeoutMs: aiCfg.genTimeoutMs, reviewTimeoutMs: aiCfg.reviewTimeoutMs } : {}),
+        },
+        { attemptId, secret: owned.ctx.pkg.secret, matched: new Set(owned.state.hint.matched), context, shadow },
+      );
+      return result.ok ? { text: result.text, gateId: result.gateId } : null;
+    } finally {
+      waited.slot.release();
+    }
+  }
+
+  async function aiNote(
+    kind: 'concept' | 'annotation',
+    answer: { text: string; gateId: string },
+    attemptId: string,
+    helpId: string | null,
+    extra: { lineId?: string; conceptId?: string | null },
+  ): Promise<Record<string, unknown>> {
+    const saved = await upsertAnnotation(db, {
+      id: randomUUID(),
+      attemptId,
+      lineId: extra.lineId ?? null,
+      kind,
+      source: 'llm',
+      text: answer.text,
+      helpId,
+      aiGenerated: true,
+      gateId: answer.gateId,
+    });
+    const base = noteOf(kind, kind === 'concept' ? '助教' : '批注', answer.text, saved.id, saved.at);
+    return kind === 'concept'
+      ? { ...base, level: 'H0', lessonConceptId: extra.conceptId ?? null, aiGenerated: true }
+      : { ...base, lineId: extra.lineId ?? null, aiGenerated: true };
+  }
+
+  // 影子模式：模板回答已经返回之后，模型在后台跑一遍，只写 model_calls / gate_decisions（shadow），不落批注、不影响响应。
+  function runShadow(userId: string, attemptId: string, owned: Owned, context: AnswerContext): void {
+    const task = modelAnswer(userId, attemptId, owned, context, true)
+      .catch(() => null)
+      .finally(() => pending.delete(task));
+    pending.add(task);
   }
 
   function hintTextFor(owned: Owned, event: EngineEvent): string {
@@ -254,13 +378,29 @@ export function createHelpService(deps: HelpDeps): HelpService {
 
   return {
     async help(userId, attemptId, input, extra = {}) {
-      const routed = routeIntent(input);
       const owned = await loadOwned(userId, attemptId);
+      // 软规则命中（情绪、权威措辞）且开了模型：由模型复核剩下的话；复核失败回到规则结果。
+      let routed: Routed = routeIntent(input);
+      let routedBy: 'chip' | 'rule' | 'llm' = input.intent === 'free' ? 'rule' : 'chip';
+      if (
+        input.intent === 'free' &&
+        owned.mode !== 'test' &&
+        llmLive() &&
+        deps.gateway &&
+        !isHardPressure(input.text.trim()) &&
+        isSoftPressure(input.text.trim()) &&
+        (await modelAllowed(userId))
+      ) {
+        const ruleRoute = classifySoft(input.text.trim());
+        const rechecked = await recheckSoft({ gateway: deps.gateway, attemptId, timeoutMs: aiCfg?.classifyTimeoutMs ?? 3500 }, input.text.trim(), ruleRoute);
+        if (rechecked !== ruleRoute) routedBy = 'llm';
+        routed = rechecked;
+      }
       // 08 §3：每次求助先记 help.request（含施压、概念、行检查），再产生后续的 hint.* 事件，顺序与实际一致。
       const helpId = await attempts.recordHelp(userId, attemptId, {
         intent: input.intent,
         routed,
-        routedBy: input.intent === 'free' ? 'rule' : 'chip',
+        routedBy,
         ...(input.intent === 'free' ? { text: input.text } : {}),
         ...(extra.lineId === undefined ? {} : { lineId: extra.lineId }),
       });
@@ -274,7 +414,29 @@ export function createHelpService(deps: HelpDeps): HelpService {
           await attempts.setHelpOutcome(helpId, 'denied');
           return { routed, preview: blockedPreview({ reason: 'test_mode', waitSec: null }), state: await attempts.get(userId, attemptId) };
         }
-        const note = routed === 'concept' ? await conceptNote(owned, attemptId, helpId) : await checkLineNote(owned, attemptId, helpId, extra.lineId);
+        const question = input.intent === 'free' ? input.text : undefined;
+        let note: Record<string, unknown> | null = null;
+        if (routed === 'concept') {
+          const draft = await conceptDraft(owned);
+          const context = await answerContext(owned, attemptId, input.intent === 'free' ? 'free' : 'concept', question, draft?.text ?? null);
+          const answer = llmLive() ? await modelAnswer(userId, attemptId, owned, context, false) : null;
+          if (answer) note = await aiNote('concept', answer, attemptId, helpId, { conceptId: draft?.conceptId ?? owned.ctx.pkg.public.def?.conceptId ?? null });
+          else {
+            if (draft) note = await conceptNote(draft, attemptId, helpId);
+            if (llmShadow()) runShadow(userId, attemptId, owned, context);
+          }
+        } else {
+          const draft = await checkLineDraft(owned, attemptId, extra.lineId);
+          if (draft) {
+            const context = await answerContext(owned, attemptId, 'check_line', undefined, null, draft.line);
+            const answer = llmLive() ? await modelAnswer(userId, attemptId, owned, context, false) : null;
+            if (answer) note = await aiNote('annotation', answer, attemptId, helpId, { lineId: draft.line.id });
+            else {
+              note = await checkLineNote(draft, attemptId, helpId);
+              if (llmShadow()) runShadow(userId, attemptId, owned, context);
+            }
+          }
+        }
         // 08 §5.4：outcome 只记实际发生的结局；没有内容下发就保持 NULL。
         if (note !== null) await attempts.setHelpOutcome(helpId, routed === 'concept' ? 'concept' : 'annotation');
         const state = await attempts.get(userId, attemptId);
@@ -375,6 +537,10 @@ export function createHelpService(deps: HelpDeps): HelpService {
       if (out.delivered.payload.level !== claims.level) throw previewExpired();
       if (claims.helpId) await attempts.setHelpOutcome(claims.helpId, 'hint');
       return { routed: 'stuck', note: hintNote(owned, out.delivered, out.deliveryId), state };
+    },
+
+    async idle() {
+      while (pending.size > 0) await Promise.allSettled([...pending]);
     },
 
     async flagTeacher(userId, attemptId) {

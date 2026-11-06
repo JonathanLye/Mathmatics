@@ -51,11 +51,12 @@ export type Provenance = 'ink' | 'keyboard' | 'photo' | 'mixed' | 'paste';
 export type Rejection = 'wrong_layer' | 'invalid' | 'not_allowed' | 'unknown_item';
 
 export type Command =
-  | { kind: 'def.submit'; lineId: string; text: string }
+  // semanticPass：规则不过时，服务端模型按教师写的要点判断为通过（高置信）。引擎只把它记进事件（path: rule+llm），重放不再需要模型。
+  | { kind: 'def.submit'; lineId: string; text: string; semanticPass?: boolean }
   | { kind: 'card.open' }
   | { kind: 'card.answer'; choice: number }
   | { kind: 'frame.template' }
-  | { kind: 'frame.submit'; lineId: string; text: string }
+  | { kind: 'frame.submit'; lineId: string; text: string; semanticPass?: boolean }
   // modelKeys：规则判不出（unknown）时，服务端模型兜底归类得到的关键步骤 ID（已过置信度阈值）。引擎只认题目包里存在的 ID。
   | { kind: 'line.submit'; lineId: string; s: string; j: string; provenance: Provenance; modelKeys?: readonly string[] }
   // 改行：oldKeys 是这行原来计入的关键步骤，otherKeys 是其它未删除行计入的关键步骤（服务端从 app.attempt_lines 读出）。
@@ -326,8 +327,9 @@ function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState,
       const order = secret.def.order ?? [];
       const positions = order.map((id) => firstPosition(secret.def?.components.find((x) => x.id === id)?.patterns ?? [], c));
       const orderOk = positions.every((pos, i) => pos >= 0 && (i === 0 || positions[i - 1] < pos));
-      const pass = Object.values(components).every(Boolean) && orderOk;
-      emit('def.submit', { lineId: cmd.lineId, n: st.def.attempts + 1, components, orderOk, pass, path: 'rule' });
+      const rulePass = Object.values(components).every(Boolean) && orderOk;
+      const pass = rulePass || cmd.semanticPass === true;
+      emit('def.submit', { lineId: cmd.lineId, n: st.def.attempts + 1, components, orderOk, pass, path: !rulePass && pass ? 'rule+llm' : 'rule' });
       if (pass) layerDone(ctx, 1, at, cur, emit);
       return;
     }
@@ -352,8 +354,9 @@ function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState,
       if (st.layer !== 2) return reject('wrong_layer');
       if (!secret.frame) return reject('not_allowed');
       const missing = secret.frame.checks.filter((x) => !matchesAny(x.patterns, cmd.text)).map((x) => x.id);
-      const pass = missing.length === 0;
-      emit('frame.submit', { lineId: cmd.lineId, n: st.frame.attempts + 1, missing, pass, path: 'rule' });
+      const rulePass = missing.length === 0;
+      const pass = rulePass || cmd.semanticPass === true;
+      emit('frame.submit', { lineId: cmd.lineId, n: st.frame.attempts + 1, missing, pass, path: !rulePass && pass ? 'rule+llm' : 'rule' });
       if (pass) layerDone(ctx, 2, at, cur, emit);
       return;
     }

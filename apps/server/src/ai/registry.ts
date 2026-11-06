@@ -23,6 +23,9 @@ export interface ModelEntry {
   model: string | null;
   endpoint: string | null;
   thinking: boolean | null;
+  // 估算单价（元 / 百万 token），用于 app.model_calls.cost_cny；没有写的模型成本记 NULL。
+  inputCnyPerM: number | null;
+  outputCnyPerM: number | null;
 }
 
 export interface ModelRegistry {
@@ -83,8 +86,18 @@ export function loadModelRegistry(path: string, env: NodeJS.ProcessEnv): ModelRe
       model: override !== undefined && override !== '' ? override : typeof rawModel.model === 'string' ? rawModel.model : null,
       endpoint: typeof rawModel.endpoint === 'string' ? rawModel.endpoint : null,
       thinking: typeof rawModel.thinking === 'boolean' ? rawModel.thinking : null,
+      inputCnyPerM: typeof rawModel.inputCnyPerM === 'number' ? rawModel.inputCnyPerM : null,
+      outputCnyPerM: typeof rawModel.outputCnyPerM === 'number' ? rawModel.outputCnyPerM : null,
     };
   }
 
-  return { providers, models, flags: raw.flags ?? {} };
+  // 开关可由环境变量覆盖（部署时改 env，不改 yaml）：help.llm → FLAG_HELP_LLM，help.llm.shadow → FLAG_HELP_LLM_SHADOW。
+  // 只覆盖 yaml 里已有的布尔开关；值必须是 true / false，其它值忽略。
+  const flags: Record<string, boolean | string> = { ...(raw.flags ?? {}) };
+  for (const [name, value] of Object.entries(flags)) {
+    if (typeof value !== 'boolean') continue;
+    const override = env[`FLAG_${name.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}`];
+    if (override === 'true' || override === 'false') flags[name] = override === 'true';
+  }
+  return { providers, models, flags };
 }

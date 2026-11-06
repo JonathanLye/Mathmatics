@@ -27,6 +27,7 @@ const emit = defineEmits<{
   (e: 'intent', i: HelpIntent): void
   (e: 'send', t: string): void
   (e: 'claim'): void
+  (e: 'feedback', noteId: string, useful: boolean): void
   (e: 'decline'): void
   (e: 'soft-landing', a: string): void
 }>()
@@ -195,6 +196,11 @@ function softLanding(action: string) {
       <view v-if="props.note" class="pg-help__note" :class="noteClass" aria-live="polite">
         <text class="pg-help__notewho pg-small">{{ props.note.who }}</text>
         <MathText :text="props.note.text" block />
+        <view v-if="props.note.aiGenerated" class="pg-help__ai">
+          <text class="pg-small">AI 生成 · 仅作学习提示</text>
+          <button class="pg-help__aibtn pg-small" @tap="emit('feedback', props.note.noteId, true)">有用</button>
+          <button class="pg-help__aibtn pg-small" @tap="emit('feedback', props.note.noteId, false)">没用</button>
+        </view>
       </view>
 
       <view v-if="!testMode" class="pg-help__free">
@@ -401,6 +407,17 @@ function softLanding(action: string) {
   margin-bottom: 2px;
   color: var(--ink-2);
   font-size: var(--fs-small);
+}
+.pg-help__ai {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--ink-2);
+}
+.pg-help__aibtn {
+  min-height: 32px;
+  padding: 0 10px;
 }
 .pg-help__free {
   display: flex;

@@ -45,6 +45,8 @@ export interface LineInput {
   statement: string;
   justification?: string | null;
   provenance: string;
+  // 归类来源：缺省 rule；模型兜底归类为 llm
+  classifierPath?: 'rule' | 'llm';
   // 手写/拍照来源：已确认的识别结果（app.recognitions.id）
   recogId?: string | null;
   cls?: string | null;
@@ -81,6 +83,10 @@ export interface AttemptService {
   start(userId: string, assignmentId: string): Promise<Record<string, unknown>>;
   get(userId: string, attemptId: string): Promise<Record<string, unknown>>;
   command(spec: StepSpec): Promise<Record<string, unknown>>;
+  // 只算不写：用当前状态试跑一条命令，返回引擎的事件（不改任何东西）。用于“规则先行，规则不过再问模型”。
+  dryRun(userId: string, attemptId: string, build: (ctx: Context) => Command): Promise<StepResult>;
+  // 这次作答里已写的第 3 层行（不含已删除），给模型兜底归类当上下文。
+  stepLines(userId: string, attemptId: string): Promise<Array<{ statement: string; justification: string | null }>>;
   park(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
   transfer(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
   // 教师软着陆（05 §4、11 §5.2）：额度耗尽后补发一条 H4。授权由调用方在事务内做（authorize 抛错即回滚）。
@@ -281,6 +287,22 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     if (result.rejected || result.events.length === 0) return;
     const anon = await userAnon(tx, parent.user_id);
     await commit(tx, parent, result, parent.status, anon, `L${snap.state.layer}`);
+  }
+
+  async function dryRun(userId: string, attemptId: string, build: (ctx: Context) => Command): Promise<StepResult> {
+    const row = (await db.query<AttemptRow>(`select * from app.attempts where id = $1 and user_id = $2`, [attemptId, userId])).rows[0];
+    if (!row) throw new AppError('NOT_FOUND', 404, '找不到这次作答');
+    const snap = await snapshotOf(db, row);
+    return step(snap.problem.ctx, snap.state, build(snap.problem.ctx), snap.now);
+  }
+
+  async function stepLines(userId: string, attemptId: string) {
+    const rows = await db.query<{ statement: string; justification: string | null }>(
+      `select l.statement, l.justification from app.attempt_lines l join app.attempts a on a.id = l.attempt_id
+        where l.attempt_id = $1 and a.user_id = $2 and l.role = 'step' and l.deleted_at is null order by l.idx`,
+      [attemptId, userId],
+    );
+    return rows.rows;
   }
 
   async function grantH4(spec: GrantH4Spec): Promise<void> {
@@ -540,6 +562,8 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     start,
     get,
     command,
+    dryRun,
+    stepLines,
     park,
     transfer,
     grantH4,
@@ -553,7 +577,7 @@ export async function addLine(tx: Queryable, row: AttemptRow, line: LineInput): 
     `insert into app.attempt_lines
        (id, attempt_id, layer, role, idx, slot, statement, justification, statement_canon, justification_canon,
         provenance, recog_id, cls, keys, new_keys, error_id, classifier_path)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'rule')`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
     [
       line.id ?? randomUUID(),
       row.id,
@@ -571,6 +595,7 @@ export async function addLine(tx: Queryable, row: AttemptRow, line: LineInput): 
       line.keys ?? [],
       line.newKeys ?? [],
       line.errorId ?? null,
+      line.classifierPath ?? 'rule',
     ],
   );
 }

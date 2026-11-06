@@ -72,6 +72,7 @@ import {
   addLine,
   addTransferLine,
   claimHint,
+  noteFeedback,
   flagTeacher,
   completeTransferParent,
   deleteTransferLine,
@@ -858,6 +859,15 @@ function handlePreviewRetry() {
   void runHelp(intent, text)
 }
 
+async function handleNoteFeedback(noteId: string, useful: boolean) {
+  try {
+    await noteFeedback(noteId, useful)
+    show('收到，谢谢')
+  } catch {
+    // 反馈失败不打断学习
+  }
+}
+
 async function handleClaim() {
   const preview = hintPreview.value
   if (!preview) return
@@ -1611,6 +1621,7 @@ function backHome() {
       @intent="handleIntent"
       @send="handleSend"
       @claim="handleClaim"
+      @feedback="handleNoteFeedback"
       @decline="handleDecline"
       @soft-landing="handleSoftLanding"
     />

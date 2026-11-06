@@ -8,7 +8,8 @@ import { requireAuth } from './session.ts';
 
 // 13 §2：同意书改文案必须升版本；旧版本的签署不再满足练习条件，学生需重新确认。
 // 文案取自 13 §2 的白话要点与 11 §8 的过程监测说明；PO 确认前不得对外上线。
-export const CONSENT_VERSION = 'p0-v1';
+// v2（U15）：求助内容与证明行会去标识后发给通义千问 / DeepSeek 生成回答。升版本后所有人重签一次。
+export const CONSENT_VERSION = 'v2';
 
 export type ConsentKey = 'service' | 'crossBorderHosting' | 'crossBorderModel' | 'monitoring' | 'research';
 export type ConsentItems = Record<ConsentKey, boolean>;
@@ -41,7 +42,7 @@ export const CONSENT_SECTIONS: readonly ConsentSection[] = [
   {
     key: 'crossBorderHosting',
     title: '数据存储在中国香港服务器',
-    body: '你的数据存储在中国香港的服务器上；国内模型（DeepSeek、通义千问）与识别服务（SimpleTex）在境内。不同意则无法使用本版本。',
+    body: '你的数据存储在中国香港的服务器上；国内模型（DeepSeek、通义千问）与识别服务（SimpleTex）在境内。你在求助里写的内容和你写的证明行会去掉身份信息后发给通义千问或 DeepSeek 生成回答。不同意则无法使用本版本。',
     required: true,
   },
   {
