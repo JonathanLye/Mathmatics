@@ -4,7 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 
 import { api, ApiError } from '../api/client.ts';
 import type { SelfStudyView } from '../api/types.ts';
-import { summarizeSelfStudy } from '../utils/selfStudy.ts';
+import { sortStudents, summarizeSelfStudy } from '../utils/selfStudy.ts';
 
 const props = defineProps<{ classId: string; active: boolean }>();
 
@@ -14,6 +14,7 @@ const error = ref('');
 let loadedFor = '';
 
 const summary = computed(() => summarizeSelfStudy(view.value));
+const students = computed(() => sortStudents(view.value?.students ?? []));
 
 async function load(): Promise<void> {
   if (props.classId === '') return;
@@ -82,7 +83,7 @@ function timeText(iso: string | null | undefined): string {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="student in view.students" :key="student.anonCode" :data-testid="`self-study-${student.anonCode}`">
+          <tr v-for="student in students" :key="student.anonCode" :data-testid="`self-study-${student.anonCode}`">
             <td class="ss__sticky"><b>{{ student.displayName ?? student.anonCode }}</b></td>
             <td class="ss__num">{{ student.doneTotal }}</td>
             <td class="ss__num">{{ student.active }}</td>

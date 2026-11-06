@@ -725,6 +725,7 @@ onBeforeUnmount(() => {
           </t-form-item>
         </t-form>
 
+        <h4>已布置的题</h4>
         <t-alert v-if="assignmentsError" theme="warning" :message="`布置列表加载失败：${assignmentsError}`" style="margin: 12px 0" />
         <t-table
           :data="createdAssignments"

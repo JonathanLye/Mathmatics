@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SelfStudyView } from '../api/types.ts';
-import { summarizeSelfStudy } from './selfStudy.ts';
+import { sortStudents, summarizeSelfStudy } from './selfStudy.ts';
 
 const view: SelfStudyView = {
   units: [
@@ -31,5 +31,10 @@ describe('自学进度汇总', () => {
 
   it('空数据不报错', () => {
     expect(summarizeSelfStudy(null)).toMatchObject({ studying: 0, doneTotal: 0, active: 0, revealed: 0 });
+  });
+
+  it('排序：做完得多的在前，其次正在做的；并列时保持原来的顺序', () => {
+    const [a, b, c] = view.students;
+    expect(sortStudents([b!, c!, a!]).map((s) => s.anonCode)).toEqual(['S-A', 'S-C', 'S-B']);
   });
 });

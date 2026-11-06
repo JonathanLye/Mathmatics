@@ -23,3 +23,11 @@ export function summarizeSelfStudy(view: SelfStudyView | null): SelfStudySummary
     doneIn: (student, unitId) => student.byUnit.find((item) => item.unitId === unitId)?.done ?? 0,
   };
 }
+
+/** 做得多的同学排前面：做完的题数、正在做的题数、看过解答的题数；其余保持服务端顺序。 */
+export function sortStudents(students: readonly SelfStudyStudent[]): SelfStudyStudent[] {
+  return students
+    .map((student, index) => ({ student, index }))
+    .sort((a, b) => b.student.doneTotal - a.student.doneTotal || b.student.active - a.student.active || b.student.revealed - a.student.revealed || a.index - b.index)
+    .map((item) => item.student);
+}

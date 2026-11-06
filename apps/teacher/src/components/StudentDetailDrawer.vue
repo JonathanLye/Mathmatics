@@ -64,13 +64,13 @@ function timeOf(at: string): string {
 }
 
 const lineColumns = [
-  { colKey: 'layer', title: '所在层', width: 90 },
-  { colKey: 'n', title: '行', width: 50 },
+  { colKey: 'layer', title: '所在层', width: 80 },
+  { colKey: 'n', title: '行', width: 44 },
   { colKey: 'statement', title: '这一行' },
   { colKey: 'justification', title: '依据' },
-  { colKey: 'keys', title: '关键步骤', width: 140 },
-  { colKey: 'meta', title: '识别情况', width: 150 },
-  { colKey: 'actions', title: '改判', width: 70 },
+  { colKey: 'keys', title: '关键步骤', width: 90 },
+  { colKey: 'meta', title: '识别情况', width: 120 },
+  { colKey: 'actions', title: '改判', width: 56 },
 ];
 
 function messageOf(caught: unknown): string {
@@ -249,7 +249,7 @@ function lineMeta(line: TeacherLine): string {
           <b class="detail-head__name">{{ detail.displayName ?? detail.anonCode }}</b>
           <span class="page-sub detail-head__sub">{{ detail.anonCode }} · {{ detail.problem.title }} · {{ detail.mode === 'test' ? '测验' : '练习' }}</span>
         </div>
-        <span class="pg-pill" :class="`pg-pill--${detail.status === 'locked' ? 'chili' : detail.status === 'completed' ? 'grass' : 'sea'}`">
+        <span class="pg-pill" :class="`pg-pill--${detail.status === 'locked' ? 'chili' : detail.status === 'completed' ? 'grass' : 'accent'}`">
           {{ STATUS_LABEL[detail.status] ?? detail.status }}
         </span>
       </div>

@@ -39,10 +39,10 @@ function initial(row: LiveRow): string {
 function nameOf(row: LiveRow): string {
   return row.displayName ?? row.anonCode;
 }
-function keyPips(row: LiveRow): Array<'own' | 'empty'> {
+function keyPips(row: LiveRow): Array<'own' | 'off'> {
   const total = Math.max(0, Math.min(8, row.keysTotal ?? 4));
   const own = Math.min(total, row.keysOwn ?? 0);
-  return Array.from({ length: total }, (_, i) => (i < own ? 'own' : 'empty'));
+  return Array.from({ length: total }, (_, i) => (i < own ? 'own' : 'off'));
 }
 function segState(row: LiveRow, n: number): 'd' | 'c' | '' {
   const cur = layerIndex(row);
@@ -222,5 +222,5 @@ function toggle(key: Tone): void {
 .lb__fbar { flex: 1; height: 8px; border-radius: 4px; background: var(--pg-soft); position: relative; overflow: hidden; }
 .lb__fbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--pg-accent); }
 .lb__fn { width: 20px; text-align: right; color: var(--pg-ink); }
-@media (max-width: 1100px) { .lb { flex-direction: column; } .lb__rail { width: 100%; } .lb__kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1100px) { .lb { flex-direction: column; } .lb__rail { width: 100%; order: -1; } .lb__kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 </style>

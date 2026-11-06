@@ -1,8 +1,9 @@
 /* 教师端主题：沉稳的工具界面。白和浅灰的底、1px 细边、小圆角，青绿是唯一的强调色；表格和表单不用学生端那种厚边按钮。
    调色全部来自共用的 packages/ui-tokens；这里只把它映射成 --pg-*（本端组件用）和 TDesign 的 --td-*。
    信息密度高于学生端：正文 14px。深色由 utils/theme.ts 同时设置 data-theme（共用 token）和 theme-mode（TDesign）。 */
+@import '@fontsource/nunito/latin-400.css';
+@import '@fontsource/nunito/latin-600.css';
 @import '@fontsource/nunito/latin-700.css';
-@import '@fontsource/nunito/latin-800.css';
 @import '@proof-gym/ui-tokens/tokens.css';
 
 :root {
