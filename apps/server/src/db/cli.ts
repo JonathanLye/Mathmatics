@@ -7,8 +7,8 @@ const databaseUrl = process.env.DATABASE_URL;
 const pgliteDir = process.env.PGLITE_DIR ?? '.data/pglite';
 
 async function main(): Promise<void> {
-  if (!['reset', 'migrate', 'seed', 'query', 'create-teacher'].includes(command ?? '')) {
-    console.error('用法：node apps/server/src/db/cli.ts <reset|migrate|seed|query|create-teacher> [SQL | 用户名]');
+  if (!['reset', 'migrate', 'seed', 'query', 'create-teacher', 'import-bundle'].includes(command ?? '')) {
+    console.error('用法：node apps/server/src/db/cli.ts <reset|migrate|seed|query|create-teacher|import-bundle> [SQL | 用户名]');
     process.exit(1);
   }
 
@@ -38,6 +38,13 @@ async function main(): Promise<void> {
       if (sql === '') throw new Error('用法：pnpm db:query "<SQL>"');
       const result = await db.query(sql);
       console.log(JSON.stringify(result.rows, null, 2));
+    }
+    if (command === 'import-bundle') {
+      // 动态导入：只有这条命令需要题目门禁（ajv、katex），其它 db:* 命令不加载。
+      const { importBundle, parseBundle, readStdin } = await import('./import-bundle.ts');
+      const summary = await importBundle(db, parseBundle(await readStdin()));
+      console.log(JSON.stringify(summary, null, 2));
+      if (summary.rejected.length > 0) process.exitCode = 2;
     }
     if (command === 'create-teacher') {
       // 密码只从环境变量读取，不放在命令行参数里，避免进入 shell 历史与进程列表。
