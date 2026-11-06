@@ -1,3 +1,4 @@
+import { CONSENT_VERSION } from '../src/auth/consent.ts';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -45,7 +46,7 @@ async function joinStudent(studentNo: string): Promise<string> {
   expect(login.statusCode, login.body).toBe(200);
   const cookie = cookieFrom(login.headers['set-cookie']);
   await setStudentAgeBand(app, cookie);
-  await call(cookie, 'POST', '/consents', { version: 'p0-v1', items: REQUIRED });
+  await call(cookie, 'POST', '/consents', { version: CONSENT_VERSION, items: REQUIRED });
   return cookie;
 }
 

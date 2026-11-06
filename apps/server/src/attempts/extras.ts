@@ -1,4 +1,5 @@
 import type { Queryable } from '../db/index.ts';
+import { loadStoredNotes } from '../help/store.ts';
 
 import type { AttemptRow } from './view.ts';
 
@@ -30,6 +31,8 @@ export interface ViewExtras {
   frameCheck: { missing: string[]; pass: boolean } | null;
   // 完成后能不能看讲评：自学作答完成即可；教师布置要布置关闭且教师已发布。
   reviewAvailable: boolean;
+  // 已下发的提示与批注（app.hint_deliveries / app.annotations），刷新后读回。noteId = 行 ID。
+  notes: Record<string, unknown>[];
 }
 
 // 刚创建的作答：还没有任何行与事件。
@@ -44,6 +47,7 @@ export const EMPTY_EXTRAS: ViewExtras = {
   defCheck: null,
   frameCheck: null,
   reviewAvailable: false,
+  notes: [],
 };
 
 export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<ViewExtras> {
@@ -150,5 +154,6 @@ export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<Vie
         }
       : null,
     frameCheck: framePayload ? { missing: (framePayload.missing ?? []) as string[], pass: framePayload.pass === true } : null,
+    notes: await loadStoredNotes(q, row.id, null),
   };
 }

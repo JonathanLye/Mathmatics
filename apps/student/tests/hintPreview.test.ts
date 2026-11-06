@@ -126,7 +126,7 @@ describe('softLanding：按钮文案与后端未实现项', () => {
     expect(softLandingLabel('unknown_action')).toBe('unknown_action')
   })
 
-  it('flag_teacher（/flag-teacher 已有接口）可用', () => {
+  it('flag_teacher（/flag-teacher 已实现，U15）可用', () => {
     expect(softLandingAvailable('flag_teacher')).toBe(true)
     expect(softLandingAvailable('back_to_definition')).toBe(true)
     const items = previewSoftLandingItems(['back_to_definition', 'flag_teacher', 'unknown_action'])

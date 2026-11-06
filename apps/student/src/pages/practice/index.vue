@@ -21,6 +21,7 @@ import Composer from '@/components/practice/Composer.vue'
 import DraftNotice from '@/components/practice/DraftNotice.vue'
 import ExamBar from '@/components/practice/ExamBar.vue'
 import ExamOverlays from '@/components/practice/ExamOverlays.vue'
+import ReviewingBar from '@/components/practice/ReviewingBar.vue'
 import LayerDefine from '@/components/practice/LayerDefine.vue'
 import LayerFrame from '@/components/practice/LayerFrame.vue'
 import LayerInterstitial from '@/components/practice/LayerInterstitial.vue'
@@ -59,7 +60,7 @@ const exam = useExamMode(session)
 const examView = reactive(exam)
 const { strictExam, strictExamActive, examIsLocked, countdownText, timeUp, fullscreenNote, strictHelpOff } = exam
 const nav = usePracticeNav(session)
-const { origin, nextBusy } = nav
+const { origin, nextBusy, layersOpen, frontier, reviewing, selectLayer } = nav
 const lesson = useLessonPanel(session)
 const { microOpen, microLesson } = lesson
 const help = useHelp(session, exam, { openLesson: () => void lesson.openLesson(), parkAndLeave: nav.backHome })
@@ -71,8 +72,6 @@ const { feedback, interstitial, completionRewards } = loop
 const { matchedLineIds } = useKeyLines(session)
 const { restoredDraft, l1Initial } = drafts
 
-/** 层列表只用来看进度：层的推进由服务端决定，点已完成或当前层只收起列表。 */
-const layersOpen = ref(false)
 const offlineRetrying = ref(false)
 
 const modeClass = computed(() => 'pg-practice--' + mode.value)
@@ -111,11 +110,13 @@ async function handleOfflineRetry(): Promise<void> {
 onUnload(() => {
   exam.cleanupExam()
   drafts.flush()
+  drafts.stopBackup()
   void integrity.flushBeacon()
 })
 
 onLoad(async (q) => {
   nav.setOrigin(q?.from)
+  drafts.startBackup()
   if (mockEnabled) exam.ensureExamMockHook()
   session.applyApiFlag(q)
   // #145 年龄门：登录后、同意/练习前必须先有年龄分档（null → 选择页；lt14 → 暂不开通）。
@@ -161,6 +162,7 @@ function onSwitchMock(k: MockKey) {
         <BudgetBar v-if="!isCompleted" :budget="state.budget" :show-keys="currentLayer !== 'L1' && currentLayer !== 'L2'" />
 
         <view class="pg-practice__content">
+          <ReviewingBar v-if="reviewing && currentLayer && frontier" :current="currentLayer" :frontier="frontier" :busy="busy" @return="selectLayer(frontier!)" />
           <DraftNotice v-if="restoredDraft" @dismiss="restoredDraft = null" />
 
           <view v-if="!isCompleted" class="pg-practice__head">
@@ -183,7 +185,6 @@ function onSwitchMock(k: MockKey) {
             @proofbook="nav.goProofbook"
             @make-transfer="session.beginTransfer"
             @next="nav.goNext"
-            @review="nav.goReview"
             @home="nav.backHome"
           />
 
@@ -207,6 +208,7 @@ function onSwitchMock(k: MockKey) {
             :view="state.def"
             :busy="busy"
             :initial-text="l1Initial"
+            :hide-skip="reviewing"
             @submit="session.submitText"
             @update:text="drafts.saveDefinition"
             @lesson="lesson.handleLesson"
@@ -217,6 +219,7 @@ function onSwitchMock(k: MockKey) {
             v-else-if="currentLayer === 'L2'"
             :view="state.frame"
             :busy="busy"
+            :hide-skip="reviewing"
             @submit="session.submitText"
             @lesson="lesson.handleLesson"
             @skip="session.skipCurrentLayer"
@@ -241,6 +244,7 @@ function onSwitchMock(k: MockKey) {
             :view="state.selfcheck ?? null"
             :lines="lines"
             :busy="busy"
+            :hide-skip="reviewing"
             @submit="session.answerSelfcheckItem"
             @skip="session.skipCurrentLayer"
           />
@@ -250,6 +254,7 @@ function onSwitchMock(k: MockKey) {
             :view="state.transfer ?? null"
             :problem="state.problem"
             :busy="busy"
+            :hide-skip="reviewing"
             @start="session.beginTransfer"
             @skip="session.skipCurrentLayer"
           />
@@ -273,7 +278,7 @@ function onSwitchMock(k: MockKey) {
       />
     </view>
 
-    <LayerSheet :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="layersOpen = false" />
+    <LayerSheet :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="selectLayer" />
 
     <HelpDrawer
       :open="helpOpen"
@@ -287,7 +292,7 @@ function onSwitchMock(k: MockKey) {
       @claim="help.claim"
       @decline="help.decline"
       @soft-landing="help.softLanding"
-      @note-feedback="help.noteFeedback"
+      @feedback="help.noteFeedback"
     />
 
     <HintPreviewCard

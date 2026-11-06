@@ -105,7 +105,7 @@ export const SOFT_LANDING_ORDER: SoftLandingActionId[] = [
   'flag_teacher',
 ]
 
-/** 后端 /flag-teacher 尚未实现（openapi.yaml:591）：按钮置灰并注明「即将上线」，不假成功。 */
+/** /flag-teacher 已实现（U15）：软着陆出路都可点；是否真能找老师由 state.help.canFlag 决定（见抽屉）。 */
 export function softLandingAvailable(_action: string): boolean {
   return true
 }

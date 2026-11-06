@@ -521,7 +521,7 @@ export const MOCK_CONSENT_SECTIONS: ConsentDoc['sections'] = [
 ]
 
 export const mockConsentDoc: ConsentDoc = {
-  version: 'p0-v1',
+  version: 'v2',
   sections: MOCK_CONSENT_SECTIONS,
   signed: null,
 }
@@ -838,31 +838,6 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   })
 }
 
-/** POST /student/notes/{noteId}/feedback：AI 回答「有用 / 没用」（204）。 */
-export async function sendNoteFeedback(noteId: string, useful: boolean): Promise<void> {
-  if (USE_MOCK) {
-    await sleep()
-    return
-  }
-  await activeHttp.post(`/student/notes/${encodeURIComponent(noteId)}/feedback`, { useful }, { idempotencyKey: newUuid() })
-}
-
-/** POST /attempts/{attemptId}/flag-teacher：找老师（测验模式 403）。 */
-export async function flagTeacher(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
-  if (USE_MOCK) {
-    await sleep()
-    const next = clone(state)
-    next.stateVersion += 1
-    next.help = { ...next.help, flagged: true, canFlag: false }
-    next.serverTime = new Date().toISOString()
-    return next
-  }
-  return writeState(`/attempts/${state.attemptId}/flag-teacher`, undefined, {
-    ifMatch: state.stateVersion,
-    idempotencyKey: options.idempotencyKey ?? newUuid(),
-  })
-}
-
 /** POST /attempts/{attemptId}/finish：第 3 层「写完了」。 */
 export async function finishSteps(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {
@@ -984,6 +959,67 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   return writeState(`/attempts/${state.attemptId}/summary`, body, {
     ifMatch: state.stateVersion,
     idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** POST /attempts/{attemptId}/flag-teacher：找老师（额度用完，或卡住满一段时间后可用；重复调用幂等）。 */
+export async function flagTeacher(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    next.stateVersion += 1
+    next.help = { ...next.help, flagged: true, canFlag: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/flag-teacher`, undefined, {
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** POST /student/notes/{noteId}/feedback：对一条 AI 回答点“有用 / 没用”（13 §5）；失败不打断学习。 */
+export async function noteFeedback(noteId: string, useful: boolean): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await withRetry(() =>
+    activeHttp.request<unknown>(`/student/notes/${encodeURIComponent(noteId)}/feedback`, {
+      method: 'POST',
+      body: { useful },
+      idempotencyKey: newUuid(),
+    }),
+  )
+}
+
+/** POST /attempts/{attemptId}/layers/{layer}/enter：回到已完成的层（只能去已解锁的层）。 */
+export async function enterLayer(state: AttemptState, layer: LayerId, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    // 和引擎同一条规则：已完成、已跳过的层，或还在做的那一层。
+    const finished = (status: string): boolean => status === 'done' || status === 'skipped' || status === 'disabled'
+    const frontier = next.layers.find((l) => l.enabled !== false && !finished(l.status))?.layer
+    const target = next.layers.find((l) => l.layer === layer)
+    if (!target || (layer !== frontier && !finished(target.status))) return next
+    next.layers = next.layers.map((l) => (finished(l.status) ? l : { ...l, status: l.layer === layer ? ('active' as const) : ('locked' as const) }))
+    next.stateVersion += 1
+    next.currentLayer = layer
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/layers/${layer}/enter`, undefined, {
+    ifMatch: state.stateVersion,
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** PUT /attempts/{attemptId}/draft：草稿备份。本机 IndexedDB 才是主存储，备份失败不打断学习。 */
+export async function backupDraft(attemptId: string, target: string, content: Record<string, unknown>): Promise<void> {
+  if (USE_MOCK || !attemptId) return
+  await activeHttp.request<unknown>(`/attempts/${encodeURIComponent(attemptId)}/draft`, {
+    method: 'PUT',
+    body: { target, content },
   })
 }
 

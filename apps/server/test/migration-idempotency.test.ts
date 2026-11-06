@@ -162,3 +162,27 @@ describe('0005 学生进度迁移（设置/经验台账/徽章/反馈）', () =>
     await expect(add()).rejects.toThrow();
   });
 });
+
+describe('0004 迁移（求助落库）', () => {
+  it('旧库缺索引和 annotations 新列时，migrate 补上；重复执行不报错', async () => {
+    await applySchema(db);
+    await db.exec('drop table if exists public.schema_migrations');
+    await db.exec('drop index if exists app.hint_deliveries_attempt');
+    await db.exec('drop index if exists app.annotations_attempt');
+    await db.exec('alter table app.annotations drop column help_id, drop column ai_generated, drop column useful');
+
+    const result = await migrate(db);
+    expect(result.applied).toContain('0004_help_notes.sql');
+    const cols = (
+      await db.query<{ column_name: string }>(
+        `select column_name from information_schema.columns where table_schema = 'app' and table_name = 'annotations'`,
+      )
+    ).rows.map((row) => row.column_name);
+    expect(cols).toEqual(expect.arrayContaining(['help_id', 'ai_generated', 'useful']));
+    const idx = (await db.query<{ indexname: string }>(`select indexname from pg_indexes where schemaname = 'app'`)).rows.map((row) => row.indexname);
+    expect(idx).toEqual(expect.arrayContaining(['hint_deliveries_attempt', 'annotations_attempt']));
+
+    const again = await migrate(db);
+    expect(again.applied).toEqual([]);
+  });
+});

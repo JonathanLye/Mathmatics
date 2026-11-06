@@ -3,7 +3,7 @@
  * 只搬运服务端结果，不判定门槛与预算。
  */
 import { computed, ref, watch, type ComputedRef } from 'vue'
-import { claimHint, flagTeacher, requestHelp, sendNoteFeedback } from '@/api/client'
+import { claimHint, flagTeacher, noteFeedback as sendNoteFeedback, requestHelp } from '@/api/client'
 import { filterDismissedNotes, mergeNotes, parseNote } from '@/components/layers/proofLines'
 import { useToast } from '@/components/ui/useToast'
 import type { HelpIntent, HintPreview, Note } from '@/types/attempt'

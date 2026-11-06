@@ -243,12 +243,12 @@ describe('Jev 请求体', () => {
 });
 
 describe('deps 状态', () => {
-  it('没有 key：已接入适配器的 provider degraded；未接入的为 disabled', () => {
+  it('没有 key：已接入适配器的 provider degraded（DeepSeek 聊天适配器已接入）', () => {
     const deps = gatewayFor({}).health().deps;
     expect(deps.typesafe).toBe('degraded');
     expect(deps.simpletex).toBe('degraded');
     expect(deps.dashscope).toBe('degraded');
-    expect(deps.deepseek).toBe('disabled');
+    expect(deps.deepseek).toBe('degraded');
   });
 
   it('有 key 且没有失败：typesafe ok', () => {

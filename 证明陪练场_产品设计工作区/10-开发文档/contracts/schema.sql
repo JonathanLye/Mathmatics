@@ -545,6 +545,7 @@ CREATE TABLE app.hint_deliveries (
   text_shown    text NOT NULL,                        -- 实际下发文本（过闸门后）
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX hint_deliveries_attempt ON app.hint_deliveries (attempt_id, created_at);
 
 CREATE TABLE app.annotations (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -554,8 +555,12 @@ CREATE TABLE app.annotations (
   source        text NOT NULL,
   text_shown    text NOT NULL,
   gate_id       uuid,
+  help_id       uuid REFERENCES app.help_requests(id),
+  ai_generated  boolean NOT NULL DEFAULT false,       -- 模型生成的回答（界面显示“AI 生成”，响应带 X-AIGC）
+  useful        boolean,                              -- 学生点的“有用/没用”，没点为 NULL
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX annotations_attempt ON app.annotations (attempt_id, created_at);
 
 CREATE TABLE app.model_calls (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),

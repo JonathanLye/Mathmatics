@@ -33,7 +33,7 @@ const emit = defineEmits<{
   (e: 'claim'): void
   (e: 'decline'): void
   (e: 'soft-landing', a: string): void
-  (e: 'note-feedback', noteId: string, useful: boolean): void
+  (e: 'feedback', noteId: string, useful: boolean): void
 }>()
 
 const ask = ref('')
@@ -52,12 +52,17 @@ const stuckReason = computed(() => {
   return '给一条提示；从第二级起会用掉提示额度。'
 })
 
-/** 额度用完的软着陆出路（01 §4.4）：文案与预览卡共用一份（hintPreviewCopy），flag_teacher 后端未实现先禁用。 */
+/** 额度用完的软着陆出路（01 §4.4）：文案与预览卡共用一份（hintPreviewCopy），flag_teacher 已接通后端，是否可点由 help.canFlag 决定。 */
 const softLandingItems = SOFT_LANDING_ORDER.map((id) => ({
   id,
   label: softLandingLabel(id),
   disabled: !softLandingAvailable(id),
 }))
+
+/** 「求助老师」只在服务端说可以时可点（额度用完，或卡住满一段时间），且没找过。 */
+function softDisabled(id: string, disabled: boolean): boolean {
+  return disabled || (id === 'flag_teacher' && props.help.canFlag !== true)
+}
 
 /** 常见问句（01 §4 线框里的两条示例；点一下填进输入框，学生再确认发送）。 */
 const COMMON_QUESTIONS = ['这一行在做什么？', '什么是充分条件？']
@@ -104,7 +109,7 @@ function softLanding(action: string) {
           :class="'pg-help__softbtn--' + s.id"
           variant="secondary"
           size="sm"
-          :disabled="props.busy || s.disabled"
+          :disabled="props.busy || softDisabled(s.id, s.disabled)"
           @tap="softLanding(s.id)"
         >
           {{ s.label }}<text v-if="s.disabled" class="pg-help__soon">（即将上线）</text>
@@ -160,7 +165,7 @@ function softLanding(action: string) {
       <PgMascot expr="think" motion="think-tilt" :size="48" />
       <text class="pg-help__busy" aria-live="polite">小方在想…</text>
     </view>
-    <TutorBubble v-else-if="props.note" :note="props.note" @feedback="emit('note-feedback', props.note!.noteId, $event)" />
+    <TutorBubble v-else-if="props.note" :note="props.note" @feedback="emit('feedback', props.note!.noteId, $event)" />
 
     <view v-if="!testMode" class="pg-help__free">
       <text class="pg-help__freetitle">或者直接问一句</text>
