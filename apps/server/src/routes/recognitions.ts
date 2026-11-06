@@ -20,7 +20,7 @@ export interface RecognitionRouteOptions extends AuthRouteOptions {
 }
 
 export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = async (app, { db, config, contract, gateway }) => {
-  const svc = createRecognitionService({ db, gateway, config, contract });
+  const svc = createRecognitionService({ db, gateway, config, contract, logger: app.log });
   // 每会话每分钟的请求数上限只挡失控重试；每生每日上限与并发由服务自己控制（config.recognition）。
   const limited = { max: 60, timeWindow: '1 minute', keyGenerator: bySession };
   const param = (request: { params: unknown }, name: string): string => (request.params as Record<string, string>)[name] ?? '';

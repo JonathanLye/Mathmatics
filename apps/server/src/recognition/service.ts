@@ -49,6 +49,8 @@ type AttemptLock = {
 // 09 §10 / 03 §3.1：SimpleTex 低于该置信度再调标准接口；排队超过该时间改用 Qwen 当主识别。
 const STD_RETRY_BELOW = 0.7;
 const QUEUE_WAIT_MS = 4000;
+// 拍照整页识别每路调用的超时（09 §R2 的 12 s）。行 OCR 不传，仍按 provider 注册表的 5–6 s。
+const PHOTO_CALL_TIMEOUT_MS = 12_000;
 // 低于该置信度，界面提示"不太确定，请逐字核对"。
 const LOW_CONFIDENCE = 0.5;
 
@@ -59,6 +61,7 @@ export interface RecognitionServiceDeps {
   gateway: ModelGateway;
   config: AppConfig;
   contract: ContractValidator;
+  logger?: { error(obj: Record<string, unknown>, msg: string): void };
 }
 
 export interface RecognitionService {
@@ -132,7 +135,7 @@ function modelConfidence(result: CallResult): number | null {
 }
 
 export function createRecognitionService(deps: RecognitionServiceDeps): RecognitionService {
-  const { db, gateway, config, contract } = deps;
+  const { db, gateway, config, contract, logger } = deps;
   const limiter = new RecogLimiter(config.recognition.concurrency, config.recognition.perUserConcurrency);
   const flags = config.models.flags;
   const crossEnabled = flags['ocr.cross'] !== false;
@@ -382,8 +385,16 @@ export function createRecognitionService(deps: RecognitionServiceDeps): Recognit
         if ((await countRecentRecognitions(tx, userId, 'photo')) >= config.recognition.photoPerDay) {
           throw new AppError('RATE_LIMITED', 429, '今天的拍照识别次数用完了，可以改用键盘输入');
         }
-        await mkdir(path.dirname(absPath), { recursive: true, mode: 0o700 });
-        await writeFile(absPath, body.image, { mode: 0o600 });
+        try {
+          await mkdir(path.dirname(absPath), { recursive: true, mode: 0o700 });
+          await writeFile(absPath, body.image, { mode: 0o600 });
+        } catch (error) {
+          // 目录不可写（权限、卷未挂载、磁盘满）：服务端配置问题，不是学生的错，也不能是 500。
+          // 沿用 UPSTREAM_UNAVAILABLE（识别服务暂不可用，界面本来就提示改用键盘）。
+          logger?.error({ err: error, storageDir: config.recognition.storageDir }, 'STORAGE_UNAVAILABLE: 照片目录不可写');
+          await unlink(absPath).catch(() => undefined);
+          throw new AppError('UPSTREAM_UNAVAILABLE', 503, '拍照识别暂不可用，请用键盘或手写');
+        }
         stored = true;
         await tx.query(
           `insert into app.photos (id, attempt_id, storage_key, sha256, bytes, w, h, source)
@@ -410,6 +421,7 @@ export function createRecognitionService(deps: RecognitionServiceDeps): Recognit
               attemptId: body.attemptId,
               promptVersion: 'simpletex-document',
               redactOutput: true,
+              timeoutMs: PHOTO_CALL_TIMEOUT_MS,
             })
           : Promise.resolve(null),
         crossEnabled || !useSimple
@@ -418,6 +430,7 @@ export function createRecognitionService(deps: RecognitionServiceDeps): Recognit
               attemptId: body.attemptId,
               promptVersion: 'P-OCR-PAGE-1',
               redactOutput: true,
+              timeoutMs: PHOTO_CALL_TIMEOUT_MS,
             })
           : Promise.resolve(null),
       ]);

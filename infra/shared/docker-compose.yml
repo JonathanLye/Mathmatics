@@ -90,6 +90,10 @@ services:
       DATABASE_URL: postgres://proof_gym:${POSTGRES_PASSWORD:?}@postgres:5432/proof_gym
       # 老生代堆上限低于容器上限，让 GC 先于 OOM 起作用。
       NODE_OPTIONS: --max-old-space-size=230
+      # 拍照原图落盘目录：命名卷（proofgym_server_data），不挂宿主机目录；镜像里已建好并归 node 用户。
+      STORAGE_DIR: /data/files
+    volumes:
+      - server_data:/data/files
     # 主机 nginx 直连 server（不经过 Caddy）：服务端只信任最近一跳代理（trustNearestProxy），
     # nginx→server 单跳时 request.ip 才是真实学生 IP；多一跳 Caddy 会让全班共用一个登录限流额度。
     ports:
@@ -135,3 +139,4 @@ networks:
 
 volumes:
   postgres_data:
+  server_data:

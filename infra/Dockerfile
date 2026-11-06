@@ -35,6 +35,10 @@ RUN pnpm install --frozen-lockfile --prod --filter @proof-gym/server... --filter
 ENV NODE_ENV=production
 EXPOSE 3000
 # 运行时不需要写 /app；用 node 镜像自带的非 root 用户。
+# 唯一需要写的地方是照片落盘目录 STORAGE_DIR：在镜像里建好并归 node，compose 再把命名卷挂到同一路径
+# （空命名卷首次挂载会继承镜像里该目录的属主，所以 node 能写）。
+ENV STORAGE_DIR=/data/files
+RUN mkdir -p /data/files && chown -R node:node /data
 USER node
 CMD ["node", "apps/server/src/server.ts"]
 

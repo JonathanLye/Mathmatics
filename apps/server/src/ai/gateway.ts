@@ -30,6 +30,9 @@ export interface CallOptions {
   shadow?: boolean;
   // 输出含学生手写内容（识别服务）时为 true：model_calls.output 只记 {redacted:true}，原文只存在于业务表（app.recognitions）。
   redactOutput?: boolean;
+  // 本次调用的超时（毫秒），覆盖 provider 在注册表里的默认值。拍照识别（整页，09 §R2 的 12 s）用它放宽，
+  // 行 OCR 不传，仍按 provider 的 5–6 s。
+  timeoutMs?: number;
 }
 
 export interface CallResult {
@@ -121,6 +124,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
     provider: ProviderEntry,
     model: ModelEntry,
     input: unknown,
+    timeoutMs: number,
   ): Promise<{ status: CallStatus; output: Record<string, unknown> | null; reason: string | null }> {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -128,7 +132,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       timer = setTimeout(() => {
         controller.abort();
         reject(new AdapterError('timeout'));
-      }, provider.timeoutMs);
+      }, timeoutMs);
     });
     try {
       const output = await Promise.race([
@@ -175,7 +179,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       status = 'skipped';
       reason = 'no_consent';
     } else {
-      const outcome = await invoke(adapter, provider, model, input);
+      const outcome = await invoke(adapter, provider, model, input, options.timeoutMs ?? provider.timeoutMs);
       status = outcome.status;
       output = outcome.output;
       reason = outcome.reason;

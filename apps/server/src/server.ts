@@ -6,6 +6,7 @@ import { openDb } from './db/index.ts';
 import { sweepExports } from './services/teacher/exports.ts';
 import { cleanupExpiredIdempotencyKeys } from './idempotency.ts';
 import { requestSerializer } from './logging.ts';
+import { probeStorageDir } from './recognition/storage.ts';
 import { refreshStaleMetrics } from './metrics/refresh.ts';
 
 const config = loadConfig();
@@ -17,6 +18,12 @@ const db = await openDb({
   onPoolError: (error) => logger.error({ err: error }, 'pg pool idle client error'),
 });
 const app = await buildApp({ config, db, loggerInstance: logger });
+
+// 照片落盘目录不可写时只警告（不崩溃）：学生仍可用键盘/手写，拍照接口会返回 503。常见原因：容器以 node 运行而目录归 root、命名卷未挂载。
+const storage = await probeStorageDir(config.recognition.storageDir);
+if (!storage.ok) {
+  logger.warn({ storageDir: config.recognition.storageDir, reason: storage.error }, 'STORAGE_DIR 不可写：拍照识别将返回 503');
+}
 
 // 24h 过期的幂等键：不只靠带键请求“顺手清理”，低频时也要有人删。unref 不阻止进程退出。
 const cleanupTimer = setInterval(

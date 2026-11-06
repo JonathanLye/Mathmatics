@@ -165,6 +165,23 @@ describe('callModel', () => {
     expect((await auditRows('test_timeout'))[0]?.status).toBe('timeout');
   });
 
+  it('单次调用的 timeoutMs 覆盖 provider 默认值（拍照识别用 12 s，行 OCR 仍用 provider 的 5–6 s）', async () => {
+    const slow = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return new Response(JSON.stringify({ choice: 'K1' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    // provider 默认 30 ms：不传 timeoutMs 时慢响应超时；传 2000 ms 时同一响应成功。
+    const gateway = gatewayFor(KEYED, { timeoutMs: 30, fetchImpl: slow });
+    const dflt = await gateway.callModel('test_timeout_default', JEV_INPUT, { role: 'decide', crossBorderConsent: true });
+    expect(dflt).toMatchObject({ status: 'timeout' });
+    const longer = await gateway.callModel('test_timeout_longer', JEV_INPUT, { role: 'decide', crossBorderConsent: true, timeoutMs: 2000 });
+    expect(longer).toMatchObject({ status: 'ok' });
+    // 反方向：单次调用也可以更短。
+    const quick = gatewayFor(KEYED, { timeoutMs: 5000, fetchImpl: slow });
+    const shorter = await quick.callModel('test_timeout_shorter', JEV_INPUT, { role: 'decide', crossBorderConsent: true, timeoutMs: 30 });
+    expect(shorter).toMatchObject({ status: 'timeout', reason: 'timeout' });
+  });
+
   it('审计写入失败：返回 audit_failed，不抛错，结果不交给调用方', async () => {
     const failingDb = {
       query: async () => {
