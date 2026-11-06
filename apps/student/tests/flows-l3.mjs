@@ -216,8 +216,8 @@ async function main() {
     const { context, page, pageErrors } = await openPractice(browser, url, { width: 390, height: 844 })
 
     const text0 = await bodyText(page)
-    if (text0.includes('构造与推导')) pass('进入第 3 层（mock=l3-active）')
-    else fail('进入第 3 层', '页面没有「构造与推导」：' + text0.slice(0, 200))
+    if (text0.includes('写证明')) pass('进入第 3 层（mock=l3-active）')
+    else fail('进入第 3 层', '页面没有「写证明」：' + text0.slice(0, 200))
 
     const lines = page.locator('[data-testid="proof-line"]')
     const initialLines = await lines.count()
@@ -266,6 +266,12 @@ async function main() {
     if (sheet && (await sheet.isVisible())) pass('点「写下一行」打开行编辑器')
     else throw new Error('行编辑器没有出现')
 
+    // 输入器默认手写（来自设置），这里要打字，先切到键盘。
+    const keyboardTab = await pick(page, 'composer-tab-keyboard', '键盘')
+    if (!keyboardTab) throw new Error('输入器没有键盘分段')
+    await keyboardTab.click()
+    await page.waitForTimeout(200)
+
     const sheetText = await sheet.innerText()
     if (sheetText.includes('第 3 行')) pass('编辑器标题 = 第 3 行')
     else fail('编辑器行号', '期望「第 3 行」，实际：' + sheetText.slice(0, 120))
@@ -281,7 +287,8 @@ async function main() {
     const emptyState = await disabledInfo(submit)
     if (emptyState.disabled) pass('「这一行」为空时「加入证明」禁用', emptyState.signals.join('+'))
     else fail('空提交禁用态', '既没有 disabled 也没有 aria-disabled：' + emptyState.outer)
-    await submit.click()
+    // 真禁用的按钮 Playwright 默认不点；force 照样把点击发过去，验证点了也不会加行。
+    await submit.click({ force: true })
     await page.waitForTimeout(400)
     const afterEmptyClick = await lines.count()
     if (afterEmptyClick === initialLines) pass('空提交点击不会加行（行数不变）')
@@ -301,6 +308,12 @@ async function main() {
     await page.waitForTimeout(800)
 
     const afterLines = await lines.count()
+    // 提交后的反馈面板盖在下面：点继续收起，才能接着写。
+    const panelContinue = page.getByTestId('feedback-continue')
+    if (await panelContinue.count()) {
+      await panelContinue.click()
+      await page.getByTestId('feedback-panel').waitFor({ state: 'detached', timeout: 5000 })
+    }
     if (afterLines === initialLines + 1) pass('加入证明后行数 ' + initialLines + ' → ' + afterLines)
     else fail('加行', '期望 ' + (initialLines + 1) + '，实际 ' + afterLines)
 

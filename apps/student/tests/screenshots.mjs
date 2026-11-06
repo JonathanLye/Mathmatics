@@ -2,12 +2,12 @@
  * 三档宽度截图 + 横向溢出断言（DoD #8/#10：390/768/1280 无溢出）。
  * 用法：先 npm run build:mock（带 VITE_ENABLE_MOCK=1 用于四态截图），再 npm run e2e:screens
  * 深色：npm run e2e:screens:dark（等价 node tests/screenshots.mjs --dark / DARK=1）→ 输出 .artifacts/screens-dark/
- *       断言 colorScheme=dark 生效（--paper=#131f24）、--on-accent=#14290a（两主题同值）、pageerror/横向溢出/状态标记与浅色同标准。
+ *       断言 colorScheme=dark 生效（--paper=#10161c）、--on-accent=#04302b（两主题同值）、pageerror/横向溢出/状态标记与浅色同标准。
  * 依赖：playwright-core + 本机/CI 的 chromium（可用 PG_CHROMIUM 指定；自动探测 Windows/Linux/macOS）。
  *
  * PR #87 审计修复：
  * - 状态标记改为断言真实状态 DOM（.pg-budget__bar / .pg-practice__donetitle），
- *   不再用 MockSwitcher 的调试文案（旧 exhausted marker「透露额度用尽」只在调试控件里，断言是空转的）。
+ *   不再用 MockSwitcher 的调试文案（旧 exhausted marker 只在调试控件里，断言是空转的）。
  * - overflow / markerMissing / layoutBad 分开计数、分开打印，失败原因不再互相掩盖。
  * - findChromium 补 Linux（~/.cache/ms-playwright，chrome-linux64/chrome-linux）与
  *   macOS（~/Library/Caches/ms-playwright、/Applications/Google Chrome.app）路径，供 CI 可选 job 使用。
@@ -26,9 +26,9 @@ const distDir = path.join(appDir, 'dist', 'build', 'h5')
 const darkMode = process.argv.includes('--dark') || process.env.DARK === '1'
 const modeLabel = darkMode ? 'screens-dark' : 'screens'
 const outDir = path.join(__dirname, '.artifacts', modeLabel)
-const expectedPaper = darkMode ? '#131f24' : '#ffffff'
-// v2：--on-accent 是深字（亮绿面上对比 ≥ 4.5），不再等于 --paper；两个主题下必须同值。
-const expectedOnAccent = '#14290a'
+const expectedPaper = darkMode ? '#10161c' : '#ffffff'
+// v3：--on-accent 是深字（青绿面上对比 ≥ 4.5），不等于 --paper；两个主题下必须同值。
+const expectedOnAccent = '#04302b'
 const logPrefix = darkMode ? '[screens-dark]' : '[screens]'
 
 const MIME = {
@@ -118,23 +118,34 @@ function serve(root, port) {
 
 const PAGES = [
   { name: 'login', hash: '#/pages/login/index' },
+  { name: 'age', hash: '#/pages/age/index?ageBand=null', marker: { selector: '[data-testid="age-submit"]', text: '确认分档' } },
   { name: 'consent', hash: '#/pages/consent/index' },
-  { name: 'home', hash: '#/pages/home/index' },
+  { name: 'home', hash: '#/pages/home/index', marker: { selector: '[data-testid="home-path"]', text: '继续' } },
+  { name: 'zone', hash: '#/pages/practice-zone/index', marker: { selector: '[data-testid="practice-zone-page"]', text: '练习' } },
+  { name: 'mistakes', hash: '#/pages/mistakes/index', marker: { selector: '[data-testid="mistakes-page"]', text: '错题' } },
+  { name: 'me', hash: '#/pages/me/index', marker: { selector: '[data-testid="me-page"]', text: '退出登录' } },
+  { name: 'me-account', hash: '#/pages/me/account', marker: { selector: '[data-testid="account-page"]', text: '修改密码' } },
+  { name: 'me-privacy', hash: '#/pages/me/privacy', marker: { selector: '[data-testid="privacy-version"]', text: '版本' } },
+  { name: 'me-about', hash: '#/pages/me/about', marker: { selector: '[data-testid="about-page"]', text: '证明陪练场' } },
+  { name: 'me-badges', hash: '#/pages/me/badges', marker: { selector: '[data-testid="badges-summary"]', text: '已获得' } },
+  { name: 'proof-detail', hash: '#/pages/proof-detail/index?attemptId=11111111-1111-4111-8111-111111111111', marker: { selector: '[data-testid="proof-detail-lines"]', text: '任取' } },
+  { name: 'not-found', hash: '#/pages/not-found/index', marker: { selector: '[data-testid="not-found-page"]', text: '回到路径' } },
+  { name: 'gallery', hash: '#/pages/dev/gallery', marker: { selector: '[data-testid="gallery-page"]', text: '按钮' } },
   {
     name: 'practice-l1',
     hash: '#/pages/practice/index?mock=l1-active',
-    marker: { selector: '.pg-practice__layertitle', text: '记忆核验' },
+    marker: { selector: '.pg-practice__layertitle', text: '回忆定义' },
   },
   {
     name: 'practice-l3',
     hash: '#/pages/practice/index?mock=l3-active',
-    marker: { selector: '.pg-practice__layertitle', text: '构造与推导' },
+    marker: { selector: '.pg-practice__layertitle', text: '写证明' },
   },
   {
-    // 状态 3：透露额度用尽 → 断言真实预算条「透露 2 / 2」，不用 MockSwitcher 的「透露额度用尽」文案。
+    // 状态 3：提示额度用尽 → 断言真实的提示批注，不用 MockSwitcher 的调试文案。
     name: 'practice-exhausted',
     hash: '#/pages/practice/index?mock=l3-exhausted',
-    marker: { selector: '.pg-lines__note, .pg-practice__note--hint', text: 'H2' },
+    marker: { selector: '.pg-lines__note, .pg-practice__note--hint', text: '提示' },
   },
   {
     // 状态 4：完成页 → 断言 .pg-practice__donetitle（「本题完成」）。
@@ -146,19 +157,19 @@ const PAGES = [
     // #26 第 4 层：自检（3 道题）→ 断言自检表单真实 DOM。
     name: 'practice-l4',
     hash: '#/pages/practice/index?mock=l4-active',
-    marker: { selector: '[data-testid="selfcheck-form"]', text: '第 4 层 · 自检' },
+    marker: { selector: '[data-testid="selfcheck-form"]', text: '自检' },
   },
   {
     // #26 第 5 层：迁移题（已开始态）→ 断言迁移题表单。
     name: 'practice-l5',
     hash: '#/pages/practice/index?mock=l5-active',
-    marker: { selector: '[data-testid="transfer-form"]', text: '第 5 层 · 迁移题' },
+    marker: { selector: '[data-testid="transfer-form"]', text: '开始换题' },
   },
   {
     // #26 第 6 层：总结五问 → 断言总结表单。
     name: 'practice-l6',
     hash: '#/pages/practice/index?mock=l6-active',
-    marker: { selector: '[data-testid="summary-form"]', text: '第 6 层 · 总结' },
+    marker: { selector: '[data-testid="summary-form"]', text: '总结' },
   },
   {
     // #26 证明本：断言真实列表卡片（不再只截空页）。
@@ -241,7 +252,7 @@ async function main() {
         const clientWidth = await page.evaluate(() => document.documentElement.clientWidth)
         const horizontalOverflow = scrollWidth > clientWidth + 1
         if (horizontalOverflow) overflow++
-        // #10：三档布局 + 层导航断言（仅 practice 页）
+        // 三档布局 + 顶栏进度刻度断言（仅 practice 页）。层导航去掉了，桌面两栏、平板单栏。
         let layoutBad = false
         if (pg.name.startsWith('practice-')) {
           const info = await page.evaluate(() => {
@@ -249,17 +260,18 @@ async function main() {
             const shell = document.querySelector('.pg-practice__shell')
             return {
               cls: root ? root.className : '',
-              dots: document.querySelectorAll('.pg-dot').length,
-              nav: document.querySelectorAll('.pg-layernav').length,
+              ticks: document.querySelectorAll('.pg-topbar__tick').length,
+              progress: document.querySelectorAll('[data-testid="practice-progress"]').length,
               cols: shell ? getComputedStyle(shell).gridTemplateColumns.split(' ').filter(Boolean).length : 1,
             }
           })
           const want = vp.name === 'mobile'
-            ? { cls: 'pg-practice--mobile', nav: 0, cols: 1 }
+            ? { cls: 'pg-practice--mobile', cols: 1 }
             : vp.name === 'tablet'
-              ? { cls: 'pg-practice--tablet', nav: 1, cols: 2 }
-              : { cls: 'pg-practice--desktop', nav: 1, cols: 3 }
-          layoutBad = !info.cls.includes(want.cls) || info.dots !== 6 || info.cols !== want.cols || info.nav < want.nav
+              ? { cls: 'pg-practice--tablet', cols: 1 }
+              : { cls: 'pg-practice--desktop', cols: 2 }
+          // 一条连续的进度条，六层之间 5 个刻度。
+          layoutBad = !info.cls.includes(want.cls) || info.cols !== want.cols || info.progress !== 1 || info.ticks !== 5
           if (layoutBad) layoutBadCount++
         }
         // 状态标记：优先断言真实状态 DOM（marker），不再依赖调试控件文案。
@@ -308,7 +320,7 @@ async function main() {
         (r.markerMissing ? '  !! 状态标记缺失' : '') +
         (r.layoutBad ? '  !! 布局断言失败' : '') +
         (r.themeBad ? '  !! 主题未生效' : '') +
-        (r.onAccentBroke ? '  !! --on-accent 不是 #14290a' : '') +
+        (r.onAccentBroke ? '  !! --on-accent 不是 #04302b' : '') +
         (r.pageErrors.length > 0 ? '  !! pageerror: ' + r.pageErrors.join(' | ') : ''),
     )
   }
@@ -316,7 +328,7 @@ async function main() {
     logPrefix + ' 共 ' + results.length + ' 张（' + (darkMode ? '深色' : '浅色') + '）；横向溢出 ' + overflow +
       ' 处；状态标记缺失 ' + markerMissing + ' 处；布局断言失败 ' + layoutBadCount +
       ' 处；pageerror ' + pageErrorCount + ' 页；主题未生效 ' + themeMismatch +
-      ' 页；--on-accent 不是 #14290a ' + onAccentBad + ' 页；输出：' + outDir,
+      ' 页；--on-accent 不是 #04302b ' + onAccentBad + ' 页；输出：' + outDir,
   )
   if (overflow + markerMissing + layoutBadCount + pageErrorCount + themeMismatch + onAccentBad > 0) process.exit(1)
 }

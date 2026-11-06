@@ -1,5 +1,6 @@
 // 阿里云百炼（DashScope，OpenAI 兼容模式）视觉转写适配器：手写行/整页的交叉校验（03 §3.1 第 4 步）。
 // 模型输出只是"另一路转写"，用于和主识别比对；不作为判定依据。
+import { invokeChat, isChatInput, type ChatOutput } from './chat.ts';
 import { AdapterError } from './errors.ts';
 
 // 09 §5.1 P-OCR-1：转写员，不是老师。逐字转写，不纠错。
@@ -40,6 +41,8 @@ export interface InvokeDashscopeOptions {
   input: unknown;
   signal: AbortSignal;
   fetchImpl: typeof fetch;
+  // 聊天输入用：false 时关闭思考（enable_thinking）
+  thinking?: boolean | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,7 +78,11 @@ export function parseDashscopeResponse(json: unknown): DashscopeOutput {
   return { text };
 }
 
-export async function invokeDashscope(options: InvokeDashscopeOptions): Promise<DashscopeOutput> {
+// 按输入形态分发：{messages,…} 走聊天（求助回答、闸门复核、语义判定），{image,…} 走视觉转写。
+export async function invokeDashscope(options: InvokeDashscopeOptions): Promise<DashscopeOutput | ChatOutput> {
+  if (isChatInput(options.input)) {
+    return invokeChat({ ...options, provider: 'dashscope', thinking: options.thinking ?? null });
+  }
   const body = buildDashscopeRequest(options.model, options.input);
   let response: Response;
   try {

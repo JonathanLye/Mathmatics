@@ -2,7 +2,7 @@
  * 学生端 API 客户端（issue #24：接真实接口）。
  *
  * - 契约真源：`packages/contracts/openapi.yaml`（servers: /api/v1）。真实模式下本文件按契约调接口；
- *   传输细节（Cookie、CSRF 头、If-Match、Idempotency-Key、错误分类）在 `api/http.ts`。
+ *   传输细节（Cookie、X-Pg-App 端标识、CSRF 头、If-Match、Idempotency-Key、错误分类、登录失效通知）在 `api/http.ts`。
  * - USE_MOCK 是开发/离线 Demo 开关：默认开；`VITE_USE_MOCK=false` 或 `setMockMode(false)` 走真实接口。
  * - 写请求：带 If-Match（= 当前 state.stateVersion）与 Idempotency-Key；键在「每个用户动作入口」生成一次，
  *   只在同一次调用的 withRetry 重试之间复用，动作结束即丢弃（不同动作即使请求体相同也必须是新键）。
@@ -38,6 +38,17 @@ import {
   mockTransferStem,
 } from '@/mocks/laterLayers'
 import { SELFCHECK_ADAPTIVE_CONFIG } from '@/components/selfcheck/adaptView'
+import { COPY, layerLabel, studentName } from '@/copy'
+import {
+  mockListPractice,
+  mockPathNotebookCards,
+  mockRandomPractice,
+  mockReveal,
+  mockReview,
+  mockSolution,
+  mockStartProblem,
+  mockStudentPath,
+} from '@/mocks/pathMock'
 import type {
   AgeBand,
   AttemptState,
@@ -55,11 +66,26 @@ import type {
   LineDraft,
   MeView,
   Note,
+  MistakesView,
   NotebookView,
+  ProgressView,
+  PublishedReview,
+  RewardsView,
+  SettingsPatch,
+  SettingsView,
+  FeedbackKind,
   ProofLine,
   Recognition,
   StudentHomeView,
 } from '@/types/attempt'
+import type {
+  DifficultyBand,
+  PracticeItem,
+  PracticeList,
+  PracticeQuery,
+  PracticeSolution,
+  StudentPath,
+} from '@/types/path'
 
 export { ApiError, errorMessage, isApiError }
 
@@ -99,12 +125,50 @@ function resolveMockAgeBand(): AgeBand | null {
     if (fromUrl !== undefined) mockAgeBandOverride = fromUrl
   }
   if (mockAgeBandOverride !== MOCK_AGE_BAND_UNSET) return mockAgeBandOverride
+  // 引导演示场景里的新学生还没选过年龄。
+  if (isMockOnboardingScenario()) return null
   return DEFAULT_MOCK_AGE_BAND
+}
+
+/**
+ * 新手引导演示场景（?onboarding=new）：模拟一个刚拿到邀请码的新学生——要设密码、要选年龄、要签同意书、
+ * 引导进度为空。默认（没有这个参数）演示数据当作老用户，登录页开场动画、欢迎页和首页导览都不出现，既有流程不受影响。
+ * 和 ?ageBand= 一样，第一次读到就固定下来：页面跳转后地址栏不再带参数。
+ */
+let mockOnboardingScenario: boolean | undefined
+let mockPasswordSet = false
+let mockConsentSigned = false
+
+export function isMockOnboardingScenario(): boolean {
+  if (mockOnboardingScenario === undefined) {
+    let fromUrl = false
+    if (typeof window !== 'undefined' && window.location) {
+      const hash = window.location.hash || ''
+      const queryIndex = hash.indexOf('?')
+      if (queryIndex !== -1) fromUrl = new URLSearchParams(hash.slice(queryIndex + 1)).get('onboarding') === 'new'
+    }
+    mockOnboardingScenario = fromUrl
+  }
+  return mockOnboardingScenario
+}
+
+/** 测试用：直接开关引导演示场景，并清掉场景里的进度。 */
+export function __setMockOnboardingScenarioForTests(value: boolean | undefined): void {
+  mockOnboardingScenario = value
+  mockPasswordSet = false
+  mockConsentSigned = false
+  mockSettings = freshMockSettings()
 }
 
 /** mock Me（带当前年龄分档）。login/getMe 在 mock 模式都走这里，保证年龄守卫能读到 ageBand。 */
 export function mockMeView(): MeView {
-  return { ...clone(mockMe), ageBand: resolveMockAgeBand() }
+  const me: MeView = { ...clone(mockMe), ageBand: resolveMockAgeBand() }
+  if (isMockOnboardingScenario()) {
+    me.needsPassword = !mockPasswordSet
+    me.consentRequired = !mockConsentSigned
+    me.displayName = mockSettings.nickname
+  }
+  return me
 }
 
 /** 测试隔离：把 mock 年龄分档恢复为「未 override」（读取 URL/默认 ge18）。 */
@@ -156,6 +220,10 @@ export function __resetClientForTests(): void {
   cachedDeviceId = null
   lastStateStaleAt = 0
   mockAgeBandOverride = MOCK_AGE_BAND_UNSET
+  mockOnboardingScenario = undefined
+  mockPasswordSet = false
+  mockConsentSigned = false
+  mockSettings = freshMockSettings()
 }
 
 /**
@@ -204,6 +272,17 @@ function inputMeta(provenance: InputProvenance, draftId: string): InputMeta {
   return { provenance, draftId }
 }
 
+/**
+ * 最近一次作答写接口带回的 rewards（没有则 null）。读一次即清空：页面在每次 await 写接口之后调用一次，
+ * 把结果交给反馈面板和完成页。mock 模式下由演示 reducer 给一份演示奖励。
+ */
+let lastRewards: RewardsView | null = null
+export function consumeRewards(): RewardsView | null {
+  const rewards = lastRewards
+  lastRewards = null
+  return rewards
+}
+
 async function writeState(
   path: string,
   body: unknown,
@@ -221,7 +300,7 @@ async function writeStateWith(
 ): Promise<AttemptState> {
   try {
     const result = await withRetry(() =>
-      activeHttp.request<{ state: AttemptState }>(path, {
+      activeHttp.request<{ state: AttemptState; rewards?: RewardsView }>(path, {
         method,
         body,
         ifMatch: options.ifMatch,
@@ -231,6 +310,7 @@ async function writeStateWith(
     if (!isAttemptState(result.data?.state)) {
       throw new ApiError({ status: result.status, code: 'INTERNAL', message: '服务端返回的状态格式不正确' })
     }
+    lastRewards = result.data.rewards ?? null
     return result.data.state
   } catch (error) {
     if (isApiError(error) && error.code === 'STATE_STALE' && isAttemptState(error.staleState)) {
@@ -386,19 +466,10 @@ export const mockHome: StudentHomeView = {
   week: { keysOwn: 3, keysTotal: 4, problemsDone: 1 },
 }
 
-const LAYER_LABELS: Record<LayerId, string> = {
-  L1: '第 1 层 · 记忆核验',
-  L2: '第 2 层 · 证明骨架',
-  L3: '第 3 层 · 构造与推导',
-  L4: '第 4 层 · 自检',
-  L5: '第 5 层 · 迁移题',
-  L6: '第 6 层 · 总结',
-}
-
 /** 首页卡片副标题：层 / 状态（scheduled/closed 由页面禁用并解释）。 */
 export function cardLayerLabel(card: AssignmentCardView): string {
-  if (card.attemptStatus === 'completed') return card.currentLayer ? `已完成 · ${LAYER_LABELS[card.currentLayer]}` : '已完成'
-  if (card.currentLayer) return LAYER_LABELS[card.currentLayer]
+  if (card.attemptStatus === 'completed') return card.currentLayer ? `已完成 · ${layerLabel(card.currentLayer)}` : '已完成'
+  if (card.currentLayer) return layerLabel(card.currentLayer)
   if (card.status === 'scheduled') return '未开始'
   if (card.status === 'closed' || card.status === 'cancelled') return '已关闭'
   return '待开始'
@@ -427,12 +498,12 @@ function toNotebook(view: StudentHomeView['notebook']): HomeNotebookSummary | nu
 /**
  * StudentHome + Me → 首页视图。
  * - week / notebook 缺省（B #74 的 home.ts 未提供时）用 null，页面降级显示「暂不可用」；
- * - greeting 优先 Me.displayName → anonCode；/me 失败时由页面自行降级（fetchHome 不因 /me 失败而整体失败）。
+ * - greeting 只用 Me.displayName，没有昵称就叫“同学”，不显示匿名码；/me 失败时同样降级（fetchHome 不因 /me 失败而整体失败）。
  */
 export function toHomeData(home: StudentHomeView, meView: MeView | null): HomeData {
-  const displayName = meView?.displayName ?? meView?.anonCode ?? ''
+  const name = studentName(meView?.displayName)
   return {
-    greeting: displayName ? `你好，${displayName}` : '同学，你好',
+    greeting: name === COPY.studentFallbackName ? '同学，你好' : `你好，${name}`,
     inProgress: validArray(home?.inProgress),
     todo: validArray(home?.todo),
     done: validArray(home?.done),
@@ -486,14 +557,13 @@ export const CONSENT_PLACEHOLDER_BODY = '（正文由服务端提供，待 #62 �
  */
 export const MOCK_CONSENT_SECTIONS: ConsentDoc['sections'] = [
   { key: 'service', title: '服务所需处理', body: CONSENT_PLACEHOLDER_BODY, required: true },
-  { key: 'crossBorderHosting', title: '数据存储在中国香港服务器', body: CONSENT_PLACEHOLDER_BODY, required: true },
-  { key: 'crossBorderModel', title: '境外决策模型（可选）', body: CONSENT_PLACEHOLDER_BODY, required: false },
+  { key: 'crossBorderHosting', title: 'AI 模型和识别服务', body: CONSENT_PLACEHOLDER_BODY, required: true },
   { key: 'monitoring', title: '过程监测', body: CONSENT_PLACEHOLDER_BODY, required: true },
   { key: 'research', title: '教研使用（可选）', body: CONSENT_PLACEHOLDER_BODY, required: false },
 ]
 
 export const mockConsentDoc: ConsentDoc = {
-  version: 'p0-v1',
+  version: 'v2',
   sections: MOCK_CONSENT_SECTIONS,
   signed: null,
 }
@@ -518,14 +588,49 @@ export function mockConsentDocForAgeBand(ageBand: AgeBand | null): ConsentDoc {
   return doc
 }
 
-/** POST /auth/student/login：邀请码 + 学号 + deviceId，返回 Me（响应设置 HttpOnly Cookie）。 */
-export async function login(inviteCode: string, studentNo: string, deviceId = getDeviceId()): Promise<MeView> {
+/** 登录凭据：已设密码用 学号 + 密码；首次激活 / 密码被老师重置后用 邀请码 + 学号；第二个班 = 学号 + 密码 + 新班邀请码。 */
+export interface LoginCredentials {
+  studentNo: string
+  password?: string
+  inviteCode?: string
+}
+
+/** POST /auth/student/login：返回 Me（响应设置 HttpOnly Cookie；Me.needsPassword=true 表示要先设密码）。 */
+export async function login(credentials: LoginCredentials, deviceId = getDeviceId()): Promise<MeView> {
   if (USE_MOCK) {
     await sleep()
     return mockMeView()
   }
-  const result = await activeHttp.post<MeView>('/auth/student/login', { inviteCode, studentNo, deviceId })
+  const body: Record<string, unknown> = { studentNo: credentials.studentNo, deviceId }
+  if (credentials.inviteCode) body.inviteCode = credentials.inviteCode
+  if (credentials.password) body.password = credentials.password
+  const result = await activeHttp.post<MeView>('/auth/student/login', body)
   return result.data
+}
+
+/**
+ * POST /auth/student/password：首次设置不带 currentPassword；修改必须带。
+ * 成功后服务端作废该学生的其他会话（当前会话保留）。策略不通过 422（message 可直接展示）；当前密码不对 403 INVALID_CREDENTIALS。
+ */
+export async function setStudentPassword(newPassword: string, currentPassword?: string): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    mockPasswordSet = true
+    return
+  }
+  await activeHttp.post<{ ok: boolean }>('/auth/student/password', {
+    newPassword,
+    ...(currentPassword ? { currentPassword } : {}),
+  }, { idempotencyKey: newIdempotencyKey() })
+}
+
+/** POST /auth/logout-all：退出所有设备（含当前）。 */
+export async function logoutAll(): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await activeHttp.post<void>('/auth/logout-all')
 }
 
 /** POST /auth/logout：作废服务端会话（204）。 */
@@ -583,6 +688,10 @@ export async function getConsents(): Promise<ConsentDoc> {
 export async function submitConsents(version: string, items: ConsentChoices): Promise<MeView> {
   if (USE_MOCK) {
     await sleep()
+    if (isMockOnboardingScenario()) {
+      mockConsentSigned = true
+      return mockMeView()
+    }
     return clone(mockMe)
   }
   const result = await activeHttp.post<MeView>('/consents', { version, items })
@@ -618,12 +727,22 @@ export async function getAttempt(attemptId: string): Promise<AttemptState> {
 }
 
 /** POST /attempts/{attemptId}/definition：第 1 层提交定义。 */
+/** mock 的第 1、2 层核对：只认有没有写到 ε（演示用，真实判定在服务端）。 */
+const MOCK_EPS = /ε|varepsilon|epsilon/
+
 export async function submitDef(state: AttemptState, text: string, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {
   await sleep()
   const next = clone(state)
   next.stateVersion += 1
-  next.def = { ...(next.def ?? {}), submissions: (next.def?.submissions ?? 0) + 1, last: text, lessonSuggested: false }
+  const submissions = (next.def?.submissions ?? 0) + 1
+  // 演示：没写到 ε 就算没通过，走和真实服务端一样的 feedback。
+  if (!MOCK_EPS.test(text)) {
+    next.def = { ...(next.def ?? {}), submissions, last: text, feedback: '缺少“对任意 $\\varepsilon>0$”。', lessonSuggested: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  next.def = { ...(next.def ?? {}), submissions, last: text, feedback: null, lessonSuggested: false }
   next.layers = next.layers.map((l) => (l.layer === 'L1' ? { ...l, status: 'done' as const } : l.layer === 'L2' ? { ...l, status: 'active' as const } : l))
   next.currentLayer = 'L2'
   next.serverTime = new Date().toISOString()
@@ -642,7 +761,12 @@ export async function submitFramework(state: AttemptState, text: string, options
   await sleep()
   const next = clone(state)
   next.stateVersion += 1
-  next.frame = { ...(next.frame ?? {}), last: text, templateShown: true }
+  if (!MOCK_EPS.test(text)) {
+    next.frame = { ...(next.frame ?? {}), last: text, feedback: '骨架里还缺：开头——先固定任意的 $\\varepsilon>0$。' }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  next.frame = { ...(next.frame ?? {}), last: text, feedback: null, templateShown: true }
   next.layers = next.layers.map((l) =>
     l.layer === 'L1' ? { ...l, status: 'done' as const } :
     l.layer === 'L2' ? { ...l, status: 'done' as const } :
@@ -678,6 +802,13 @@ export async function viewFrameTemplate(state: AttemptState, options: WriteOptio
 }
 
 /** POST /attempts/{attemptId}/lines：第 3 层加入一行。 */
+/** mock 的关键步骤判定（演示用，真实判定在服务端）：写到一个演示题的关键式子，且还没写够。 */
+const MOCK_KEY_PATTERNS = [/\\frac\{5\}\{n\+2\}|5\/\(n\+2\)/, /\\frac\{5\}\{n\}|5\/n/, /N\s*=/, /\\varepsilon|ε/]
+function mockKeyGain(state: AttemptState, statement: string): number {
+  if (state.budget.keysOwn >= state.budget.keysTotal) return 0
+  return MOCK_KEY_PATTERNS.some((pattern) => pattern.test(statement)) ? 1 : 0
+}
+
 export async function addLine(state: AttemptState, draft: LineDraft, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {
   await sleep()
@@ -685,6 +816,7 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   const lines = next.steps?.lines ?? []
   const n = lines.length + 1
   const lineId = mockUuid()
+  const keysGained = mockKeyGain(next, draft.statement)
   lines.push({
     lineId,
     n,
@@ -696,6 +828,10 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   })
   next.steps = { lines, canFinish: lines.length >= 2 }
   next.stateVersion += 1
+  if (keysGained > 0) {
+    next.budget = { ...next.budget, keysOwn: next.budget.keysOwn + keysGained }
+    lastRewards = { xp: 10, items: [{ kind: 'key_own', amount: 10, label: '写出关键步骤' }], badges: [] }
+  }
   // 写完一行后门槛满足：下一条提示重新可预览（01 §4：自上一条提示后又提交过一行）
   next.help = { ...next.help, needAttempt: false, waitSec: 0 }
   // mock 批注：依据为空时追问；否则「衔接上了」
@@ -843,6 +979,12 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   next.layers = next.layers.map((l) => (l.layer === 'L6' ? { ...l, status: 'done' as const } : l))
   next.status = 'completed'
   next.budget = { ...next.budget, keysOwn: Math.max(next.budget.keysOwn, 3) }
+  lastRewards = {
+    xp: 45,
+    items: [{ kind: 'problem', amount: 30, label: '完成一道题' }, { kind: 'layer', amount: 15, label: '走完六层' }],
+    badges: [{ id: 'first_proof', title: '第一个证明', desc: '完成了第一道证明题' }],
+    streak: { current: 3, extended: true },
+  }
   next.completion = {
     done: true,
     independence: 0.75,
@@ -864,6 +1006,67 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   return writeState(`/attempts/${state.attemptId}/summary`, body, {
     ifMatch: state.stateVersion,
     idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** POST /attempts/{attemptId}/flag-teacher：找老师（额度用完，或卡住满一段时间后可用；重复调用幂等）。 */
+export async function flagTeacher(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    next.stateVersion += 1
+    next.help = { ...next.help, flagged: true, canFlag: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/flag-teacher`, undefined, {
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** POST /student/notes/{noteId}/feedback：对一条 AI 回答点“有用 / 没用”（13 §5）；失败不打断学习。 */
+export async function noteFeedback(noteId: string, useful: boolean): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await withRetry(() =>
+    activeHttp.request<unknown>(`/student/notes/${encodeURIComponent(noteId)}/feedback`, {
+      method: 'POST',
+      body: { useful },
+      idempotencyKey: newUuid(),
+    }),
+  )
+}
+
+/** POST /attempts/{attemptId}/layers/{layer}/enter：回到已完成的层（只能去已解锁的层）。 */
+export async function enterLayer(state: AttemptState, layer: LayerId, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    // 和引擎同一条规则：已完成、已跳过的层，或还在做的那一层。
+    const finished = (status: string): boolean => status === 'done' || status === 'skipped' || status === 'disabled'
+    const frontier = next.layers.find((l) => l.enabled !== false && !finished(l.status))?.layer
+    const target = next.layers.find((l) => l.layer === layer)
+    if (!target || (layer !== frontier && !finished(target.status))) return next
+    next.layers = next.layers.map((l) => (finished(l.status) ? l : { ...l, status: l.layer === layer ? ('active' as const) : ('locked' as const) }))
+    next.stateVersion += 1
+    next.currentLayer = layer
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/layers/${layer}/enter`, undefined, {
+    ifMatch: state.stateVersion,
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** PUT /attempts/{attemptId}/draft：草稿备份。本机 IndexedDB 才是主存储，备份失败不打断学习。 */
+export async function backupDraft(attemptId: string, target: string, content: Record<string, unknown>): Promise<void> {
+  if (USE_MOCK || !attemptId) return
+  await activeHttp.request<unknown>(`/attempts/${encodeURIComponent(attemptId)}/draft`, {
+    method: 'PUT',
+    body: { target, content },
   })
 }
 
@@ -982,6 +1185,7 @@ export async function requestHelp(
       level: 'H0',
       cost: null,
       lessonConceptId: 'seq-limit',
+      aiGenerated: true,
       at: new Date().toISOString(),
     }
     next.notes = [...next.notes, echo, note]
@@ -1217,9 +1421,17 @@ export async function confirmRecognition(
 }
 
 /**
- * 拍照识别错误 → 学生可读文案（#25）：
- * 后端 #21 未实现时 404 必须降级为「即将上线」，不能显示「请求的内容不存在」。
+ * 拍照识别错误 → 学生可读文案（#25，真实服务端语义）。
+ *
+ * 服务端 #189 已上线，因此 404 不再是「即将上线」，而是作答/识别记录不存在；
+ * PHOTO_DISABLED 与 RATE_LIMITED 有多个原因（功能未开放/老师关闭、上一张在识别/今日次数用完/
+ * 每分钟限流），优先展示服务端可直接给学生看的 message，避免前端固定文案掩盖真实原因。
  */
+function serverCopyOr(error: { message: string }, fallback: string): string {
+  const message = error.message.trim()
+  return message === '' ? fallback : message
+}
+
 export function photoRecognitionErrorMessage(error: unknown): string {
   if (error instanceof ImageCompressError) {
     switch (error.code) {
@@ -1240,19 +1452,40 @@ export function photoRecognitionErrorMessage(error: unknown): string {
   }
   if (isApiError(error)) {
     if (error.status === 404 || error.code === 'NOT_FOUND') {
-      return '拍照识别即将上线，请改用键盘/手写'
+      return '识别记录或作答不存在，请重新拍照/确认，或用键盘'
     }
     if (error.code === 'PHOTO_DISABLED') {
-      return '本场考试已关闭拍照识别，请用键盘或手写'
+      return serverCopyOr(error, '拍照识别暂未开放，请用键盘或手写')
     }
     if (error.code === 'PAYLOAD_TOO_LARGE' || error.status === 413) {
       return '图片仍然太大，请靠近一点重拍或用键盘'
     }
     if (error.code === 'RATE_LIMITED' || error.status === 429) {
-      return '识别太频繁，请等几秒再试'
+      return serverCopyOr(error, '识别太频繁，请稍后再试或用键盘')
+    }
+    if (error.code === 'CONSENT_REQUIRED') {
+      return '请先阅读并签署知情同意书，再使用拍照识别'
+    }
+    if (error.code === 'AGE_BAND_REQUIRED') {
+      return '请先选择年龄段，再使用拍照识别'
+    }
+    if (error.code === 'AGE_RESTRICTED') {
+      return '本服务暂未向 14 岁以下学生开放'
+    }
+    if (error.code === 'FORBIDDEN') {
+      return '当前账号不能使用拍照识别，请用键盘或手写'
     }
     if (error.code === 'TEST_MODE_RESTRICTED') {
       return '测验模式下拍照识别不可用，请用键盘或手写'
+    }
+    if (error.code === 'ATTEMPT_LOCKED') {
+      return '本题已锁定，请联系老师'
+    }
+    if (error.code === 'RECOG_NOT_CONFIRMED') {
+      return '识别结果还没确认，请先确认再加入'
+    }
+    if (error.code === 'VALIDATION_FAILED') {
+      return '识别参数异常，请重新拍照或改用键盘'
     }
     if (error.code === 'NETWORK' || error.status === 0) {
       return '网络不稳定，拍照识别暂不可用；可以稍后重试或用键盘'
@@ -1500,6 +1733,36 @@ export async function deleteTransferLine(state: AttemptState, lineId: string): P
   return next
 }
 
+/** PATCH /attempts/{attemptId}/lines/{lineId}：改写第 3 层的一行；请求形状和迁移题相同。 */
+export async function editLine(state: AttemptState, lineId: string, draft: LineDraft): Promise<AttemptState> {
+  if (!USE_MOCK || state.kind === 'transfer') return editTransferLine(state, lineId, draft)
+  await sleep()
+  const next = clone(state)
+  if (!next.steps?.lines.some((line) => line.lineId === lineId)) return next
+  next.steps.lines = next.steps.lines.map((line) =>
+    line.lineId === lineId
+      ? { ...line, statement: draft.statement.trim(), justification: (draft.justification ?? '').trim(), provenance: draft.input.provenance }
+      : line,
+  )
+  next.stateVersion += 1
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/** DELETE /attempts/{attemptId}/lines/{lineId}：删第 3 层的一行；行号不重排（服务端软删）。 */
+export async function deleteLine(state: AttemptState, lineId: string): Promise<AttemptState> {
+  if (!USE_MOCK || state.kind === 'transfer') return deleteTransferLine(state, lineId)
+  await sleep()
+  const next = clone(state)
+  if (!next.steps) return next
+  next.steps.lines = next.steps.lines.filter((line) => line.lineId !== lineId)
+  next.steps.canFinish = next.steps.lines.length >= 2
+  next.notes = next.notes.filter((note) => note.lineId !== lineId)
+  next.stateVersion += 1
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
 /**
  * 第 5 层：写完了（POST /attempts/{childAttemptId}/finish）。
  * mock 判定（state.steps.canFinish 由 addLine 维护）：达标 → completed；不达标 → 只追加一条批注，不给答案。
@@ -1548,22 +1811,31 @@ export async function finishTransfer(state: AttemptState): Promise<AttemptState>
 }
 
 /**
- * 证明本「稍后重做」：为同一道题发起一份新作答（mock POST /student/assignments/{id}/attempt）。
- * 返回全新的 main state（从 L1 开始），由证明本页暂存后交给做题页（跨页交接见 stores/attempt.ts）。
- * TODO(#24)：真实接口按 assignmentId/problemId 创建新作答并返回 state。
+ * 重做（POST /student/attempts/{id}/redo）：在本人已完成的作答上新建 kind=redo 的子作答（强制练习模式、从 L1 开始，
+ * 第 5 层自动跳过）。已有未结束的重做则返回它（幂等）。sourceAttemptId 是被重做的**已完成作答**（证明本卡片/错题的 attemptId）。
+ * 错误：409 作答未完成；403 他人的作答或测验尚未结束（TEST_MODE_RESTRICTED）。
+ * 返回新作答的 state，由调用方交给做题页（跨页交接见 stores/attempt.ts）。
  */
 export async function startRedo(sourceAttemptId?: string): Promise<AttemptState> {
+  if (!USE_MOCK) {
+    if (!sourceAttemptId) {
+      throw new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: '缺少要重做的作答' })
+    }
+    return writeState(`/student/attempts/${encodeURIComponent(sourceAttemptId)}/redo`, undefined, {
+      idempotencyKey: newUuid(),
+    })
+  }
   await sleep()
   const next = clone(createMockState('l1-active'))
   next.attemptId = mockUuid()
   next.parentAttemptId = sourceAttemptId ?? null
+  next.kind = 'redo'
   next.stateVersion = 1
   next.status = 'active'
   next.currentLayer = 'L1'
   next.serverTime = new Date().toISOString()
   return next
 }
-
 
 /**
  * 迁移题子作答完成之后，服务端返回**父作答**的新 state：L5 done → L6 active 并下发总结五问。
@@ -1595,7 +1867,104 @@ export async function completeTransferParent(parent: AttemptState): Promise<Atte
 export async function fetchNotebook(): Promise<NotebookView> {
   if (!USE_MOCK) return activeHttp.get<NotebookView>('/student/notebook')
   await sleep()
-  return clone(mockNotebook)
+  const book = clone(mockNotebook)
+  return { ...book, cards: [...book.cards, ...clone(mockPathNotebookCards())] }
+}
+
+/** mock 错题本：与真实 GET /student/mistakes 同形。 */
+export const mockMistakes: MistakesView = {
+  groups: [
+    {
+      group: 'scaling',
+      title: '放缩卡住',
+      count: 2,
+      items: [
+        {
+          id: '11111111-1111-4111-8111-111111111111:scaling:mock',
+          group: 'scaling',
+          problemTitle: '数列极限 · ε-N',
+          chapter: '第二章 数列极限',
+          attemptId: '11111111-1111-4111-8111-111111111111',
+          lineExcerpt: '取 $N=n+1$',
+          note: '你取的 $N$ 里出现了 $n$。定义里 $N$ 在 $n$ 之前取定，$N$ 能依赖 $n$ 吗？',
+          createdAt: daysAgoIso(3),
+          canRedo: true,
+        },
+        {
+          id: '33333333-3333-4333-8333-333333333333:scaling:mock',
+          group: 'scaling',
+          problemTitle: '交错级数 · 收敛性',
+          chapter: '第十二章 数项级数',
+          attemptId: '33333333-3333-4333-8333-333333333333',
+          lineExcerpt: '$|S_{n+p}-S_n| \\le a_{n+1}+\\dots+a_{n+p}$',
+          note: '这一步用了绝对值不等式。交错的符号能帮你把这个界再收紧吗？',
+          createdAt: daysAgoIso(5),
+          canRedo: true,
+        },
+      ],
+    },
+    {
+      group: 'definition',
+      title: '定义没用上',
+      count: 1,
+      items: [
+        {
+          id: '44444444-4444-4444-8444-444444444444:definition:mock',
+          group: 'definition',
+          problemTitle: '函数极限 · ε-δ（迁移）',
+          chapter: '第三章 函数极限',
+          attemptId: '44444444-4444-4444-8444-444444444444',
+          lineExcerpt: '因为 $x$ 靠近 $a$，所以 $f(x)$ 靠近 $A$',
+          note: '“靠近”在定义里是怎么说的？能换成 $\\varepsilon$ 和 $\\delta$ 写一遍吗？',
+          createdAt: daysAgoIso(9),
+          canRedo: true,
+        },
+      ],
+    },
+    {
+      group: 'hinted',
+      title: '靠提示写的',
+      count: 1,
+      items: [
+        {
+          id: '55555555-5555-4555-8555-555555555555:hinted:mock',
+          group: 'hinted',
+          problemTitle: '单调有界 · 收敛',
+          chapter: '第二章 数列极限',
+          attemptId: '55555555-5555-4555-8555-555555555555',
+          lineExcerpt: '$a_{n+1}-a_n>0$，所以 $\\{a_n\\}$ 单调递增',
+          note: '这一步是看了提示写出来的。现在不看提示，你能说出为什么先证单调吗？',
+          createdAt: daysAgoIso(1),
+          canRedo: false,
+        },
+      ],
+    },
+  ],
+  total: 4,
+}
+
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+/** 错题本（GET /student/mistakes）：按卡点分组，空分组不返回；每项的 attemptId 可直接传给 startRedo。 */
+export async function fetchMistakes(): Promise<MistakesView> {
+  if (!USE_MOCK) return activeHttp.get<MistakesView>('/student/mistakes')
+  await sleep()
+  return clone(mockMistakes)
+}
+
+/**
+ * 讲评（GET /attempts/{id}/review）：教师发布讲评、且本人写完（或布置结束）后才有；否则 403（FORBIDDEN）。
+ * 参考证明与讲评都是 MathText，显示时走 MathText 组件。
+ */
+export async function fetchReview(attemptId: string): Promise<PublishedReview> {
+  if (!USE_MOCK) return activeHttp.get<PublishedReview>(`/attempts/${encodeURIComponent(attemptId)}/review`)
+  await sleep()
+  return {
+    proofs: ['任取 $\\varepsilon>0$。取 $N=\\lceil 5/\\varepsilon\\rceil$，则当 $n>N$ 时 $|a_n-3|<\\varepsilon$。'],
+    note: '这道题的关键是 $N$ 只依赖 $\\varepsilon$。',
+  }
 }
 
 /**
@@ -1639,3 +2008,242 @@ function studentEchoNote(text: string): Note {
 /** 施压/索要答案的关键词（正式识别在 B 的 #29；这里只让 mock 能走通 pressure 路由）。 */
 const PRESSURE_PATTERN = /答案|直接给|老师说|求你了|写给我|给我结果|快点|别问了/
 
+
+// ---------------------------------------------------------------------------
+// 进度、设置、反馈（Task 9）
+// ---------------------------------------------------------------------------
+
+/** 演示用的这一周（上海时区，周一到周日）：今天和前两天有进展，和连胜 3 天、今天 2 个关键步骤对得上。 */
+function mockWeek(now: number = Date.now()): ProgressView['week'] {
+  const DAY = 24 * 60 * 60 * 1000
+  const shanghai = now + 8 * 60 * 60 * 1000
+  const weekday = (new Date(shanghai).getUTCDay() + 6) % 7
+  return Array.from({ length: 7 }, (_, i) => {
+    const offset = i - weekday
+    const active = offset <= 0 && offset >= -2
+    return {
+      day: new Date(shanghai + offset * DAY).toISOString().slice(0, 10),
+      xp: active ? 20 + (2 + offset) * 5 : 0,
+      keys: active ? 2 : 0,
+    }
+  })
+}
+
+export const mockProgress: ProgressView = {
+  xpTotal: 120,
+  xpToday: 25,
+  keysToday: 2,
+  dailyGoal: 3,
+  streak: { current: 3, best: 5, freezeAvailable: true, usedFreezeDays: [] },
+  week: mockWeek(),
+  badges: [
+    { id: 'first_step', title: '第一步', desc: '第一次写出有进展的一步', earnedAt: '2026-11-02T08:00:00.000Z' },
+    { id: 'own_write', title: '独立写出', desc: '第一次不靠提示写出一个关键步骤', earnedAt: '2026-11-02T08:20:00.000Z' },
+    { id: 'first_done', title: '证完一道', desc: '第一次完整证完一道题', earnedAt: '2026-11-03T09:00:00.000Z' },
+    { id: 'streak_3', title: '连续 3 天', desc: '连续 3 天都有实质进展', earnedAt: '2026-11-05T09:00:00.000Z' },
+    { id: 'streak_7', title: '连续 7 天', desc: '连续 7 天都有实质进展', earnedAt: null, progress: { current: 3, target: 7 } },
+    { id: 'streak_30', title: '连续 30 天', desc: '连续 30 天都有实质进展', earnedAt: null, progress: { current: 3, target: 30 } },
+    { id: 'unit_clear', title: '单元通关', desc: '一个单元布置的题都证完了', earnedAt: null, progress: { current: 0, target: 1 } },
+    { id: 'no_hint_clear', title: '无提示通关', desc: '不用任何提示证完一道题', earnedAt: null, progress: { current: 0, target: 1 } },
+    { id: 'redo_success', title: '重做成功', desc: '把做过的题重新独立证了一遍', earnedAt: null, progress: { current: 0, target: 1 } },
+    { id: 'daily_goal', title: '今日目标达成', desc: '一天内写出的关键步骤达到每日目标', earnedAt: null, progress: { current: 0, target: 1 } },
+  ],
+  daysLearned: 3,
+}
+
+const freshMockSettings = (): SettingsView => ({
+  nickname: null,
+  dailyGoal: 3,
+  defaultInput: 'hand',
+  theme: 'system',
+  sound: true,
+  motion: true,
+  haptics: true,
+  onboarding: {},
+})
+let mockSettings: SettingsView = freshMockSettings()
+
+/** 学习进度（GET /student/progress）：经验、连胜、本周每日、徽章。 */
+export async function fetchProgress(): Promise<ProgressView> {
+  if (!USE_MOCK) return activeHttp.get<ProgressView>('/student/progress')
+  await sleep()
+  return clone({ ...mockProgress, dailyGoal: mockSettings.dailyGoal, week: mockWeek() })
+}
+
+/** 我的设置（GET /student/settings）。要求已签同意书。 */
+export async function fetchSettings(): Promise<SettingsView> {
+  if (!USE_MOCK) return activeHttp.get<SettingsView>('/student/settings')
+  await sleep()
+  return clone(mockSettings)
+}
+
+/** 修改设置（PATCH /student/settings，只传要改的字段）；返回修改后的完整设置。昵称 trim 后 1–16 字，否则 422。 */
+export async function updateSettings(patch: SettingsPatch): Promise<SettingsView> {
+  if (!USE_MOCK) return (await activeHttp.patch<SettingsView>('/student/settings', patch)).data
+  await sleep()
+  const nickname = patch.nickname?.trim()
+  if (nickname !== undefined && (nickname.length < 1 || nickname.length > 16)) {
+    throw new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: '昵称要 1 到 16 个字' })
+  }
+  mockSettings = { ...mockSettings, ...clone(patch), nickname: nickname ?? mockSettings.nickname }
+  return clone(mockSettings)
+}
+
+/** 问题反馈（POST /student/feedback，204）。 */
+export async function sendFeedback(kind: FeedbackKind, body: string, page?: string): Promise<void> {
+  if (!USE_MOCK) {
+    await activeHttp.post('/student/feedback', { kind, body, ...(page === undefined ? {} : { page }) }, { idempotencyKey: newUuid() })
+    return
+  }
+  await sleep()
+}
+
+// ---------------------------------------------------------------------------
+// 学习路径（Task 11）与练习区（Task 16）。真实模式调服务端；mock 模式按同一套规则在 mocks/pathMock 里算。
+// 前端不判定：完成、锁定、难度档、可看的解答级别都来自服务端响应。
+// ---------------------------------------------------------------------------
+
+/** mock 里抛出的普通错误（带 status/code）转成 ApiError，页面的错误处理与真实模式一致。 */
+async function mockPath<T>(action: () => T): Promise<T> {
+  await sleep()
+  try {
+    return clone(action())
+  } catch (error) {
+    const e = error as { status?: number; code?: string; message?: string }
+    throw new ApiError({ status: e.status ?? 500, code: e.code ?? 'INTERNAL', message: e.message ?? '出了点问题' })
+  }
+}
+
+function queryString(params: Record<string, string | number | undefined>): string {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+  return entries.length === 0 ? '' : `?${entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`
+}
+
+/** mock 开始一道题：把演示状态改成这道题的标题与题面；导入题只启用写证明与总结两层。 */
+async function mockStartState(problemId: string): Promise<AttemptState> {
+  const { problem, attemptId } = mockStartProblem(problemId)
+  const state = await fetchAttempt()
+  state.attemptId = attemptId
+  state.problem = {
+    ...state.problem,
+    problemId: problem.id,
+    title: problem.title,
+    stem: problem.stem,
+    keyCount: problem.keyCount,
+  }
+  if (problem.layers === 2) {
+    state.currentLayer = 'L3'
+    state.layers = state.layers.map((layer) =>
+      layer.layer === 'L3'
+        ? { ...layer, status: 'active' }
+        : layer.layer === 'L6'
+          ? { ...layer, status: 'locked' }
+          : { ...layer, status: 'disabled', enabled: false },
+    )
+  }
+  return state
+}
+
+/** GET /student/path?unit=：只带当前单元的题目详情，其余单元只有摘要。不传 unit = 第一个没做完的单元。 */
+export async function getStudentPath(unitId?: string): Promise<StudentPath> {
+  if (USE_MOCK) return mockPath(() => mockStudentPath(unitId))
+  return withRetry(() => activeHttp.get<StudentPath>(`/student/path${queryString({ unit: unitId })}`))
+}
+
+async function startFromPool(
+  prefix: '/student/path/items' | '/student/practice',
+  problemId: string,
+  options: WriteOptions & { classId?: string } = {},
+): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    try {
+      return await mockStartState(problemId)
+    } catch (error) {
+      const e = error as { status?: number; code?: string; message?: string }
+      throw new ApiError({ status: e.status ?? 500, code: e.code ?? 'INTERNAL', message: e.message ?? '出了点问题' })
+    }
+  }
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
+  const result = await withRetry(() =>
+    activeHttp.post<{ state: AttemptState }>(
+      `${prefix}/${encodeURIComponent(problemId)}/start`,
+      options.classId === undefined ? undefined : { classId: options.classId },
+      { idempotencyKey },
+    ),
+  )
+  if (!isAttemptState(result.data?.state)) {
+    throw new ApiError({ status: result.status, code: 'INTERNAL', message: '服务端返回的状态格式不正确' })
+  }
+  return result.data.state
+}
+
+/**
+ * POST /student/path/items/{problemId}/start：从路径节点开始、继续或回看（已做完返回只读状态）。
+ * 班里这题有没结束的测验 → ApiError code=TEST_IN_PROGRESS（409，文案可直接展示）。
+ */
+export function startPathItem(problemId: string, options: WriteOptions & { classId?: string } = {}): Promise<AttemptState> {
+  return startFromPool('/student/path/items', problemId, options)
+}
+
+/** POST /student/practice/{problemId}/start：从练习区开始，规则同 startPathItem。 */
+export function startPracticeProblem(problemId: string, options: WriteOptions & { classId?: string } = {}): Promise<AttemptState> {
+  return startFromPool('/student/practice', problemId, options)
+}
+
+/** GET /student/practice：按章节、难度、状态、关键词筛选，游标分页；响应带分面计数。 */
+export async function listPractice(query: PracticeQuery = {}): Promise<PracticeList> {
+  if (USE_MOCK) return mockPath(() => mockListPractice(query))
+  return withRetry(() =>
+    activeHttp.get<PracticeList>(
+      `/student/practice${queryString({
+        chapter: query.chapter,
+        difficulty: query.difficulty,
+        status: query.status,
+        q: query.q,
+        cursor: query.cursor,
+        limit: query.limit,
+      })}`,
+    ),
+  )
+}
+
+/** POST /student/practice/random：随机一道没做完的题（范围内都做完 → 404 NOT_FOUND，文案可直接展示），随后调用 startPracticeProblem。 */
+export async function randomPracticeProblem(
+  filter: { chapter?: string; difficulty?: DifficultyBand } = {},
+  options: WriteOptions = {},
+): Promise<PracticeItem> {
+  if (USE_MOCK) return mockPath(() => mockRandomPractice(filter))
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
+  const result = await withRetry(() => activeHttp.post<PracticeItem>('/student/practice/random', filter, { idempotencyKey }))
+  return result.data
+}
+
+/** GET /student/practice/{problemId}/solution：只含这位学生此刻可以看的那一级（none / approach / full）。 */
+export async function getPracticeSolution(problemId: string): Promise<PracticeSolution> {
+  if (USE_MOCK) return mockPath(() => mockSolution(problemId))
+  return withRetry(() => activeHttp.get<PracticeSolution>(`/student/practice/${encodeURIComponent(problemId)}/solution`))
+}
+
+/**
+ * POST /student/practice/{problemId}/solution/reveal：主动查看思路（approach）或完整解答（full）。
+ * 只限自己的练习模式自学作答；老师布置、测验 → 403，没开始做 → 409。查看后写出的关键步骤按“有提示”计。
+ */
+export async function revealPracticeSolution(
+  problemId: string,
+  level: 'approach' | 'full',
+  options: WriteOptions = {},
+): Promise<PracticeSolution> {
+  if (USE_MOCK) return mockPath(() => mockReveal(problemId, level))
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
+  const result = await withRetry(() =>
+    activeHttp.post<PracticeSolution>(`/student/practice/${encodeURIComponent(problemId)}/solution/reveal`, { level }, { idempotencyKey }),
+  )
+  return result.data
+}
+
+/** GET /attempts/{attemptId}/review：讲评（已标记可发布的参考证明）。自学作答完成即可看；教师布置要教师发布；否则 403。 */
+export async function getAttemptReview(attemptId: string): Promise<PublishedReview> {
+  if (USE_MOCK) return mockPath(() => mockReview(attemptId))
+  return withRetry(() => activeHttp.get<PublishedReview>(`/attempts/${encodeURIComponent(attemptId)}/review`))
+}

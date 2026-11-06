@@ -26,6 +26,19 @@ export const ATTEMPTS_COLUMNS = [
 
 const BOM = '﻿';
 
+// 研究/教学导出可以包含的作答：不含 kind='redo'（重做不进导出，否则同一题被算两次），
+// 且排除撤回了「教研使用」同意的学生（13 §2：曾同意 research、最近一次有效同意里不再同意——
+// 含整份同意书被撤销）。从未勾选 research 的学生不在此排除（沿用既有导出口径，由教师端按班级范围控制）。
+export function exportableAttemptSql(alias = 't'): string {
+  const uid = `${alias}.user_id`;
+  return `${alias}.kind <> 'redo'
+    and not (
+      exists (select 1 from app.consents rc where rc.user_id = ${uid} and rc.items->>'research' = 'true')
+      and (select lc.items->>'research' from app.consents lc
+            where lc.user_id = ${uid} and lc.revoked_at is null order by lc.created_at desc limit 1) is distinct from 'true'
+    )`;
+}
+
 // RFC 4180：含逗号、引号、换行的字段加双引号，内部引号加倍。
 // 字符串以 = + - @、制表符/回车/换行或它们的全角形式开头时前置单引号，避免研究者用 Excel 打开时被当成公式（OWASP CSV injection）。
 // 只处理 string：数字（含负数）和日期是我们自己格式化的，不会被当成公式。
@@ -63,7 +76,7 @@ export async function buildAttemptsCsv(db: Db, classId: string): Promise<string>
        join app.assignments asg on asg.id = t.assignment_id
        join app.users u on u.id = t.user_id
        left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
-      where asg.class_id = $1
+      where asg.class_id = $1 and asg.origin = 'teacher' and ${exportableAttemptSql('t')}
       order by t.started_at, t.id`,
     [classId],
   );

@@ -115,7 +115,7 @@ describe('教师班级与权限（#50）', () => {
     const cookie = await teacherLogin();
     const { classId } = await createClass(cookie);
 
-    const me = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { cookie } });
+    const me = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { cookie, 'x-pg-app': 'teacher' } });
     expect(me.statusCode).toBe(200);
     expect(me.json().classes.map((c: { id: string }) => c.id)).toContain(classId);
 

@@ -36,7 +36,7 @@ cd "证明陪练场_产品设计工作区/10-开发文档/contracts"
 npm run check                     # check-generated + seeds + events + sql + redocly
 node tools/check-docs.mjs         # 仓库根；文档结构检查
 # 有代码后（按 app）：
-# npm run typecheck && npm run test && npm run build
+# pnpm typecheck && pnpm test && pnpm build   # 工作区用 pnpm，不是 npm
 ```
 
 改了 events 只改 `contracts/tools/events-catalog.mjs`，然后：

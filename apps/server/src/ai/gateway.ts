@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 
 import type { Db } from '../db/index.ts';
 
+import { invokeChat } from './chat.ts';
 import { invokeDashscope } from './dashscope.ts';
 import { AdapterError } from './errors.ts';
 import { invokeJev } from './jev.ts';
@@ -30,6 +31,9 @@ export interface CallOptions {
   shadow?: boolean;
   // 输出含学生手写内容（识别服务）时为 true：model_calls.output 只记 {redacted:true}，原文只存在于业务表（app.recognitions）。
   redactOutput?: boolean;
+  // 本次调用的超时（毫秒），覆盖 provider 在注册表里的默认值。拍照识别（整页，09 §R2 的 12 s）用它放宽，
+  // 行 OCR 不传，仍按 provider 的 5–6 s。
+  timeoutMs?: number;
 }
 
 export interface CallResult {
@@ -38,6 +42,8 @@ export interface CallResult {
   shadow: boolean;
   latencyMs: number;
   reason: string | null;
+  // 聊天调用的 token 用量与估算费用（元）；其它调用没有。
+  usage?: { inputTokens: number | null; outputTokens: number | null; costCny: number | null };
 }
 
 export interface HealthReport {
@@ -99,6 +105,18 @@ const ADAPTERS: Record<string, Adapter> = {
       input,
       signal,
       fetchImpl,
+      thinking: model.thinking,
+    }),
+  deepseek: ({ entry, model, input, signal, fetchImpl }) =>
+    invokeChat({
+      provider: 'deepseek',
+      baseUrl: entry.values.baseUrl ?? '',
+      apiKey: entry.values.apiKey ?? '',
+      model: model.model ?? '',
+      thinking: model.thinking,
+      input,
+      signal,
+      fetchImpl,
     }),
 };
 
@@ -121,6 +139,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
     provider: ProviderEntry,
     model: ModelEntry,
     input: unknown,
+    timeoutMs: number,
   ): Promise<{ status: CallStatus; output: Record<string, unknown> | null; reason: string | null }> {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -128,7 +147,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       timer = setTimeout(() => {
         controller.abort();
         reject(new AdapterError('timeout'));
-      }, provider.timeoutMs);
+      }, timeoutMs);
     });
     try {
       const output = await Promise.race([
@@ -175,7 +194,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       status = 'skipped';
       reason = 'no_consent';
     } else {
-      const outcome = await invoke(adapter, provider, model, input);
+      const outcome = await invoke(adapter, provider, model, input, options.timeoutMs ?? provider.timeoutMs);
       status = outcome.status;
       output = outcome.output;
       reason = outcome.reason;
@@ -184,11 +203,26 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
     }
 
     const latencyMs = Date.now() - started;
+    // 聊天适配器把 token 用量放在 output.usage：取走写进列，不留在 output 里。
+    let usage: CallResult['usage'];
+    if (output !== null && typeof output.usage === 'object' && output.usage !== null) {
+      const { inputTokens, outputTokens } = output.usage as { inputTokens: number | null; outputTokens: number | null };
+      const inRate = model?.inputCnyPerM ?? null;
+      const outRate = model?.outputCnyPerM ?? null;
+      const costCny =
+        inRate !== null && outRate !== null && inputTokens !== null && outputTokens !== null
+          ? (inputTokens * inRate + outputTokens * outRate) / 1_000_000
+          : null;
+      usage = { inputTokens, outputTokens, costCny };
+      const { usage: _usage, ...rest } = output;
+      output = rest;
+    }
     try {
       await db.query(
         `insert into app.model_calls
-           (attempt_id, purpose, provider, model, prompt_version, input_hash, latency_ms, status, shadow, output)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+           (attempt_id, purpose, provider, model, prompt_version, input_hash, latency_ms, status, shadow, output,
+           input_tokens, output_tokens, cost_cny)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13)`,
         [
           options.attemptId ?? null,
           purpose,
@@ -200,6 +234,9 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
           status,
           shadow,
           JSON.stringify(output === null ? { reason } : options.redactOutput ? { redacted: true } : output),
+          usage?.inputTokens ?? null,
+          usage?.outputTokens ?? null,
+          usage?.costCny ?? null,
         ],
       );
     } catch {
@@ -208,7 +245,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       return { status: 'error', output: null, shadow, latencyMs, reason: 'audit_failed' };
     }
 
-    return { status, output: status === 'ok' ? output : null, shadow, latencyMs, reason };
+    return { status, output: status === 'ok' ? output : null, shadow, latencyMs, reason, ...(usage ? { usage } : {}) };
   }
 
   function health(now: number = Date.now()): HealthReport {

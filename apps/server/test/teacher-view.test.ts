@@ -102,7 +102,7 @@ beforeEach(async () => {
   // #64：写接口要求年龄分档。
   await setStudentAgeBand(app, studentCookie);
 
-  await post(studentCookie, '/consents', { version: 'p0-v1', items: ALL_REQUIRED });
+  await post(studentCookie, '/consents', { version: 'v2', items: ALL_REQUIRED });
 
   const start = await post(studentCookie, `/student/assignments/${assignmentId}/attempt`);
   expect(start.statusCode, start.body).toBe(200);

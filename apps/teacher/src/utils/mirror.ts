@@ -1,4 +1,4 @@
-// 复用 A 侧 apps/student/src/components/mirror/mirror.ts（#100）的纯逻辑；待抽共享包后替换为同一实现。
+// 复用学生端 apps/student/src/components/mirror/mirror.ts 的纯逻辑；待抽共享包后替换为同一实现。
 // 安全敏感：sandbox 只能 allow-scripts（不能加 allow-same-origin），URL 必须是 /s/mirror + attempt + token。
 export const MIRROR_IFRAME_SANDBOX = 'allow-scripts';
 

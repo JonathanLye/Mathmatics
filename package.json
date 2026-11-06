@@ -24,7 +24,9 @@
     "import:draft": "node apps/import/src/cli.ts draft",
     "import:publish": "node apps/import/src/cli.ts publish",
     "import:submit": "node apps/import/src/cli.ts submit",
-    "import:run": "node apps/import/src/cli.ts run"
+    "import:run": "node apps/import/src/cli.ts run",
+    "import:batch": "node apps/import/src/cli.ts batch",
+    "import:bundle": "node apps/import/src/cli.ts bundle"
   },
   "devDependencies": {
     "@types/node": "catalog:",

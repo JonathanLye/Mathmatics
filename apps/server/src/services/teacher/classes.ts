@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 
 import { decryptPii } from '../../auth/crypto.ts';
+import { revokeUserSessions } from '../../auth/session.ts';
 import type { AppConfig } from '../../config.ts';
 import type { AuthContext } from '../../auth/session.ts';
 import type { Db, Queryable } from '../../db/index.ts';
@@ -176,10 +177,13 @@ export async function listRoster(
       claimed_by: string | null;
       claimed_at: string | null;
       anon_code: string | null;
+      password_set: boolean | null;
     }>(
-      `select r.id, r.name_enc, r.claimed_by, r.claimed_at::text as claimed_at, u.anon_code
+      `select r.id, r.name_enc, r.claimed_by, r.claimed_at::text as claimed_at, u.anon_code,
+              (sp.password_hash is not null) as password_set
          from app.roster_entries r
          left join app.users u on u.id = r.claimed_by
+         left join app.student_profiles sp on sp.user_id = r.claimed_by
         where r.class_id = $1
         order by r.imported_at, r.id`,
       [classId],
@@ -201,6 +205,7 @@ export async function listRoster(
       claimed: row.claimed_by !== null,
       claimedAt: row.claimed_at === null ? null : new Date(row.claimed_at).toISOString(),
       claimedByAnon: row.anon_code,
+      passwordSet: row.password_set === true,
     };
   });
 }
@@ -230,6 +235,8 @@ export async function unclaimRoster(
       `update app.roster_entries set claimed_by = null, claimed_at = null where id = $1 and class_id = $2`,
       [rosterId, classId],
     );
+    // 解除认领的原因多半是设备异常 / 账号被冒用：同时让这个学生在所有设备上的登录失效。
+    await revokeUserSessions(tx, before.claimed_by);
     // 解除后名单行不再关联学生，审计里保留被解除的学生匿名码以便追溯。
     await tx.query(
       `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'unclaim_roster', $2, $3::jsonb)`,
@@ -243,6 +250,32 @@ export async function unclaimRoster(
           previousClaimedAt: before.claimed_at,
         }),
       ],
+    );
+  });
+}
+
+// 04 §10：重置学生密码（学生忘记密码的路径就是“找老师重置”）。
+// 清掉哈希与设置时间、作废该生全部会话、写 audit_log，一个事务。账号级：该生在其他班也要重新设密码。
+// 之后学生用邀请码 + 学号重新激活，Me.needsPassword=true，再设新密码。名单行必须已认领，且属于本班。
+export async function resetStudentPassword(db: Db, auth: AuthContext, classId: string, rosterId: string): Promise<void> {
+  await assertClassTeacher(db, auth, classId);
+  await db.tx(async (tx) => {
+    const entry = (
+      await tx.query<{ claimed_by: string | null; anon_code: string | null }>(
+        `select r.claimed_by, (select u.anon_code from app.users u where u.id = r.claimed_by) as anon_code
+           from app.roster_entries r
+          where r.id = $1 and r.class_id = $2
+          for update`,
+        [rosterId, classId],
+      )
+    ).rows[0];
+    if (entry === undefined) throw new AppError('NOT_FOUND', 404, '名单行不存在');
+    if (entry.claimed_by === null) throw new AppError('NOT_FOUND', 404, '该名单行尚未认领');
+    await tx.query(`update app.student_profiles set password_hash = null, password_set_at = null where user_id = $1`, [entry.claimed_by]);
+    const revoked = await revokeUserSessions(tx, entry.claimed_by);
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, 'reset_student_password', $2, $3::jsonb)`,
+      [auth.userId, rosterId, JSON.stringify({ classId, studentUser: entry.claimed_by, studentAnon: entry.anon_code, revokedSessions: revoked })],
     );
   });
 }

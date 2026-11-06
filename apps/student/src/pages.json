@@ -8,6 +8,13 @@
       }
     },
     {
+      "path": "pages/set-password/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "设置密码"
+      }
+    },
+    {
       "path": "pages/age/index",
       "style": {
         "navigationStyle": "custom",
@@ -22,10 +29,31 @@
       }
     },
     {
+      "path": "pages/welcome/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "欢迎"
+      }
+    },
+    {
       "path": "pages/home/index",
       "style": {
         "navigationStyle": "custom",
-        "navigationBarTitleText": "首页"
+        "navigationBarTitleText": "路径"
+      }
+    },
+    {
+      "path": "pages/practice-zone/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "练习"
+      }
+    },
+    {
+      "path": "pages/mistakes/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "错题"
       }
     },
     {
@@ -43,23 +71,88 @@
       }
     },
     {
+      "path": "pages/me/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
+      "path": "pages/me/account",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "账号与密码"
+      }
+    },
+    {
+      "path": "pages/me/privacy",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "隐私与同意书"
+      }
+    },
+    {
+      "path": "pages/me/about",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "关于"
+      }
+    },
+    {
+      "path": "pages/me/badges",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "我的徽章"
+      }
+    },
+    {
+      "path": "pages/proof-detail/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "证明详情"
+      }
+    },
+    {
+      "path": "pages/tour/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "先试一道"
+      }
+    },
+    {
+      "path": "pages/privacy-policy/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "隐私政策"
+      }
+    },
+    {
       "path": "pages/mirror/index",
       "style": {
         "navigationStyle": "custom",
         "navigationBarTitleText": "镜像预览（只读）"
       }
+    },
+    {
+      "path": "pages/not-found/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "页面不存在"
+      }
+    },
+    {
+      "path": "pages/dev/gallery",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "组件预览"
+      }
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "证明陪练场",
-    "navigationBarBackgroundColor": "#F7F6F2",
-    "backgroundColor": "#F7F6F2"
+    "navigationBarTitleText": "证明陪练场"
   },
   "easycom": {
-    "autoscan": true,
-    "custom": {
-      "^t-(.*)": "tdesign-uniapp/components/$1/$1.vue"
-    }
+    "autoscan": true
   }
 }

@@ -32,6 +32,8 @@ CREATE TABLE app.student_profiles (
   age_band         text CHECK (age_band IN ('lt14', '14to17', 'ge18')),  -- 未成年人分档（13-合规）
   grade            text,
   major            text,
+  password_hash    text,                              -- argon2id；NULL=尚未设密码（首次用邀请码激活后设置；教师重置会清空）
+  password_set_at  timestamptz,
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 
@@ -235,6 +237,7 @@ CREATE TABLE content.problems (
   title            text NOT NULL,
   chapter          text,
   current_version  integer,                           -- 最新已发布版本
+  hidden_at        timestamptz,                       -- 教师下架：不进路径与练习区
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 
@@ -243,6 +246,7 @@ CREATE TABLE content.problem_versions (
   version        integer NOT NULL,
   public         jsonb NOT NULL,                      -- problem-package.schema.json 的 public
   review_status  text NOT NULL CHECK (review_status IN ('draft', 'pending', 'returned', 'published', 'retired')),
+  review_source  text NOT NULL DEFAULT 'teacher' CHECK (review_source IN ('teacher', 'auto')),  -- auto = 批量导入、AI 整理
   auto_checks    jsonb NOT NULL DEFAULT '{}'::jsonb,
   provenance     jsonb NOT NULL DEFAULT '{}'::jsonb,
   draft_id       uuid REFERENCES content.import_drafts(id),
@@ -316,6 +320,33 @@ CREATE TABLE content.lean_checks (
   at          timestamptz NOT NULL DEFAULT now()
 );
 
+-- 学习路径：课程 → 单元 → 题（Task 11）
+CREATE TABLE content.courses (
+  id     text PRIMARY KEY,
+  title  text NOT NULL,
+  sort   integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE content.course_units (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id    text NOT NULL REFERENCES content.courses(id),
+  chapter_no   integer NOT NULL,
+  unit_no      integer NOT NULL,
+  title        text NOT NULL,
+  summary      text NOT NULL DEFAULT '',
+  concept_ids  text[] NOT NULL DEFAULT '{}',
+  sort         integer NOT NULL DEFAULT 0,
+  UNIQUE (course_id, chapter_no, unit_no)
+);
+
+CREATE TABLE content.unit_items (
+  unit_id     uuid NOT NULL REFERENCES content.course_units(id),
+  problem_id  text NOT NULL REFERENCES content.problems(id),
+  sort        integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (unit_id, problem_id)
+);
+CREATE INDEX unit_items_problem ON content.unit_items (problem_id);
+
 -- =====================================================================
 -- 4. 布置与实验
 -- =====================================================================
@@ -331,11 +362,13 @@ CREATE TABLE app.assignments (
   status               text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'open', 'closed', 'cancelled')),
   review_published_at  timestamptz,                    -- 题目关闭后教师发布参考证明与讲评
   review_note          text,
+  origin               text NOT NULL DEFAULT 'teacher' CHECK (origin IN ('teacher', 'path')),  -- path = 学生点路径/练习区时懒创建的自学布置，不进教师看板与导出
   created_by           uuid NOT NULL REFERENCES app.users(id),
   created_at           timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (problem_id, problem_version) REFERENCES content.problem_versions(problem_id, version)
 );
 CREATE INDEX assignments_class ON app.assignments (class_id, open_at DESC);
+CREATE UNIQUE INDEX assignments_one_path ON app.assignments (class_id, problem_id, problem_version) WHERE origin = 'path';
 
 CREATE TABLE app.experiments (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -357,7 +390,7 @@ CREATE TABLE app.attempts (
   user_id            uuid NOT NULL REFERENCES app.users(id),
   problem_id         text NOT NULL,
   problem_version    integer NOT NULL,
-  kind               text NOT NULL DEFAULT 'main' CHECK (kind IN ('main', 'transfer')),
+  kind               text NOT NULL DEFAULT 'main' CONSTRAINT attempts_kind_check CHECK (kind IN ('main', 'transfer', 'redo')),  -- redo：学生在证明本/错题本里重做（0003）；不进指标与导出
   parent_attempt_id  uuid REFERENCES app.attempts(id),
   mode               text NOT NULL CHECK (mode IN ('practice', 'test')),
   arm                text CHECK (arm IN ('A', 'B')),
@@ -379,8 +412,19 @@ CREATE TABLE app.attempts (
 );
 CREATE UNIQUE INDEX attempts_one_main ON app.attempts (assignment_id, user_id) WHERE kind = 'main';
 CREATE UNIQUE INDEX attempts_one_transfer ON app.attempts (parent_attempt_id) WHERE kind = 'transfer';
+CREATE UNIQUE INDEX attempts_one_open_redo ON app.attempts (parent_attempt_id) WHERE kind = 'redo' AND status IN ('active', 'parked', 'locked');
 CREATE INDEX attempts_user ON app.attempts (user_id, started_at DESC);
 CREATE INDEX attempts_assignment_status ON app.attempts (assignment_id, status);
+
+CREATE TABLE app.solution_reveals (                   -- 练习区：自学作答里主动看了思路 / 完整解答（Task 16）
+  user_id     uuid NOT NULL REFERENCES app.users(id),
+  attempt_id  uuid NOT NULL REFERENCES app.attempts(id),
+  problem_id  text NOT NULL,
+  level       text NOT NULL CHECK (level IN ('approach', 'full')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, problem_id, level)
+);
+CREATE INDEX solution_reveals_attempt ON app.solution_reveals (attempt_id);
 
 CREATE TABLE app.attempt_lines (                      -- 学生写下的每一行（各层通用）
   id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -501,6 +545,7 @@ CREATE TABLE app.hint_deliveries (
   text_shown    text NOT NULL,                        -- 实际下发文本（过闸门后）
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX hint_deliveries_attempt ON app.hint_deliveries (attempt_id, created_at);
 
 CREATE TABLE app.annotations (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -510,8 +555,12 @@ CREATE TABLE app.annotations (
   source        text NOT NULL,
   text_shown    text NOT NULL,
   gate_id       uuid,
+  help_id       uuid REFERENCES app.help_requests(id),
+  ai_generated  boolean NOT NULL DEFAULT false,       -- 模型生成的回答（界面显示“AI 生成”，响应带 X-AIGC）
+  useful        boolean,                              -- 学生点的“有用/没用”，没点为 NULL
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX annotations_attempt ON app.annotations (attempt_id, created_at);
 
 CREATE TABLE app.model_calls (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -617,6 +666,49 @@ CREATE TABLE app.attempt_metrics (
   metrics      jsonb NOT NULL,                        -- 见 08-事件与数据字典.md §4
   computed_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- 学生设置、进度与反馈（0005）
+CREATE TABLE app.student_settings (
+  user_id      uuid PRIMARY KEY REFERENCES app.users(id),
+  daily_goal   smallint NOT NULL DEFAULT 3 CHECK (daily_goal BETWEEN 1 AND 20),   -- 每天自己写出的关键步骤数
+  default_input text NOT NULL DEFAULT 'hand' CHECK (default_input IN ('hand', 'keyboard', 'photo')),
+  theme        text NOT NULL DEFAULT 'system' CHECK (theme IN ('system', 'light', 'dark')),
+  sound        boolean NOT NULL DEFAULT true,
+  motion       boolean NOT NULL DEFAULT true,
+  haptics      boolean NOT NULL DEFAULT true,
+  onboarding   jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.xp_ledger (            -- 经验台账：只追加；(user_id, source_key) 唯一保证幂等，重做/重放不重复发
+  id          bigserial PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES app.users(id),
+  source_key  text NOT NULL,                          -- key:{题}:{步骤} / layer:{题}:L{n} / done:{题} / daily:{日期}
+  kind        text NOT NULL CHECK (kind IN ('key_own', 'key_hinted', 'layer', 'problem', 'daily')),
+  amount      integer NOT NULL,
+  day         date NOT NULL,                          -- Asia/Shanghai 自然日
+  attempt_id  uuid REFERENCES app.attempts(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, source_key)
+);
+CREATE INDEX xp_ledger_user_day ON app.xp_ledger (user_id, day);
+
+CREATE TABLE app.student_badges (
+  user_id    uuid NOT NULL REFERENCES app.users(id),
+  badge_id   text NOT NULL,                           -- 徽章目录在代码里（apps/server/src/progress/badges.ts）
+  earned_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, badge_id)
+);
+
+CREATE TABLE app.student_feedback (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES app.users(id),
+  kind        text NOT NULL CHECK (kind IN ('bug', 'idea', 'content', 'other')),
+  body        text NOT NULL,
+  page        text,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX student_feedback_created ON app.student_feedback (created_at DESC);
 
 -- =====================================================================
 -- 8. 只追加事件（按月分区）

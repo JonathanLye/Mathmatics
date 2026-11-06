@@ -1,5 +1,45 @@
 # apps/import · 题库导入流水线 CLI（#36 / 10 §6，角色 C）
 
+## 批量导入（练习区题库，U16，10 §6.1）
+
+```bash
+# 只放软链的目录指向教辅 PDF：PDF 不进仓库，imports/ 已 gitignore
+pnpm import:batch imports/batch-v3/sources --out imports/batch-v3 --dry-run
+
+# 试跑 20 题（校验量默认是 3 倍），读一遍输出再放大
+node --env-file=infra/.env apps/import/src/cli.ts batch imports/batch-v3/sources --out imports/batch-v3 --resume --max 20 --concurrency 8 --budget-cny 150
+
+# 全量。--stages 可以只跑其中几步：ocr,segment,candidates,verify,draft,variation,bundle
+node --env-file=infra/.env apps/import/src/cli.ts batch imports/batch-v3/sources --out imports/batch-v3 --resume --max 500 --concurrency 8 --budget-cny 150
+
+# 只重新打包，不调模型
+pnpm import:bundle --out imports/batch-v3
+
+# 发布（在服务器的一次性容器里跑，先确认 0006 迁移已执行）
+ssh bolimc-prod 'cd /var/www/proofgym && docker compose -p proofgym run -T --rm server node apps/server/src/db/cli.ts import-bundle' < imports/batch-v3/bundle.jsonl.gz
+```
+
+产物都在 `--out` 下：
+
+| 文件 | 内容 |
+|---|---|
+| `manifest.json` | 每个文件、每页、每题的状态、成本与原因 |
+| `costs.jsonl`、`costs-summary.json` | 每次模型调用的实际用量与费用；累计达到 `--budget-cny` 就停止 |
+| `progress.log` | 进度日志 |
+| `ocr/<book>/page-NNNN.md` | 每页 OCR，有缓存的页不再花钱 |
+| `segments/`、`items/`、`candidates.json` | 切分窗口、条目、过滤后的候选 |
+| `norm/`、`verify/`、`drafts/`、`variation/` | 每题一个文件的缓存 |
+| `bundle.jsonl.gz` | 发布用：头一行、单元、题 |
+| `failed.json`、`report.json` | 失败清单（带原因）；漏斗、分章分档统计、变式测试、费用 |
+
+**模型**：文本阶段（切分、整理、校验、修补、起草、变式测试）全部用 `deepseek-flash`，第二模型核验暂停（owner 决定）。`manifest.json` 每题记录 `writtenBy` 和 `checkedBy`，以后要补查可以按它筛。账户欠费或余额不足时整轮停下，已有结果不丢。
+
+没通过校验或门禁的题只进 `failed.json`，不发布，也不进人工队列。发布工具 `import-bundle` 在 `apps/server/src/db/import-bundle.ts`，只用服务端镜像里已有的依赖。
+
+**导入题的形状**：只开 L3（写证明）和 L6（总结）；只有一条路线，因为引擎的 `nextKey` 要求每条路线都走完才算闭合，别的证法写进模式里；`secret.walkthrough` 必填。
+
+## 单题导入（教师手工，10 §6）
+
 ```bash
 # 0) 仓库内自带最小 fixtures（离线可复现）
 #    fixtures/ch2/page-027.md       OCR 页面（例1 证明题 + 习题2 计算题）

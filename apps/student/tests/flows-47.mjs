@@ -159,6 +159,12 @@ async function answerSelfcheck(page, itemId, text) {
   await fillTestId(page, 'selfcheck-input-' + itemId, text)
   await waitEnabled(page, 'selfcheck-submit-' + itemId)
   await tap(page, 'selfcheck-submit-' + itemId, '提交 ' + itemId)
+  // 提交后的反馈面板盖着下面：点继续收起。最后一题直接到过场，没有面板。
+  const panelContinue = page.getByTestId('feedback-continue')
+  if (await panelContinue.waitFor({ state: 'visible', timeout: 1200 }).then(() => true, () => false)) {
+    await panelContinue.click()
+    await page.getByTestId('feedback-panel').waitFor({ state: 'detached', timeout: 5000 })
+  }
 }
 
 async function main() {
@@ -175,17 +181,21 @@ async function main() {
   const base = 'http://127.0.0.1:' + port
   const browser = await chromium.launch({ executablePath: exe, headless: true })
 
-  /** A：完成页 → 再做迁移题 → 完整作答（2 行 + 依据 + 批注 + 改写/删除）→ 写完了 → 完成页 → 证明本。 */
+  /** A：第 5 层开始换题 → 完整作答（2 行 + 依据 + 批注 + 改写/删除）→ 写完了 → 回本题第 6 层；完成页 → 证明本。 */
   const scenarioMigration = async (page) => {
     await openMock(page, base, 'completed')
     await waitTestId(page, 'completion-card')
-    check('完成页有「再做一道迁移题」入口', (await countTestId(page, 'make-transfer')) === 1)
-    await tap(page, 'make-transfer', '再做一道迁移题')
+    // 服务端只在第 5 层开放 POST /attempts/{id}/transfer，已完成的作答开不了，完成页不给这个入口。
+    check('完成页没有开不了的「换题」入口', (await countTestId(page, 'make-transfer')) === 0)
+    await openMock(page, base, 'l5-active')
+    await waitTestId(page, 'transfer-start')
+    await tap(page, 'transfer-start', '开始换题')
     await waitTestId(page, 'transfer-attempt')
 
     const text = await bodyText(page)
-    check('进入迁移题子作答（kind=transfer、独立作答页）', text.includes('迁移题 · 完整作答') && text.includes('函数极限'))
-    check('迁移题任务卡用 MathText 渲染', (await katexCount(page, 'transfer-attempt-task')) > 0)
+    check('进入迁移题子作答（kind=transfer、独立作答页）', text.includes('换题试试 · 完整作答') && text.includes('函数极限'))
+    // 题面只在顶部的题面条里出现一次（去掉了重复的「这道新题」卡）。
+    check('迁移题任务卡用 MathText 渲染', (await katexCount(page, 'practice-stem')) > 0)
     check('#47 迁移题思路对照图已接线（SVG）', (await page.getByTestId('transfer-outline').locator('svg').count()) === 1)
     check(
       '思路图文字可见（H5 SVG 标签改用 HTML 叠层）',
@@ -238,13 +248,19 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.waitForTimeout(200)
 
+    // 改写后的反馈面板（F1）要先点继续，才轮到「写完了」。
+    const panel = page.getByTestId('feedback-continue').first()
+    if (await panel.isVisible().catch(() => false)) await tap(page, 'feedback-continue', '继续')
     await tap(page, 'transfer-finish', '写完了')
     await waitTestId(page, 'transfer-complete-card')
-    check('迁移题写完 → 子作答完成页', (await bodyText(page)).includes('迁移题完成'))
+    check('迁移题写完 → 子作答完成页', (await bodyText(page)).includes('这道题也完成了'))
     await page.screenshot({ path: path.join(outDir, '4-transfer-done.png'), fullPage: true })
-    await tap(page, 'back-to-parent', '回到本题完成页')
+    await tap(page, 'back-to-parent', '回到本题')
+    await waitTestId(page, 'summary-input-0')
+    check('回到本题：父作答推进到第 6 层总结', (await countTestId(page, 'summary-input-0')) === 1)
+    await openMock(page, base, 'completed')
     await waitTestId(page, 'completion-card')
-    check('回到本题完成页（父作答 state）', (await bodyText(page)).includes('本题完成'))
+    check('完成页显示本题完成', (await bodyText(page)).includes('本题完成'))
     await tap(page, 'add-to-notebook', '加入证明本')
     await page.waitForSelector('[data-testid="notebook-card"]', { state: 'visible', timeout: 10000 })
     check('完成页可进入证明本', (await countTestId(page, 'notebook-card')) >= 1)
@@ -258,12 +274,12 @@ async function main() {
     const firstRedo = await page.getByTestId('redo-item-0').innerText()
     check('教师标记的题排最前（排序接线）', firstRedo.includes('老师/系统标记') && firstRedo.includes('交错级数'))
     check('近期完成进入冷却期（不推荐）', (await countTestId(page, 'redo-skipped')) === 1)
-    check('依赖档题进入稍后重做（独立度分档）', redoText.includes('依赖'))
+    check('依赖档题进入稍后重做（独立度分档）', redoText.includes('步靠自己'))
     await page.screenshot({ path: path.join(outDir, '5-proofbook-redo.png'), fullPage: true })
 
     await tap(page, 'redo-start-0', '开始重做')
     await waitTestId(page, 'layer1-form')
-    check('「开始重做」发起新作答（回到第 1 层）', (await bodyText(page)).includes('第 1 层 · 记忆核验'))
+    check('「开始重做」发起新作答（回到第 1 层）', (await bodyText(page)).includes('回忆定义'))
     await page.screenshot({ path: path.join(outDir, '6-redo-new-attempt.png'), fullPage: true })
   }
 
@@ -291,8 +307,10 @@ async function main() {
     await answerSelfcheck(page, 'SC3', '把 n>N 换成 n≥1，第 2 行会断。')
     await waitTestId(page, 'selfcheck-item-SC5')
     await answerSelfcheck(page, 'SC5', '用到了 n 是正整数（n+2>n>0）。')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'transfer-form')
-    check('自检结束 → 第 5 层迁移题', (await bodyText(page)).includes('第 5 层 · 迁移题'))
+    check('自检结束 → 第 5 层迁移题', (await bodyText(page)).includes('换题试试'))
   }
 
   /** D：图解接线：微课 seq-band（#47 收敛版）+ abs-triangle。 */

@@ -27,7 +27,7 @@ const isDev = import.meta.env.DEV
 .pg-mock__pill {
   min-height: 32px;
   padding: 0 var(--sp-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px dashed var(--ink-2);
   background: var(--sheet);
   color: var(--ink-2);
@@ -38,11 +38,11 @@ const isDev = import.meta.env.DEV
   bottom: 40px;
   width: 200px;
   background: var(--sheet);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-card);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-16);
   box-shadow: var(--shadow-sheet);
   overflow: hidden;
 }
-.pg-mock__item { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--rule); }
+.pg-mock__item { padding: var(--sp-2) var(--sp-3); border-bottom: var(--bw) solid var(--rule); }
 .pg-mock__item:last-child { border-bottom: 0; }
 </style>

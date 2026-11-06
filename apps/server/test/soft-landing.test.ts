@@ -110,7 +110,7 @@ beforeEach(async () => {
   });
   studentCookie = cookieFrom(studentLogin.headers['set-cookie']);
   await setStudentAgeBand(app, studentCookie);
-  await post(studentCookie, '/consents', { version: 'p0-v1', items: ALL_REQUIRED });
+  await post(studentCookie, '/consents', { version: 'v2', items: ALL_REQUIRED });
   const start = await post(studentCookie, `/student/assignments/${assignmentId}/attempt`);
   attemptId = start.json().state.attemptId as string;
 });
@@ -141,9 +141,12 @@ describe('软着陆：额度用尽 → 教师 unlock(grantH4) → 学生补依�
     const state = (await app.inject({ method: 'GET', url: `/api/v1/attempts/${attemptId}`, headers: { cookie: studentCookie } })).json().state;
     contract.validate('AttemptState', state);
     expect(state.budget.revealUsed).toBe(2);
-    expect(state.notes).toHaveLength(1);
-    expect(state.notes[0]).toMatchObject({ kind: 'hint', level: 'H4', who: 'H4 · 老师补发' });
-    expect(state.notes[0].text).toContain('N');
+    // 刷新不丢（U15）：额度用尽后点的“概念”也落库了，所以 notes 里除了老师补发的 H4 还有那条概念批注。
+    const hints = state.notes.filter((n: { kind: string }) => n.kind === 'hint');
+    expect(hints).toHaveLength(1);
+    expect(state.notes.filter((n: { kind: string }) => n.kind === 'concept')).toHaveLength(1);
+    expect(hints[0]).toMatchObject({ kind: 'hint', level: 'H4', who: 'H4 · 老师补发' });
+    expect(hints[0].text).toContain('N');
   });
 
   it('补发后：依据不足 6 字不计入；补上依据才计入 K3；再写 K4、写完了 → 进入第 4 层', async () => {

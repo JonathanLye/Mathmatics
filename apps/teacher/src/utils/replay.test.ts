@@ -18,7 +18,7 @@ const EVENTS: StoredEvent[] = [
   event(7, 'line.submit', 'L3', { n: 2, keys: ['K2'], newKeys: ['K2'] }),
 ];
 
-describe('事件级回放（04 §5.2）', () => {
+describe('事件级回放', () => {
   it('累积层/行/关键步骤/提示/批注/离开时长', () => {
     const frames = buildFrames(EVENTS);
     expect(frames).toHaveLength(7);
@@ -51,6 +51,9 @@ describe('事件级回放（04 §5.2）', () => {
     expect(eventLabel('line.submit', 'L3', { n: 2 })).toBe('提交第 2 行');
     expect(eventLabel('integ.visibility', 'L3', { state: 'hidden' })).toBe('离开页面');
     expect(eventLabel('integ.visibility', 'L3', { state: 'visible' })).toBe('回到页面');
-    expect(eventLabel('layer.skip', 'L2', {})).toBe('跳过 L2');
+    expect(eventLabel('layer.skip', 'L2', {})).toBe('跳过「搭骨架」');
+    expect(eventLabel('hint.deliver', 'L3', { level: 'H2' })).toBe('领取 2 级提示');
+    expect(eventLabel('finish.try', 'L3', {})).toBe('点了“写完了”');
+    expect(eventLabel('future.event', null, {})).toBe('其他操作');
   });
 });

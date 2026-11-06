@@ -32,6 +32,7 @@
         "attempt.complete",
         "attempt.abandon",
         "attempt.lock",
+        "solution.revealed",
         "attempt.unlock",
         "layer.enter",
         "layer.done",
@@ -394,6 +395,22 @@
         "properties": {
           "payload": {
             "$ref": "#/$defs/p_attempt_lock"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "solution.revealed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_solution_revealed"
           }
         }
       }
@@ -2065,11 +2082,11 @@
             },
             "crossBorderHosting": {
               "type": "boolean",
-              "description": "数据存储于中国香港服务器（P0 必选）"
+              "description": "AI 模型和识别服务（必选；历史键名，见 13 §2）"
             },
             "crossBorderModel": {
               "type": "boolean",
-              "description": "去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev）"
+              "description": "已停用（U22）：v2 起恒为 false，网关跳过境外 provider"
             },
             "monitoring": {
               "type": "boolean",
@@ -2117,13 +2134,14 @@
         "kind": {
           "enum": [
             "main",
-            "transfer"
+            "transfer",
+            "redo"
           ],
-          "description": "主题或迁移题"
+          "description": "主题、迁移题或重做"
         },
         "parentAttemptId": {
           "type": "string",
-          "description": "迁移题的父作答",
+          "description": "迁移题或重做的父作答",
           "format": "uuid"
         }
       },
@@ -2252,6 +2270,27 @@
       ],
       "additionalProperties": true
     },
+    "p_solution_revealed": {
+      "type": "object",
+      "description": "练习区：学生在自学作答里主动查看思路或完整解答",
+      "properties": {
+        "level": {
+          "enum": [
+            "approach",
+            "full"
+          ],
+          "description": "查看到哪一级"
+        },
+        "problemId": {
+          "type": "string",
+          "description": "题"
+        }
+      },
+      "required": [
+        "level"
+      ],
+      "additionalProperties": true
+    },
     "p_attempt_unlock": {
       "type": "object",
       "description": "作答解锁",
@@ -2285,6 +2324,11 @@
             null
           ],
           "description": "来自哪层"
+        },
+        "to": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "去往的层号 1–6"
         },
         "via": {
           "enum": [
@@ -3091,6 +3135,12 @@
           ],
           "description": "归类来源"
         },
+        "matchedBy": {
+          "enum": [
+            "model"
+          ],
+          "description": "模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）"
+        },
         "jevShadow": {
           "type": "object",
           "description": "Jev 影子判定"
@@ -3190,6 +3240,12 @@
             "rule+jev"
           ],
           "description": "归类来源"
+        },
+        "matchedBy": {
+          "enum": [
+            "model"
+          ],
+          "description": "模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）"
         },
         "jevShadow": {
           "type": "object",
@@ -3551,6 +3607,7 @@
             "need_attempt",
             "dwell",
             "rapid_lock",
+            "rapid_soft",
             "budget",
             "layer",
             "test_mode",

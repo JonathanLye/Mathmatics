@@ -128,6 +128,16 @@ export interface CheckCategories {
   patternSelfTest: boolean;
 }
 
+// 一段数学（$…$ 里的内容）能否被 KaTeX 解析。服务端用它检查模型生成的回答（闸门第二层）。
+export function mathParses(math: string): boolean {
+  try {
+    katex.renderToString(math, { throwOnError: true, strict: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function katexIssues(pkg: ProblemPackage): CheckIssue[] {
   const issues: CheckIssue[] = [];
   walkStrings(pkg, 'package', (where, text) => {
@@ -184,3 +194,6 @@ export function checkPackage(pkg: ProblemPackage, options: CheckOptions = {}): C
   const result = checkCategories(pkg, options);
   return { ok: result.ok, issues: result.issues };
 }
+
+export * from './replay.ts';
+export * from './import-gates.ts';

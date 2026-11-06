@@ -1,382 +1,377 @@
 <script setup lang="ts">
 /**
- * 首页（02 §4.2；issue #24）：真实模式 GET /student/home 驱动。
- *
- * - todo：open 可「开始」；scheduled / closed / cancelled 禁用并说明原因；
- * - inProgress：有 attempt 的进行中 → 「继续」；
- * - done：已完成 → 「查看」（证明本）+「加入证明本」；reviewPublished=true 时显示「讲评已发布」入口；
- * - 空态 / 加载骨架 / 错误 + 重试；弱网自动重试（client 内 withRetry）后仍失败可手动重试；
- * - week / notebook 契约里可选，缺省时 UI 降级（不假装有数据）。
- *
- * mock 模式（默认）返回与契约一致的 StudentHome（见 api/client.ts mockHome）；
- * 演示/联调可加 ?api=real 强制走真实接口（e2e 弱网用例用）。
+ * 路径（首页）：GET /student/path 驱动。顶部连胜、经验、今日目标；老师布置置顶；单元横幅；蜿蜒路径。
+ * 只渲染服务端状态：完成、软锁、单元开放都来自接口。接口失败显示错误和重试，不回退假数据。
+ * 演示构建默认走 mock（见 api/client.ts）；加 ?api=real 走真实接口（e2e 弱网用例用）。
  */
-import { computed, onUnmounted, ref } from 'vue'
+import SiteRecord from '@/components/SiteRecord.vue'
+import { computed, nextTick, onUnmounted, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import {
-  cardLayerLabel,
-  errorMessage,
-  fetchHome,
-  isMockMode,
-  setMockMode,
-  type HomeData,
-} from '@/api/client'
-import type { AssignmentCardView } from '@/types/attempt'
-import OfflineBar from '@/components/OfflineBar.vue'
-import WechatHint from '@/components/WechatHint.vue'
-import PgIcon from '@/components/ui/PgIcon.vue'
-import PgMascot from '@/components/ui/PgMascot.vue'
-import { initIntegrity } from '@/integrity/sdk'
+import { consumeRewards, errorMessage, getMe, getStudentPath, isMockMode, setMockMode, startAttempt, startPathItem } from '@/api/client'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
-import { maskStudentNo, useSession } from '@/stores/session'
+import AppShell from '@/components/AppShell.vue'
+import HomeOnboarding from '@/components/onboarding/HomeOnboarding.vue'
+import ProgressStats from '@/components/ProgressStats.vue'
+import ChapterSheet from '@/components/path/ChapterSheet.vue'
+import PathMap from '@/components/path/PathMap.vue'
+import PathNodeSheet from '@/components/path/PathNodeSheet.vue'
+import TeacherPins from '@/components/path/TeacherPins.vue'
+import UnitBanner from '@/components/path/UnitBanner.vue'
+import UnitNotesSheet from '@/components/path/UnitNotesSheet.vue'
+import { openPractice } from '@/components/path/openPractice'
+import { currentIndex, doneIds, newlyDone, readSeen, unitOrdinalInChapter, writeSeen } from '@/components/path/pathLogic'
+import PgButton from '@/components/ui/PgButton.vue'
+import PgDialog from '@/components/ui/PgDialog.vue'
+import PgEmpty from '@/components/ui/PgEmpty.vue'
+import PgIcon from '@/components/ui/PgIcon.vue'
+import PgSkeleton from '@/components/ui/PgSkeleton.vue'
+import { useToast } from '@/components/ui/useToast'
+import { COPY, PATH_COPY, studentName } from '@/copy'
+import { useProgress } from '@/composables/useProgress'
+import { useViewport } from '@/composables/useViewport'
+import { feedbackAllowed } from '@/motion/useFeedbackPrefs'
+import { useRewards } from '@/motion/useRewards'
+import type { AssignmentCardView } from '@/types/attempt'
+import type { PathItem, PathUnitSummary, StudentPath } from '@/types/path'
 
-const session = useSession()
+const { mode } = useViewport()
+const toast = useToast()
+const rewards = useRewards()
+const { progress, load: loadProgress } = useProgress()
+/** 桌面把数字放进右栏；同一份内容只渲染一处，testid 不重复。 */
+const wide = computed(() => mode.value === 'desktop')
 
-/** #27：离线提示条的重试（事件队列立刻补发一次；mock 下等同成功）。 */
-async function handleOfflineRetry(): Promise<void> {
-  await initIntegrity().flush('manual')
-}
 const mockMode = ref(isMockMode())
-const home = ref<HomeData | null>(null)
+const path = ref<StudentPath | null>(null)
+const selectedUnit = ref<string | undefined>(undefined)
 const loading = ref(true)
 const error = ref('')
-/** 弱网提示：加载超过 1.2 秒仍未返回（client 自动重试期间）显示轻提示。 */
+/** 弱网提示：加载超过 1.2 秒还没回来（client 自动重试期间）。 */
 const slow = ref(false)
 const retrying = ref(false)
-const notice = ref('')
+const name = ref('')
+const justDone = ref<string[]>([])
+const entering = ref(true)
+let requestNo = 0
 let slowTimer: ReturnType<typeof setTimeout> | null = null
-let noticeTimer: ReturnType<typeof setTimeout> | null = null
+let scrolled = false
 
 onLoad(async (q) => {
   if (q?.api === 'real') {
     setMockMode(false)
     mockMode.value = false
   }
-  // #145 年龄门：Me.ageBand=null → 年龄选择页；lt14 → 暂不开通（守卫内重定向）。
+  // 年龄门：Me.ageBand=null → 年龄选择页；lt14 → 暂不开通（守卫内重定向）。
   if (!ageGatePassed(await enforceAgeGate())) return
 })
 
 onShow(() => {
-  void loadHome()
+  void loadPath()
+  void loadProgress(true)
+  void loadName()
+  // 做题页还没接奖励时，回到路径把这一笔提示掉；接好之后这里读到的是空。
+  rewards.present(consumeRewards(), { completion: true })
 })
 
 onUnmounted(() => {
   if (slowTimer) clearTimeout(slowTimer)
-  if (noticeTimer) clearTimeout(noticeTimer)
 })
 
-/** 拉首页；manual=true 表示用户点「重试」。client 内部会先自动重试一次（指数退避）。 */
-async function loadHome(manual = false): Promise<void> {
-  loading.value = true
+/** 问候语只要昵称：/me 失败不影响路径。 */
+async function loadName(): Promise<void> {
+  try {
+    name.value = studentName((await getMe()).displayName)
+  } catch {
+    name.value = ''
+  }
+}
+
+const greeting = computed(() => (name.value && name.value !== COPY.studentFallbackName ? `你好，${name.value}` : `${COPY.studentFallbackName}，你好`))
+
+/** 拉路径。已有内容时悄悄刷新，不闪骨架；manual=true 是用户点了重试。 */
+async function loadPath(manual = false): Promise<void> {
+  const ticket = ++requestNo
+  if (!path.value) loading.value = true
   error.value = ''
-  notice.value = ''
-  slow.value = false
   retrying.value = manual
+  slow.value = false
   if (slowTimer) clearTimeout(slowTimer)
   slowTimer = setTimeout(() => {
     if (loading.value) slow.value = true
   }, 1200)
   try {
-    home.value = await fetchHome()
+    const next = await getStudentPath(selectedUnit.value)
+    if (ticket !== requestNo) return
+    applyPath(next)
   } catch (e) {
-    home.value = null
+    if (ticket !== requestNo) return
+    path.value = null
     error.value = errorMessage(e)
   } finally {
-    loading.value = false
-    slow.value = false
-    retrying.value = false
-    if (slowTimer) {
-      clearTimeout(slowTimer)
+    if (ticket === requestNo) {
+      loading.value = false
+      slow.value = false
+      retrying.value = false
+      if (slowTimer) clearTimeout(slowTimer)
       slowTimer = null
     }
   }
 }
 
-const greeting = computed(
-  () => home.value?.greeting ?? (session.studentNo.value ? '你好，' + maskStudentNo(session.studentNo.value) : '同学，你好'),
-)
-
-function showNotice(text: string): void {
-  notice.value = text
-  if (noticeTimer) clearTimeout(noticeTimer)
-  noticeTimer = setTimeout(() => {
-    notice.value = ''
-  }, 3200)
+/** 比一比上次看到的已完成节点：新完成的播动画，然后记下来。 */
+function applyPath(next: StudentPath): void {
+  path.value = next
+  const current = next.current
+  if (!current) return
+  justDone.value = newlyDone(readSeen(current.id), current.items)
+  writeSeen(current.id, doneIds(current.items))
+  void nextTick(scrollToCurrent)
 }
 
-function isOpen(card: AssignmentCardView): boolean {
-  return card.status === 'open' && card.attemptStatus !== 'completed'
+/** 第一次进来把当前节点滚到屏幕中间（已经看得见就不动）。 */
+function scrollToCurrent(): void {
+  if (scrolled || typeof document === 'undefined') return
+  scrolled = true
+  const node = document.querySelector('[data-testid="home-path-node"][data-current="true"]')
+  if (!node) return
+  const rect = node.getBoundingClientRect()
+  const bottomMargin = window.innerWidth < 600 ? 96 : 24
+  if (rect.top >= 120 && rect.bottom <= window.innerHeight - bottomMargin) return
+  node.scrollIntoView({ block: 'center', behavior: feedbackAllowed('motion') ? 'smooth' : 'auto' })
 }
 
-function disabledReason(card: AssignmentCardView): string {
-  if (card.status === 'scheduled') return card.openAt ? '未开始 · ' + formatTime(card.openAt) + ' 后开放' : '未开始，等老师开放'
-  if (card.status === 'closed') return '已关闭，不能再作答'
-  if (card.status === 'cancelled') return '已取消'
-  return '暂不可开始'
-}
-
-function formatTime(value?: string | null): string {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes())
-}
-
-/** 进入做题页：有 attempt 用 attemptId 断线重连，否则用 assignmentId 开始/恢复（服务端幂等）。 */
-function goPractice(card: AssignmentCardView): void {
-  if (!isOpen(card)) return
-  const query = card.attemptId
-    ? '?attemptId=' + encodeURIComponent(card.attemptId)
-    : '?assignmentId=' + encodeURIComponent(card.assignmentId)
-  uni.navigateTo({ url: '/pages/practice/index' + query })
-}
-
-/** 路径节点的蛇形偏移（px）：循环 0 → 右 → 中右 → 左 → 中左。 */
-const OFFSETS = [0, 64, 36, -36, -64, -36]
-function nodeStyle(i: number): Record<string, string> {
-  return { transform: 'translateX(' + OFFSETS[i % OFFSETS.length] + 'px)' }
-}
-
-/** 顶部横幅显示的章：进行中的第一题，否则第一个待做，否则第一个已完成。 */
-const unitChapter = computed(() => {
-  const h = home.value
-  const card = h?.inProgress[0] ?? h?.todo[0] ?? h?.done[0]
-  return card?.chapter ?? '我的练习'
+const unit = computed(() => path.value?.current ?? null)
+const chapterName = computed(() => {
+  const current = unit.value
+  if (!current) return ''
+  return path.value?.chapters.find((c) => c.chapterNo === current.chapterNo)?.chapter ?? `第 ${current.chapterNo} 章`
 })
+const unitIndex = computed(() => path.value?.units.findIndex((u) => u.id === unit.value?.id) ?? -1)
+const unitOrdinal = computed(() => unitOrdinalInChapter(path.value?.units ?? [], unit.value?.id))
+const nextUnit = computed(() => (unitIndex.value === -1 ? null : (path.value?.units[unitIndex.value + 1] ?? null)))
+const prevUnit = computed(() => (unitIndex.value <= 0 ? null : (path.value?.units[unitIndex.value - 1] ?? null)))
+const teacherCards = computed(() => path.value?.teacherAssignments ?? [])
+/** 一道都没开始过：小方说“从这里开始”。 */
+const firstTime = computed(() => {
+  const list = path.value?.units ?? []
+  return list.length > 0 && list.every((u) => u.done === 0) && (unit.value?.items ?? []).every((item) => item.state === 'todo')
+})
+const noCourse = computed(() => Boolean(path.value) && !unit.value)
 
-function goProofbook(): void {
-  uni.navigateTo({ url: '/pages/proofbook/index' })
+// ---- 节点卡片 ----
+const sheetOpen = ref(false)
+const sheetItem = ref<PathItem | null>(null)
+const sheetBusy = ref(false)
+const sheetError = ref('')
+
+function openNode(item: PathItem): void {
+  sheetItem.value = item
+  sheetError.value = ''
+  sheetOpen.value = true
 }
 
-/** 讲评入口（仅在 reviewPublished=true 时出现）：讲评页面由教师端 #102 提供，这里先给明确提示。 */
-function openReview(card: AssignmentCardView): void {
-  showNotice('讲评已发布：《' + card.title + '》的讲评内容将在教师端讲评页面（#102）查看')
+function goDetail(item: PathItem, section?: string): void {
+  if (!item.attemptId) return
+  sheetOpen.value = false
+  uni.navigateTo({ url: '/pages/proof-detail/index?attemptId=' + encodeURIComponent(item.attemptId) + (section ? '&section=' + section : '') })
 }
 
-function addToNotebook(card: AssignmentCardView): void {
-  showNotice('已加入证明本：《' + card.title + '》（真实写接口待 B #74 提供）')
+/** 开始、继续（软锁的也走这里：用户已经确认要跳过去）；做完了去只读回看。 */
+async function actOn(item: PathItem): Promise<void> {
+  if (sheetBusy.value) return
+  if (item.state === 'done') {
+    goDetail(item)
+    return
+  }
+  sheetItem.value = item
+  sheetError.value = ''
+  sheetBusy.value = true
+  try {
+    const state = await startPathItem(item.problemId)
+    sheetOpen.value = false
+    openPractice(state, 'path')
+  } catch (e) {
+    // 班里这题正在测验等：把服务端的说明放在卡片里，不跳走。
+    sheetError.value = errorMessage(e)
+    sheetOpen.value = true
+  } finally {
+    sheetBusy.value = false
+  }
+}
+
+function backToCurrent(): void {
+  sheetOpen.value = false
+  const items = unit.value?.items ?? []
+  const at = currentIndex(items)
+  if (at !== -1) void nextTick(() => document.querySelector('[data-testid="home-path-node"][data-current="true"]')?.scrollIntoView({ block: 'center', behavior: feedbackAllowed('motion') ? 'smooth' : 'auto' }))
+}
+
+// ---- 老师布置 ----
+async function goTeacher(card: AssignmentCardView): Promise<void> {
+  if (card.status !== 'open') return
+  if (!isMockMode()) {
+    const query = card.attemptId ? 'attemptId=' + encodeURIComponent(card.attemptId) : 'assignmentId=' + encodeURIComponent(card.assignmentId)
+    uni.navigateTo({ url: '/pages/practice/index?' + query + '&from=teacher' })
+    return
+  }
+  openPractice(await startAttempt(card.assignmentId), 'teacher')
+}
+
+// ---- 单元讲义、章节跳转 ----
+const notesOpen = ref(false)
+const chaptersOpen = ref(false)
+const lockedUnit = ref<PathUnitSummary | null>(null)
+
+function pickUnit(picked: PathUnitSummary): void {
+  if (picked.id === unit.value?.id) {
+    chaptersOpen.value = false
+    return
+  }
+  if (picked.locked) {
+    lockedUnit.value = picked
+    return
+  }
+  goUnit(picked)
+}
+
+function goUnit(target: PathUnitSummary): void {
+  chaptersOpen.value = false
+  lockedUnit.value = null
+  selectedUnit.value = target.id
+  entering.value = false
+  void nextTick(async () => {
+    await loadPath()
+    entering.value = true
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' })
+  })
+}
+
+/** 单元复习：错题页按这一章筛选（错题条目带章，不带单元）。 */
+function goChest(): void {
+  const chapter = chapterName.value
+  uni.navigateTo({ url: '/pages/mistakes/index' + (chapter ? '?chapter=' + encodeURIComponent(chapter) : '') })
+}
+
+function goZone(): void {
+  uni.reLaunch({ url: '/pages/practice-zone/index' })
 }
 </script>
 
 <template>
-  <view class="pg-page pg-home" data-testid="home-page">
-    <!-- #27 离线提示条：正常文档流，不遮 44px 操作区 -->
-    <OfflineBar @retry="handleOfflineRetry" />
-    <!-- #37 微信内打开提示：非阻塞横条，非微信 UA 不渲染 -->
-    <WechatHint />
+  <AppShell active="path">
+    <view class="pg-home" data-testid="home-page">
+      <ProgressStats v-if="!wide" :progress="progress" class="pg-home__stats" />
 
-    <view class="pg-home__stats">
-      <view v-if="home" class="pg-home__chip pg-home__chip--bee" data-testid="home-done-count">
-        <PgIcon name="qed" :size="22" color="#ffc800" />{{ home.done.length }}<text class="pg-home__chipsub">题</text>
+      <view class="pg-home__hello">
+        <text class="pg-home__greeting" data-testid="home-greeting">{{ greeting }}</text>
+        <text v-if="mockMode" class="pg-home__mode" data-testid="home-mock-badge">{{ COPY.demoBadge }}</text>
       </view>
-      <view v-if="home?.week" class="pg-home__chip pg-home__chip--grass" data-testid="home-week">
-        <PgIcon name="check" :size="20" />{{ home.week.keysOwn }}/{{ home.week.keysTotal }}<text class="pg-home__chipsub">本周自己写出的关键步骤</text>
+
+      <view v-if="slow" class="pg-home__slow" role="status" data-testid="home-slow">{{ PATH_COPY.slow }}</view>
+
+      <view v-if="loading" class="pg-home__skeleton" data-testid="home-loading" aria-busy="true">
+        <PgSkeleton variant="block" />
+        <PgSkeleton variant="circle" class="pg-home__ghost" style="transform: translateX(0)" />
+        <PgSkeleton variant="circle" class="pg-home__ghost" style="transform: translateX(72px)" />
+        <PgSkeleton variant="circle" class="pg-home__ghost" style="transform: translateX(36px)" />
+        <PgSkeleton variant="circle" class="pg-home__ghost" style="transform: translateX(-48px)" />
+        <text class="pg-home__skeletontip">{{ retrying ? '正在重试…' : PATH_COPY.loading }}</text>
       </view>
-    </view>
-    <text class="pg-home__hello" data-testid="home-greeting">{{ greeting }}</text>
-    <text v-if="mockMode" class="pg-home__mode pg-small" data-testid="home-mock-badge">mock 演示（?api=real 走真实接口）</text>
 
-    <view class="pg-home__unit">
-      <view class="pg-home__unitmain">
-        <text class="pg-home__unitkick">当前章节</text>
-        <text class="pg-home__unittitle">{{ unitChapter }}</text>
+      <view v-else-if="error" class="pg-home__error" data-testid="home-error" role="alert">
+        <PgEmpty :title="PATH_COPY.loadFailedTitle" :body="error" expr="oops" :motion="null" :size="88">
+          <template #action>
+            <PgButton class="pg-home__retry" data-testid="home-retry" :loading="retrying" @tap="loadPath(true)">{{ retrying ? '正在重试…' : '重试' }}</PgButton>
+          </template>
+        </PgEmpty>
       </view>
-      <view class="pg-home__unitbook"><PgIcon name="book" :size="24" /></view>
-    </view>
 
-    <view v-if="slow" class="pg-home__slow pg-small" role="status" data-testid="home-slow">
-      网络较慢，正在自动重试…（你的内容不会丢）
-    </view>
+      <template v-else-if="path">
+        <TeacherPins :cards="teacherCards" class="pg-home__pins" @go="goTeacher" />
 
-    <view v-if="loading" class="pg-home__skeleton" data-testid="home-loading" aria-busy="true">
-      <view class="pg-home__ghost" style="transform: translateX(36px)" />
-      <view class="pg-home__ghost" style="transform: translateX(-36px)" />
-      <view class="pg-home__ghost" style="transform: translateX(36px)" />
-      <text class="pg-home__skeletontip pg-small">{{ retrying ? '正在重试…' : '正在加载首页…' }}</text>
-    </view>
-
-    <view v-else-if="error" class="pg-home__error" data-testid="home-error" role="alert">
-      <PgMascot expr="oops" :size="88" />
-      <text class="pg-home__errortitle">首页加载失败</text>
-      <text class="pg-home__errorbody pg-small">{{ error }}</text>
-      <button class="pg-btn" role="button" data-testid="home-retry" :disabled="retrying" @tap="loadHome(true)">
-        {{ retrying ? '正在重试…' : '重试' }}
-      </button>
-    </view>
-
-    <view v-else-if="home" class="pg-home__path">
-      <!-- 进行中：绿色大节点 + 浮动“继续”气泡 -->
-      <view
-        v-for="(card, i) in home.inProgress"
-        :key="card.assignmentId"
-        class="pg-home__node pg-home__node--cur"
-        :style="nodeStyle(i)"
-        data-testid="home-inprogress-card"
-        :data-assignment-id="card.assignmentId"
-      >
-        <button class="pg-home__go" role="button" :data-testid="'home-continue-' + i" @tap="goPractice(card)">继续</button>
-        <view class="pg-home__face pg-home__face--cur" @tap="goPractice(card)"><PgIcon name="pen" :size="40" /></view>
-        <view class="pg-home__label">
-          <text class="pg-home__cardtitle">{{ card.title }}</text>
-          <text class="pg-home__cardsub">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
+        <view v-if="noCourse" data-testid="home-empty">
+          <PgEmpty :title="PATH_COPY.emptyTitle" :body="PATH_COPY.emptyBody" expr="think" :motion="['think-tilt', 'blink']" :action="PATH_COPY.emptyAction" action-testid="home-empty-action" @action="goZone" />
         </view>
-        <view v-if="i === 0" class="pg-home__mascot"><PgMascot expr="idle" :size="84" /></view>
-      </view>
-      <view v-if="home.inProgress.length === 0" class="pg-home__empty pg-small" data-testid="home-inprogress-empty">
-        <text class="pg-home__emptytext">暂无进行中的题，从下面「待完成」开始一道。</text>
-      </view>
 
-      <!-- 待完成：蓝=可开始；灰=未开放（scheduled / closed / cancelled，说明原因） -->
-      <view
-        v-for="(card, i) in home.todo"
-        :key="card.assignmentId"
-        class="pg-home__node"
-        :class="isOpen(card) ? 'pg-home__node--todo' : 'pg-home__node--off'"
-        :style="nodeStyle(home.inProgress.length + i)"
-        data-testid="home-todo-card"
-        :data-assignment-id="card.assignmentId"
-        :data-status="card.status"
-      >
-        <button
-          v-if="isOpen(card)"
-          class="pg-home__face pg-home__face--todo"
-          role="button"
-          :aria-label="(card.attemptId ? '继续 ' : '开始 ') + card.title"
-          :data-testid="'home-todo-start-' + i"
-          @tap="goPractice(card)"
-        >
-          <PgIcon name="book" :size="34" />
-        </button>
-        <button
-          v-else
-          class="pg-home__face pg-home__face--off"
-          role="button"
-          disabled
-          :aria-label="(card.status === 'scheduled' ? '未开始 ' : '已关闭 ') + card.title"
-          :data-testid="'home-todo-disabled-' + i"
-        >
-          <PgIcon name="lock" :size="30" />
-        </button>
-        <view class="pg-home__label">
-          <text class="pg-home__cardtitle">{{ card.title }}</text>
-          <text class="pg-home__cardsub">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
-          <text v-if="!isOpen(card)" class="pg-home__cardsub pg-home__disabledreason" :data-testid="'home-todo-reason-' + i">
-            {{ disabledReason(card) }}
-          </text>
-        </view>
-      </view>
-      <view v-if="home.todo.length === 0" class="pg-home__empty pg-small" data-testid="home-todo-empty">
-        <text class="pg-home__emptytext">暂时没有待完成的布置。</text>
-      </view>
+        <template v-else-if="unit">
+          <UnitBanner :unit="unit" :chapter="chapterName" :ordinal="unitOrdinal" class="pg-home__banner" @notes="notesOpen = true" @chapters="chaptersOpen = true" />
 
-      <!-- 已完成：金色 ∎ 节点（放在路径末尾，当前题永远在首屏） -->
-      <text v-if="home.done.length" class="pg-home__divider">已完成</text>
-      <view
-        v-for="(card, i) in home.done"
-        :key="card.assignmentId"
-        class="pg-home__node pg-home__node--done"
-        :style="nodeStyle(home.inProgress.length + home.todo.length + i)"
-        data-testid="home-done-card"
-        :data-assignment-id="card.assignmentId"
-      >
-        <view class="pg-home__face pg-home__face--done" @tap="goProofbook"><PgIcon name="qed" :size="34" color="#fff" /></view>
-        <view class="pg-home__label">
-          <text class="pg-home__cardtitle">{{ card.title }}</text>
-          <text class="pg-home__cardsub">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
-          <text v-if="card.reviewPublished" class="pg-home__reviewbadge" :data-testid="'home-done-reviewbadge-' + i">讲评已发布</text>
-        </view>
-        <view class="pg-home__actions">
-          <button class="pg-btn pg-btn--out pg-btn--sm" role="button" :data-testid="'home-done-view-' + i" @tap="goProofbook">查看</button>
-          <button class="pg-btn pg-btn--out pg-btn--sm" role="button" :data-testid="'home-done-notebook-' + i" @tap="addToNotebook(card)">加入证明本</button>
-          <button
-            v-if="card.reviewPublished"
-            class="pg-btn pg-btn--sm"
-            role="button"
-            :data-testid="'home-done-review-' + i"
-            @tap="openReview(card)"
-          >
-            看讲评
-          </button>
-        </view>
-      </view>
-      <view v-if="home.done.length === 0" class="pg-home__empty" data-testid="home-done-empty">
-        <PgMascot expr="idle" :size="72" />
-        <text class="pg-home__emptytext">还没有完成的题，完成后会出现在这里。</text>
-      </view>
+          <view v-if="unit.items.length === 0" data-testid="home-empty-unit">
+            <PgEmpty :title="PATH_COPY.emptyUnitTitle" :body="PATH_COPY.emptyUnitBody" expr="sleepy" :motion="null" :size="88" />
+          </view>
+          <PathMap
+            v-else
+            :key="unit.id"
+            :items="unit.items"
+            :just-done="justDone"
+            :first-time="firstTime"
+            :enter="entering"
+            class="pg-home__map"
+            @open="openNode"
+            @continue="actOn"
+            @chest="goChest"
+          />
 
-      <!-- 证明本摘要：契约可选字段，缺省时降级 -->
-      <view class="pg-home__notebook pg-sheet" data-testid="home-notebook">
-        <text class="pg-home__cardtitle">证明本</text>
-        <text v-if="home.notebook" class="pg-home__cardsub" data-testid="home-notebook-summary">
-          已收录 {{ home.notebook.cards }} 份证明 · {{ home.notebook.toRedo }} 题待重做
-        </text>
-        <text v-else class="pg-home__cardsub" data-testid="home-notebook-empty">
-          写完的证明会收进证明本，随时可以回看。点下方「证明本」打开。
-        </text>
-      </view>
+          <view class="pg-home__units">
+            <PgButton v-if="prevUnit" class="pg-home__unitlink" variant="ghost" size="sm" data-testid="home-prev-unit" @tap="pickUnit(prevUnit)">
+              <PgIcon name="back" :size="16" />{{ PATH_COPY.prevUnit(prevUnit.title) }}
+            </PgButton>
+            <PgButton v-if="nextUnit" class="pg-home__unitlink" variant="secondary" size="sm" sound="tap" data-testid="home-next-unit" @tap="pickUnit(nextUnit)">
+              <PgIcon v-if="nextUnit.locked" name="lock" :size="16" />{{ PATH_COPY.nextUnit(nextUnit.title) }}<PgIcon v-if="!nextUnit.locked" name="fwd" :size="16" />
+            </PgButton>
+          </view>
+        </template>
+      </template>
+      <SiteRecord />
     </view>
 
-    <view v-if="notice" class="pg-home__notice" role="status" data-testid="home-notice">{{ notice }}</view>
-
-    <text class="pg-home__hint pg-small">
-      {{ mockMode ? '当前 mock 模式：数据形状与契约 StudentHome 一致；加 ?api=real 可走真实接口。' : '网络不稳时会自动重试。' }}
-    </text>
-
-    <view class="pg-home__nav">
-      <view class="pg-home__tab pg-home__tab--on"><PgIcon name="home" :size="28" /><text>路径</text></view>
-      <button class="pg-home__tab" role="button" data-testid="home-proofbook" @tap="goProofbook"><PgIcon name="book" :size="28" /><text>证明本</text></button>
-    </view>
-  </view>
+    <PathNodeSheet v-model:open="sheetOpen" :item="sheetItem" :busy="sheetBusy" :error="sheetError" @act="sheetItem && actOn(sheetItem)" @review="sheetItem && goDetail(sheetItem, 'review')" @stay="backToCurrent" />
+    <UnitNotesSheet v-model:open="notesOpen" :unit="unit" :chapter="chapterName" :ordinal="unitOrdinal" />
+    <ChapterSheet v-model:open="chaptersOpen" :chapters="path?.chapters ?? []" :units="path?.units ?? []" :current-id="unit?.id ?? null" @pick="pickUnit" />
+    <PgDialog
+      :open="lockedUnit !== null"
+      :title="PATH_COPY.unitLockedTitle"
+      :body="PATH_COPY.unitLockedBody"
+      :confirm-text="PATH_COPY.unitLockedGo"
+      :cancel-text="PATH_COPY.unitLockedStay"
+      data-testid="home-unit-confirm"
+      confirm-testid="home-unit-confirm-go"
+      cancel-testid="home-unit-confirm-stay"
+      @update:open="lockedUnit = null"
+      @confirm="lockedUnit && goUnit(lockedUnit)"
+    />
+  </AppShell>
+  <HomeOnboarding :ready="!loading && !!path" />
 </template>
 
 <style scoped>
-.pg-home { padding-top: calc(var(--safe-top) + var(--sp-3)); padding-bottom: calc(96px + var(--safe-bottom)); }
-.pg-home__stats { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.pg-home__chip { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 var(--sp-3) 0 var(--sp-2); border-radius: var(--radius-input); font-size: 17px; font-weight: 900; color: var(--ink-2); }
-.pg-home__chip--bee { color: var(--hint); }
-.pg-home__chip--grass { color: var(--accent-text); }
-.pg-home__chipsub { font-size: 12px; font-weight: 800; letter-spacing: 0.4px; opacity: 0.85; }
-.pg-home__hello { display: block; margin: var(--sp-1) 0 var(--sp-3); font-size: 13px; font-weight: 800; color: var(--ink-2); }
-.pg-home__mode { display: block; color: var(--ink-2); margin-bottom: var(--sp-2); }
-.pg-home__unit { position: sticky; top: calc(var(--safe-top) + 4px); z-index: 3; display: flex; align-items: center; gap: var(--sp-3); min-height: 84px; padding: 0 var(--sp-3) 0 var(--sp-4); border-radius: 18px; background: var(--accent); color: var(--on-accent); box-shadow: 0 5px 0 var(--accent-lip); }
-.pg-home__unitmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pg-home__unitkick { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; opacity: 0.8; }
-.pg-home__unittitle { font-size: 21px; font-weight: 900; line-height: 1.2; }
-.pg-home__unitbook { width: 48px; height: 48px; border-radius: 14px; border: 2px solid rgba(20, 41, 10, 0.25); border-bottom-width: 4px; display: flex; align-items: center; justify-content: center; }
-.pg-home__slow { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-input); background: var(--hint-soft); color: var(--ink); font-weight: 700; }
-.pg-home__path { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 36px 0 var(--sp-4); overflow-x: clip; }
-.pg-home__node { position: relative; display: flex; flex-direction: column; align-items: center; width: 220px; max-width: 100%; }
-.pg-home__face { width: 76px; height: 76px; border-radius: 50%; border: 0; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--on-accent); }
-.pg-home__face::after { display: none; }
-.pg-home__face--done { background: var(--hint-fill); box-shadow: 0 8px 0 var(--hint-lip); transform: rotate(0); }
-.pg-home__face--todo { background: var(--margin); color: var(--on-margin); box-shadow: 0 8px 0 var(--margin-lip); }
-.pg-home__face--todo:active { transform: translateY(6px); box-shadow: 0 2px 0 var(--margin-lip); }
-.pg-home__face--off,
-.pg-home__face--off[disabled] { background: var(--rule); color: var(--ink-3); box-shadow: 0 8px 0 var(--ink-3); opacity: 0.85; }
-.pg-home__face--cur { width: 88px; height: 88px; background: var(--accent); color: var(--on-accent); box-shadow: 0 8px 0 var(--accent-lip), 0 0 0 7px var(--accent-soft); }
-.pg-home__go { margin-bottom: 14px; min-height: 40px; padding: 0 var(--sp-4); border: 2px solid var(--rule); border-bottom-width: 4px; border-radius: 14px; background: var(--sheet); color: var(--accent-text); font-size: 15px; font-weight: 900; letter-spacing: 1px; animation: pg-bob 1.6s ease-in-out 3; }
-.pg-home__label { margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
-.pg-home__cardtitle { font-size: 16px; font-weight: 900; color: var(--ink); line-height: 1.3; }
-.pg-home__cardsub { font-size: 13px; font-weight: 700; color: var(--ink-2); }
-.pg-home__disabledreason { color: var(--hint); }
-.pg-home__reviewbadge { margin-top: 2px; padding: 1px var(--sp-2); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: 12px; font-weight: 900; }
-.pg-home__divider { align-self: stretch; text-align: center; font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--ink-3); border-top: 2px solid var(--rule); padding-top: var(--sp-3); margin-top: var(--sp-2); }
-.pg-home__tab::after { display: none; }
-.pg-home__actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: var(--sp-2); }
-.pg-home__mascot { position: absolute; left: 156px; top: 40px; }
-.pg-home__empty { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
-.pg-home__emptytext { font-size: 14px; font-weight: 700; color: var(--ink-2); text-align: center; }
-.pg-home__notebook { width: 100%; padding: var(--sp-3); margin-top: var(--sp-3); display: flex; flex-direction: column; gap: 2px; }
-.pg-home__skeleton { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 36px 0; }
-.pg-home__skeletontip { color: var(--ink-2); }
-.pg-home__ghost { width: 76px; height: 76px; border-radius: 50%; background: var(--rule); box-shadow: 0 8px 0 var(--ink-3); opacity: 0.5; }
-.pg-home__error { margin-top: var(--sp-6); padding: var(--sp-4); display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
-.pg-home__errortitle { font-size: 20px; font-weight: 900; color: var(--ink); }
-.pg-home__errorbody { color: var(--ink-2); text-align: center; }
-.pg-home__notice { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 2px solid var(--margin); border-radius: var(--radius-input); background: var(--margin-soft); color: var(--ink); font-size: 13px; font-weight: 700; }
-.pg-home__hint { display: block; margin-top: var(--sp-4); color: var(--ink-3); text-align: center; }
-.pg-home__nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; justify-content: space-around; padding: 10px var(--sp-4) calc(10px + var(--safe-bottom)); background: var(--paper); border-top: 2px solid var(--rule); }
-.pg-home__tab { width: 112px; min-height: 58px; border: 2px solid transparent; border-radius: 14px; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--ink-3); font-size: 11px; font-weight: 900; letter-spacing: 0.6px; }
-.pg-home__tab--on { background: var(--margin-soft); border-color: var(--margin); color: var(--margin-text); }
+.pg-home { display: flex; flex-direction: column; min-width: 0; }
+.pg-home__stats { margin-bottom: var(--sp-3); }
+.pg-home__hello { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 24px; margin-bottom: var(--sp-3); }
+.pg-home__greeting { min-width: 0; color: var(--ink-2); font-size: var(--fs-15); font-weight: var(--fw-heavy); overflow-wrap: anywhere; }
+.pg-home__mode {
+  flex: none;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+}
+.pg-home__slow {
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-12);
+  background: var(--bee-soft);
+  color: var(--ink);
+  font-size: var(--fs-13);
+}
+.pg-home__pins { margin-bottom: var(--sp-4); }
+.pg-home__map { margin-top: var(--sp-2); }
+.pg-home__units { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.pg-home__unitlink { max-width: 100%; }
+.pg-home__skeleton { display: flex; flex-direction: column; gap: var(--sp-6); }
+.pg-home__ghost { align-self: center; }
+.pg-home__skeletontip { color: var(--ink-2); font-size: var(--fs-13); text-align: center; }
+.pg-home__error { margin-top: var(--sp-6); }
+.pg-home__retry { margin-top: var(--sp-3); }
 </style>

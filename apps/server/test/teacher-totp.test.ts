@@ -53,7 +53,7 @@ describe('教师登录 TOTP 二次验证（#60）', () => {
     expect(ok.statusCode, JSON.stringify(ok.json())).toBe(200);
     contract.validate('Me', ok.json());
     expect(ok.json().role).toBe('teacher');
-    expect(cookieFrom(ok.headers['set-cookie'])).toContain('pg_sid=');
+    expect(cookieFrom(ok.headers['set-cookie'])).toContain('pg_sid_t=');
   });
 
   it('密码错误时不验证 TOTP：同一 401 文案（不泄露密码是否正确）', async () => {

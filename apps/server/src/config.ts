@@ -15,13 +15,30 @@ export interface AppConfig {
   sessionSecret: string;
   piiKey: Buffer;
   studentNoPepper: string;
+  // 学生密码强制（WS1）：开启后，未设密码的学生除 /me、/auth/logout、/auth/logout-all、/auth/student/password 外的学生接口一律 403 PASSWORD_SETUP_REQUIRED。
+  // 缺省只在生产开启（fail-closed）；开发/测试关闭，现有流程与压测脚本不受影响。
+  studentPasswordEnforce: boolean;
   databaseUrl?: string;
   pgliteDir: string;
+  // GET /health/details 的访问令牌（请求头 x-health-token）。未配置则明细接口一律 404。
+  healthToken?: string;
   // 每分钟、每会话的请求上限（见 routes/events.ts、routes/attempts.ts）。
   // login = 每 IP 每分钟学生登录上限（校园共用出口 IP，多个班同时登录时调大）；缺省 120。
   rateLimits: { events: number; help: number; login?: number };
   // 识别（03 §3、09 §10）：每生每日上限、全局并发（= 已购 SimpleTex QPS）、每生同时在途数、照片落盘目录。
   recognition: { inkPerDay: number; photoPerDay: number; concurrency: number; perUserConcurrency: number; storageDir: string };
+  // 模型回答（U15）：每生限流、每日预算、并发、单次调用超时。预算为 null 表示不设上限。
+  ai: {
+    dailyBudgetCny: number | null;
+    studentCallsPer10Min: number;
+    concurrency: number;
+    perUserConcurrency: number;
+    genTimeoutMs: number;
+    reviewTimeoutMs: number;
+    // 结构化小判定（软规则复核、L1/L2 语义判定、兜底归类）的单次超时
+    classifyTimeoutMs: number;
+    totalMs: number;
+  };
   // 含各 provider 的密钥（见 ai/registry.ts）：不得打印或序列化。
   models: ModelRegistry;
 }
@@ -35,6 +52,14 @@ const MODELS_PATH = fileURLToPath(new URL('../config/models.yaml', import.meta.u
 // 空串等于没提供：不能拿 '' 当密钥（会被当成“已提供”而绕过回环守卫）。
 function configured(raw: string | undefined): raw is string {
   return raw !== undefined && raw !== '';
+}
+
+function booleanFlag(raw: string | undefined, fallback: boolean, name: string): boolean {
+  if (raw === undefined || raw === '') return fallback;
+  const value = raw.trim().toLowerCase();
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  throw new Error(`${name} 只能是 true / false / 1 / 0：${raw}`);
 }
 
 function positiveInt(raw: string | undefined, fallback: number, name: string): number {
@@ -85,8 +110,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionSecret,
     piiKey,
     studentNoPepper,
+    studentPasswordEnforce: booleanFlag(env.STUDENT_PASSWORD_ENFORCE, isProduction, 'STUDENT_PASSWORD_ENFORCE'),
     databaseUrl: env.DATABASE_URL === undefined || env.DATABASE_URL === '' ? undefined : env.DATABASE_URL,
     pgliteDir: env.PGLITE_DIR ?? '.data/pglite',
+    ...(configured(env.HEALTH_TOKEN) ? { healthToken: env.HEALTH_TOKEN } : {}),
     rateLimits: {
       events: positiveInt(env.RATE_LIMIT_EVENTS_PER_MIN, 120, 'RATE_LIMIT_EVENTS_PER_MIN'),
       help: positiveInt(env.RATE_LIMIT_HELP_PER_MIN, 60, 'RATE_LIMIT_HELP_PER_MIN'),
@@ -98,6 +125,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       concurrency: positiveInt(env.RECOG_CONCURRENCY, 5, 'RECOG_CONCURRENCY'),
       perUserConcurrency: positiveInt(env.RECOG_PER_USER_CONCURRENCY, 2, 'RECOG_PER_USER_CONCURRENCY'),
       storageDir: env.STORAGE_DIR ?? '.data/photos',
+    },
+    ai: {
+      dailyBudgetCny: env.AI_DAILY_BUDGET_CNY === undefined || env.AI_DAILY_BUDGET_CNY === '' ? null : Number(env.AI_DAILY_BUDGET_CNY),
+      studentCallsPer10Min: positiveInt(env.AI_STUDENT_CALLS_PER_10MIN, 20, 'AI_STUDENT_CALLS_PER_10MIN'),
+      concurrency: positiveInt(env.AI_CONCURRENCY, 6, 'AI_CONCURRENCY'),
+      perUserConcurrency: positiveInt(env.AI_PER_USER_CONCURRENCY, 2, 'AI_PER_USER_CONCURRENCY'),
+      genTimeoutMs: 6000,
+      reviewTimeoutMs: 5000,
+      classifyTimeoutMs: 4000,
+      totalMs: 12000,
     },
     models: loadModelRegistry(MODELS_PATH, env),
   };

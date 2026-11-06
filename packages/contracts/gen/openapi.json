@@ -3,7 +3,7 @@
   "info": {
     "title": "证明陪练场 API",
     "version": "1.0.0-p0",
-    "description": "三端共用的接口契约（学生端 H5/小程序、教师端、服务端）。说明见 06-接口契约.md。\n\n约定：\n- 基础路径 `/api/v1`；JSON UTF-8；时间 ISO 8601（UTC）。\n- 鉴权：HttpOnly + Secure + SameSite=Lax 的会话 Cookie `pg_sid`；教师端镜像 iframe 用短期 `mirrorToken`（查询参数）。\n- 所有改变状态的请求（POST/PUT/PATCH/DELETE）必须带 `X-Requested-With: proof-gym` 头（CSRF 防护，见 05 §7）；缺失或不符返回 403 `FORBIDDEN`。`sendBeacon` 无法加自定义头，只能用于可靠补发的事件上报（事件 id 幂等）。\n- 写操作带 `Idempotency-Key` 头（uuid）。同一个键 24 小时内重放返回同一结果。\n- 学生作答相关的写接口一律返回 `{ state: AttemptState, ... }`。前端只渲染 `state`，不自己推算层、预算、门槛。\n- 写接口可带 `If-Match: <stateVersion>`；版本落后返回 409 `STATE_STALE` 和最新 `state`。\n- 错误统一为 `{ error: { code, message, detail? } }`，`message` 可直接给用户看。\n- **DTO 白名单**：任何学生可调用的接口都不得返回题目包 secret 部分的任何字段（关键步骤、leak、pattern、提示原文库、要点卡、参考证明）。契约测试会扫描响应体。\n",
+    "description": "三端共用的接口契约（学生端 H5/小程序、教师端、服务端）。说明见 06-接口契约.md。\n\n约定：\n- 基础路径 `/api/v1`；JSON UTF-8；时间 ISO 8601（UTC）。\n- 鉴权：两端各一个 HttpOnly + Secure + SameSite=Lax 的会话 Cookie，同一浏览器可同时登录两端、互不覆盖：学生 `pg_sid_s`（30 天）、教师 `pg_sid_t`（12 小时）。`/teacher*`、`/auth/teacher*` 读教师 Cookie，其余读学生 Cookie；只有 `/me`、`/auth/logout`、`/events/batch` 由请求头 `X-Pg-App: student|teacher` 指明（缺省学生）。登录只下发本端 Cookie、不吊销另一端；退出只作废并清除 `X-Pg-App` 指明的那一端。浏览器里只有另一端的会话时，守卫返回 403 `FORBIDDEN` 且 `detail.reason = \"wrong_app\"`（没有任何会话才是 401），两端客户端遇到 401 或 `wrong_app` 一律回登录页。旧版共用的 `pg_sid` 只读兼容：新 Cookie 不在时才读，且会话主人的角色必须与请求的那一端相符，`GET /me` 时换成对应端的新 Cookie 并清掉 `pg_sid`。教师端镜像 iframe 用短期 `mirrorToken`（查询参数），不依赖 Cookie。\n- 所有改变状态的请求（POST/PUT/PATCH/DELETE）必须带 `X-Requested-With: proof-gym` 头（CSRF 防护，见 05 §7）；缺失或不符返回 403 `FORBIDDEN`。`sendBeacon` 无法加自定义头，只能用于可靠补发的事件上报（事件 id 幂等）。\n- 写操作带 `Idempotency-Key` 头（uuid）。同一个键 24 小时内重放返回同一结果。\n- 学生作答相关的写接口一律返回 `{ state: AttemptState, ... }`。前端只渲染 `state`，不自己推算层、预算、门槛。\n- 写接口可带 `If-Match: <stateVersion>`；版本落后返回 409 `STATE_STALE` 和最新 `state`。\n- 错误统一为 `{ error: { code, message, detail? } }`，`message` 可直接给用户看。\n- **DTO 白名单**：任何学生可调用的接口都不得返回题目包 secret 部分的任何字段（关键步骤、leak、pattern、提示原文库、要点卡、参考证明）。契约测试会扫描响应体。\n",
     "contact": {
       "name": "证明陪练场项目组"
     },
@@ -57,7 +57,7 @@
   ],
   "security": [
     {
-      "cookieAuth": []
+      "studentCookieAuth": []
     }
   ],
   "paths": {
@@ -66,8 +66,8 @@
         "tags": [
           "auth"
         ],
-        "summary": "学生登录（邀请码 + 学号）",
-        "description": "首次登录时用学号认领名单里的一行；名单里没有该学号返回 403 `NOT_IN_ROSTER`。响应会告诉前端是否需要先签知情同意。",
+        "summary": "学生登录（学号 + 密码；首次/重置后用邀请码 + 学号激活）",
+        "description": "三种用法，统一用学号 `studentNo` 标识账号：\n1. **已设密码**：必须带 `password`；任何失败（学号不存在、密码错）都返回同一条 401 `INVALID_CREDENTIALS`（学号或密码不对）。\n   同时带有效的 `inviteCode` 则顺带加入该班（第二个班的入班路径；名单规则不变）。\n2. **未设密码或学号尚无账号**：必须带 `inviteCode`，按名单认领；登录成功但 `Me.needsPassword=true`，\n   前端先去设密码（`POST /auth/student/password`）。名单里没有该学号返回 403 `NOT_IN_ROSTER`。\n3. **已设密码却只带邀请码**：401 `PASSWORD_REQUIRED_LOGIN`（这个学号已设置密码，请用密码登录）。堵住同学冒登。\n连续失败按 (IP, 学号) 锁定，返回 429 `RATE_LIMITED`（detail.retryAfterSec）。\n",
         "operationId": "studentLogin",
         "security": [],
         "requestBody": {
@@ -77,7 +77,6 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "inviteCode",
                   "studentNo",
                   "deviceId"
                 ],
@@ -91,6 +90,11 @@
                     "type": "string",
                     "minLength": 4,
                     "maxLength": 20
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "maxLength": 200
                   },
                   "deviceId": {
                     "type": "string",
@@ -116,6 +120,66 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/student/password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "学生设置 / 修改密码",
+        "description": "首次设置（`Me.needsPassword=true`）不需要 `currentPassword`；已有密码时必须带正确的 `currentPassword`，\n否则 403 `INVALID_CREDENTIALS`（刻意不用 401，避免客户端把它当成会话失效而跳回登录页）；连续输错同样被锁定（429）。\n新密码规则：8–64 个字符、不限字符类型，不能与学号相同，也不能是常见弱密码（422 `VALIDATION_FAILED`，message 可直接展示）。\n成功后作废该学生**其他**所有会话（当前会话保留）。服务端开启 `STUDENT_PASSWORD_ENFORCE` 时，\n未设密码的学生调用除 `/me`、`/auth/logout`、本接口之外的学生接口一律 403 `PASSWORD_SETUP_REQUIRED`。\n支持 `Idempotency-Key`。\n",
+        "operationId": "setStudentPassword",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "newPassword"
+                ],
+                "properties": {
+                  "currentPassword": {
+                    "type": "string",
+                    "format": "password",
+                    "maxLength": 200
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "format": "password",
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           },
           "429": {
@@ -237,6 +301,102 @@
         }
       }
     },
+    "/auth/teacher/password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "教师修改密码（需当前密码；作废其他会话）",
+        "description": "新密码至少 8 个字符。当前密码不对返回 403 `INVALID_CREDENTIALS`（不用 401，原因同学生端）；连续输错被锁定（429）。支持 `Idempotency-Key`。",
+        "operationId": "changeTeacherPassword",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
+                "properties": {
+                  "currentPassword": {
+                    "type": "string",
+                    "format": "password",
+                    "maxLength": 200
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "format": "password",
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已修改",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/auth/logout-all": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "退出所有设备（作废该用户全部会话并清 Cookie）",
+        "operationId": "logoutAll",
+        "security": [
+          {
+            "studentCookieAuth": []
+          },
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/pgApp"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已退出所有设备"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/auth/logout": {
       "post": {
         "tags": [
@@ -244,6 +404,19 @@
         ],
         "summary": "退出登录",
         "operationId": "logout",
+        "security": [
+          {
+            "studentCookieAuth": []
+          },
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/pgApp"
+          }
+        ],
         "responses": {
           "204": {
             "description": "已退出"
@@ -261,6 +434,19 @@
         ],
         "summary": "当前用户",
         "operationId": "getMe",
+        "security": [
+          {
+            "studentCookieAuth": []
+          },
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/pgApp"
+          }
+        ],
         "responses": {
           "200": {
             "description": "当前用户",
@@ -452,6 +638,574 @@
             }
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/mistakes": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "我的错题本：按卡点分组（定义没写全 / 依据缺失 / 放缩卡住 / 靠提示写出的步骤 / 自检没通过 / 其他卡点），每项可直接重做",
+        "operationId": "getMistakes",
+        "responses": {
+          "200": {
+            "description": "错题本（空分组不返回；测验布置结束前不出现）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mistakes"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/attempts/{attemptId}/redo": {
+      "post": {
+        "tags": [
+          "attempt"
+        ],
+        "summary": "重做：在本人已完成的作答上新建重做作答（kind=redo，强制练习模式；已有未结束的重做则返回它）",
+        "description": "重做不计经验（来源键与首次相同）、不进指标与导出；第 5 层（迁移题）自动跳过；布置关闭后仍可重做。测验布置开放或未开始期间返回 403 TEST_MODE_RESTRICTED；作答未完成返回 409；他人的作答返回 403。",
+        "operationId": "startRedo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/StateReplay"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/path": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "学习路径（首页）：只返回当前单元的题目详情，其余单元只有摘要",
+        "operationId": "getStudentPath",
+        "parameters": [
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "description": "单元 ID；缺省 = 第一个没做完的单元",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "路径",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentPath"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/path/items/{problemId}/start": {
+      "post": {
+        "tags": [
+          "attempt"
+        ],
+        "summary": "从路径节点开始或继续一道题（懒创建本班的自学布置；已做完则返回只读回看）",
+        "operationId": "startPathItem",
+        "description": "班里这道题有没结束的测验 → 409 TEST_IN_PROGRESS；班里有开放的教师练习布置 → 直接复用。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/problemId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "classId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "缺省 = 最近加入的班级"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/StateReplay"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/progress": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "学习进度：经验、连胜、本周每日、徽章",
+        "description": "连胜按 Asia/Shanghai 自然日算，当天有经验入账才算一天；每周（周一到周日）自动有一张请假卡。徽章目录在服务端代码里。",
+        "operationId": "getProgress",
+        "responses": {
+          "200": {
+            "description": "进度",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/settings": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "我的设置（昵称、每日目标、默认输入、外观、音效/动效/震动、引导进度）",
+        "description": "要求已签同意书（与作答接口同一守卫）。",
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "description": "设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "student"
+        ],
+        "summary": "修改设置（只传要改的字段）；nickname 写入 users.display_name，trim 后 1–16 个字",
+        "operationId": "patchSettings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentSettingsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "修改后的设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/feedback": {
+      "post": {
+        "tags": [
+          "student"
+        ],
+        "summary": "问题反馈",
+        "operationId": "submitFeedback",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已收到"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/practice": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "练习区：在全部已发布题里按章节与难度挑题（分页，章 → 难度 → ID 顺序稳定）",
+        "operationId": "listPractice",
+        "parameters": [
+          {
+            "name": "chapter",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "difficulty",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/DifficultyBand"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "todo",
+                "active",
+                "done"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "题目、章节、题面、标签里的关键词",
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "一页题目 + 分面",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/practice/random": {
+      "post": {
+        "tags": [
+          "student"
+        ],
+        "summary": "随机挑一道还没做完的题（范围内都做完了返回 404）",
+        "operationId": "randomPractice",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chapter": {
+                    "type": "string"
+                  },
+                  "difficulty": {
+                    "$ref": "#/components/schemas/DifficultyBand"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "一道题（客户端随后调用 start）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/practice/{problemId}/start": {
+      "post": {
+        "tags": [
+          "attempt"
+        ],
+        "summary": "从练习区开始一道题（同 /student/path/items/{problemId}/start，同样的测验撞车拒绝）",
+        "operationId": "startPractice",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/problemId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "classId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/StateReplay"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/practice/{problemId}/solution": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "解题思路与参考证明：只返回这位学生已经可以看的那一级",
+        "operationId": "getPracticeSolution",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/problemId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前可见级别与内容",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeSolution"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/practice/{problemId}/solution/reveal": {
+      "post": {
+        "tags": [
+          "student"
+        ],
+        "summary": "主动查看思路（approach）或完整解答（full）；只限自己的练习模式自学作答",
+        "operationId": "revealPracticeSolution",
+        "description": "老师布置的作答、测验模式、班里有没结束的测验时 403；还没开始做这道题 409。记 `solution.revealed` 事件，之后写出的关键步骤按有提示计。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/problemId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "level"
+                ],
+                "properties": {
+                  "level": {
+                    "type": "string",
+                    "enum": [
+                      "approach",
+                      "full"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "查看后的内容",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeSolution"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1137,7 +1891,7 @@
         "tags": [
           "attempt"
         ],
-        "summary": "题目关闭且教师已发布讲评后，查看参考证明与讲评（之前返回 403）",
+        "summary": "查看参考证明与讲评：教师布置要教师已发布，且本人写完或布置结束；自学作答本人写完后即可看；班里该题有没结束的测验时 403（读参考证明记审计）",
         "operationId": "getPublishedReview",
         "parameters": [
           {
@@ -1150,26 +1904,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "proofs"
-                  ],
-                  "properties": {
-                    "proofs": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/MathText"
-                      }
-                    },
-                    "note": {
-                      "$ref": "#/components/schemas/MathText"
-                    }
-                  }
+                  "$ref": "#/components/schemas/PublishedReview"
                 }
               }
             }
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1416,7 +2159,7 @@
           "help"
         ],
         "summary": "求助（一个入口，三种意图 + 自由提问）",
-        "description": "- `stuck`：返回下一条提示的**预览**（级别、将计入的透露量、能否领取）。H0/H1 直接下发；H2 起要再调 `/hints/claim` 才下发。\n- `concept`：概念解释（词条/微课入口），不计透露量。\n- `check_line`：对指定行（缺省最新一行）给批注。\n- `free`：自由提问，服务端判意图后按上面三类处理；索要答案/施压一句拒绝 + H0。\n",
+        "description": "- `stuck`：返回下一条提示的**预览**（级别、将计入的透露量、能否领取）。H0/H1 直接下发；H2 起要再调 `/hints/claim` 才下发。\n- `concept`：概念解释（词条/微课入口），不计透露量。\n- `check_line`：对指定行（缺省最新一行）给批注。\n- `free`：自由提问，服务端判意图后按上面三类处理；索要答案/施压一句拒绝 + H0。\n- 开了 `help.llm` 时，`concept` / `free` / `check_line` 的回答由模型生成（已过三重闸门），`note.aiGenerated = true`，响应头 `X-AIGC: 1`；闸门拦下或模型不可用时回退模板回答（`aiGenerated` 缺省）。\n",
         "operationId": "requestHelp",
         "parameters": [
           {
@@ -1556,18 +2299,85 @@
         "tags": [
           "help"
         ],
-        "summary": "标记求助老师（额度用完或卡住时）",
+        "summary": "标记求助老师（额度用完，或卡住满 stuckMs 后）",
+        "description": "写入 `app.help_flags`，教师看板显示求助；重复调用返回当前状态（幂等）。测验模式 403。",
         "operationId": "flagTeacher",
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
           }
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/State"
+            "$ref": "#/components/responses/StateReplay"
           },
           "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/notes/{noteId}/feedback": {
+      "post": {
+        "tags": [
+          "help"
+        ],
+        "summary": "对一条 AI 回答点“有用 / 没用”（13 §5）",
+        "description": "只能点自己作答里的批注（`Note.noteId`）；可以改主意，以最后一次为准。",
+        "operationId": "noteFeedback",
+        "parameters": [
+          {
+            "name": "noteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "useful"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "useful": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已记录"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1581,6 +2391,19 @@
         "summary": "批量上报前端事件（幂等）",
         "description": "每批 ≤ 100 条、≤ 256KB。按事件 `id` 去重。只接受 events.schema.json 中 $defs/ClientEvent 允许的类型；服务端类型一律拒收。",
         "operationId": "ingestEvents",
+        "security": [
+          {
+            "studentCookieAuth": []
+          },
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/pgApp"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1660,6 +2483,11 @@
         ],
         "summary": "我的班级",
         "operationId": "listClasses",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "班级列表",
@@ -1685,6 +2513,11 @@
         ],
         "summary": "建班（生成邀请码）",
         "operationId": "createClass",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1734,6 +2567,11 @@
         ],
         "summary": "更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出）",
         "operationId": "updateClassSettings",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1779,6 +2617,11 @@
         ],
         "summary": "名单列表（认领状态；学号只存哈希不返回）",
         "operationId": "listRoster",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1812,6 +2655,11 @@
         ],
         "summary": "导入名单（CSV：学号,姓名；姓名可空）",
         "operationId": "importRoster",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1878,6 +2726,11 @@
         ],
         "summary": "解除认领（学生换设备/异常时；写 audit_log）",
         "operationId": "unclaimRoster",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1905,6 +2758,49 @@
         }
       }
     },
+    "/teacher/classes/{classId}/roster/{rosterId}/reset-password": {
+      "post": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "重置学生密码（清哈希、作废该生全部会话；写 audit_log）",
+        "description": "名单行必须已被认领、且班级归当前教师；学生之后用邀请码 + 学号重新激活并设置新密码。重置是账号级的（该生在其他班也要重新设密码）。",
+        "operationId": "resetStudentPassword",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          },
+          {
+            "name": "rosterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已重置"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/teacher/classes/{classId}/invite-code": {
       "post": {
         "tags": [
@@ -1912,6 +2808,11 @@
         ],
         "summary": "重置邀请码",
         "operationId": "rotateInvite",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1941,6 +2842,11 @@
         ],
         "summary": "实时看板快照（P0 每 5 秒轮询；P1 改用 /stream）",
         "operationId": "getLive",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1979,6 +2885,11 @@
         "summary": "实时看板推送（SSE）",
         "description": "事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线重连后重推当前快照；前端另有 5s 轮询兜底。",
         "operationId": "streamLive",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -2017,6 +2928,11 @@
         ],
         "summary": "班级指标（口径见 08-事件与数据字典.md §4）",
         "operationId": "getMetrics",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -2047,6 +2963,38 @@
         }
       }
     },
+    "/teacher/classes/{classId}/self-study": {
+      "get": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "自学进度：本班学生在学习路径各单元的完成情况（不进看板、指标与导出）",
+        "operationId": "getSelfStudy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/classId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "自学进度",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfStudyView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/teacher/attempts/{attemptId}": {
       "get": {
         "tags": [
@@ -2054,6 +3002,11 @@
         ],
         "summary": "学生作答详情（全部行、批注、提示、识别、诚信信号、时间线）",
         "operationId": "getAttemptDetail",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2083,6 +3036,11 @@
         ],
         "summary": "作答事件流（回放用；按 seq 分页）",
         "operationId": "getAttemptEvents",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2148,6 +3106,11 @@
         ],
         "summary": "教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4）",
         "operationId": "reclassifyLine",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2273,6 +3236,11 @@
         "summary": "镜像预览推送（SSE，P1）：该作答每次 state_version 变化推送学生视图",
         "description": "事件名：`state`（data=AttemptState，与学生端看到的完全一致）、`ping`（每 20 秒）。可用教师 Cookie 或 mirrorToken 鉴权。",
         "operationId": "streamAttempt",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2313,6 +3281,11 @@
         ],
         "summary": "取镜像预览令牌（P1）：教师端 iframe 用它以只读模式打开学生页面",
         "operationId": "getMirrorToken",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2360,6 +3333,11 @@
         ],
         "summary": "解锁作答（测验模式切出过多被锁等）；可同时补发一条 H4（额度耗尽出口）",
         "operationId": "unlockAttempt",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2414,6 +3392,11 @@
         ],
         "summary": "给学生发一句话（同样过闸门；被改写会告知教师）",
         "operationId": "nudgeStudent",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2474,6 +3457,11 @@
         ],
         "summary": "处理求助标记或诚信信号",
         "operationId": "resolveFlag",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "flagId",
@@ -2524,6 +3512,11 @@
         ],
         "summary": "班级布置列表（按开放时间倒序；状态按数据库时钟推导）",
         "operationId": "listAssignments",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "classId",
@@ -2566,6 +3559,11 @@
         ],
         "summary": "布置练习或测验",
         "operationId": "createAssignment",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2600,6 +3598,11 @@
         ],
         "summary": "修改布置（时间、开关；已开始的作答不受题目版本变化影响）",
         "operationId": "updateAssignment",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/assignmentId"
@@ -2639,6 +3642,11 @@
         ],
         "summary": "题目关闭后发布参考证明与讲评（A/B 两组同时发布）",
         "operationId": "publishReview",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/assignmentId"
@@ -2688,6 +3696,11 @@
         ],
         "summary": "导出（默认匿名；实名需管理员审批）",
         "operationId": "createExport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2767,6 +3780,11 @@
         ],
         "summary": "导出任务状态与下载链接",
         "operationId": "getExport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "exportId",
@@ -2802,6 +3820,11 @@
         ],
         "summary": "下载导出文件（同源教师 Cookie；仅创建者或管理员）",
         "operationId": "downloadExport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "exportId",
@@ -2847,6 +3870,11 @@
         ],
         "summary": "题库列表（含审核状态）",
         "operationId": "listProblems",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "status",
@@ -2868,11 +3896,69 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "标题、章节或题号关键词",
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          {
+            "name": "reviewSource",
+            "in": "query",
+            "description": "老师审核 = teacher；AI 整理（批量导入）= auto",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "teacher",
+                "auto"
+              ]
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "主题 = main；迁移题 = transfer",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "main",
+                "transfer"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "给了才分页（1–100）；不给 = 返回全部，兼容旧调用",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "上一页响应头 X-Next-Cursor",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "题目",
+            "description": "题目（分页时下一页游标在响应头 X-Next-Cursor，没有下一页则不返回该头）",
+            "headers": {
+              "X-Next-Cursor": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2896,6 +3982,74 @@
         }
       }
     },
+    "/teacher/problems/{problemId}/visibility": {
+      "patch": {
+        "tags": [
+          "content"
+        ],
+        "summary": "下架 / 恢复上架一道题（设置或清除 hidden_at）",
+        "description": "下架后这道题不再出现在学生的学习路径与练习区；已有作答和老师已布置的题不受影响。写一条审计记录。",
+        "operationId": "setProblemVisibility",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "problemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "hidden"
+                ],
+                "properties": {
+                  "hidden": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "当前状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemVisibility"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/teacher/problems/{problemId}/versions/{version}": {
       "get": {
         "tags": [
@@ -2903,6 +4057,11 @@
         ],
         "summary": "完整题目包（含 secret；仅教师/审核角色；读参考证明记审计）",
         "operationId": "getProblemVersion",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "problemId",
@@ -2954,6 +4113,11 @@
         ],
         "summary": "审核结论（通过 / 退回 / 直接修改后通过）",
         "operationId": "reviewProblem",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "problemId",
@@ -3029,6 +4193,11 @@
         ],
         "summary": "发起题库导入任务（PDF 页码范围 → 题目包草稿）",
         "operationId": "createImport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3104,6 +4273,11 @@
         ],
         "summary": "导入任务进度与草稿列表",
         "operationId": "getImport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "jobId",
@@ -3139,6 +4313,11 @@
         ],
         "summary": "用 Lean 4 + mathlib 编译题目包登记的参考证明（沿用 08 server.mjs，转为 worker 任务）",
         "operationId": "leanCheck",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3200,7 +4379,7 @@
         "tags": [
           "ops"
         ],
-        "summary": "健康检查（各外部依赖可用性与降级开关状态）",
+        "summary": "健康检查（公开，只回答服务是否在运行；不含依赖与开关明细）",
         "operationId": "health",
         "security": [],
         "responses": {
@@ -3210,12 +4389,88 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "ok",
+                    "status",
+                    "service"
+                  ],
                   "properties": {
                     "ok": {
                       "type": "boolean"
                     },
-                    "version": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "service": {
                       "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/health/details": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "健康明细（各外部依赖可用性与降级开关状态；需 x-health-token，值守/监控用）",
+        "description": "请求头 x-health-token 必须等于服务端环境变量 HEALTH_TOKEN；未配置 HEALTH_TOKEN 或令牌不符都返回 404（不暴露该路径存在）。反代只放行 /health，不要把 /health/details 暴露到公网。",
+        "operationId": "healthDetails",
+        "security": [],
+        "parameters": [
+          {
+            "name": "x-health-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "状态明细",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "status",
+                    "service",
+                    "env",
+                    "uptimeSec",
+                    "deps",
+                    "flags"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "env": {
+                      "type": "string"
+                    },
+                    "uptimeSec": {
+                      "type": "integer"
                     },
                     "deps": {
                       "type": "object",
@@ -3240,7 +4495,7 @@
               }
             }
           },
-          "401": {
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3249,13 +4504,34 @@
   },
   "components": {
     "securitySchemes": {
-      "cookieAuth": {
+      "studentCookieAuth": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "pg_sid"
+        "name": "pg_sid_s",
+        "description": "学生端会话，30 天。除 `/teacher*`、`/auth/teacher*` 外的接口读这个 Cookie。"
+      },
+      "teacherCookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "pg_sid_t",
+        "description": "教师端会话，12 小时。`/teacher*`、`/auth/teacher*` 读这个 Cookie。"
       }
     },
     "parameters": {
+      "pgApp": {
+        "name": "X-Pg-App",
+        "in": "header",
+        "required": false,
+        "description": "两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "student",
+            "teacher"
+          ],
+          "default": "student"
+        }
+      },
       "attemptId": {
         "name": "attemptId",
         "in": "path",
@@ -3290,6 +4566,15 @@
         "schema": {
           "type": "string",
           "format": "uuid"
+        }
+      },
+      "problemId": {
+        "name": "problemId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,64}$"
         }
       },
       "conceptId": {
@@ -3376,6 +4661,9 @@
               "properties": {
                 "state": {
                   "$ref": "#/components/schemas/AttemptState"
+                },
+                "rewards": {
+                  "$ref": "#/components/schemas/Rewards"
                 }
               }
             }
@@ -3410,6 +4698,9 @@
                   "AGE_BAND_REQUIRED",
                   "AGE_RESTRICTED",
                   "AGE_BAND_LOCKED",
+                  "INVALID_CREDENTIALS",
+                  "PASSWORD_REQUIRED_LOGIN",
+                  "PASSWORD_SETUP_REQUIRED",
                   "WRONG_LAYER",
                   "LAYER_LOCKED",
                   "STATE_STALE",
@@ -3425,7 +4716,8 @@
                   "TEST_MODE_RESTRICTED",
                   "UPSTREAM_UNAVAILABLE",
                   "VALIDATION_FAILED",
-                  "INTERNAL"
+                  "INTERNAL",
+                  "TEST_IN_PROGRESS"
                 ]
               },
               "message": {
@@ -3437,6 +4729,18 @@
                 "description": "如 { waitSec, softLanding: [...], state }"
               }
             }
+          }
+        }
+      },
+      "OkResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
           }
         }
       },
@@ -3530,6 +4834,10 @@
             ],
             "description": "年龄分档（13 §4）；学生必返。null=尚未选择，需先调 POST /auth/student/age-band；lt14 不开通（写接口 403 AGE_RESTRICTED）"
           },
+          "needsPassword": {
+            "type": "boolean",
+            "description": "仅学生返回：true=账号还没设密码，前端先去 POST /auth/student/password（密码设好前，开启强制时其余学生接口 403 PASSWORD_SETUP_REQUIRED）"
+          },
           "features": {
             "type": "object",
             "additionalProperties": {
@@ -3555,11 +4863,11 @@
           },
           "crossBorderHosting": {
             "type": "boolean",
-            "description": "数据存储于中国香港服务器（P0 必选）"
+            "description": "AI 模型和识别服务（必选；历史键名，内容已是境内服务，见 13 §2）"
           },
           "crossBorderModel": {
             "type": "boolean",
-            "description": "去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关对该生跳过 Jev）"
+            "description": "已停用（U22）：系统不向境外发送数据，服务端一律记为 false；客户端仍需传这个键"
           },
           "monitoring": {
             "type": "boolean",
@@ -3699,7 +5007,8 @@
             "type": "string"
           },
           "stem": {
-            "$ref": "#/components/schemas/MathText"
+            "$ref": "#/components/schemas/MathText",
+            "description": "仅在布置详情里返回；首页卡片不再带整段题面"
           },
           "mode": {
             "type": "string",
@@ -3966,6 +5275,10 @@
             ],
             "description": "有值时显示\"看分步讲解\"入口"
           },
+          "aiGenerated": {
+            "type": "boolean",
+            "description": "模型生成的回答（界面显示“AI 生成 · 仅作学习提示”，响应头 X-AIGC: 1；13 §5）"
+          },
           "at": {
             "type": "string",
             "format": "date-time"
@@ -4057,6 +5370,10 @@
           "stuckOffer": {
             "type": "boolean",
             "description": "连续卡住，界面可温和询问是否需要提示"
+          },
+          "canFlag": {
+            "type": "boolean",
+            "description": "现在可以“找老师”（额度用完，或卡住满 stuckMs），且还没找过"
           }
         }
       },
@@ -4117,9 +5434,17 @@
           "last": {
             "$ref": "#/components/schemas/MathText"
           },
+          "feedback": {
+            "$ref": "#/components/schemas/MathText",
+            "description": "最近一次核对没通过时缺的那一个成分（或顺序追问），一次只说一件事；通过或离开本层后不再下发"
+          },
           "lessonSuggested": {
             "type": "boolean",
             "description": "两次未过时为 true，界面主动展开\"分步讲解\""
+          },
+          "lessonAvailable": {
+            "type": "boolean",
+            "description": "概念缺失或没有微课步骤时为 false，界面隐藏微课入口（GET lesson 对缺失概念是 404）"
           }
         }
       },
@@ -4134,6 +5459,10 @@
           },
           "last": {
             "$ref": "#/components/schemas/MathText"
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/MathText",
+            "description": "最近一次核对没通过时缺的那一部分骨架；通过或离开本层后不再下发"
           },
           "templateShown": {
             "type": "boolean"
@@ -4291,7 +5620,8 @@
             "type": "string",
             "enum": [
               "main",
-              "transfer"
+              "transfer",
+              "redo"
             ]
           },
           "status": {
@@ -4746,6 +6076,10 @@
               "null"
             ],
             "description": "认领学生的匿名码"
+          },
+          "passwordSet": {
+            "type": "boolean",
+            "description": "认领学生是否已设置密码（未认领为 false）；教师可据此提示或重置"
           }
         }
       },
@@ -5450,6 +6784,574 @@
           }
         }
       },
+      "DifficultyBand": {
+        "type": "string",
+        "enum": [
+          "easy",
+          "medium",
+          "hard"
+        ],
+        "description": "入门 / 进阶 / 挑战。题目包 public.difficulty 1–2 = easy，3 = medium，4–5 = hard。"
+      },
+      "PathItem": {
+        "type": "object",
+        "required": [
+          "problemId",
+          "title",
+          "stemPreview",
+          "difficulty",
+          "state",
+          "layersDone",
+          "layersTotal",
+          "reviewPublished",
+          "autoImported",
+          "softLocked",
+          "lessonAvailable"
+        ],
+        "properties": {
+          "problemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "stemPreview": {
+            "$ref": "#/components/schemas/MathText",
+            "description": "截断的题面，不会把 $…$ 公式切成两半"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyBand"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "active",
+              "done"
+            ]
+          },
+          "currentLayer": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LayerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "layersDone": {
+            "type": "integer"
+          },
+          "layersTotal": {
+            "type": "integer",
+            "description": "本题启用的层数（导入题只有写证明与总结两层）"
+          },
+          "attemptId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "reviewPublished": {
+            "type": "boolean",
+            "description": "可以看讲评：自学作答完成即可；教师布置要教师发布"
+          },
+          "autoImported": {
+            "type": "boolean",
+            "description": "批量导入、AI 整理（界面显示小标签）"
+          },
+          "sourceBook": {
+            "type": "string",
+            "description": "题目出处（书名），有就显示（著作权法第 24 条要指明出处，13 §6）"
+          },
+          "softLocked": {
+            "type": "boolean",
+            "description": "排在第一道未完成题之后，只提示、不拦"
+          },
+          "lessonAvailable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PathUnitSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "chapterNo",
+          "unitNo",
+          "title",
+          "summary",
+          "total",
+          "done",
+          "state",
+          "locked"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "chapterNo": {
+            "type": "integer"
+          },
+          "unitNo": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "done": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "active",
+              "done"
+            ]
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "上一个单元完成不到 60%。软锁：界面确认后可进入，服务端不拦。"
+          }
+        }
+      },
+      "StudentPath": {
+        "type": "object",
+        "required": [
+          "course",
+          "units",
+          "current",
+          "teacherAssignments",
+          "chapters"
+        ],
+        "properties": {
+          "course": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "id",
+              "title"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathUnitSummary"
+            }
+          },
+          "current": {
+            "description": "当前单元详情（带题目）；没有任何单元时为 null",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PathUnitSummary"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "items",
+                      "conceptIds",
+                      "concepts"
+                    ],
+                    "properties": {
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/PathItem"
+                        }
+                      },
+                      "conceptIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "concepts": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "title"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "teacherAssignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssignmentCard"
+            },
+            "description": "置顶：开放中、没做完的老师布置，截止早的在前"
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "chapterNo",
+                "chapter",
+                "firstUnitId",
+                "unitCount",
+                "total",
+                "done"
+              ],
+              "properties": {
+                "chapterNo": {
+                  "type": "integer"
+                },
+                "chapter": {
+                  "type": "string"
+                },
+                "firstUnitId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "unitCount": {
+                  "type": "integer"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "done": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "PracticeItem": {
+        "type": "object",
+        "required": [
+          "problemId",
+          "title",
+          "stemPreview",
+          "chapter",
+          "difficulty",
+          "tags",
+          "status",
+          "attemptId",
+          "keyCount",
+          "autoImported"
+        ],
+        "properties": {
+          "problemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "stemPreview": {
+            "$ref": "#/components/schemas/MathText"
+          },
+          "chapter": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyBand"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "active",
+              "done"
+            ]
+          },
+          "attemptId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "keyCount": {
+            "type": "integer"
+          },
+          "autoImported": {
+            "type": "boolean"
+          },
+          "sourceBook": {
+            "type": "string",
+            "description": "题目出处（书名），有就显示（13 §6）"
+          }
+        }
+      },
+      "PracticeList": {
+        "type": "object",
+        "required": [
+          "items",
+          "facets",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PracticeItem"
+            }
+          },
+          "facets": {
+            "type": "object",
+            "required": [
+              "chapters",
+              "difficulty"
+            ],
+            "properties": {
+              "chapters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "chapter",
+                    "total",
+                    "done"
+                  ],
+                  "properties": {
+                    "chapter": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "done": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "difficulty": {
+                "type": "object",
+                "required": [
+                  "easy",
+                  "medium",
+                  "hard"
+                ],
+                "properties": {
+                  "easy": {
+                    "type": "integer"
+                  },
+                  "medium": {
+                    "type": "integer"
+                  },
+                  "hard": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PracticeSolution": {
+        "type": "object",
+        "required": [
+          "level",
+          "canReveal",
+          "hasApproach",
+          "hasFull"
+        ],
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "none",
+              "approach",
+              "full"
+            ],
+            "description": "这位学生此刻可以看到哪一级"
+          },
+          "canReveal": {
+            "type": "boolean",
+            "description": "他有一份进行中的自学作答，且还可以再看一级"
+          },
+          "hasApproach": {
+            "type": "boolean",
+            "description": "本题有整理好的解题思路"
+          },
+          "hasFull": {
+            "type": "boolean",
+            "description": "本题有可发布的参考证明"
+          },
+          "aiGenerated": {
+            "type": "boolean",
+            "description": "这些内容由 AI 整理；界面要显示“AI 生成”标识（13 §5）"
+          },
+          "approach": {
+            "$ref": "#/components/schemas/MathText"
+          },
+          "keyIdeas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MathText"
+            }
+          },
+          "pitfalls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MathText"
+            }
+          },
+          "referenceProof": {
+            "$ref": "#/components/schemas/MathText"
+          }
+        }
+      },
+      "SelfStudyView": {
+        "type": "object",
+        "required": [
+          "units",
+          "students"
+        ],
+        "properties": {
+          "units": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "chapterNo",
+                "unitNo",
+                "title",
+                "total"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "chapterNo": {
+                  "type": "integer"
+                },
+                "unitNo": {
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "students": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "anonCode",
+                "displayName",
+                "doneTotal",
+                "active",
+                "revealed",
+                "byUnit"
+              ],
+              "properties": {
+                "anonCode": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "doneTotal": {
+                  "type": "integer"
+                },
+                "active": {
+                  "type": "integer",
+                  "description": "进行中的自学题数"
+                },
+                "revealed": {
+                  "type": "integer",
+                  "description": "主动查看过解答的题数"
+                },
+                "lastActiveAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "byUnit": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "unitId",
+                      "done"
+                    ],
+                    "properties": {
+                      "unitId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "done": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "ProblemListItem": {
         "type": "object",
         "required": [
@@ -5494,6 +7396,14 @@
           "source": {
             "type": "string"
           },
+          "reviewSource": {
+            "type": "string",
+            "enum": [
+              "teacher",
+              "auto"
+            ],
+            "description": "auto = 批量导入、AI 整理"
+          },
           "reviewedBy": {
             "type": [
               "string",
@@ -5502,6 +7412,30 @@
             "description": "最近一次审核人（display_name/anon_code）"
           },
           "reviewedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "hiddenAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "老师下架的时间；没下架时不出现"
+          }
+        }
+      },
+      "ProblemVisibility": {
+        "type": "object",
+        "required": [
+          "problemId",
+          "hiddenAt"
+        ],
+        "properties": {
+          "problemId": {
+            "type": "string"
+          },
+          "hiddenAt": {
             "type": [
               "string",
               "null"
@@ -5635,6 +7569,7 @@
         "properties": {
           "cards": {
             "type": "array",
+            "description": "本人已完成的作答（kind=main|redo），最新在前，最多 100 条",
             "items": {
               "type": "object",
               "properties": {
@@ -5642,7 +7577,31 @@
                   "type": "string",
                   "format": "uuid"
                 },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "main",
+                    "redo"
+                  ]
+                },
+                "parentAttemptId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid"
+                },
+                "assignmentId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "problemId": {
+                  "type": "string"
+                },
                 "title": {
+                  "type": "string"
+                },
+                "chapter": {
                   "type": "string"
                 },
                 "proof": {
@@ -5651,6 +7610,28 @@
                     "$ref": "#/components/schemas/MathText"
                   },
                   "description": "学生自己写的证明"
+                },
+                "lines": {
+                  "type": "array",
+                  "description": "同 proof，带行号与依据",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "n",
+                      "statement"
+                    ],
+                    "properties": {
+                      "n": {
+                        "type": "integer"
+                      },
+                      "statement": {
+                        "$ref": "#/components/schemas/MathText"
+                      },
+                      "justification": {
+                        "$ref": "#/components/schemas/MathText"
+                      }
+                    }
+                  }
                 },
                 "summary": {
                   "type": "array",
@@ -5666,7 +7647,22 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "description": "本次出现过的卡点分组名"
+                },
+                "teacherNote": {
+                  "$ref": "#/components/schemas/MathText",
+                  "description": "教师已发布的讲评（未发布时没有）"
+                },
+                "reviewPublished": {
+                  "type": "boolean"
+                },
+                "canRedo": {
+                  "type": "boolean",
+                  "description": "测验布置未结束时为 false"
+                },
+                "independence": {
+                  "type": "number"
                 },
                 "completedAt": {
                   "type": "string",
@@ -5679,7 +7675,469 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AssignmentCard"
+            },
+            "description": "有卡点且还没重做成功的作答（attemptId 即可重做的作答）"
+          }
+        }
+      },
+      "MistakeItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "group",
+          "problemTitle",
+          "chapter",
+          "attemptId",
+          "lineExcerpt",
+          "note",
+          "createdAt",
+          "canRedo"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "definition",
+              "basis",
+              "scaling",
+              "hinted",
+              "selfcheck",
+              "other"
+            ]
+          },
+          "problemTitle": {
+            "type": "string"
+          },
+          "chapter": {
+            "type": "string"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "重做时调用 POST /student/attempts/{attemptId}/redo"
+          },
+          "lineExcerpt": {
+            "$ref": "#/components/schemas/MathText"
+          },
+          "note": {
+            "$ref": "#/components/schemas/MathText",
+            "description": "以问题或提醒的口吻，不判对错"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "canRedo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Mistakes": {
+        "type": "object",
+        "required": [
+          "groups",
+          "total"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "group",
+                "title",
+                "count",
+                "items"
+              ],
+              "properties": {
+                "group": {
+                  "type": "string",
+                  "enum": [
+                    "definition",
+                    "basis",
+                    "scaling",
+                    "hinted",
+                    "selfcheck",
+                    "other"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MistakeItem"
+                  }
+                }
+              }
             }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "Rewards": {
+        "type": "object",
+        "description": "这一步记入的经验与徽章（add-only；没有新经验时不返回；测验作答不返回，完成时在后台一次结算）",
+        "required": [
+          "xp",
+          "items",
+          "badges"
+        ],
+        "properties": {
+          "xp": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "amount",
+                "label"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "key_own",
+                    "key_hinted",
+                    "layer",
+                    "problem",
+                    "daily"
+                  ]
+                },
+                "amount": {
+                  "type": "integer"
+                },
+                "label": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "badges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "title",
+                "desc"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "streak": {
+            "type": "object",
+            "required": [
+              "current",
+              "extended"
+            ],
+            "properties": {
+              "current": {
+                "type": "integer"
+              },
+              "extended": {
+                "type": "boolean",
+                "description": "今天第一次有进展"
+              }
+            }
+          },
+          "goalReached": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StudentProgress": {
+        "type": "object",
+        "required": [
+          "xpTotal",
+          "xpToday",
+          "keysToday",
+          "dailyGoal",
+          "streak",
+          "week",
+          "badges",
+          "daysLearned"
+        ],
+        "properties": {
+          "xpTotal": {
+            "type": "integer"
+          },
+          "xpToday": {
+            "type": "integer"
+          },
+          "keysToday": {
+            "type": "integer",
+            "description": "今天自己写出的关键步骤数（含借助提示）"
+          },
+          "dailyGoal": {
+            "type": "integer"
+          },
+          "streak": {
+            "type": "object",
+            "required": [
+              "current",
+              "best",
+              "freezeAvailable",
+              "usedFreezeDays"
+            ],
+            "properties": {
+              "current": {
+                "type": "integer"
+              },
+              "best": {
+                "type": "integer"
+              },
+              "freezeAvailable": {
+                "type": "boolean",
+                "description": "本周的请假卡还没用"
+              },
+              "usedFreezeDays": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            }
+          },
+          "week": {
+            "type": "array",
+            "description": "本周（周一到周日，Asia/Shanghai）每天的经验与关键步骤",
+            "items": {
+              "type": "object",
+              "required": [
+                "day",
+                "xp",
+                "keys"
+              ],
+              "properties": {
+                "day": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "xp": {
+                  "type": "integer"
+                },
+                "keys": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "badges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "title",
+                "desc",
+                "earnedAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "earnedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "progress": {
+                  "type": "object",
+                  "required": [
+                    "current",
+                    "target"
+                  ],
+                  "properties": {
+                    "current": {
+                      "type": "integer"
+                    },
+                    "target": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "daysLearned": {
+            "type": "integer"
+          }
+        }
+      },
+      "StudentSettings": {
+        "type": "object",
+        "required": [
+          "nickname",
+          "dailyGoal",
+          "defaultInput",
+          "theme",
+          "sound",
+          "motion",
+          "haptics",
+          "onboarding"
+        ],
+        "properties": {
+          "nickname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dailyGoal": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "defaultInput": {
+            "type": "string",
+            "enum": [
+              "hand",
+              "keyboard",
+              "photo"
+            ]
+          },
+          "theme": {
+            "type": "string",
+            "enum": [
+              "system",
+              "light",
+              "dark"
+            ]
+          },
+          "sound": {
+            "type": "boolean"
+          },
+          "motion": {
+            "type": "boolean"
+          },
+          "haptics": {
+            "type": "boolean"
+          },
+          "onboarding": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "StudentSettingsPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "dailyGoal": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "defaultInput": {
+            "type": "string",
+            "enum": [
+              "hand",
+              "keyboard",
+              "photo"
+            ]
+          },
+          "theme": {
+            "type": "string",
+            "enum": [
+              "system",
+              "light",
+              "dark"
+            ]
+          },
+          "sound": {
+            "type": "boolean"
+          },
+          "motion": {
+            "type": "boolean"
+          },
+          "haptics": {
+            "type": "boolean"
+          },
+          "onboarding": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "StudentFeedback": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "body"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "idea",
+              "content",
+              "other"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "page": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      },
+      "PublishedReview": {
+        "type": "object",
+        "required": [
+          "proofs"
+        ],
+        "properties": {
+          "proofs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MathText"
+            }
+          },
+          "note": {
+            "$ref": "#/components/schemas/MathText"
           }
         }
       }

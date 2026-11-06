@@ -1,6 +1,8 @@
-import { createSSRApp } from 'vue'
+import { createApp as createVueApp, createSSRApp } from 'vue'
 import App from './App.vue'
 import { hashMirrorRedirect } from './components/mirror/mirrorRoute'
+import PgToast from './components/ui/PgToast.vue'
+import { installGlobalErrorHandler } from './errorBoundary'
 import 'katex/dist/katex.min.css'
 import './styles/tokens.css'
 import './styles/base.css'
@@ -16,9 +18,20 @@ function redirectMirrorPathToHash(): void {
   if (target) window.location.replace(target)
 }
 
+/** 轻提示挂在页面之外：换页不丢，任何模块都能 useToast()。这个小应用只用原生标签，不依赖 uni 组件。 */
+function mountToastHost(): void {
+  if (typeof document === 'undefined') return
+  const host = document.createElement('div')
+  host.id = 'pg-toast-host'
+  document.body.appendChild(host)
+  createVueApp(PgToast).mount(host)
+}
+
 redirectMirrorPathToHash()
 
 export function createApp() {
   const app = createSSRApp(App)
+  installGlobalErrorHandler(app)
+  mountToastHost()
   return { app }
 }

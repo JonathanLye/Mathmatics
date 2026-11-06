@@ -20,7 +20,7 @@ export type AttemptRow = {
   user_id: string;
   problem_id: string;
   problem_version: number;
-  kind: 'main' | 'transfer';
+  kind: 'main' | 'transfer' | 'redo';
   parent_attempt_id: string | null;
   mode: 'practice' | 'test';
   status: 'active' | 'parked' | 'locked' | 'completed' | 'abandoned';
@@ -77,9 +77,11 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
       conceptId: pub.def?.conceptId ?? '',
       submissions: state.def.attempts,
       ...(extras.defLast === null ? {} : { last: extras.defLast }),
+      ...defFeedback(state, problem, extras),
       lessonSuggested: false,
+      lessonAvailable: lessonAvailable(problem),
     },
-    notes: overrideNotes(row, state, problem),
+    notes: allNotes(row, state, problem, extras),
     help: helpView(help),
     integrity: { mode: row.mode, locked: row.status === 'locked' },
     serverTime: new Date(now).toISOString(),
@@ -89,6 +91,7 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
       task: pub.frame.task,
       ...(pub.frame.lessonId === undefined ? {} : { lessonId: pub.frame.lessonId }),
       ...(extras.frameLast === null ? {} : { last: extras.frameLast }),
+      ...frameFeedback(state, problem, extras),
       templateShown: extras.templateShown,
       template: extras.templateShown ? (pub.frame.template ?? null) : null,
     };
@@ -107,17 +110,44 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
     canFinish: state.layer === 3 && nextKey(problem.ctx.pkg.secret, state.hint.matched) === null,
   };
   if (state.selfcheck.items.length > 0) dto.selfcheck = selfcheckView(state, problem);
-  if (pub.transferProblemId !== undefined) dto.transfer = transferView(state, extras);
+  if (pub.transferProblemId !== undefined && row.kind !== 'redo') dto.transfer = transferView(state, extras);
   if (state.layer === 6 || state.done) dto.summary = summaryView(state, problem, extras);
   if (state.done) {
     dto.completion = {
       done: true,
       independence: independenceOf(state, keysTotal),
-      reviewAvailable: false,
+      reviewAvailable: extras.reviewAvailable,
       leanCard: null,
     };
   }
   return dto;
+}
+
+// 第 1 层核对没通过：一次只说一件事（01 §L1）——第一个缺的成分；成分齐了才问顺序。文案已过泄题检查（engine/leak.ts）。
+function defFeedback(state: AttemptState, problem: LoadedProblem, extras: ViewExtras): { feedback?: string } {
+  const check = extras.defCheck;
+  if (state.layer !== 1 || !check || check.pass) return {};
+  const secret = problem.ctx.pkg.secret.def;
+  const missing = secret?.components.find((c) => check.components[c.id] === false)?.missing;
+  const text = missing ?? (check.orderOk ? undefined : secret?.orderQuestion);
+  return text ? { feedback: text } : {};
+}
+
+// 第 2 层同理：第一个没写到的骨架部分。
+function frameFeedback(state: AttemptState, problem: LoadedProblem, extras: ViewExtras): { feedback?: string } {
+  const check = extras.frameCheck;
+  if (state.layer !== 2 || !check || check.pass) return {};
+  const text = problem.ctx.pkg.secret.frame?.checks.find((c) => check.missing.includes(c.id))?.missing;
+  return text ? { feedback: text } : {};
+}
+
+// 已下发的提示与批注（落库的）加上教师补发的 H4，按时间排序。概念批注补上本题的概念 ID（微课入口）。
+function allNotes(row: AttemptRow, state: AttemptState, problem: LoadedProblem, extras: ViewExtras): Record<string, unknown>[] {
+  const conceptId = problem.public.def?.conceptId ?? null;
+  const stored = extras.notes.map((note) =>
+    note.kind === 'concept' && note.lessonConceptId === null && conceptId ? { ...note, lessonConceptId: conceptId } : note,
+  );
+  return [...stored, ...overrideNotes(row, state, problem)].sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 
 // 教师补发的 H4（软着陆）以批注形式下发：由引擎状态 overrides 推出，不另存，所以刷新/重连后仍在，回放一致。
@@ -144,6 +174,14 @@ function overrideNotes(row: AttemptRow, state: AttemptState, problem: LoadedProb
   });
 }
 
+// 概念缺失或没有微课步骤时隐藏微课入口（GET /lesson 对缺失概念是 404）。
+function lessonAvailable(problem: LoadedProblem): boolean {
+  const conceptId = problem.public.def?.conceptId;
+  if (!conceptId) return false;
+  const concept = problem.ctx.concepts.concepts.find((c) => c.id === conceptId) as { lesson?: { steps?: unknown[] } } | undefined;
+  return Array.isArray(concept?.lesson?.steps) && concept.lesson.steps.length > 0;
+}
+
 function transferView(state: AttemptState, extras: ViewExtras): Record<string, unknown> {
   const done = state.status[5];
   const status = done === 'skip' ? 'skipped' : done === 'done' ? 'completed' : extras.transfer ? 'active' : 'not_started';
@@ -154,12 +192,24 @@ function transferView(state: AttemptState, extras: ViewExtras): Record<string, u
   };
 }
 
-// 总结五问 + 已交的回答；第一次缺要点时给追问（取缺的第一个要点预写的追问，过闸门，被拦就不给）。
+// 预写追问过不了闸门时用这句：引擎这时已经要学生再交一次，不能什么都不说。
+export const SUMMARY_FOLLOWUP_FALLBACK = '再看看你的总结：这道题最关键的那一步写进去了吗？补一句再提交。';
+
+// 第一次缺要点时的追问：取缺的第一个要点预写的追问，过闸门；被拦就换通用的一句。
+export function summaryFollowup(
+  secret: LoadedProblem['ctx']['pkg']['secret'],
+  matched: Iterable<string>,
+  missing: readonly string[],
+): string {
+  const point = secret.summaryPoints.find((p) => missing.includes(p.id));
+  if (point !== undefined && gateRule(secret, point.question, new Set(matched), []).ok) return point.question;
+  return SUMMARY_FOLLOWUP_FALLBACK;
+}
+
+// 总结五问 + 已交的回答 + 追问。
 function summaryView(state: AttemptState, problem: LoadedProblem, extras: ViewExtras): Record<string, unknown> {
   const secret = problem.ctx.pkg.secret;
-  const missing = extras.summaryMissing ?? [];
-  const point = state.summary.asked && !state.done ? secret.summaryPoints.find((p) => missing.includes(p.id)) : undefined;
-  const followup = point !== undefined && gateRule(secret, point.question, new Set(state.hint.matched), []).ok ? point.question : null;
+  const followup = state.summary.asked && !state.done ? summaryFollowup(secret, state.hint.matched, extras.summaryMissing ?? []) : null;
   return { questions: SUMMARY_QUESTIONS, answers: extras.summaryAnswers, followup };
 }
 
@@ -229,5 +279,6 @@ function helpView(help: HelpPreview): Record<string, unknown> {
     exhausted: help.exhausted,
     flagged: help.flagged,
     stuckOffer: help.stuckOffer,
+    canFlag: help.canFlag,
   };
 }

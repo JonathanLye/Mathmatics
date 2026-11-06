@@ -7,7 +7,7 @@
  * 场景（mock me 默认 ge18，?ageBand=null|lt14|14to17 覆盖，供本脚本）：
  *  1) ageBand=null 开做题页 → 被送到年龄选择页 → 选 ge18 → 继续原目标（回到做题页）；
  *  2) ageBand=lt14 → 年龄页「暂不开通」；在年龄页主动选 lt14 提交后同样被挡（无继续入口）；
- *  3) ageBand=14to17 开同意页 → guardianNotice 只读（无开关、不签署），5 个可签项不变，提交后进首页；
+ *  3) ageBand=14to17 开同意页 → guardianNotice 只读（无开关、不签署），4 个可签项不变（境外模型段已撤，U22），提交后进首页；
  *  4) 默认 ge18 直接进做题页（守卫不拦截既有流程）；
  *  5) 登录（ageBand=null）后先去年龄页，选档后回到原目标（同意页）。
  * 严格性：按钮用 data-testid 定位、真实点击；监听 pageerror 并断言无未捕获异常。
@@ -134,13 +134,13 @@ async function main() {
       && (await countTestId(page, 'age-option-14to17')) === 1
       && (await countTestId(page, 'age-option-lt14')) === 1)
     check('<14 风险说明可见', (await page.getByTestId('age-risk-note').first().innerText()).includes('暂不开通'))
-    check('未选年龄时看不到做题页', !(await bodyText(page)).includes('构造与推导'))
+    check('未选年龄时看不到做题页', !(await bodyText(page)).includes('写下一行'))
     await page.screenshot({ path: path.join(outDir, '1-age-choose.png'), fullPage: true })
 
     await tap(page, 'age-option-ge18', '选「18 岁及以上」')
     await tap(page, 'age-submit', '确认分档')
     await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 10000 })
-    check('选 ge18 后继续原目标（回到做题页）', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('构造与推导'))
+    check('选 ge18 后继续原目标（回到做题页）', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('写下一行'))
     await page.screenshot({ path: path.join(outDir, '2-back-to-practice.png'), fullPage: true })
 
     // ---------------- 场景 2：lt14 阻止进入 ----------------
@@ -152,7 +152,7 @@ async function main() {
     check('ageBand=lt14：年龄页显示「暂不开通」', blockedText.includes('暂不开通'))
     check('lt14 风险说明可见', blockedText.includes('监护人'))
     check('lt14 没有「确认分档」/「继续」入口', (await countTestId(page, 'age-submit')) === 0 && (await countTestId(page, 'age-continue')) === 0)
-    check('lt14 进不了做题页', !(await bodyText(page)).includes('构造与推导'))
+    check('lt14 进不了做题页', !(await bodyText(page)).includes('写下一行'))
     await page.screenshot({ path: path.join(outDir, '3-lt14-blocked.png'), fullPage: true })
 
     await gotoRoute(page, base, '/pages/practice/index?mock=l3-active&ageBand=null')
@@ -160,7 +160,7 @@ async function main() {
     await tap(page, 'age-option-lt14', '选「未满 14 岁」')
     await tap(page, 'age-submit', '确认分档（lt14）')
     await waitTestId(page, 'age-blocked')
-    check('在年龄页主动选 lt14：提交后展示暂不开通，不继续', (await countTestId(page, 'age-continue')) === 0 && !(await bodyText(page)).includes('构造与推导'))
+    check('在年龄页主动选 lt14：提交后展示暂不开通，不继续', (await countTestId(page, 'age-continue')) === 0 && !(await bodyText(page)).includes('写下一行'))
 
     // ---------------- 场景 3：14to17 → guardianNotice 只读 ----------------
     console.log('--- 场景 3：14–17 同意页 guardianNotice 只读、不签署 ---')
@@ -175,7 +175,8 @@ async function main() {
       .count()
     check('guardianNotice 段没有开关（不签署）', guardianSwitchCount === 0, '开关数 ' + guardianSwitchCount)
     const signableSwitchCount = await page.locator('[data-testid^="consent-switch-"]').count()
-    check('其他 5 个可签项逻辑不变', signableSwitchCount === 5, '开关数 ' + signableSwitchCount)
+    check('其他 4 个可签项逻辑不变', signableSwitchCount === 4, '开关数 ' + signableSwitchCount)
+    check('同意书不再有境外模型一项（U22）', (await countTestId(page, 'consent-switch-crossBorderModel')) === 0)
     await page.screenshot({ path: path.join(outDir, '4-guardian-notice.png'), fullPage: true })
     await tap(page, 'consent-submit', '同意并开始')
     await waitTestId(page, 'home-page')
@@ -185,7 +186,7 @@ async function main() {
     console.log('--- 场景 4：默认 ge18 直接进做题页 ---')
     await gotoRoute(page, base, '/pages/practice/index?mock=l3-active')
     await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 10000 })
-    check('默认 ge18：不弹年龄页、直接进入做题页', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('构造与推导'))
+    check('默认 ge18：不弹年龄页、直接进入做题页', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('写下一行'))
 
     // ---------------- 场景 5：登录（null）→ 年龄页 → 原目标（同意页） ----------------
     console.log('--- 场景 5：登录后先去年龄页，选档后继续原目标 ---')

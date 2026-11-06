@@ -287,15 +287,15 @@ export function markerLabel(event: MirrorEvent): string | null {
       return '跳过一层'
     case 'def.submit': {
       const passed = payload ? payload['pass'] : undefined
-      return 'L1 提交定义' + (typeof passed === 'boolean' ? (passed ? '（通过）' : '（未通过）') : '')
+      return '第 1 层提交定义' + (typeof passed === 'boolean' ? (passed ? '（通过）' : '（未通过）') : '')
     }
     case 'frame.submit': {
       const passed = payload ? payload['pass'] : undefined
-      return 'L2 提交骨架' + (typeof passed === 'boolean' ? (passed ? '（通过）' : '（未通过）') : '')
+      return '第 2 层提交骨架' + (typeof passed === 'boolean' ? (passed ? '（通过）' : '（未通过）') : '')
     }
     case 'line.submit': {
       const n = payload ? payload['n'] : undefined
-      return 'L3 提交第 ' + (typeof n === 'number' ? n : '?') + ' 行'
+      return '第 3 层提交第 ' + (typeof n === 'number' ? n : '?') + ' 行'
     }
     case 'line.edit':
       return '修改证明行'
@@ -320,7 +320,7 @@ export function markerLabel(event: MirrorEvent): string | null {
     case 'hint.deny':
       return '提示未发放'
     case 'budget.exhausted':
-      return '透露额度用尽'
+      return '提示额度用尽'
     case 'lesson.open':
       return '打开微课'
     case 'recog.request':

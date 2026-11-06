@@ -2,7 +2,7 @@
 @import '@fontsource/nunito/latin-800.css';
 @import '@fontsource/nunito/latin-900.css';
 /**
- * 基础排版与布局工具。设计口径见 02 §2.3/§2.4、§3、§6。
+ * 基础排版、uni-app 控件复位和布局工具。token 见 packages/ui-tokens/tokens.css。
  */
 * {
   box-sizing: border-box;
@@ -17,10 +17,20 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
   line-height: var(--lh-body);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+  color-scheme: light dark;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 page,
@@ -34,6 +44,43 @@ body {
   min-height: 100dvh;
 }
 
+/*
+ * uni-app <button> 复位（“进入”“写完了”文字偏上的根因）。
+ * uni-components 的默认样式是 display:block + line-height:2.55555556：文字行框只有约 41px，
+ * 贴在 52px 按钮顶部，所以字偏上。默认样式还带 margin:auto（在 flex 里会缩成内容宽）、
+ * ::after 描边，以及 [disabled] 和深色模式下的灰底。
+ * 用 html 前缀抬高优先级，不依赖 CSS 的加载顺序；各组件的 scoped 样式（带 [data-v]）仍然更高。
+ */
+html uni-button,
+html uni-button[type='default'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 var(--sp-4);
+  border-radius: var(--radius-12);
+  overflow: visible;
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.2;
+}
+html uni-button::after {
+  display: none;
+}
+html uni-button[disabled],
+html uni-button[disabled][type='default'],
+html uni-button[disabled]:not([type]) {
+  background-color: transparent;
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+html .button-hover,
+html .button-hover[type='default'] {
+  background-color: transparent;
+  color: inherit;
+}
+
 /* 纸面：页面默认背景 */
 .pg-page {
   min-height: 100vh;
@@ -43,95 +90,63 @@ body {
   padding-right: max(var(--sp-4), var(--safe-right));
 }
 
-/* 卡片：2px 边；可点的加 .pg-lip 得到 4px 硬下唇 */
+/* 卡片：2px 边 */
 .pg-sheet {
   background: var(--sheet);
   border-radius: var(--radius-card);
-  border: 2px solid var(--rule);
-}
-.pg-lip {
-  border-bottom-width: var(--lip);
+  border: var(--bw) solid var(--rule);
 }
 
-/* 厚边按钮：面 + 下唇，按下时唇收起（v2 的核心手感） */
-.pg-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-  min-height: 52px;
-  padding: 0 var(--sp-4);
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: 0 var(--lip) 0 var(--accent-lip);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: 0.5px;
-  line-height: 1.2;
-  transition: transform var(--dur-fast) ease-out, box-shadow var(--dur-fast) ease-out;
+/* 表单页（年龄、同意）：顶部留白 + 不让表单拉满桌面宽度 */
+.pg-form-page {
+  padding-top: calc(var(--safe-top) + var(--sp-6));
+  padding-bottom: calc(var(--safe-bottom) + var(--sp-8));
 }
-.pg-btn:active:not([disabled]) {
-  transform: translateY(var(--lip));
-  box-shadow: 0 0 0 var(--accent-lip);
-}
-.pg-btn::after { display: none; }
-.pg-btn--sea {
-  background: var(--margin);
-  color: var(--on-margin);
-  box-shadow: 0 var(--lip) 0 var(--margin-lip);
-}
-.pg-btn--bee {
-  background: var(--hint-fill);
-  color: var(--on-hint);
-  box-shadow: 0 var(--lip) 0 var(--hint-lip);
-}
-.pg-btn--danger {
-  background: var(--danger-face);
-  color: #fff;
-  box-shadow: 0 var(--lip) 0 var(--danger-lip);
-}
-.pg-btn--out {
-  background: var(--sheet);
-  color: var(--margin-text);
-  border: 2px solid var(--rule);
-  box-shadow: 0 2px 0 var(--rule);
-}
-.pg-btn--out:active:not([disabled]) {
-  transform: translateY(2px);
-  box-shadow: 0 0 0 var(--rule);
-}
-.pg-btn[disabled],
-.pg-btn--off {
-  background: var(--rule);
-  color: var(--ink-3);
-  box-shadow: none;
-}
-.pg-btn--sm {
-  min-height: 40px;
-  padding: 0 var(--sp-3);
-  font-size: 14px;
-  border-radius: var(--radius-input);
+.pg-form-column {
+  width: 100%;
+  max-width: var(--form-max);
+  margin-left: auto;
+  margin-right: auto;
 }
 
-/* 标签：大写字距小标题 */
-.pg-kicker {
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.9px;
-  color: var(--ink-2);
-}
-
-/* v2 动效（只用 transform/opacity；reduced-motion 下被下方规则关掉） */
-@keyframes pg-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* 动效原语（只用 transform/opacity）；调用点按需加类，教师镜像不加，保持静态 */
 @keyframes pg-sheet-up { from { transform: translateY(100%); } 60% { transform: translateY(-6px); } to { transform: none; } }
 @keyframes pg-pop { 0% { transform: scale(0); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
 @keyframes pg-shake { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 @keyframes pg-stamp { 0% { transform: translateY(-120px) scale(1.4) rotate(-8deg); opacity: 0; } 55% { transform: translateY(0) scale(0.92) rotate(-8deg); opacity: 1; } 75% { transform: scale(1.04) rotate(-8deg); } 100% { transform: scale(1) rotate(-8deg); } }
+@keyframes pg-page-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes pg-item-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes pg-shine-sweep { from { transform: translateX(-120%); } to { transform: translateX(320%); } }
+@keyframes pg-spin { to { transform: rotate(360deg); } }
 
-/* 题面等长文本：衬线、17px */
+/* 页面进入 */
+/* 只填充开始前（backwards）：填充结束后浏览器会一直把这个元素当成带变换的，position:fixed 的弹层就只能盖住主列，还会被标签栏压住。 */
+.pg-enter {
+  animation: pg-page-in var(--dur-slow) var(--ease-out) backwards;
+}
+
+/* 按压回弹：松手时带一点弹性 */
+.pg-press {
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+.pg-press:active {
+  transform: scale(0.97);
+  transition-duration: var(--dur-fast);
+}
+
+/* 列表错峰：前 8 项依次进入 */
+.pg-stagger > * {
+  animation: pg-item-in var(--dur-slow) var(--ease-out) both;
+}
+.pg-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.pg-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.pg-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.pg-stagger > *:nth-child(5) { animation-delay: 160ms; }
+.pg-stagger > *:nth-child(6) { animation-delay: 200ms; }
+.pg-stagger > *:nth-child(7) { animation-delay: 240ms; }
+.pg-stagger > *:nth-child(n + 8) { animation-delay: 280ms; }
+
+/* 题面等长文本：衬线 */
 .pg-serif {
   font-family: var(--font-serif);
   font-size: var(--fs-stem);
@@ -151,19 +166,20 @@ body {
   font-size: var(--fs-small);
 }
 
-/* 触控目标 ≥ 44×44（02 §2.4） */
+/* 触控目标 ≥ 44×44 */
 .pg-tap {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--touch);
+  min-height: var(--touch);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-/* 焦点环 2px（键盘可达性） */
+/* 焦点环：键盘操作时才出现，覆盖所有可聚焦元素 */
 :focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
+  border-radius: var(--radius-12);
 }
 
 /* 文本不可选中（除可编辑区域） */
@@ -175,17 +191,29 @@ body {
 /* KaTeX 行内公式跟随字号 */
 .katex {
   font-size: 1.05em;
+  font-weight: 400;
 }
 
-/* 减少动效偏好：关闭所有过渡（02 §2.4） */
+/* 所有动效都能关：系统“减少动态效果”永远优先，其次是 我的 → 动效 开关 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
+}
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 /* 隐藏滚动条但保留滚动（横向导航等） */
@@ -195,4 +223,144 @@ body {
 }
 .pg-scroll-x::-webkit-scrollbar {
   display: none;
+}
+
+/* ---- 六层表单共用（Layer1/2、自检、换题、总结） ---- */
+.pg-layer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-4);
+  min-width: 0;
+  max-width: var(--shell-main);
+}
+/* 每屏唯一的主按钮：手机贴底，随键盘上移；宽屏留在内容流里。 */
+.pg-pin { display: block; }
+@media (max-width: 599px) {
+  .pg-pin {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    padding: var(--sp-3) max(var(--sp-4), var(--safe-right)) calc(var(--sp-3) + var(--safe-bottom)) max(var(--sp-4), var(--safe-left));
+    background: var(--paper);
+    border-top: var(--bw) solid var(--rule);
+    transform: translateY(calc(-1 * var(--keyboard-inset)));
+    transition: transform var(--dur-fast) ease-out;
+  }
+}
+.pg-layer__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.pg-layer__title {
+  font-size: var(--fs-13);
+  font-weight: var(--fw-black);
+  color: var(--ink-2);
+}
+.pg-layer__step {
+  color: var(--ink-2);
+  flex: 0 0 auto;
+}
+.pg-layer__task {
+  font-family: var(--font-serif);
+  font-size: var(--fs-16);
+  line-height: var(--lh-body);
+  color: var(--ink);
+}
+.pg-layer__hint {
+  color: var(--ink-2);
+}
+.pg-layer__count {
+  color: var(--ink-2);
+  align-self: flex-end;
+}
+.pg-layer__count--near {
+  color: var(--fox-text);
+}
+.pg-layer__row {
+  display: flex;
+  gap: var(--sp-2);
+}
+.pg-layer__row > * {
+  flex: 1;
+  min-width: 0;
+}
+.pg-layer__feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-12);
+  border-left: var(--bw) solid var(--sea);
+  background: var(--sea-soft);
+  color: var(--ink);
+  line-height: 1.5;
+  animation: pg-item-in var(--dur-slow) var(--ease-out) both;
+}
+.pg-layer__feedbackwho { color: var(--sea-text); font-weight: var(--fw-black); }
+.pg-layer__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-12);
+  background: var(--accent-soft);
+}
+.pg-layer__preview--bee {
+  background: var(--bee-soft);
+  color: var(--ink);
+}
+.pg-layer__previewlabel {
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+}
+/* uni-app H5 的 textarea 是 <uni-textarea> 自定义元素，内层才是原生 textarea。 */
+.pg-input-area {
+  display: block;
+  width: 100%;
+  height: 132px;
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-12);
+  background: var(--paper);
+  overflow: hidden;
+  transition: border-color var(--dur-fast) ease-out;
+}
+.pg-input-area:focus-within {
+  border-color: var(--accent);
+}
+.pg-input-area .uni-textarea-wrapper {
+  height: 100%;
+}
+.pg-input-area textarea {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 10px var(--sp-3);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-16);
+  font-weight: var(--fw-bold);
+  line-height: 1.65;
+  resize: none;
+}
+.pg-input-area .uni-textarea-placeholder {
+  padding: 10px var(--sp-3);
+  color: var(--ink-2);
+  font-size: var(--fs-16);
+  line-height: 1.65;
+}
+.pg-input-area--md {
+  height: 96px;
+}
+.pg-input-area--sm {
+  height: 84px;
+}
+.pg-input-area--xs {
+  height: 64px;
 }

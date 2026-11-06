@@ -238,14 +238,9 @@ async function runProfile(browser, base, profile) {
     check('首页无横向溢出', !(await hasOverflow(page)))
     await page.screenshot({ path: path.join(outDir, profile.id + '-1-home.png'), fullPage: true })
 
-    let entered = false
-    if ((await countTestId(page, 'home-continue-0')) > 0) {
-      await tap(page, 'home-continue-0', '继续（进行中）')
-      entered = true
-    } else {
-      const start = page.locator('[data-testid^="home-todo-start-"]').first()
-      if ((await start.count()) > 0) { await start.scrollIntoViewIfNeeded(); await start.click(); entered = true }
-    }
+    await waitTestId(page, 'home-continue')
+    const entered = (await countTestId(page, 'home-continue')) === 1
+    if (entered) await tap(page, 'home-continue', '继续 / 开始（路径上的当前节点）')
     check('首页有可点「继续/开始」入口', entered)
     await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 12000 })
     check('首页 → 做题页跳转成功', true)
@@ -260,6 +255,8 @@ async function runProfile(browser, base, profile) {
     await waitEnabled(page, 'layer1-check')
     await page.screenshot({ path: path.join(outDir, profile.id + '-2-l1.png'), fullPage: true })
     await tap(page, 'layer1-check', '核对（L1 定义）')
+    await waitTestId(page, 'layer-interstitial')
+    await tap(page, 'interstitial-continue', '过场·继续')
     await waitTestId(page, 'layer2-form')
     check('L1 提交后进入 L2', true)
 
@@ -269,6 +266,8 @@ async function runProfile(browser, base, profile) {
     await fillTestId(page, 'layer2-input', FRAME)
     await waitEnabled(page, 'layer2-check')
     await tap(page, 'layer2-check', '核对（L2 骨架）')
+    await waitTestId(page, 'layer-interstitial')
+    await tap(page, 'interstitial-continue', '过场·继续')
     await waitTestId(page, 'write-next')
     check('L2 提交后进入 L3（写下一行）', true)
     check('L3 无横向溢出', !(await hasOverflow(page)))
@@ -278,16 +277,21 @@ async function runProfile(browser, base, profile) {
     await waitTestId(page, 'editor-sheet')
     const submitHeight = await controlHeight(page, 'editor-submit')
     if (touchProfile) check('行编辑器「加入证明」触摸目标 ≥44px', submitHeight >= 44, submitHeight + 'px')
+    // 输入器默认手写（来自设置），这里要打字，先切到键盘。
+    await tap(page, 'composer-tab-keyboard', '键盘')
     await fillTestId(page, 'editor-statement', LINE_STATEMENT)
     await fillTestId(page, 'editor-justification', LINE_JUSTIFICATION)
     await tap(page, 'editor-submit', '加入证明（L3 行）')
     await page.waitForSelector('[data-testid="proof-line"]', { state: 'visible', timeout: 12000 })
     check('L3 行提交成功并出现在行列表', (await countTestId(page, 'proof-line')) >= 1)
+    // 提交后的反馈面板盖在下面：点继续收起。
+    await waitTestId(page, 'feedback-panel')
+    await tap(page, 'feedback-continue', '反馈面板·继续')
     await page.screenshot({ path: path.join(outDir, profile.id + '-3-l3.png'), fullPage: true })
 
     // ---------- 5. 求助（三种意图之一：stuck → 预览卡） ----------
-    // 手机：底部操作坞；平板/桌面：页边栏的「求助」（uni-app 的 <button> 在 H5 是 uni-button，无 role=button）。
-    const dockHelp = page.locator('.pg-dock__btn--help')
+    // 顶栏的求助灯泡（所有宽度都有）；退路是页边栏的「求助」（uni-app 的 <button> 在 H5 是 uni-button，无 role=button）。
+    const dockHelp = page.locator('[data-testid="dock-help"]')
     if ((await dockHelp.count()) > 0) {
       await dockHelp.first().scrollIntoViewIfNeeded()
       await dockHelp.first().click()

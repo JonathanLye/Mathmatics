@@ -5,14 +5,15 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from './api/client.ts';
 import { clearSession, session } from './stores/session.ts';
 import Icon from './components/ui/Icon.vue';
-import Mascot from './components/ui/Mascot.vue';
+import { applyTheme, saveTheme, type ThemeName } from './utils/theme.ts';
 
 const route = useRoute();
 const router = useRouter();
 
 const isPublic = computed(() => route.meta.public === true || session.me === null);
-const dark = ref(document.documentElement.getAttribute('theme-mode') === 'dark');
-// 12 §5：加载/空/错误/离线四态。离线用 navigator.onLine + online/offline 事件（04 开头：手机可只读查看）。
+// 初始主题已在 main.ts 里按“上次选择 > 系统偏好”设置到 <html> 上，这里只读它，不再另起一个来源。
+const dark = ref(document.documentElement.getAttribute('data-theme') === 'dark');
+// 离线时给出提示：用 navigator.onLine + online/offline 事件，手机上可只读查看。
 const online = ref(navigator.onLine);
 
 function markOnline(): void {
@@ -24,8 +25,9 @@ function markOffline(): void {
 
 function toggleTheme(): void {
   dark.value = !dark.value;
-  if (dark.value) document.documentElement.setAttribute('theme-mode', 'dark');
-  else document.documentElement.removeAttribute('theme-mode');
+  const theme: ThemeName = dark.value ? 'dark' : 'light';
+  applyTheme(theme); // theme-mode 给 TDesign，data-theme 给共用 token，两边一起切
+  saveTheme(theme);
 }
 
 function onUnauthorized(): void {
@@ -62,27 +64,36 @@ async function logout(): Promise<void> {
   <div v-else class="app-shell">
     <aside class="app-aside">
       <div class="app-brandrow">
-        <Mascot expr="idle" :size="40" />
-        <div><div class="app-brand">证明陪练场</div><div class="app-brand-sub">教师端</div></div>
+        <span class="app-logo"><Icon name="qed" :size="18" color="currentColor" /></span>
+        <div><div class="app-brand">证明陪练场</div><span class="app-brand-sub">教师端</span></div>
       </div>
-      <nav class="app-nav">
-        <router-link class="app-nav-item" to="/classes"><Icon name="flash" :size="26" />我的班级</router-link>
-        <router-link class="app-nav-item" to="/problems"><Icon name="flag" :size="26" />题库审核</router-link>
-        <router-link class="app-nav-item" to="/settings"><Icon name="me" :size="26" />设置</router-link>
+      <nav class="app-nav" aria-label="主导航">
+        <router-link class="app-nav-item" to="/classes"><Icon name="home" :size="20" />我的班级</router-link>
+        <router-link class="app-nav-item" to="/problems"><Icon name="book" :size="20" />题库</router-link>
+        <router-link class="app-nav-item" to="/settings"><Icon name="me" :size="20" />设置</router-link>
       </nav>
       <div class="app-me">
-        <span class="pg-avatar" style="width: 34px; height: 34px; background: var(--pg-sea); font-size: 14px">{{ (session.me?.displayName ?? session.me?.anonCode ?? '师').slice(0, 1) }}</span>
-        <span>{{ session.me?.displayName ?? session.me?.anonCode }}</span>
+        <span class="pg-avatar" style="width: 30px; height: 30px; font-size: 13px">{{ (session.me?.displayName ?? '师').slice(0, 1) }}</span>
+        <span>{{ session.me?.displayName ?? '老师' }}</span>
       </div>
     </aside>
     <div class="app-main">
       <header class="app-header">
-        <span class="app-user">{{ session.me?.displayName ?? session.me?.anonCode }}</span>
+        <div class="app-header__left">
+          <span class="app-header__brand"><span class="app-logo"><Icon name="qed" :size="18" color="currentColor" /></span>证明陪练场</span>
+          <span class="app-header__tag" data-testid="app-role-tag">教师端</span>
+          <span class="app-user">{{ session.me?.displayName ?? '老师' }}</span>
+        </div>
         <div class="app-actions">
-          <t-button variant="text" theme="default" @click="toggleTheme">{{ dark ? '浅色' : '深色' }}</t-button>
-          <t-button variant="text" theme="default" @click="logout">退出</t-button>
+          <t-button variant="text" theme="default" size="small" @click="toggleTheme">{{ dark ? '浅色' : '深色' }}</t-button>
+          <t-button variant="text" theme="default" size="small" @click="logout">退出</t-button>
         </div>
       </header>
+      <nav class="app-mobilenav" aria-label="主导航（手机）">
+        <router-link class="app-nav-item" to="/classes">我的班级</router-link>
+        <router-link class="app-nav-item" to="/problems">题库</router-link>
+        <router-link class="app-nav-item" to="/settings">设置</router-link>
+      </nav>
       <t-alert
         v-if="!online"
         theme="warning"

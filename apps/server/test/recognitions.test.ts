@@ -403,6 +403,40 @@ describe('POST /recognitions/photo', () => {
     expect(test.json().error.code).toBe('TEST_MODE_RESTRICTED');
   });
 
+  it('照片目录不可写：503（识别暂不可用，请用键盘），不留 app.photos 行，也不是 500', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const blocker = join(mkdtempSync(join(tmpdir(), 'pg-photo-')), 'not-a-dir');
+    writeFileSync(blocker, 'x'); // 普通文件挡在路径上：mkdir 必然失败（ENOTDIR），与 root 权限无关
+    const { h: harness } = await start(
+      { page: '$x=1$', qwen: '$x=1$' },
+      { config: { recognition: { ...KEYED.recognition, storageDir: join(blocker, 'photos') } } },
+    );
+    const res = await photo(harness);
+    expect(res.statusCode, res.body).toBe(503);
+    expect(res.json().error).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
+    expect(res.json().error.message).toContain('键盘');
+    expect((await harness.db.query(`select 1 from app.photos`)).rows).toHaveLength(0);
+  });
+
+  it('拍照整页识别每路 12 s 超时：provider 默认值很短（30 ms）时慢响应仍成功；行 OCR 仍按 provider 默认值超时', async () => {
+    const inner = scriptedFetch({ page: '$x=1$\n$y=2$', qwen: '$x=1$\n$y=2$', simple: { latex: 'x=1', conf: 0.95 } }).fetchImpl;
+    const slow = (async (...args: Parameters<typeof fetch>) => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return inner(...args);
+    }) as typeof fetch;
+    const providers = Object.fromEntries(Object.entries(KEYED.models.providers).map(([k, v]) => [k, { ...v, timeoutMs: 30 }]));
+    h = await startHelpHarness('epsN', { config: { models: { ...KEYED.models, providers } }, fetchImpl: slow });
+    const page = await photo(h);
+    expect(page.statusCode, page.body).toBe(200);
+    expect(page.json()).toMatchObject({ status: 'ok' });
+    expect(page.json().lines).toHaveLength(2);
+    // 同样的慢响应，行 OCR 走 provider 默认的 30 ms：两路都超时 → 503（证明没有被一并放宽）
+    const ink = await recognize(h);
+    expect(ink.statusCode, ink.body).toBe(503);
+  });
+
   it('确认：一张照片的 recogId 可逐批确认（已确认的行累加），逐行提交只认确认过的行', async () => {
     const { h: harness } = await start({ page: '$x=1$\n$y=2$\n$z=3$', qwen: '$x=1$\n$y=2$\n$z=3$' });
     const recogId = (await photo(harness)).json().recogId as string;

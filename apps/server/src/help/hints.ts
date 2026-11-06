@@ -9,3 +9,6 @@ export function hintTextOf(secret: ProblemPackage['secret'], keyId: string, leve
   const hint = key?.hints.find((h) => h.level === level);
   return hint?.text ?? null;
 }
+
+// 连续求助太快时的温和提示（U15：不再锁定，不扣额度）。
+export const SOFT_RAPID_TEXT = '先试着写一行，或者过一会儿再问我。';

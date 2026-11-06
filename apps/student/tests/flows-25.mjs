@@ -4,8 +4,8 @@
  * 覆盖：
  *  A. mock：点拍照 → 注入 fixture 图片（filechooser）→ 压缩 → mock /recognitions/photo 返回 3 行
  *     → 逐行确认面板（MathText/bbox）→「全部加入」→ 3 行追加到证明行列表（provenance=photo）。
- *  B. 真实模式 404 降级：page.route 拦截 GET /attempts/{id} 返回状态、POST /recognitions/photo 返回 404
- *     → 提示「拍照识别即将上线，请改用键盘/手写」，不渲染假识别结果。
+ *  B. 真实模式 404：page.route 拦截 GET /attempts/{id} 返回状态、POST /recognitions/photo 返回 404
+ *     → 提示「识别记录或作答不存在，请重新拍照/确认，或用键盘」，不渲染假识别结果。
  *  C. pageerror 为空、390 无横向溢出。
  *
  * 用法：先 npm run build:mock，再 npm run e2e:flows:25（PG_CHROMIUM 可指定 chromium）。
@@ -107,8 +107,15 @@ async function hasOverflow(page) {
 async function clickPhotoWithFile(page, fixturePath) {
   // 必须先注册 filechooser 监听再点击：H5 会同步创建并打开 input[type=file]，
   // 未拦截时 headless 可能立刻 cancel，页面按「用户取消」关闭识别流程。
+  // 拍照是输入器里的一个分段：写下一行 → 拍照 → 拍一张。
+  await page.getByTestId('write-next').click()
+  await page.getByTestId('composer-tab-photo').click()
+  await takeShot(page, fixturePath)
+}
+
+async function takeShot(page, fixturePath) {
   const chooserPromise = page.waitForEvent('filechooser', { timeout: 15000 })
-  await page.locator('.pg-dock__btn--photo').first().click()
+  await page.getByTestId('photo-take').click()
   const chooser = await chooserPromise
   await chooser.setFiles(fixturePath)
 }
@@ -176,7 +183,7 @@ async function main() {
   try {
     await pageA.goto('about:blank')
     await pageA.goto(base + '/#/pages/practice/index?mock=l3-active', { waitUntil: 'networkidle' })
-    await pageA.waitForFunction(() => document.body.innerText.includes('构造与推导'), { timeout: 15000 })
+    await pageA.waitForFunction(() => document.body.innerText.includes('写证明'), { timeout: 15000 })
     const beforeLines = await countTestId(pageA, 'proof-line')
     check('mock：做题页初始行列表可见', beforeLines >= 2, 'lines=' + beforeLines)
 
@@ -184,7 +191,8 @@ async function main() {
     await waitTestId(pageA, 'photo-recognition-panel', 20000)
     const summary = await pageA.getByTestId('photo-lines-summary').innerText()
     check('拍照后出现逐行确认面板（3 行）', summary.includes('识别出 3 行'), summary)
-    check('面板逐行展示 MathText/bbox', (await countTestId(pageA, 'photo-line-0')) === 1 && (await pageA.getByTestId('photo-line-bbox-0').innerText()).includes('位置'))
+    // 坐标是给程序用的，学生不用看：不再显示，但每行仍带着服务端给的 bbox。
+    check('面板逐行展示 MathText/bbox', (await countTestId(pageA, 'photo-line-0')) === 1 && Boolean(await pageA.getByTestId('photo-line-0').getAttribute('data-bbox')) && !(await pageA.getByTestId('photo-line-0').innerText()).includes('位置'))
     check('逐行文本含第 3 行中文', (await pageA.getByTestId('photo-line-2').innerText()).includes('取'))
     await pageA.screenshot({ path: path.join(outDir, '1-photo-panel.png'), fullPage: true })
 
@@ -203,7 +211,7 @@ async function main() {
     await contextA.close()
   }
 
-  // ---------- B. 真实模式：后端 404 → 降级提示（不伪造识别结果） ----------
+  // ---------- B. 真实模式：404=作答/识别记录不存在（不是“即将上线”） ----------
   const contextB = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
   const pageB = await contextB.newPage()
   pageB.on('pageerror', (error) => pageErrors.push('404: ' + (error instanceof Error ? error.message : String(error))))
@@ -221,17 +229,89 @@ async function main() {
     )
     await pageB.goto('about:blank')
     await pageB.goto(base + '/#/pages/practice/index?api=real&attemptId=' + REAL_ATTEMPT, { waitUntil: 'networkidle' })
-    await pageB.waitForFunction(() => document.body.innerText.includes('构造与推导'), { timeout: 20000 })
+    await pageB.waitForFunction(() => document.body.innerText.includes('写证明'), { timeout: 20000 })
     await clickPhotoWithFile(pageB, fixturePath)
-    await pageB.waitForFunction(() => document.body.innerText.includes('拍照识别即将上线，请改用键盘/手写'), { timeout: 20000 })
-    check('404：提示「拍照识别即将上线，请改用键盘/手写」', true)
+    await pageB.waitForFunction(() => document.body.innerText.includes('识别记录或作答不存在，请重新拍照/确认，或用键盘'), { timeout: 20000 })
+    check('404：提示「识别记录或作答不存在，请重新拍照/确认，或用键盘」', true)
     check('404：不渲染假识别面板', (await countTestId(pageB, 'photo-recognition-panel')) === 0)
     check('404：不新增证明行', (await countTestId(pageB, 'proof-line')) === 0)
-    await pageB.screenshot({ path: path.join(outDir, '3-404-fallback.png'), fullPage: true })
+    await pageB.screenshot({ path: path.join(outDir, '3-404-real-semantics.png'), fullPage: true })
   } catch (error) {
-    check('404 降级流程未中断', false, error instanceof Error ? error.message : String(error))
+    check('404 真实语义流程未中断', false, error instanceof Error ? error.message : String(error))
   } finally {
     await contextB.close()
+  }
+
+  // ---------- C. 服务商用不了（欠费/超时/断网）：一句人话，一键换方式，写的内容还在，供应商回来后接着能用 ----------
+  const contextC = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
+  const pageC = await contextC.newPage()
+  pageC.on('pageerror', (error) => pageErrors.push('fail: ' + (error instanceof Error ? error.message : String(error))))
+  try {
+    const RAW = 'DashScope Arrearage quota exceeded'
+    let provider = '503'
+    await pageC.route('**/api/v1/attempts/**', (route) => {
+      if (route.request().method() !== 'GET') return route.continue()
+      return route.fulfill({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state: realState() }) })
+    })
+    await pageC.route('**/api/v1/recognitions/photo**', (route) => {
+      if (provider === 'abort') return route.abort('failed')
+      if (provider === 'error-result') {
+        return route.fulfill({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ recogId: 'r0', status: 'error', text: null, lines: [] }) })
+      }
+      if (provider === 'ok') {
+        return route.fulfill({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ recogId: '22222222-2222-4222-8222-222222222222', status: 'ok', text: '$x$', lines: [{ text: '$x$' }] }) })
+      }
+      return route.fulfill({ status: 503, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ error: { code: 'UPSTREAM_UNAVAILABLE', message: RAW } }) })
+    })
+    await pageC.goto('about:blank')
+    await pageC.goto(base + '/#/pages/practice/index?api=real&attemptId=' + REAL_ATTEMPT, { waitUntil: 'networkidle' })
+    await pageC.waitForFunction(() => document.body.innerText.includes('写证明'), { timeout: 20000 })
+
+    // 先写了一半，再去拍照
+    await pageC.getByTestId('write-next').click()
+    await pageC.getByTestId('composer-tab-keyboard').click()
+    const written = '写到一半的这一行'
+    await pageC.getByTestId('editor-statement').locator('textarea').fill(written)
+    await pageC.getByTestId('composer-tab-photo').click()
+    await takeShot(pageC, fixturePath)
+    await waitTestId(pageC, 'photo-failure', 25000)
+    const failureText = await pageC.getByTestId('photo-failure').innerText()
+    check('503：明说拍照识别暂时用不了', failureText.includes('拍照识别暂时用不了'), failureText.slice(0, 60))
+    check('503：不露原始报错', !/DashScope|Arrearage|quota|503|UPSTREAM/.test(await bodyText(pageC)))
+    check('503：有一键切手写和键盘', (await countTestId(pageC, 'photo-failure-hand')) === 1 && (await countTestId(pageC, 'photo-failure-keyboard')) === 1)
+    check('503：拍照分段还在', (await countTestId(pageC, 'composer-tab-photo')) === 1)
+    await pageC.screenshot({ path: path.join(outDir, '4-provider-down.png'), fullPage: true })
+
+    await pageC.getByTestId('photo-failure-keyboard').click()
+    check('一键切键盘：写的内容还在', (await pageC.getByTestId('editor-statement').locator('textarea').inputValue()) === written)
+
+    await pageC.getByTestId('composer-tab-photo').click()
+    await pageC.getByTestId('photo-failure-hand').click()
+    check('一键切手写：到手写分段', (await pageC.getByTestId('composer-tab-hand').getAttribute('aria-checked')) === 'true')
+
+    // 断网和 status=error 一样处理
+    await pageC.getByTestId('composer-tab-photo').click()
+    provider = 'abort'
+    await pageC.getByTestId('photo-failure-retry').click()
+    await pageC.getByTestId('photo-failure-title').waitFor({ state: 'visible', timeout: 25000 })
+    await pageC.waitForFunction(() => document.querySelector('[data-testid="photo-failure-title"]')?.innerText.includes('暂时用不了'), { timeout: 25000 })
+    check('断网：同样是暂时用不了', true)
+
+    provider = 'error-result'
+    await pageC.getByTestId('photo-failure-retry').click()
+    await pageC.waitForFunction(() => document.querySelector('[data-testid="photo-failure-title"]')?.innerText.includes('暂时用不了'), { timeout: 25000 })
+    check('服务端返回 status=error：同样是暂时用不了', (await countTestId(pageC, 'photo-recognition-panel')) === 0)
+
+    // 服务商恢复：再试一次就能用
+    provider = 'ok'
+    await pageC.getByTestId('photo-failure-retry').click()
+    await waitTestId(pageC, 'photo-recognition-panel', 25000)
+    check('服务商恢复：拍照又能用了', (await countTestId(pageC, 'photo-failure')) === 0)
+    check('全程没有证明行被凭空加入', (await countTestId(pageC, 'proof-line')) === 0)
+  } catch (error) {
+    check('拍照失败流程未中断', false, error instanceof Error ? error.message : String(error))
+  } finally {
+    await contextC.close()
   }
 
   check('pageerror 为空', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '))

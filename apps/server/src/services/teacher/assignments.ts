@@ -111,7 +111,7 @@ async function findAssignment(q: Queryable, assignmentId: string): Promise<Assig
     await q.query<AssignmentOwnerRow>(
       `select class_id, problem_id, problem_version, mode, status, close_at,
               (close_at is not null and close_at <= now()) as time_closed
-         from app.assignments where id = $1`,
+         from app.assignments where id = $1 and origin = 'teacher'`,
       [assignmentId],
     )
   ).rows[0];
@@ -323,7 +323,7 @@ export async function listAssignments(
          from app.assignments a
          join content.problem_versions pv
            on pv.problem_id = a.problem_id and pv.version = a.problem_version
-        where a.class_id = $1
+        where a.class_id = $1 and a.origin = 'teacher'
         order by a.open_at desc, a.id desc`,
       [classId],
     )

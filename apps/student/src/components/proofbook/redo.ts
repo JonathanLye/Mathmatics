@@ -23,7 +23,7 @@ export interface CompletedAttemptView {
   /** ISO 8601 完成时间 */
   completedAt: string
   /** main = 主题作答；transfer = 迁移题子作答 */
-  kind?: 'main' | 'transfer'
+  kind?: 'main' | 'transfer' | 'redo'
   /** 服务端算好的独立度；缺省时用 revealUsed / keysTotal 兜底 */
   independence?: number | null
   revealUsed?: number
@@ -58,6 +58,8 @@ export interface RedoEntry {
   title: string
   completedAt: string
   independence: number | null
+  /** 关键步骤数：页面上把独立度说成“N 步里 M 步靠自己”。 */
+  keysTotal: number | null
   level: IndependenceLevel
   reason: string
   /** 排序序号，0 最靠前；只用于稳定排序与调试 */
@@ -161,10 +163,11 @@ function buildEntry(attempt: MergedAttempt, independence: number | null): RedoEn
     title: attempt.title,
     completedAt: attempt.completedAt,
     independence,
+    keysTotal: attempt.keysTotal ?? null,
     level,
     reason: attempt.redoRecommended
       ? '老师/系统标记：稍后重做'
-      : `独立度 ${independence === null ? '—' : independence.toFixed(2)}（${level}）：这一题再自己写一遍`,
+      : '这一题再自己写一遍',
     priority: 0,
     entry: {
       mode: 'redo',

@@ -20,6 +20,9 @@ import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
 
 import { nextSeq } from '../integrity/seq.ts';
+import { BLANK_REWARD_STATE, rewardStateOf, type RewardState } from '../progress/rewards.ts';
+import { revealLevelFor } from '../practice/service.ts';
+import { type RewardsDto, settleRewards } from '../progress/service.ts';
 
 import { loadProblem } from './problem.ts';
 import { EMPTY_EXTRAS, loadViewExtras } from './extras.ts';
@@ -34,6 +37,8 @@ export interface StepSpec {
   build(ctx: Context): Command;
   // 与状态变化同一事务写入的行（如第 3 层的一行），只在命令产生了对应事件时调用。
   record?(tx: Queryable, row: AttemptRow, result: StepResult): Promise<void>;
+  // 这一步记入的经验/徽章（同一事务内结算）。测验作答不回传：测验中不显示，完成时一次结算入账。
+  onRewards?(rewards: RewardsDto): void;
 }
 
 export interface LineInput {
@@ -45,6 +50,8 @@ export interface LineInput {
   statement: string;
   justification?: string | null;
   provenance: string;
+  // 归类来源：缺省 rule；模型兜底归类为 llm
+  classifierPath?: 'rule' | 'llm';
   // 手写/拍照来源：已确认的识别结果（app.recognitions.id）
   recogId?: string | null;
   cls?: string | null;
@@ -81,8 +88,14 @@ export interface AttemptService {
   start(userId: string, assignmentId: string): Promise<Record<string, unknown>>;
   get(userId: string, attemptId: string): Promise<Record<string, unknown>>;
   command(spec: StepSpec): Promise<Record<string, unknown>>;
+  // 只算不写：用当前状态试跑一条命令，返回引擎的事件（不改任何东西）。用于“规则先行，规则不过再问模型”。
+  dryRun(userId: string, attemptId: string, build: (ctx: Context) => Command): Promise<StepResult>;
+  // 这次作答里已写的第 3 层行（不含已删除），给模型兜底归类当上下文。
+  stepLines(userId: string, attemptId: string): Promise<Array<{ statement: string; justification: string | null }>>;
   park(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
   transfer(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
+  // 证明本/错题本的「重做」：父作答已完成才能建；强制练习模式；已有未结束的重做则返回它。
+  redo(userId: string, attemptId: string): Promise<Record<string, unknown>>;
   // 教师软着陆（05 §4、11 §5.2）：额度耗尽后补发一条 H4。授权由调用方在事务内做（authorize 抛错即回滚）。
   // 作答若处于锁定状态，同时解除锁定（与 unlockAttempt 一致）。写 hint.deliver{override} 与 attempt.unlock{by, grantH4}。
   grantH4(spec: GrantH4Spec): Promise<void>;
@@ -120,7 +133,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
   }
 
   async function snapshotOf(q: Queryable, row: AttemptRow, now = Date.now()): Promise<Snapshot> {
-    const problem = await loadProblem(q, row.problem_id, row.problem_version);
+    const problem = await loadProblem(q, row.problem_id, row.problem_version, { redo: row.kind === 'redo' });
     return { row, state: deserializeState(row.state), problem, now, extras: await loadViewExtras(q, row) };
   }
 
@@ -133,6 +146,9 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
   // 这里补上已开始的作答，否则测验截止后学生仍能继续改答案。用数据库时钟 now()；start 用应用时钟 Date.now()，
   // 两者在 close_at 边界上可能差毫秒级（可接受，写接口一律以数据库为准）。
   async function guardAssignmentOpen(tx: Queryable, row: AttemptRow): Promise<void> {
+    // 重做（kind=redo）只在已完成的练习/自学或已结束的测验上创建（见 redo()），之后不受布置开关限制：
+    // 布置关闭后学生仍可重做自己的作答。
+    if (row.kind === 'redo') return;
     const closed = (
       await tx.query<{ closed: boolean }>(
         `select (status in ('closed', 'cancelled') or (close_at is not null and close_at <= now())) as closed
@@ -245,6 +261,31 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     return saved;
   }
 
+  // 经验结算（不写 ev.events）：比较这一步前后的状态。测验作答进行中什么都不发，完成时从空白状态一次结算；
+  // 重做走同一套来源键（题 + 步骤），所以不会重复得分。返回 null 表示没有新经验/徽章。
+  async function settle(tx: Queryable, snap: Snapshot, saved: AttemptRow, next: AttemptState): Promise<RewardsDto | null> {
+    const after = rewardStateOf(next);
+    if (saved.mode === 'test' && !after.done) return null;
+    const before: RewardState = saved.mode === 'test' ? BLANK_REWARD_STATE : rewardStateOf(snap.state);
+    const unchanged =
+      before.matched.length === after.matched.length &&
+      before.done === after.done &&
+      JSON.stringify(before.layerStatus) === JSON.stringify(after.layerStatus);
+    if (unchanged) return null;
+    return settleRewards(tx, {
+      userId: saved.user_id,
+      attemptId: saved.id,
+      attemptKind: saved.kind,
+      problemId: saved.problem_id,
+      keyIds: snap.problem.ctx.pkg.secret.keys.map((k) => k.id),
+      ...(snap.problem.public.chapter === undefined ? {} : { chapter: snap.problem.public.chapter }),
+      before,
+      after,
+      solutionRevealLevel: await revealLevelFor(tx, saved.id),
+      now: snap.now,
+    });
+  }
+
   async function command(spec: StepSpec): Promise<Record<string, unknown>> {
     return db.tx(async (tx) => {
       const row = await lockOwned(tx, spec.attemptId, spec.userId);
@@ -260,9 +301,46 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const anon = await userAnon(tx, row.user_id);
       const saved = await commit(tx, row, result, row.status, anon, `L${snap.state.layer}`);
       if (spec.record) await spec.record(tx, saved, result);
+      const rewards = await settle(tx, snap, saved, result.state);
+      if (rewards && saved.mode !== 'test') spec.onRewards?.(rewards);
+      if (saved.kind === 'transfer' && saved.status === 'completed' && saved.parent_attempt_id !== null) {
+        await completeTransferParent(tx, saved.parent_attempt_id, saved.user_id);
+      }
       // 行和事件都在这个事务里刚写完：重新读，响应里才有刚写的那一行。
       return dto({ ...snap, row: saved, state: result.state, extras: await loadViewExtras(tx, saved) });
     });
+  }
+
+  // 迁移题子作答完成（含跳过）：同一事务里把 transfer.complete 应用到父作答，走和普通命令一样的
+  // 事件 + 状态 + state_version 路径。父作答已越过第 5 层（或已结束）时引擎拒绝该命令，视为已处理，什么都不写。
+  // 加锁顺序：子作答（调用方已锁）-> 父作答；transfer() 先锁父作答，但那时子作答还不存在，不会互相等待。
+  async function completeTransferParent(tx: Queryable, parentId: string, userId: string): Promise<void> {
+    const parent = (
+      await tx.query<AttemptRow>(`select * from app.attempts where id = $1 and user_id = $2 for update`, [parentId, userId])
+    ).rows[0];
+    if (!parent || parent.status === 'completed' || parent.status === 'abandoned') return;
+    const snap = await snapshotOf(tx, parent);
+    const result = step(snap.problem.ctx, snap.state, { kind: 'transfer.complete' }, snap.now);
+    if (result.rejected || result.events.length === 0) return;
+    const anon = await userAnon(tx, parent.user_id);
+    const saved = await commit(tx, parent, result, parent.status, anon, `L${snap.state.layer}`);
+    await settle(tx, snap, saved, result.state);
+  }
+
+  async function dryRun(userId: string, attemptId: string, build: (ctx: Context) => Command): Promise<StepResult> {
+    const row = (await db.query<AttemptRow>(`select * from app.attempts where id = $1 and user_id = $2`, [attemptId, userId])).rows[0];
+    if (!row) throw new AppError('NOT_FOUND', 404, '找不到这次作答');
+    const snap = await snapshotOf(db, row);
+    return step(snap.problem.ctx, snap.state, build(snap.problem.ctx), snap.now);
+  }
+
+  async function stepLines(userId: string, attemptId: string) {
+    const rows = await db.query<{ statement: string; justification: string | null }>(
+      `select l.statement, l.justification from app.attempt_lines l join app.attempts a on a.id = l.attempt_id
+        where l.attempt_id = $1 and a.user_id = $2 and l.role = 'step' and l.deleted_at is null order by l.idx`,
+      [attemptId, userId],
+    );
+    return rows.rows;
   }
 
   async function grantH4(spec: GrantH4Spec): Promise<void> {
@@ -516,12 +594,81 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     });
   }
 
+  // 重做：新建 kind=redo 的子作答（parent_attempt_id=被重做的作答），沿用布置与题目版本，引擎状态从头开始，
+  // 模式固定为练习。第 5 层不走（loadProblem 的 redo 选项）。服务端只允许重做自己的、已完成的作答；
+  // 测验布置在开放/未开始期间不允许（测验结束后才行）。
+  async function redo(userId: string, attemptId: string): Promise<Record<string, unknown>> {
+    return db.tx(async (tx) => {
+      const parent = (await tx.query<AttemptRow>(`select * from app.attempts where id = $1 for update`, [attemptId])).rows[0];
+      if (!parent) throw new AppError('NOT_FOUND', 404, '找不到这次作答');
+      if (parent.user_id !== userId) throw new AppError('FORBIDDEN', 403, '只能重做自己的作答');
+      if (parent.kind === 'transfer') throw new AppError('VALIDATION_FAILED', 409, '迁移题不能单独重做');
+      if (parent.status !== 'completed') throw new AppError('VALIDATION_FAILED', 409, '这道题还没写完，写完以后才能重做');
+
+      const asg = (
+        await tx.query<{ mode: string; open_test: boolean }>(
+          `select mode,
+                  (mode = 'test' and status in ('scheduled', 'open') and (close_at is null or close_at > now())) as open_test
+             from app.assignments where id = $1`,
+          [parent.assignment_id],
+        )
+      ).rows[0];
+      if (!asg) throw new AppError('NOT_FOUND', 404, '找不到这份布置');
+      if (asg.open_test) throw new AppError('TEST_MODE_RESTRICTED', 403, '测验还没结束，结束以后才能重做');
+
+      const existing = (
+        await tx.query<AttemptRow>(
+          `select * from app.attempts
+            where parent_attempt_id = $1 and kind = 'redo' and status in ('active', 'parked', 'locked') for update`,
+          [parent.id],
+        )
+      ).rows[0];
+      const now = Date.now();
+      const anon = await userAnon(tx, userId);
+      if (existing) {
+        const snap = await snapshotOf(tx, existing, now);
+        if (existing.status !== 'parked') return dto(snap);
+        const events = [{ type: 'attempt.start', at: now, payload: { resumed: true, kind: 'redo', parentAttemptId: parent.id } }];
+        const saved = await commit(tx, existing, { state: snap.state, events }, 'active', anon, `L${snap.state.layer}`);
+        return dto({ ...snap, row: saved });
+      }
+
+      const problem = await loadProblem(tx, parent.problem_id, parent.problem_version, { redo: true });
+      const initial = createAttempt(problem.ctx, now);
+      const inserted = (
+        await tx.query<AttemptRow>(
+          `insert into app.attempts
+             (assignment_id, user_id, problem_id, problem_version, kind, parent_attempt_id, mode, state, keys_total)
+           values ($1, $2, $3, $4, 'redo', $5, 'practice', $6::jsonb, $7)
+           returning *`,
+          [
+            parent.assignment_id,
+            userId,
+            parent.problem_id,
+            parent.problem_version,
+            parent.id,
+            JSON.stringify(serializeState(initial)),
+            problem.ctx.pkg.secret.keys.length,
+          ],
+        )
+      ).rows[0];
+      if (!inserted) throw new AppError('INTERNAL', 500, '重做创建冲突');
+      const events = [{ type: 'attempt.start', at: now, payload: { resumed: false, kind: 'redo', parentAttemptId: parent.id } }];
+      const first = `L${initial.layer}`;
+      const saved = await commit(tx, inserted, { state: initial, events }, 'active', anon, first);
+      return dto({ row: saved, state: initial, problem, now, extras: EMPTY_EXTRAS });
+    });
+  }
+
   return {
     recordHelp,
     setHelpOutcome,
+    redo,
     start,
     get,
     command,
+    dryRun,
+    stepLines,
     park,
     transfer,
     grantH4,
@@ -535,7 +682,7 @@ export async function addLine(tx: Queryable, row: AttemptRow, line: LineInput): 
     `insert into app.attempt_lines
        (id, attempt_id, layer, role, idx, slot, statement, justification, statement_canon, justification_canon,
         provenance, recog_id, cls, keys, new_keys, error_id, classifier_path)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'rule')`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
     [
       line.id ?? randomUUID(),
       row.id,
@@ -553,6 +700,7 @@ export async function addLine(tx: Queryable, row: AttemptRow, line: LineInput): 
       line.keys ?? [],
       line.newKeys ?? [],
       line.errorId ?? null,
+      line.classifierPath ?? 'rule',
     ],
   );
 }

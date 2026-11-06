@@ -11,7 +11,7 @@ import type { AuthContext } from '../../auth/session.ts';
 import { AppError } from '../../errors.ts';
 import type { Db, Queryable } from '../../db/index.ts';
 import { computeAttemptMetrics } from '../../metrics/attempt.ts';
-import { csvField } from '../../export/attempts-csv.ts';
+import { csvField, exportableAttemptSql } from '../../export/attempts-csv.ts';
 import { assertClassTeacher } from './auth.ts';
 
 export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
@@ -130,13 +130,14 @@ type Row = Record<string, unknown>;
 async function buildRows(db: Queryable, classId: string, table: ExportTable, assignmentIds?: string[]): Promise<Row[]> {
   const scoped = assignmentIds !== undefined && assignmentIds.length > 0;
   const params: unknown[] = scoped ? [classId, assignmentIds] : [classId];
-  const scopeClause = scoped ? `and t.assignment_id = any($2::uuid[])` : '';
+  // 导出只含 kind≠redo 的作答，且排除撤回了教研同意的学生（见 exportableAttemptSql）。
+  const scopeClause = `${scoped ? 'and t.assignment_id = any($2::uuid[]) ' : ''}and ${exportableAttemptSql('t')}`;
   const baseFrom = `
     from app.attempts t
     join app.assignments asg on asg.id = t.assignment_id
     join app.users u on u.id = t.user_id
     left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id`;
-  const where = `where asg.class_id = $1 ${scopeClause}`;
+  const where = `where asg.class_id = $1 and asg.origin = 'teacher' ${scopeClause}`;
   switch (table) {
     case 'attempts': {
       const rows = (await db.query<Row>(
@@ -152,7 +153,7 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
            left join app.student_profiles sp on sp.user_id = t.user_id
            left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
            left join content.problem_versions pv on pv.problem_id = t.problem_id and pv.version = t.problem_version
-          where asg.class_id = $1 ${scopeClause}
+          where asg.class_id = $1 and asg.origin = 'teacher' ${scopeClause}
           order by t.started_at, t.id`,
         params,
       )).rows;

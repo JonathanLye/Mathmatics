@@ -6,6 +6,7 @@ import {
   createClass,
   listClasses,
   listRoster,
+  resetStudentPassword,
   rotateInviteCode,
   unclaimRoster,
   updateClassSettings,
@@ -74,6 +75,15 @@ export const teacherClassRoutes: FastifyPluginAsync<AuthRouteOptions> = async (a
     const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
     const rosterId = uuidParam((request.params as { rosterId: string }).rosterId, '名单行');
     await unclaimRoster(db, auth, classId, rosterId);
+    return reply.status(204).send();
+  });
+
+  // 重置学生密码（04 §10）：清哈希、作废会话、写 audit_log；学生之后用邀请码重新激活。
+  app.post('/teacher/classes/:classId/roster/:rosterId/reset-password', async (request, reply) => {
+    const auth = await requireTeacher(db, request);
+    const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
+    const rosterId = uuidParam((request.params as { rosterId: string }).rosterId, '名单行');
+    await resetStudentPassword(db, auth, classId, rosterId);
     return reply.status(204).send();
   });
 

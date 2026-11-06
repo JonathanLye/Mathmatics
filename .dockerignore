@@ -3,6 +3,7 @@ node_modules
 **/node_modules
 work
 .data
+**/.data
 coverage
 dist
 **/dist

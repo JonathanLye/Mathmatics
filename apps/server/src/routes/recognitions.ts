@@ -2,7 +2,7 @@ import multipart from '@fastify/multipart';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { requireStudentConsent } from '../auth/consent.ts';
-import { bySession, requireAuth } from '../auth/session.ts';
+import { bySession, requireStudent } from '../auth/session.ts';
 import { AppError } from '../errors.ts';
 import { createRecognitionService } from '../recognition/service.ts';
 import type { ModelGateway } from '../ai/gateway.ts';
@@ -20,7 +20,7 @@ export interface RecognitionRouteOptions extends AuthRouteOptions {
 }
 
 export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = async (app, { db, config, contract, gateway }) => {
-  const svc = createRecognitionService({ db, gateway, config, contract });
+  const svc = createRecognitionService({ db, gateway, config, contract, logger: app.log });
   // 每会话每分钟的请求数上限只挡失控重试；每生每日上限与并发由服务自己控制（config.recognition）。
   const limited = { max: 60, timeWindow: '1 minute', keyGenerator: bySession };
   const param = (request: { params: unknown }, name: string): string => (request.params as Record<string, string>)[name] ?? '';
@@ -40,7 +40,7 @@ export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = as
       config: { rateLimit: limited },
     },
     async (request) => {
-      const auth = await requireAuth(db, request);
+      const auth = await requireStudent(db, request);
       contract.validateRequest('/recognitions/ink', 'post', request.body);
       const body = request.body as { attemptId: string; draftId: string; target: string; ink: string };
       if (body.ink.length > 256 * 1024) throw new AppError('PAYLOAD_TOO_LARGE', 413, '笔迹数据太大');
@@ -64,7 +64,7 @@ export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = as
       config: { rateLimit: limited },
     },
     async (request) => {
-      const auth = await requireAuth(db, request);
+      const auth = await requireStudent(db, request);
       if (!request.isMultipart()) throw new AppError('VALIDATION_FAILED', 422, '需要 multipart/form-data');
       const fields: Record<string, string> = {};
       let image: Buffer | null = null;
@@ -96,7 +96,7 @@ export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = as
     '/recognitions/:recogId/confirm',
     { preHandler: [requireStudentConsent(db)], config: { rateLimit: limited } },
     async (request) => {
-      const auth = await requireAuth(db, request);
+      const auth = await requireStudent(db, request);
       contract.validateRequest('/recognitions/{recogId}/confirm', 'post', request.body);
       const body = request.body as { text: string; lines?: string[] };
       return svc.confirm(auth.userId, param(request, 'recogId'), body);

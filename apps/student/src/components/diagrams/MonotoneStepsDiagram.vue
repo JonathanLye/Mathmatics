@@ -196,17 +196,17 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
 .pg-svg__label {
   position: absolute;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-svg);
   line-height: 1.2;
   white-space: nowrap;
   color: var(--ink);
 }
-.pg-svg__label--muted { color: var(--ink-2); font-size: 9px; }
-.pg-svg__label--ink { color: var(--ink); font-size: 9px; }
-.pg-svg__label--tick { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--muted { color: var(--ink-2); font-size: var(--fs-svg-small); }
+.pg-svg__label--ink { color: var(--ink); font-size: var(--fs-svg-small); }
+.pg-svg__label--tick { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-ms__axis { stroke: var(--rule); stroke-width: 1; }
 .pg-ms__line { stroke: var(--accent); stroke-width: 1.6; }
-.pg-ms__cursor { stroke: var(--margin); stroke-width: 1; stroke-dasharray: 2 3; }
+.pg-ms__cursor { stroke: var(--sea); stroke-width: 1; stroke-dasharray: 2 3; }
 .pg-ms__dot { fill: var(--ink-2); }
 .pg-ms__dot--current { fill: var(--accent); }
 .pg-ms__dot--next { fill: var(--ok); }

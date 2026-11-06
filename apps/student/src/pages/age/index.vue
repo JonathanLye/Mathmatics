@@ -11,6 +11,12 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { errorMessage, isApiError } from '@/api/client'
+import PgButton from '@/components/ui/PgButton.vue'
+import PgCard from '@/components/ui/PgCard.vue'
+import PgMascot from '@/components/ui/PgMascot.vue'
+import PgSkeleton from '@/components/ui/PgSkeleton.vue'
+import { AGE_COPY } from '@/copy/onboarding'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { useSession } from '@/stores/session'
 import {
   AGE_BAND_LT14_RISK,
@@ -22,6 +28,7 @@ import {
 import type { AgeBand } from '@/types/attempt'
 
 const session = useSession()
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 const loading = session.loading
 const selected = ref<AgeBand | null>(null)
 /** 服务端已记录的年龄分档（null=未选择）；用于「已记录」「暂不开通」两种状态。 */
@@ -57,6 +64,22 @@ function choose(band: AgeBand): void {
   errorText.value = ''
 }
 
+const loggingOut = ref(false)
+
+/** 未满 14 岁暂不开通：给一个真正的出口，退出后回到登录页（换号或找老师）。 */
+async function logout(): Promise<void> {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try {
+    await session.logout()
+  } catch {
+    /* 接口失败也已清掉本地登录态（session.logout 的 finally） */
+  } finally {
+    loggingOut.value = false
+    uni.reLaunch({ url: '/pages/login/index' })
+  }
+}
+
 function goNext(): void {
   uni.redirectTo({ url: nextRoute.value || '/pages/home/index' })
 }
@@ -86,137 +109,120 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <view class="pg-page pg-age" data-testid="age-page">
-    <text class="pg-age__title">先确认你的年龄段</text>
-    <text class="pg-age__sub pg-small">
-      未满 14 岁暂不开通；14–17 岁可用；18 岁及以上按成年人规则。年龄只会记录一次。
-    </text>
-
-    <view v-if="initializing" class="pg-age__card pg-sheet" data-testid="age-loading">
-      <text class="pg-age__hint pg-small">正在读取你的分档…</text>
-    </view>
-
-    <!-- 已记录 lt14：暂不开通，不提供继续入口 -->
-    <view v-else-if="blocked" class="pg-age__card pg-sheet pg-age__card--blocked" data-testid="age-blocked">
-      <text class="pg-age__cardtitle">暂不开通</text>
-      <text class="pg-age__risk" data-testid="age-risk-note">{{ AGE_BAND_LT14_RISK }}</text>
-      <text class="pg-age__hint pg-small">训练数据不采集；如果分档填写有误，请联系老师修改。</text>
-    </view>
-
-    <!-- 已记录并允许使用：显示记录结果 + 继续原目标 -->
-    <view v-else-if="recordedNotice" class="pg-age__card pg-sheet" data-testid="age-recorded">
-      <text class="pg-age__cardtitle">年龄已记录</text>
-      <text class="pg-age__recorded pg-small" data-testid="age-recorded-value">当前分档：{{ ageBandLabel(recorded) }}</text>
-      <text class="pg-age__hint pg-small">年龄只能设置一次，如需修改请联系老师。</text>
-      <button class="pg-age__submit" data-testid="age-continue" @tap="goNext">继续</button>
-    </view>
-
-    <!-- 尚未选择：三档 -->
-    <template v-else>
-      <view class="pg-age__options">
-        <button
-          v-for="option in AGE_BAND_OPTIONS"
-          :key="option.value"
-          class="pg-age__option"
-          :class="{ 'pg-age__option--selected': selected === option.value }"
-          :data-testid="'age-option-' + option.value"
-          :aria-pressed="selected === option.value"
-          :disabled="!canChoose"
-          @tap="choose(option.value)"
-        >
-          <text class="pg-age__optionlabel">{{ option.label }}</text>
-          <text class="pg-age__optionhint pg-small">{{ option.hint }}</text>
-        </button>
+  <view class="pg-page pg-form-page pg-age" data-testid="age-page">
+    <view class="pg-form-column pg-age__column pg-enter">
+      <view class="pg-age__hero">
+        <PgMascot :expr="blocked ? 'sleepy' : selected ? 'happy' : 'idle'" :motion="blocked ? ['breathe'] : selected ? ['hop', 'blink'] : ['breathe', 'blink']" :size="96" />
+        <text class="pg-age__title">{{ blocked ? AGE_COPY.blockedTitle : AGE_COPY.title }}</text>
+        <text v-if="!blocked" class="pg-age__sub">{{ AGE_COPY.sub }}</text>
       </view>
-      <text class="pg-age__risk" data-testid="age-risk-note">{{ AGE_BAND_LT14_RISK }}</text>
-      <text v-if="errorText" class="pg-age__error pg-small" data-testid="age-error" role="alert">{{ errorText }}</text>
-      <button class="pg-age__submit" data-testid="age-submit" :disabled="submitDisabled" @tap="submit">
-        {{ loading ? '提交中…' : '确认分档' }}
-      </button>
-      <text class="pg-age__hint pg-small">年龄分档只用于未成年人规则，不影响你的成绩。</text>
-    </template>
 
-    <text v-if="errorText && (blocked || recordedNotice)" class="pg-age__error pg-small" data-testid="age-error" role="alert">
-      {{ errorText }}
-    </text>
+      <PgCard v-if="initializing" data-testid="age-loading">
+        <PgSkeleton :count="2" />
+        <text class="pg-age__hint pg-age__loading">正在读取你的分档…</text>
+      </PgCard>
+
+      <!-- 已记录 lt14：暂不开通，不提供继续入口，只有退出登录 -->
+      <PgCard v-else-if="blocked" tone="bee" class="pg-age__card" data-testid="age-blocked">
+        <text class="pg-age__cardtitle">{{ AGE_COPY.blockedLead }}</text>
+        <text class="pg-age__risktext" data-testid="age-risk-note">{{ AGE_BAND_LT14_RISK }}</text>
+        <text class="pg-age__hint">训练数据不采集。{{ AGE_COPY.blockedHelp }}</text>
+        <PgButton block size="lg" variant="secondary" :loading="loggingOut" data-testid="age-logout" @tap="logout">
+          {{ loggingOut ? AGE_COPY.loggingOut : AGE_COPY.logout }}
+        </PgButton>
+      </PgCard>
+
+      <!-- 已记录并允许使用：显示记录结果 + 继续原目标 -->
+      <PgCard v-else-if="recordedNotice" class="pg-age__card" data-testid="age-recorded">
+        <text class="pg-age__cardtitle">年龄已记录</text>
+        <text class="pg-age__recorded" data-testid="age-recorded-value">当前分档：{{ ageBandLabel(recorded) }}</text>
+        <text class="pg-age__hint">年龄只能设置一次，如需修改请联系老师。</text>
+        <PgButton block size="lg" data-testid="age-continue" @tap="goNext">继续</PgButton>
+      </PgCard>
+
+      <!-- 尚未选择：三档 -->
+      <template v-else>
+        <view class="pg-age__options pg-stagger" role="radiogroup" aria-label="年龄段">
+          <PgButton
+            v-for="option in AGE_BAND_OPTIONS"
+            :key="option.value"
+            class="pg-age__option"
+            :class="{ 'pg-age__option--selected': selected === option.value }"
+            variant="secondary"
+            block
+            :data-testid="'age-option-' + option.value"
+            :aria-pressed="selected === option.value"
+            :disabled="!canChoose"
+            @tap="choose(option.value)"
+          >
+            <view class="pg-age__radio" aria-hidden="true"><view class="pg-age__dot" /></view>
+            <view class="pg-age__optiontext">
+              <text class="pg-age__optionlabel">{{ option.label }}</text>
+              <text class="pg-age__optionhint">{{ option.hint }}</text>
+            </view>
+          </PgButton>
+        </view>
+        <text class="pg-age__risk pg-age__risktext" data-testid="age-risk-note">{{ AGE_BAND_LT14_RISK }}</text>
+        <text v-if="errorText" class="pg-age__error" data-testid="age-error" role="alert">{{ errorText }}</text>
+        <PgButton block size="lg" data-testid="age-submit" :loading="loading" :disabled="submitDisabled" @tap="submit">
+          {{ loading ? '提交中…' : '确认分档' }}
+        </PgButton>
+        <text class="pg-age__hint">年龄分档只用于未成年人规则，不影响你的成绩。</text>
+      </template>
+
+      <text v-if="errorText && (blocked || recordedNotice)" class="pg-age__error" data-testid="age-error" role="alert">{{ errorText }}</text>
+    </view>
   </view>
 </template>
 
 <style scoped>
-.pg-age {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding-top: calc(var(--safe-top) + var(--sp-6));
-  padding-bottom: calc(var(--sp-6) + var(--safe-bottom));
-}
-.pg-age__title {
-  font-size: 22px;
-  font-weight: 900;
-  color: var(--ink);
-}
-.pg-age__sub { color: var(--ink-2); }
-.pg-age__card { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-age__card--blocked { border-left: 3px solid var(--margin); }
-.pg-age__cardtitle { font-size: 18px; font-weight: 900; color: var(--ink); }
-.pg-age__recorded { color: var(--accent-text); }
+.pg-age__column { display: flex; flex-direction: column; gap: var(--sp-3); }
+.pg-age__hero { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); text-align: center; }
+.pg-age__title { color: var(--ink); font-size: var(--fs-22); font-weight: var(--fw-black); line-height: var(--lh-tight); }
+.pg-age__sub { color: var(--ink-2); font-size: var(--fs-13); line-height: var(--lh-body); }
+.pg-age__card { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pg-age__cardtitle { color: var(--ink); font-size: var(--fs-18); font-weight: var(--fw-black); line-height: var(--lh-tight); }
+.pg-age__recorded { color: var(--accent-text); font-size: var(--fs-13); }
+.pg-age__loading { display: block; margin-top: var(--sp-3); }
 .pg-age__options { display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-age__option {
-  /* uni-app H5 的 <button> 默认按内容收缩，这里显式撑满整行 */
-  width: 100%;
-  box-sizing: border-box;
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-height: 56px;
-  padding: var(--sp-2) var(--sp-3);
-  border: 2px solid var(--rule);
-  border-bottom-width: 4px;
-  border-radius: var(--radius-card);
-  background: var(--sheet);
-  color: var(--ink);
+.pg-age__option.pg-button {
+  justify-content: flex-start;
+  gap: var(--sp-3);
+  min-height: 68px;
+  padding: var(--sp-2) var(--sp-4);
   text-align: left;
 }
-.pg-age__option--selected { border-color: var(--accent); border-bottom-color: var(--accent-lip); background: var(--accent-soft); }
-.pg-age__optionlabel { font-size: var(--fs-body); font-weight: 900; }
-.pg-age__optionhint { color: var(--ink-2); }
+.pg-age__optiontext { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.pg-age__radio {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: var(--bw) solid var(--rule-2);
+  border-radius: 50%;
+  background: var(--paper);
+  transition: border-color var(--dur-base) ease-out, background var(--dur-base) ease-out;
+}
+.pg-age__dot { width: 12px; height: 12px; border-radius: 50%; background: var(--on-accent); transform: scale(0); transition: transform var(--dur-base) var(--ease-spring); }
+.pg-age__option--selected.pg-button {
+  --_lip: var(--accent-lip);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pg-age__option--selected .pg-age__radio { border-color: var(--accent-lip); background: var(--accent); }
+.pg-age__option--selected .pg-age__dot { transform: scale(1); }
+.pg-age__optionlabel { font-size: var(--fs-16); font-weight: var(--fw-black); }
+.pg-age__optionhint { color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-bold); }
 .pg-age__risk {
-  padding: var(--sp-2) var(--sp-3);
-  border: 2px solid var(--hint-fill);
-  border-radius: var(--radius-input);
-  background: var(--hint-soft);
-  color: var(--hint);
-  font-size: var(--fs-small);
-  line-height: 1.6;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--bee);
+  border-radius: var(--radius-12);
+  background: var(--bee-soft);
+  animation: pg-item-in var(--dur-base) var(--ease-out) both;
 }
-.pg-age__error { color: var(--margin-text); }
-.pg-age__submit {
-  width: 100%;
-  box-sizing: border-box;
-  align-self: stretch;
-  min-height: 52px;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--accent);
-  box-shadow: 0 var(--lip) 0 var(--accent-lip);
-  color: var(--on-accent);
-  font-size: var(--fs-body);
-  font-weight: 900;
-  letter-spacing: 0.5px;
-}
-/* uni-app H5 的 <uni-button> 不是原生表单控件，:disabled 伪类不生效，用属性选择器统一禁用态 */
-.pg-age__option[disabled] { opacity: 0.7; }
-.pg-age__submit[disabled] {
-  background: var(--rule);
-  box-shadow: none;
-  color: var(--ink-3);
-}
-/* 去掉 uni-app H5 <button> 自带的 ::after 边框，避免与外层边框叠成双线 */
-.pg-age__option::after,
-.pg-age__submit::after {
-  border: 0 !important;
-}
-.pg-age__hint { color: var(--ink-2); }
+.pg-age__risktext { color: var(--bee-text); font-size: var(--fs-13); line-height: var(--lh-body); }
+.pg-age__error { color: var(--fox-text); font-size: var(--fs-13); }
+.pg-age__hint { color: var(--ink-2); font-size: var(--fs-13); line-height: var(--lh-body); }
 </style>

@@ -41,7 +41,7 @@ const rightX = computed(() => props.width / 2 + 16)
 const centerX = computed(() => props.width / 2 - 2)
 const ariaLabel = computed(
   () =>
-    '迁移题思路对照：数列 ε-N 与函数 ε-δ。ε=' +
+    '换题思路对照：数列 ε-N 与函数 ε-δ。ε=' +
     fmt(props.epsilon) +
     ' 时，N=' +
     fmt(quantities.value.seqN) +
@@ -137,22 +137,22 @@ function labelStyle(label: OverlayLabel): string {
 .pg-svg__label {
   position: absolute;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-svg);
   line-height: 1.2;
   white-space: nowrap;
   color: var(--ink);
 }
 .pg-svg__label--head { font-family: var(--font-serif); color: var(--ink); }
 .pg-svg__label--text { color: var(--ink); }
-.pg-svg__label--link { color: var(--accent-text); font-size: 12px; }
+.pg-svg__label--link { color: var(--accent-text); font-size: var(--fs-12); }
 .pg-svg__headrect { fill: var(--accent-soft); }
 .pg-svg__rule { stroke: var(--rule); stroke-width: 0.6; }
 .pg-transfer__caption { color: var(--ink-2); }
 .pg-transfer__rows { display: flex; flex-direction: column; gap: var(--sp-1); }
 .pg-transfer__row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); }
 .pg-transfer__seq { color: var(--accent-text); font-family: var(--font-mono); }
-.pg-transfer__func { color: var(--margin-text); font-family: var(--font-mono); }
+.pg-transfer__func { color: var(--sea-text); font-family: var(--font-mono); }
 .pg-transfer__arrow { color: var(--ink-2); }
 .pg-transfer__note { flex-basis: 100%; color: var(--ink-2); }
-.pg-sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius-card); }
+.pg-sheet { background: var(--sheet); border: var(--bw) solid var(--rule); border-radius: var(--radius-16); }
 </style>

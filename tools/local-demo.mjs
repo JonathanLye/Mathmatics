@@ -6,6 +6,8 @@
 //
 // 先决条件：服务已按 README 启动，且教师账号已创建（node apps/server/src/db/cli.ts create-teacher demo）。
 // 这是演示脚本，不属于生产代码。
+// 学生密码：本脚本只建班导入名单；学生用打印出的邀请码 + 学号登录后会被引导设置密码（STUDENT_PASSWORD_ENFORCE 开启时必须先设）。
+// 想让演示服务不强制设密码，保持默认（开发环境默认关闭）即可。
 const base = process.env.API_BASE ?? 'http://127.0.0.1:3000';
 const username = process.argv[2] ?? 'demo';
 const password = process.env.TEACHER_PASSWORD ?? '';

@@ -10,13 +10,14 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
+// 依赖与开关在 /health/details（需令牌）里；公开的 /health 不含这些（见 health.test.ts）。
 async function health(env: NodeJS.ProcessEnv) {
-  const app = await buildApp({ config: loadConfig({ NODE_ENV: 'test', ...env }), logger: false });
+  const app = await buildApp({ config: loadConfig({ NODE_ENV: 'test', HEALTH_TOKEN: 'test-health-token', ...env }), logger: false });
   apps.push(app);
-  return app.inject({ method: 'GET', url: '/health' });
+  return app.inject({ method: 'GET', url: '/health/details', headers: { 'x-health-token': 'test-health-token' } });
 }
 
-describe('GET /health 依赖状态', () => {
+describe('GET /health/details 依赖状态', () => {
   it('没有 key：HTTP 仍为 200，status 仍为 ok，typesafe 显示 degraded', async () => {
     const res = await health({});
     expect(res.statusCode).toBe(200);

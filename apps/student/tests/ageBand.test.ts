@@ -74,7 +74,7 @@ const ME: MeView = {
 const CONSENT_KEYS = ['service', 'crossBorderHosting', 'crossBorderModel', 'monitoring', 'research']
 
 const CONSENT_DOC = {
-  version: 'p0-v1',
+  version: 'v2',
   sections: [
     { key: 'service', title: '服务所需处理', body: '正文 A', required: true },
     { key: 'crossBorderHosting', title: '中国香港服务器', body: '正文 B', required: true },
@@ -178,7 +178,7 @@ describe('session store（真实模式）', () => {
     const { fetchImpl } = captureFetch(() => jsonResponse({ ...ME, ageBand: null }))
     configureClientForTests({ fetchImpl, mock: false })
     const session = useSession()
-    expect(await session.login('ABC123', '2026001')).toBe(true)
+    expect(await session.login({ inviteCode: 'ABC123', studentNo: '2026001' })).toBe(true)
     expect(session.ageBand.value).toBeNull()
     expect(await session.ensureAgeBand()).toBe('need-age')
   })
@@ -275,7 +275,7 @@ describe('mock 客户端（#145）', () => {
     configureClientForTests({ mock: true })
     __setMockAgeBandForTests(null)
     expect((await getMe()).ageBand).toBeNull()
-    expect(ageGateFor((await login('ABC123', '2026001')).ageBand)).toBe('need-age')
+    expect(ageGateFor((await login({ inviteCode: 'ABC123', studentNo: '2026001' })).ageBand)).toBe('need-age')
   })
 
   it('年龄只能设置一次：首次成功、再次 409 AGE_BAND_LOCKED', async () => {
@@ -295,14 +295,15 @@ describe('mock 客户端（#145）', () => {
     configureClientForTests({ mock: true })
     __setMockAgeBandForTests('14to17')
     const teenDoc = await getConsents()
-    expect(teenDoc.sections).toHaveLength(6)
+    expect(teenDoc.sections).toHaveLength(5)
     const guardian = teenDoc.sections.find((section) => section.key === 'guardianNotice')
     expect(guardian?.required).toBe(false)
     expect(guardian?.body).toContain('服务端')
 
     __resetMockAgeBandForTests()
     const adultDoc = await getConsents()
-    expect(adultDoc.sections.map((section) => section.key)).toEqual(CONSENT_KEYS)
+    // 境外模型不再展示（U22）
+    expect(adultDoc.sections.map((section) => section.key)).toEqual(CONSENT_KEYS.filter((key) => key !== 'crossBorderModel'))
   })
 
   it('非法档位直接拒绝（不发请求、不伪造成功）', async () => {

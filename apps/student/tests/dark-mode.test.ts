@@ -3,7 +3,7 @@
  *
  * - D1：四个图解的 uni <slider> 不再硬编码浅色值，改读主题 token；
  * - D2：水印 fill 跟随 --ink（深色下可见），缓存 key 含主题色；
- * - D3：主色按钮文字用 --on-accent（浅色/深色都能满足对比度），不再写死 #fff；
+ * - D3：主色按钮文字用 --on-accent（浅色/深色都能满足对比度），不再写死 #fff；token 对比度全部在这里强制；
  * - 深色截图脚本：screenshots.mjs 支持 --dark / DARK=1。
  *
  * 只做静态/纯函数断言；真实深色渲染由 e2e:screens:dark 截图覆盖。
@@ -62,43 +62,29 @@ describe('D2：水印 fill 跟随主题 --ink', () => {
   })
 })
 
-describe('D3：主色按钮文字用 --on-accent，不写死 #fff', () => {
-  it('tokens.css 定义 --on-accent（v2：亮绿面上用深字，不再等于 --paper）', () => {
-    const css = read('styles/tokens.css')
-    expect(css).toMatch(/--on-accent:\s*#[0-9a-fA-F]{6}/)
+const TOKENS_CSS = fs.readFileSync(path.resolve(APP_DIR, '..', '..', 'packages', 'ui-tokens', 'tokens.css'), 'utf8')
+
+function walkVue(dir: string, out: string[] = []): string[] {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) walkVue(full, out)
+    else if (entry.name.endsWith('.vue')) out.push(full)
+  }
+  return out
+}
+
+describe('D3：文字色不写死 #fff；token 只有一个来源', () => {
+  it('学生端 tokens.css 只是引入共用包；共用包定义 --on-accent，浅色纸面是白色', () => {
+    expect(read('styles/tokens.css')).toContain("@import '@proof-gym/ui-tokens/tokens.css'")
+    expect(TOKENS_CSS).toMatch(/--on-accent:\s*#[0-9a-fA-F]{6}/)
     expect(FALLBACK_TOKEN.paper).toBe('#ffffff')
   })
 
-  it('13 处主色按钮已替换；唯一保留的 color:#fff 是深色遮罩上的 toast', () => {
-    const vueFiles: string[] = []
-    const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) walk(full)
-        else if (entry.name.endsWith('.vue')) vueFiles.push(full)
-      }
-    }
-    walk(SRC_DIR)
-    const hits = vueFiles.filter((file) => /color:\s*#fff/.test(fs.readFileSync(file, 'utf8')))
-    const rel = (file: string) => path.relative(SRC_DIR, file).split(path.sep).join('/')
-    expect(hits.map(rel)).toEqual(['pages/practice/index.vue'])
-    const practice = read('pages/practice/index.vue')
-    expect(practice).toContain('rgba(29, 36, 48, 0.92)')
-    expect(practice).toContain('color: var(--on-accent)')
-
-    // #164：ui-math 也不能有写死的 #fff 文字色（ProofKeyboard「完成」按钮曾因此漏扫）
-    const uiMathVue: string[] = []
-    const walkUiMath = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) walkUiMath(full)
-        else if (entry.name.endsWith('.vue')) uiMathVue.push(full)
-      }
-    }
-    walkUiMath(UI_MATH_DIR)
-    const uiMathHits = uiMathVue.filter((file) => /color:\s*#fff\b/.test(fs.readFileSync(file, 'utf8')))
-    expect(uiMathHits.map((file) => path.relative(UI_MATH_DIR, file).split(path.sep).join('/'))).toEqual([])
-
+  it('学生端和 ui-math 的 .vue 都没有写死 #fff 文字色', () => {
+    const vue = [...walkVue(SRC_DIR), ...walkVue(UI_MATH_DIR)]
+    const hits = vue.filter((file) => /(?<![-\w])color:\s*#fff\b/.test(fs.readFileSync(file, 'utf8')))
+    expect(hits).toEqual([])
+    // #164：ProofKeyboard「完成」按钮曾因此漏扫
     const keyboard = fs.readFileSync(path.join(UI_MATH_DIR, 'ProofKeyboard.vue'), 'utf8')
     const doneRule = keyboard.match(/\.ui-pk__action--done\s*\{([\s\S]*?)\}/)?.[1] ?? ''
     expect(doneRule).toContain('background: var(--accent')
@@ -107,13 +93,12 @@ describe('D3：主色按钮文字用 --on-accent，不写死 #fff', () => {
 })
 
 // ---------------------------------------------------------------------------
-// #164：主色按钮文字对比度（WCAG 2.x AA 正文 ≥4.5:1）
-// tokens.css 的唯一真源在 apps/student；ui-math 用 var(--on-accent, var(--paper, #fff)) 消费。
+// 对比度（WCAG 2.x AA 正文 ≥ 4.5:1）。三份值的顺序：浅色 / 跟随系统的深色 / html[data-theme=dark]。
 // ---------------------------------------------------------------------------
 
-/** 从 tokens.css 按出现顺序取某个 token 的 3 份值（浅色 / dark 媒体查询 / html[data-theme=dark]）。 */
+/** 按出现顺序取某个 token 的所有十六进制定义。 */
 function tokenHexes(css: string, name: string): string[] {
-  const re = new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})', 'g')
+  const re = new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})\\b', 'g')
   return Array.from(css.matchAll(re)).map((m) => m[1])
 }
 
@@ -132,47 +117,80 @@ function contrastRatio(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }
 
-describe('#164：厚边按钮「面色 + 文字色」对比度 ≥ 4.5（v2 token）', () => {
-  const css = read('styles/tokens.css')
-  const first = (name: string): string => {
-    const hex = tokenHexes(css, name)[0]
-    expect(hex, '--' + name).toBeTruthy()
-    return hex
-  }
+/** 第 theme 份（0 浅色、1 深色）；深色没重定义的 token 沿用浅色值。 */
+function tokenAt(name: string, theme: 0 | 1): string {
+  const values = tokenHexes(TOKENS_CSS, name)
+  const hex = values[theme] ?? values[0]
+  if (!hex) throw new Error('tokens.css 里没有 --' + name)
+  return hex
+}
 
-  it('主色按钮：--on-accent 在 --accent 上 ≥ 4.5（浅/深色共用，深色不重定义 accent）', () => {
-    expect(tokenHexes(css, 'accent')).toHaveLength(1)
-    expect(contrastRatio(first('accent'), first('on-accent'))).toBeGreaterThanOrEqual(4.5)
+const THEMES: Array<[string, 0 | 1]> = [
+  ['浅色', 0],
+  ['深色', 1],
+]
+
+describe.each(THEMES)('对比度 ≥ 4.5（%s）', (_label, theme) => {
+  const pair = (fg: string, bg: string) => contrastRatio(tokenAt(fg, theme), tokenAt(bg, theme))
+
+  it('按钮：每种面色上的文字色', () => {
+    expect(pair('on-accent', 'accent')).toBeGreaterThanOrEqual(4.5)
+    expect(pair('on-sea', 'sea')).toBeGreaterThanOrEqual(4.5)
+    expect(pair('on-bee', 'bee')).toBeGreaterThanOrEqual(4.5)
+    expect(pair('on-ok', 'ok')).toBeGreaterThanOrEqual(4.5)
+    expect(pair('on-fox', 'fox')).toBeGreaterThanOrEqual(4.5)
+    expect(pair('on-danger', 'danger-face')).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('蓝/黄按钮：--on-margin 在 --margin 上、--on-hint 在 --hint-fill 上 ≥ 4.5', () => {
-    expect(contrastRatio(first('margin'), first('on-margin'))).toBeGreaterThanOrEqual(4.5)
-    expect(contrastRatio(first('hint-fill'), first('on-hint'))).toBeGreaterThanOrEqual(4.5)
+  it.each(['ink', 'ink-2', 'accent-text', 'sea-text', 'bee-text', 'ok-text', 'fox-text', 'chili-text'])('%s 在纸面和卡片上', (fg) => {
+    expect(pair(fg, 'paper')).toBeGreaterThanOrEqual(4.5)
+    expect(pair(fg, 'sheet')).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('红按钮（白字）：--danger-face 上白字 ≥ 4.5；完成页深草绿 #3c8400 上白字 ≥ 4.5', () => {
-    expect(contrastRatio(first('danger-face'), '#ffffff')).toBeGreaterThanOrEqual(4.5)
-    expect(contrastRatio('#3c8400', '#ffffff')).toBeGreaterThanOrEqual(4.5)
+  it.each([
+    ['accent-text', 'accent-soft'],
+    ['sea-text', 'sea-soft'],
+    ['bee-text', 'bee-soft'],
+    ['ok-text', 'ok-soft'],
+    ['fox-text', 'fox-soft'],
+    ['chili-text', 'chili-soft'],
+    ['ink', 'accent-soft'],
+    ['ink', 'sea-soft'],
+    ['ink', 'bee-soft'],
+    ['ink-2', 'paper-2'],
+  ])('%s 在 %s 上（标签、批注）', (fg, bg) => {
+    expect(pair(fg, bg)).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('深色文字色（--ink-2 / --accent-text / --margin-text）在深色底 --paper 上 ≥ 4.5；浅色同理', () => {
-    const light = { paper: tokenHexes(css, 'paper')[0], ink2: tokenHexes(css, 'ink-2')[0], accentText: tokenHexes(css, 'accent-text')[0], marginText: tokenHexes(css, 'margin-text')[0] }
-    const darkPaper = tokenHexes(css, 'paper')[1]
-    const dark = { ink2: tokenHexes(css, 'ink-2')[1], accentText: tokenHexes(css, 'accent-text')[1], marginText: tokenHexes(css, 'margin-text')[1] }
-    expect(darkPaper).toBeTruthy()
-    for (const c of [light.ink2, light.accentText, light.marginText]) expect(contrastRatio(light.paper, c)).toBeGreaterThanOrEqual(4.5)
-    // --ink-2 在深色里有重定义；accent-text / margin-text 深色也有
-    for (const c of [dark.ink2, dark.accentText, dark.marginText]) expect(contrastRatio(darkPaper, c)).toBeGreaterThanOrEqual(4.5)
+  it('轻提示：toast-ink 在 toast-bg 上', () => {
+    expect(pair('toast-ink', 'toast-bg')).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+describe('token 结构', () => {
+  it('两处深色（媒体查询 / html[data-theme]）的值逐个一致', () => {
+    // 只按真正的块头切；文件头注释里也提到了这两个选择器。
+    const blocks = TOKENS_CSS.split(/@media \(prefers-color-scheme: dark\) \{|html\[data-theme='dark'\] \{/)
+    expect(blocks).toHaveLength(3)
+    const media = Array.from(blocks[1].matchAll(/(--[\w-]+):\s*([^;]+);/g)).map((m) => m[1] + '=' + m[2])
+    const manual = Array.from(blocks[2].matchAll(/(--[\w-]+):\s*([^;]+);/g)).map((m) => m[1] + '=' + m[2])
+    expect(media.length).toBeGreaterThan(20)
+    expect(manual).toEqual(media)
   })
 
-  it('两处深色（媒体查询 / html[data-theme]）的 paper 必须一致', () => {
-    const papers = tokenHexes(css, 'paper')
-    expect(papers.length).toBeGreaterThanOrEqual(3)
-    expect(papers[1]).toBe(papers[2])
+  it('html[data-theme=light] 能压住系统深色', () => {
+    expect(TOKENS_CSS).toContain(":root:not([data-theme='light'])")
   })
 
-  it('#164 根因回归：主色面上写死 #fff 达不到 4.5（所以必须用 --on-accent）', () => {
-    expect(contrastRatio('#ffffff', first('accent'))).toBeLessThan(4.5)
+  it('根因回归：主色面上写死 #fff 达不到 4.5（所以必须用 --on-accent）', () => {
+    expect(contrastRatio('#ffffff', tokenAt('accent', 0))).toBeLessThan(4.5)
+  })
+
+  it('FALLBACK_TOKEN 和 tokens.css 的浅色值同步', () => {
+    expect(FALLBACK_TOKEN.accent).toBe(tokenAt('accent', 0))
+    expect(FALLBACK_TOKEN.rule).toBe(tokenAt('rule', 0))
+    expect(FALLBACK_TOKEN.ink).toBe(tokenAt('ink', 0))
+    expect(FALLBACK_TOKEN.paper).toBe(tokenAt('paper', 0))
   })
 })
 

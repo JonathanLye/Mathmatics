@@ -2,7 +2,7 @@ import { ENGINE_EVENT_TYPES, createAttempt, replay, type AttemptState, type Prob
 
 import type { StoredEvent } from '../api/types.ts';
 
-// 04 §5.2：用 engine 的 replay 把事件重放成当时的 AttemptState。
+// 用引擎的 replay 把事件重放成当时的 AttemptState。
 // 题目包来自 GET /teacher/problems/{pid}/versions/{v}（教师权限、读审计），Events 来自 /teacher/attempts/{id}/events。
 // 只把 ENGINE_EVENT_TYPES 白名单事件喂给 reducer（服务端/客户端观察事件不驱动状态）。
 export interface EngineFrame {

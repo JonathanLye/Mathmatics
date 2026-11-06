@@ -14,10 +14,41 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 学生登录（邀请码 + 学号）
-         * @description 首次登录时用学号认领名单里的一行；名单里没有该学号返回 403 `NOT_IN_ROSTER`。响应会告诉前端是否需要先签知情同意。
+         * 学生登录（学号 + 密码；首次/重置后用邀请码 + 学号激活）
+         * @description 三种用法，统一用学号 `studentNo` 标识账号：
+         *     1. **已设密码**：必须带 `password`；任何失败（学号不存在、密码错）都返回同一条 401 `INVALID_CREDENTIALS`（学号或密码不对）。
+         *        同时带有效的 `inviteCode` 则顺带加入该班（第二个班的入班路径；名单规则不变）。
+         *     2. **未设密码或学号尚无账号**：必须带 `inviteCode`，按名单认领；登录成功但 `Me.needsPassword=true`，
+         *        前端先去设密码（`POST /auth/student/password`）。名单里没有该学号返回 403 `NOT_IN_ROSTER`。
+         *     3. **已设密码却只带邀请码**：401 `PASSWORD_REQUIRED_LOGIN`（这个学号已设置密码，请用密码登录）。堵住同学冒登。
+         *     连续失败按 (IP, 学号) 锁定，返回 429 `RATE_LIMITED`（detail.retryAfterSec）。
          */
         post: operations["studentLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/student/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 学生设置 / 修改密码
+         * @description 首次设置（`Me.needsPassword=true`）不需要 `currentPassword`；已有密码时必须带正确的 `currentPassword`，
+         *     否则 403 `INVALID_CREDENTIALS`（刻意不用 401，避免客户端把它当成会话失效而跳回登录页）；连续输错同样被锁定（429）。
+         *     新密码规则：8–64 个字符、不限字符类型，不能与学号相同，也不能是常见弱密码（422 `VALIDATION_FAILED`，message 可直接展示）。
+         *     成功后作废该学生**其他**所有会话（当前会话保留）。服务端开启 `STUDENT_PASSWORD_ENFORCE` 时，
+         *     未设密码的学生调用除 `/me`、`/auth/logout`、本接口之外的学生接口一律 403 `PASSWORD_SETUP_REQUIRED`。
+         *     支持 `Idempotency-Key`。
+         */
+        post: operations["setStudentPassword"];
         delete?: never;
         options?: never;
         head?: never;
@@ -61,6 +92,43 @@ export interface paths {
         put?: never;
         /** 教师登录（用户名 + 密码 + 可选 TOTP） */
         post: operations["teacherLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/teacher/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 教师修改密码（需当前密码；作废其他会话）
+         * @description 新密码至少 8 个字符。当前密码不对返回 403 `INVALID_CREDENTIALS`（不用 401，原因同学生端）；连续输错被锁定（429）。支持 `Idempotency-Key`。
+         */
+        post: operations["changeTeacherPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 退出所有设备（作废该用户全部会话并清 Cookie） */
+        post: operations["logoutAll"];
         delete?: never;
         options?: never;
         head?: never;
@@ -181,6 +249,226 @@ export interface paths {
         get: operations["getNotebook"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/mistakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的错题本：按卡点分组（定义没写全 / 依据缺失 / 放缩卡住 / 靠提示写出的步骤 / 自检没通过 / 其他卡点），每项可直接重做 */
+        get: operations["getMistakes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/attempts/{attemptId}/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 重做：在本人已完成的作答上新建重做作答（kind=redo，强制练习模式；已有未结束的重做则返回它）
+         * @description 重做不计经验（来源键与首次相同）、不进指标与导出；第 5 层（迁移题）自动跳过；布置关闭后仍可重做。测验布置开放或未开始期间返回 403 TEST_MODE_RESTRICTED；作答未完成返回 409；他人的作答返回 403。
+         */
+        post: operations["startRedo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 学习路径（首页）：只返回当前单元的题目详情，其余单元只有摘要 */
+        get: operations["getStudentPath"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/path/items/{problemId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 从路径节点开始或继续一道题（懒创建本班的自学布置；已做完则返回只读回看）
+         * @description 班里这道题有没结束的测验 → 409 TEST_IN_PROGRESS；班里有开放的教师练习布置 → 直接复用。
+         */
+        post: operations["startPathItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 学习进度：经验、连胜、本周每日、徽章
+         * @description 连胜按 Asia/Shanghai 自然日算，当天有经验入账才算一天；每周（周一到周日）自动有一张请假卡。徽章目录在服务端代码里。
+         */
+        get: operations["getProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的设置（昵称、每日目标、默认输入、外观、音效/动效/震动、引导进度）
+         * @description 要求已签同意书（与作答接口同一守卫）。
+         */
+        get: operations["getSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改设置（只传要改的字段）；nickname 写入 users.display_name，trim 后 1–16 个字 */
+        patch: operations["patchSettings"];
+        trace?: never;
+    };
+    "/student/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 问题反馈 */
+        post: operations["submitFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/practice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 练习区：在全部已发布题里按章节与难度挑题（分页，章 → 难度 → ID 顺序稳定） */
+        get: operations["listPractice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/practice/random": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 随机挑一道还没做完的题（范围内都做完了返回 404） */
+        post: operations["randomPractice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/practice/{problemId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 从练习区开始一道题（同 /student/path/items/{problemId}/start，同样的测验撞车拒绝） */
+        post: operations["startPractice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/practice/{problemId}/solution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 解题思路与参考证明：只返回这位学生已经可以看的那一级 */
+        get: operations["getPracticeSolution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/practice/{problemId}/solution/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 主动查看思路（approach）或完整解答（full）；只限自己的练习模式自学作答
+         * @description 老师布置的作答、测验模式、班里有没结束的测验时 403；还没开始做这道题 409。记 `solution.revealed` 事件，之后写出的关键步骤按有提示计。
+         */
+        post: operations["revealPracticeSolution"];
         delete?: never;
         options?: never;
         head?: never;
@@ -473,7 +761,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 题目关闭且教师已发布讲评后，查看参考证明与讲评（之前返回 403） */
+        /** 查看参考证明与讲评：教师布置要教师已发布，且本人写完或布置结束；自学作答本人写完后即可看；班里该题有没结束的测验时 403（读参考证明记审计） */
         get: operations["getPublishedReview"];
         put?: never;
         post?: never;
@@ -557,6 +845,7 @@ export interface paths {
          *     - `concept`：概念解释（词条/微课入口），不计透露量。
          *     - `check_line`：对指定行（缺省最新一行）给批注。
          *     - `free`：自由提问，服务端判意图后按上面三类处理；索要答案/施压一句拒绝 + H0。
+         *     - 开了 `help.llm` 时，`concept` / `free` / `check_line` 的回答由模型生成（已过三重闸门），`note.aiGenerated = true`，响应头 `X-AIGC: 1`；闸门拦下或模型不可用时回退模板回答（`aiGenerated` 缺省）。
          */
         post: operations["requestHelp"];
         delete?: never;
@@ -594,8 +883,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 标记求助老师（额度用完或卡住时） */
+        /**
+         * 标记求助老师（额度用完，或卡住满 stuckMs 后）
+         * @description 写入 `app.help_flags`，教师看板显示求助；重复调用返回当前状态（幂等）。测验模式 403。
+         */
         post: operations["flagTeacher"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/notes/{noteId}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 对一条 AI 回答点“有用 / 没用”（13 §5）
+         * @description 只能点自己作答里的批注（`Note.noteId`）；可以改主意，以最后一次为准。
+         */
+        post: operations["noteFeedback"];
         delete?: never;
         options?: never;
         head?: never;
@@ -692,6 +1004,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/classes/{classId}/roster/{rosterId}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 重置学生密码（清哈希、作废该生全部会话；写 audit_log）
+         * @description 名单行必须已被认领、且班级归当前教师；学生之后用邀请码 + 学号重新激活并设置新密码。重置是账号级的（该生在其他班也要重新设密码）。
+         */
+        post: operations["resetStudentPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/teacher/classes/{classId}/invite-code": {
         parameters: {
             query?: never;
@@ -755,6 +1087,23 @@ export interface paths {
         };
         /** 班级指标（口径见 08-事件与数据字典.md §4） */
         get: operations["getMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teacher/classes/{classId}/self-study": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 自学进度：本班学生在学习路径各单元的完成情况（不进看板、指标与导出） */
+        get: operations["getSelfStudy"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1022,6 +1371,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/problems/{problemId}/visibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 下架 / 恢复上架一道题（设置或清除 hidden_at）
+         * @description 下架后这道题不再出现在学生的学习路径与练习区；已有作答和老师已布置的题不受影响。写一条审计记录。
+         */
+        patch: operations["setProblemVisibility"];
+        trace?: never;
+    };
     "/teacher/problems/{problemId}/versions/{version}": {
         parameters: {
             query?: never;
@@ -1114,8 +1483,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 健康检查（各外部依赖可用性与降级开关状态） */
+        /** 健康检查（公开，只回答服务是否在运行；不含依赖与开关明细） */
         get: operations["health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 健康明细（各外部依赖可用性与降级开关状态；需 x-health-token，值守/监控用）
+         * @description 请求头 x-health-token 必须等于服务端环境变量 HEALTH_TOKEN；未配置 HEALTH_TOKEN 或令牌不符都返回 404（不暴露该路径存在）。反代只放行 /health，不要把 /health/details 暴露到公网。
+         */
+        get: operations["healthDetails"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1131,12 +1520,15 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "AGE_BAND_REQUIRED" | "AGE_RESTRICTED" | "AGE_BAND_LOCKED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL";
+                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "AGE_BAND_REQUIRED" | "AGE_RESTRICTED" | "AGE_BAND_LOCKED" | "INVALID_CREDENTIALS" | "PASSWORD_REQUIRED_LOGIN" | "PASSWORD_SETUP_REQUIRED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL" | "TEST_IN_PROGRESS";
                 /** @description 可直接展示给用户的中文 */
                 message: string;
                 /** @description 如 { waitSec, softLanding: [...], state } */
                 detail?: Record<string, never>;
             };
+        };
+        OkResult: {
+            ok: boolean;
         };
         /** @description 中文 + $…$ 行内 LaTeX；字面 $ 写作 \$ */
         MathText: string;
@@ -1162,6 +1554,8 @@ export interface components {
              * @enum {string|null}
              */
             ageBand?: "lt14" | "14to17" | "ge18" | null;
+            /** @description 仅学生返回：true=账号还没设密码，前端先去 POST /auth/student/password（密码设好前，开启强制时其余学生接口 403 PASSWORD_SETUP_REQUIRED） */
+            needsPassword?: boolean;
             /** @description 功能开关：photo, lessonGenerated, mirror, testMode … */
             features?: {
                 [key: string]: boolean;
@@ -1170,9 +1564,9 @@ export interface components {
         ConsentItems: {
             /** @description 服务所需处理（必选） */
             service: boolean;
-            /** @description 数据存储于中国香港服务器（P0 必选） */
+            /** @description AI 模型和识别服务（必选；历史键名，内容已是境内服务，见 13 §2） */
             crossBorderHosting: boolean;
-            /** @description 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关对该生跳过 Jev） */
+            /** @description 已停用（U22）：系统不向境外发送数据，服务端一律记为 false；客户端仍需传这个键 */
             crossBorderModel: boolean;
             /** @description 作答过程监测（必选） */
             monitoring: boolean;
@@ -1210,6 +1604,7 @@ export interface components {
             assignmentId: string;
             title: string;
             chapter?: string;
+            /** @description 仅在布置详情里返回；首页卡片不再带整段题面 */
             stem?: components["schemas"]["MathText"];
             /** @enum {string} */
             mode: "practice" | "test";
@@ -1282,6 +1677,8 @@ export interface components {
             cost?: number | null;
             /** @description 有值时显示"看分步讲解"入口 */
             lessonConceptId?: string | null;
+            /** @description 模型生成的回答（界面显示“AI 生成 · 仅作学习提示”，响应头 X-AIGC: 1；13 §5） */
+            aiGenerated?: boolean;
             /** Format: date-time */
             at: string;
         };
@@ -1309,6 +1706,8 @@ export interface components {
             flagged: boolean;
             /** @description 连续卡住，界面可温和询问是否需要提示 */
             stuckOffer?: boolean;
+            /** @description 现在可以“找老师”（额度用完，或卡住满 stuckMs），且还没找过 */
+            canFlag?: boolean;
         };
         IntegrityView: {
             /** @enum {string} */
@@ -1326,13 +1725,19 @@ export interface components {
             conceptId?: string;
             submissions?: number;
             last?: components["schemas"]["MathText"];
+            /** @description 最近一次核对没通过时缺的那一个成分（或顺序追问），一次只说一件事；通过或离开本层后不再下发 */
+            feedback?: components["schemas"]["MathText"];
             /** @description 两次未过时为 true，界面主动展开"分步讲解" */
             lessonSuggested?: boolean;
+            /** @description 概念缺失或没有微课步骤时为 false，界面隐藏微课入口（GET lesson 对缺失概念是 404） */
+            lessonAvailable?: boolean;
         };
         FrameView: {
             task?: components["schemas"]["MathText"];
             lessonId?: string;
             last?: components["schemas"]["MathText"];
+            /** @description 最近一次核对没通过时缺的那一部分骨架；通过或离开本层后不再下发 */
+            feedback?: components["schemas"]["MathText"];
             templateShown?: boolean;
             template?: components["schemas"]["MathText"] | null;
         };
@@ -1369,7 +1774,7 @@ export interface components {
             parentAttemptId?: string | null;
             stateVersion: number;
             /** @enum {string} */
-            kind: "main" | "transfer";
+            kind: "main" | "transfer" | "redo";
             /** @enum {string} */
             status: "active" | "parked" | "locked" | "completed" | "abandoned";
             /** @enum {string} */
@@ -1497,6 +1902,8 @@ export interface components {
             claimedAt?: string | null;
             /** @description 认领学生的匿名码 */
             claimedByAnon?: string | null;
+            /** @description 认领学生是否已设置密码（未认领为 false）；教师可据此提示或重置 */
+            passwordSet?: boolean;
         };
         ClassSettings: {
             /** @default true */
@@ -1719,6 +2126,154 @@ export interface components {
             resolved: boolean;
             note?: string | null;
         };
+        /**
+         * @description 入门 / 进阶 / 挑战。题目包 public.difficulty 1–2 = easy，3 = medium，4–5 = hard。
+         * @enum {string}
+         */
+        DifficultyBand: "easy" | "medium" | "hard";
+        PathItem: {
+            problemId: string;
+            title: string;
+            /** @description 截断的题面，不会把 $…$ 公式切成两半 */
+            stemPreview: components["schemas"]["MathText"];
+            difficulty: components["schemas"]["DifficultyBand"];
+            /** @enum {string} */
+            state: "todo" | "active" | "done";
+            currentLayer?: components["schemas"]["LayerId"] | null;
+            layersDone: number;
+            /** @description 本题启用的层数（导入题只有写证明与总结两层） */
+            layersTotal: number;
+            /** Format: uuid */
+            attemptId?: string | null;
+            /** @description 可以看讲评：自学作答完成即可；教师布置要教师发布 */
+            reviewPublished: boolean;
+            /** @description 批量导入、AI 整理（界面显示小标签） */
+            autoImported: boolean;
+            /** @description 题目出处（书名），有就显示（著作权法第 24 条要指明出处，13 §6） */
+            sourceBook?: string;
+            /** @description 排在第一道未完成题之后，只提示、不拦 */
+            softLocked: boolean;
+            lessonAvailable: boolean;
+        };
+        PathUnitSummary: {
+            /** Format: uuid */
+            id: string;
+            chapterNo: number;
+            unitNo: number;
+            title: string;
+            summary: string;
+            total: number;
+            done: number;
+            /** @enum {string} */
+            state: "todo" | "active" | "done";
+            /** @description 上一个单元完成不到 60%。软锁：界面确认后可进入，服务端不拦。 */
+            locked: boolean;
+        };
+        StudentPath: {
+            course: {
+                id: string;
+                title: string;
+            } | null;
+            units: components["schemas"]["PathUnitSummary"][];
+            /** @description 当前单元详情（带题目）；没有任何单元时为 null */
+            current: null | (components["schemas"]["PathUnitSummary"] & {
+                items: components["schemas"]["PathItem"][];
+                conceptIds: string[];
+                concepts: {
+                    id: string;
+                    title: string;
+                }[];
+            });
+            /** @description 置顶：开放中、没做完的老师布置，截止早的在前 */
+            teacherAssignments: components["schemas"]["AssignmentCard"][];
+            chapters: {
+                chapterNo: number;
+                chapter: string;
+                /** Format: uuid */
+                firstUnitId: string;
+                unitCount: number;
+                total: number;
+                done: number;
+            }[];
+        };
+        PracticeItem: {
+            problemId: string;
+            title: string;
+            stemPreview: components["schemas"]["MathText"];
+            chapter: string;
+            section?: string;
+            difficulty: components["schemas"]["DifficultyBand"];
+            tags: string[];
+            /** @enum {string} */
+            status: "todo" | "active" | "done";
+            /** Format: uuid */
+            attemptId: string | null;
+            keyCount: number;
+            autoImported: boolean;
+            /** @description 题目出处（书名），有就显示（13 §6） */
+            sourceBook?: string;
+        };
+        PracticeList: {
+            items: components["schemas"]["PracticeItem"][];
+            facets: {
+                chapters: {
+                    chapter: string;
+                    total: number;
+                    done: number;
+                }[];
+                difficulty: {
+                    easy: number;
+                    medium: number;
+                    hard: number;
+                };
+            };
+            nextCursor: string | null;
+        };
+        PracticeSolution: {
+            /**
+             * @description 这位学生此刻可以看到哪一级
+             * @enum {string}
+             */
+            level: "none" | "approach" | "full";
+            /** @description 他有一份进行中的自学作答，且还可以再看一级 */
+            canReveal: boolean;
+            /** @description 本题有整理好的解题思路 */
+            hasApproach: boolean;
+            /** @description 本题有可发布的参考证明 */
+            hasFull: boolean;
+            /** @description 这些内容由 AI 整理；界面要显示“AI 生成”标识（13 §5） */
+            aiGenerated?: boolean;
+            approach?: components["schemas"]["MathText"];
+            keyIdeas?: components["schemas"]["MathText"][];
+            pitfalls?: components["schemas"]["MathText"][];
+            referenceProof?: components["schemas"]["MathText"];
+        };
+        SelfStudyView: {
+            units: {
+                /** Format: uuid */
+                id: string;
+                chapterNo: number;
+                unitNo: number;
+                title: string;
+                total: number;
+            }[];
+            students: {
+                anonCode: string;
+                displayName: string | null;
+                doneTotal: number;
+                /** @description 进行中的自学题数 */
+                active: number;
+                /** @description 主动查看过解答的题数 */
+                revealed: number;
+                /** Format: date-time */
+                lastActiveAt?: string | null;
+                byUnit: {
+                    /** Format: uuid */
+                    unitId: string;
+                    done: number;
+                }[];
+            }[];
+        };
         ProblemListItem: {
             problemId: string;
             title: string;
@@ -1730,10 +2285,25 @@ export interface components {
             status: "draft" | "pending" | "returned" | "published" | "retired";
             autoChecks?: Record<string, never>;
             source?: string;
+            /**
+             * @description auto = 批量导入、AI 整理
+             * @enum {string}
+             */
+            reviewSource?: "teacher" | "auto";
             /** @description 最近一次审核人（display_name/anon_code） */
             reviewedBy?: string | null;
             /** Format: date-time */
             reviewedAt?: string | null;
+            /**
+             * Format: date-time
+             * @description 老师下架的时间；没下架时不出现
+             */
+            hiddenAt?: string;
+        };
+        ProblemVisibility: {
+            problemId: string;
+            /** Format: date-time */
+            hiddenAt: string | null;
         };
         ImportJob: {
             /** Format: uuid */
@@ -1768,20 +2338,163 @@ export interface components {
             rows?: number | null;
         };
         Notebook: {
+            /** @description 本人已完成的作答（kind=main|redo），最新在前，最多 100 条 */
             cards?: {
                 /** Format: uuid */
                 attemptId?: string;
+                /** @enum {string} */
+                kind?: "main" | "redo";
+                /** Format: uuid */
+                parentAttemptId?: string | null;
+                /** Format: uuid */
+                assignmentId?: string;
+                problemId?: string;
                 title?: string;
+                chapter?: string;
                 /** @description 学生自己写的证明 */
                 proof?: components["schemas"]["MathText"][];
+                /** @description 同 proof，带行号与依据 */
+                lines?: {
+                    n: number;
+                    statement: components["schemas"]["MathText"];
+                    justification?: components["schemas"]["MathText"];
+                }[];
                 summary?: components["schemas"]["MathText"][];
                 /** @description 通过核验后才展示标准定义 */
                 definition?: components["schemas"]["MathText"];
+                /** @description 本次出现过的卡点分组名 */
                 weakPoints?: string[];
+                /** @description 教师已发布的讲评（未发布时没有） */
+                teacherNote?: components["schemas"]["MathText"];
+                reviewPublished?: boolean;
+                /** @description 测验布置未结束时为 false */
+                canRedo?: boolean;
+                independence?: number;
                 /** Format: date-time */
                 completedAt?: string;
             }[];
+            /** @description 有卡点且还没重做成功的作答（attemptId 即可重做的作答） */
             toRedo?: components["schemas"]["AssignmentCard"][];
+        };
+        MistakeItem: {
+            id: string;
+            /** @enum {string} */
+            group: "definition" | "basis" | "scaling" | "hinted" | "selfcheck" | "other";
+            problemTitle: string;
+            chapter: string;
+            /**
+             * Format: uuid
+             * @description 重做时调用 POST /student/attempts/{attemptId}/redo
+             */
+            attemptId: string;
+            lineExcerpt: components["schemas"]["MathText"];
+            /** @description 以问题或提醒的口吻，不判对错 */
+            note: components["schemas"]["MathText"];
+            /** Format: date-time */
+            createdAt: string;
+            canRedo: boolean;
+        };
+        Mistakes: {
+            groups: {
+                /** @enum {string} */
+                group: "definition" | "basis" | "scaling" | "hinted" | "selfcheck" | "other";
+                title: string;
+                count: number;
+                items: components["schemas"]["MistakeItem"][];
+            }[];
+            total: number;
+        };
+        /** @description 这一步记入的经验与徽章（add-only；没有新经验时不返回；测验作答不返回，完成时在后台一次结算） */
+        Rewards: {
+            xp: number;
+            items: {
+                /** @enum {string} */
+                kind: "key_own" | "key_hinted" | "layer" | "problem" | "daily";
+                amount: number;
+                label: string;
+            }[];
+            badges: {
+                id: string;
+                title: string;
+                desc: string;
+            }[];
+            streak?: {
+                current: number;
+                /** @description 今天第一次有进展 */
+                extended: boolean;
+            };
+            goalReached?: boolean;
+        };
+        StudentProgress: {
+            xpTotal: number;
+            xpToday: number;
+            /** @description 今天自己写出的关键步骤数（含借助提示） */
+            keysToday: number;
+            dailyGoal: number;
+            streak: {
+                current: number;
+                best: number;
+                /** @description 本周的请假卡还没用 */
+                freezeAvailable: boolean;
+                usedFreezeDays: string[];
+            };
+            /** @description 本周（周一到周日，Asia/Shanghai）每天的经验与关键步骤 */
+            week: {
+                /** Format: date */
+                day: string;
+                xp: number;
+                keys: number;
+            }[];
+            badges: {
+                id: string;
+                title: string;
+                desc: string;
+                /** Format: date-time */
+                earnedAt: string | null;
+                progress?: {
+                    current: number;
+                    target: number;
+                };
+            }[];
+            daysLearned: number;
+        };
+        StudentSettings: {
+            nickname: string | null;
+            dailyGoal: number;
+            /** @enum {string} */
+            defaultInput: "hand" | "keyboard" | "photo";
+            /** @enum {string} */
+            theme: "system" | "light" | "dark";
+            sound: boolean;
+            motion: boolean;
+            haptics: boolean;
+            onboarding: {
+                [key: string]: unknown;
+            };
+        };
+        StudentSettingsPatch: {
+            nickname?: string;
+            dailyGoal?: number;
+            /** @enum {string} */
+            defaultInput?: "hand" | "keyboard" | "photo";
+            /** @enum {string} */
+            theme?: "system" | "light" | "dark";
+            sound?: boolean;
+            motion?: boolean;
+            haptics?: boolean;
+            onboarding?: {
+                [key: string]: unknown;
+            };
+        };
+        StudentFeedback: {
+            /** @enum {string} */
+            kind: "bug" | "idea" | "content" | "other";
+            body: string;
+            page?: string;
+        };
+        PublishedReview: {
+            proofs: components["schemas"]["MathText"][];
+            note?: components["schemas"]["MathText"];
         };
         /** @description 打开应用（冷启动或从后台回来） */
         p_app_open: {
@@ -2139,9 +2852,9 @@ export interface components {
             items: {
                 /** @description 服务所需处理（必选） */
                 service?: boolean;
-                /** @description 数据存储于中国香港服务器（P0 必选） */
+                /** @description AI 模型和识别服务（必选；历史键名，见 13 §2） */
                 crossBorderHosting?: boolean;
-                /** @description 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev） */
+                /** @description 已停用（U22）：v2 起恒为 false，网关跳过境外 provider */
                 crossBorderModel?: boolean;
                 /** @description 作答过程监测与切屏记录（必选） */
                 monitoring?: boolean;
@@ -2156,13 +2869,13 @@ export interface components {
             /** @description 是否恢复 */
             resumed: boolean;
             /**
-             * @description 主题或迁移题
+             * @description 主题、迁移题或重做
              * @enum {unknown}
              */
-            kind: "main" | "transfer";
+            kind: "main" | "transfer" | "redo";
             /**
              * Format: uuid
-             * @description 迁移题的父作答
+             * @description 迁移题或重做的父作答
              */
             parentAttemptId?: string;
         } & {
@@ -2221,6 +2934,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @description 练习区：学生在自学作答里主动查看思路或完整解答 */
+        p_solution_revealed: {
+            /**
+             * @description 查看到哪一级
+             * @enum {unknown}
+             */
+            level: "approach" | "full";
+            /** @description 题 */
+            problemId?: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description 作答解锁 */
         p_attempt_unlock: {
             /** @description 解锁人匿名 ID */
@@ -2237,6 +2962,8 @@ export interface components {
              * @enum {unknown}
              */
             from?: "L1" | "L2" | "L3" | "L4" | "L5" | "L6" | null;
+            /** @description 去往的层号 1–6 */
+            to?: number;
             /**
              * @description 方式
              * @enum {unknown}
@@ -2476,6 +3203,11 @@ export interface components {
              * @enum {unknown}
              */
             path: "rule" | "jev" | "llm" | "rule+jev";
+            /**
+             * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+             * @enum {unknown}
+             */
+            matchedBy?: "model";
             /** @description Jev 影子判定 */
             jevShadow?: Record<string, never>;
         } & {
@@ -2522,6 +3254,11 @@ export interface components {
              * @enum {unknown}
              */
             path: "rule" | "jev" | "llm" | "rule+jev";
+            /**
+             * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+             * @enum {unknown}
+             */
+            matchedBy?: "model";
             /** @description Jev 影子判定 */
             jevShadow?: Record<string, never>;
         } & {
@@ -2684,7 +3421,7 @@ export interface components {
              * @description 原因
              * @enum {unknown}
              */
-            reason: "need_attempt" | "dwell" | "rapid_lock" | "budget" | "layer" | "test_mode" | "complete";
+            reason: "need_attempt" | "dwell" | "rapid_lock" | "rapid_soft" | "budget" | "layer" | "test_mode" | "complete";
             /** @description 还需等待秒数 */
             waitSec?: number;
         } & {
@@ -2936,7 +3673,7 @@ export interface components {
              */
             id: string;
             /** @enum {unknown} */
-            type: "app.open" | "session.login" | "session.logout" | "consent.submit" | "nav.page" | "attempt.start" | "attempt.park" | "attempt.complete" | "attempt.abandon" | "attempt.lock" | "attempt.unlock" | "layer.enter" | "layer.done" | "layer.skip" | "stem.toggle" | "input.mode" | "ink.session" | "kbd.session" | "paste" | "photo.capture" | "recog.request" | "recog.result" | "recog.confirm" | "recog.discard" | "def.submit" | "lesson.open" | "lesson.step" | "lesson.check" | "lesson.visual" | "lesson.close" | "lesson.generated" | "frame.submit" | "frame.template" | "line.submit" | "line.edit" | "line.delete" | "finish.try" | "selfcheck.assign" | "selfcheck.submit" | "transfer.start" | "summary.submit" | "help.open" | "help.request" | "hint.preview" | "hint.deliver" | "hint.deny" | "hint.rapid_lock" | "budget.exhausted" | "concept.answer" | "annotation" | "pressure" | "proactive.offer" | "help.flag_teacher" | "gate.block" | "gate.pass_generated" | "integ.visibility" | "integ.blur" | "integ.fullscreen" | "integ.copy" | "integ.cut" | "integ.contextmenu" | "integ.shortcut" | "integ.devtools" | "integ.multitab" | "integ.network" | "integ.capture" | "integ.warn" | "integ.flag" | "t.view" | "t.mirror" | "t.nudge" | "t.resolve_flag" | "t.assign" | "t.publish_review" | "t.export" | "t.review_package" | "sys.fallback" | "sys.error";
+            type: "app.open" | "session.login" | "session.logout" | "consent.submit" | "nav.page" | "attempt.start" | "attempt.park" | "attempt.complete" | "attempt.abandon" | "attempt.lock" | "solution.revealed" | "attempt.unlock" | "layer.enter" | "layer.done" | "layer.skip" | "stem.toggle" | "input.mode" | "ink.session" | "kbd.session" | "paste" | "photo.capture" | "recog.request" | "recog.result" | "recog.confirm" | "recog.discard" | "def.submit" | "lesson.open" | "lesson.step" | "lesson.check" | "lesson.visual" | "lesson.close" | "lesson.generated" | "frame.submit" | "frame.template" | "line.submit" | "line.edit" | "line.delete" | "finish.try" | "selfcheck.assign" | "selfcheck.submit" | "transfer.start" | "summary.submit" | "help.open" | "help.request" | "hint.preview" | "hint.deliver" | "hint.deny" | "hint.rapid_lock" | "budget.exhausted" | "concept.answer" | "annotation" | "pressure" | "proactive.offer" | "help.flag_teacher" | "gate.block" | "gate.pass_generated" | "integ.visibility" | "integ.blur" | "integ.fullscreen" | "integ.copy" | "integ.cut" | "integ.contextmenu" | "integ.shortcut" | "integ.devtools" | "integ.multitab" | "integ.network" | "integ.capture" | "integ.warn" | "integ.flag" | "t.view" | "t.mirror" | "t.nudge" | "t.resolve_flag" | "t.assign" | "t.publish_review" | "t.export" | "t.review_package" | "sys.fallback" | "sys.error";
             /**
              * Format: date-time
              * @description 客户端时间（仅参考，排序以服务端 seq 为准）
@@ -3064,9 +3801,9 @@ export interface components {
                     items: {
                         /** @description 服务所需处理（必选） */
                         service?: boolean;
-                        /** @description 数据存储于中国香港服务器（P0 必选） */
+                        /** @description AI 模型和识别服务（必选；历史键名，见 13 §2） */
                         crossBorderHosting?: boolean;
-                        /** @description 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev） */
+                        /** @description 已停用（U22）：v2 起恒为 false，网关跳过境外 provider */
                         crossBorderModel?: boolean;
                         /** @description 作答过程监测与切屏记录（必选） */
                         monitoring?: boolean;
@@ -3090,13 +3827,13 @@ export interface components {
                     /** @description 是否恢复 */
                     resumed: boolean;
                     /**
-                     * @description 主题或迁移题
+                     * @description 主题、迁移题或重做
                      * @enum {unknown}
                      */
-                    kind: "main" | "transfer";
+                    kind: "main" | "transfer" | "redo";
                     /**
                      * Format: uuid
-                     * @description 迁移题的父作答
+                     * @description 迁移题或重做的父作答
                      */
                     parentAttemptId?: string;
                 } & {
@@ -3155,6 +3892,18 @@ export interface components {
                 } & {
                     [key: string]: unknown;
                 };
+                /** @description 练习区：学生在自学作答里主动查看思路或完整解答 */
+                p_solution_revealed: {
+                    /**
+                     * @description 查看到哪一级
+                     * @enum {unknown}
+                     */
+                    level: "approach" | "full";
+                    /** @description 题 */
+                    problemId?: string;
+                } & {
+                    [key: string]: unknown;
+                };
                 /** @description 作答解锁 */
                 p_attempt_unlock: {
                     /** @description 解锁人匿名 ID */
@@ -3171,6 +3920,8 @@ export interface components {
                      * @enum {unknown}
                      */
                     from?: "L1" | "L2" | "L3" | "L4" | "L5" | "L6" | null;
+                    /** @description 去往的层号 1–6 */
+                    to?: number;
                     /**
                      * @description 方式
                      * @enum {unknown}
@@ -3558,6 +4309,11 @@ export interface components {
                      * @enum {unknown}
                      */
                     path: "rule" | "jev" | "llm" | "rule+jev";
+                    /**
+                     * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+                     * @enum {unknown}
+                     */
+                    matchedBy?: "model";
                     /** @description Jev 影子判定 */
                     jevShadow?: Record<string, never>;
                 } & {
@@ -3604,6 +4360,11 @@ export interface components {
                      * @enum {unknown}
                      */
                     path: "rule" | "jev" | "llm" | "rule+jev";
+                    /**
+                     * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+                     * @enum {unknown}
+                     */
+                    matchedBy?: "model";
                     /** @description Jev 影子判定 */
                     jevShadow?: Record<string, never>;
                 } & {
@@ -3776,7 +4537,7 @@ export interface components {
                      * @description 原因
                      * @enum {unknown}
                      */
-                    reason: "need_attempt" | "dwell" | "rapid_lock" | "budget" | "layer" | "test_mode" | "complete";
+                    reason: "need_attempt" | "dwell" | "rapid_lock" | "rapid_soft" | "budget" | "layer" | "test_mode" | "complete";
                     /** @description 还需等待秒数 */
                     waitSec?: number;
                 } & {
@@ -4133,7 +4894,7 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
-        } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
+        } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
         Slug: string;
         LayerCfg: {
             enabled: boolean;
@@ -4361,6 +5122,12 @@ export interface components {
             selfcheckBank: components["schemas"]["SelfcheckItem"][];
             summaryPoints: components["schemas"]["SummaryPoint"][];
             referenceProofs: components["schemas"]["ReferenceProof"][];
+            /** @description 练习区的解题思路与关键点（Task 16）。属 secret：不进 public、列表与作答状态；学生主动查看或完成后才经 /student/practice/{problemId}/solution 返回。导入题必须带 approach 与 keyIdeas（由导入工具检查，schema 不强制）。 */
+            walkthrough?: {
+                approach: components["schemas"]["MathText"];
+                keyIdeas: components["schemas"]["MathText"][];
+                pitfalls?: components["schemas"]["MathText"][];
+            };
             lean?: components["schemas"]["LeanInfo"];
         };
         /**
@@ -4491,6 +5258,12 @@ export interface components {
                     selfcheckBank: components["schemas"]["SelfcheckItem"][];
                     summaryPoints: components["schemas"]["SummaryPoint"][];
                     referenceProofs: components["schemas"]["ReferenceProof"][];
+                    /** @description 练习区的解题思路与关键点（Task 16）。属 secret：不进 public、列表与作答状态；学生主动查看或完成后才经 /student/practice/{problemId}/solution 返回。导入题必须带 approach 与 keyIdeas（由导入工具检查，schema 不强制）。 */
+                    walkthrough?: {
+                        approach: components["schemas"]["MathText"];
+                        keyIdeas: components["schemas"]["MathText"][];
+                        pitfalls?: components["schemas"]["MathText"][];
+                    };
                     lean?: components["schemas"]["LeanInfo"];
                 };
                 DefComponent: {
@@ -4649,15 +5422,19 @@ export interface components {
             content: {
                 "application/json": {
                     state: components["schemas"]["AttemptState"];
+                    rewards?: components["schemas"]["Rewards"];
                 };
             };
         };
     };
     parameters: {
+        /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+        pgApp: "student" | "teacher";
         attemptId: string;
         assignmentId: string;
         classId: string;
         lineId: string;
+        problemId: string;
         conceptId: string;
         layer: components["schemas"]["LayerId"];
         /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
@@ -4682,8 +5459,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    inviteCode: string;
+                    inviteCode?: string;
                     studentNo: string;
+                    /** Format: password */
+                    password?: string;
                     /** Format: uuid */
                     deviceId: string;
                 };
@@ -4701,6 +5480,39 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    setStudentPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: password */
+                    currentPassword?: string;
+                    /** Format: password */
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
         };
     };
@@ -4766,10 +5578,68 @@ export interface operations {
             429: components["responses"]["Error"];
         };
     };
-    logout: {
+    changeTeacherPassword: {
         parameters: {
             query?: never;
             header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: password */
+                    currentPassword: string;
+                    /** Format: password */
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已修改 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    logoutAll: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已退出所有设备 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -4788,7 +5658,10 @@ export interface operations {
     getMe: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -4939,6 +5812,356 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    getMistakes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 错题本（空分组不返回；测验布置结束前不出现） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mistakes"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    startRedo: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                attemptId: components["parameters"]["attemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["StateReplay"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getStudentPath: {
+        parameters: {
+            query?: {
+                /** @description 单元 ID；缺省 = 第一个没做完的单元 */
+                unit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 路径 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentPath"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    startPathItem: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                problemId: components["parameters"]["problemId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description 缺省 = 最近加入的班级
+                     */
+                    classId?: string;
+                };
+            };
+        };
+        responses: {
+            200: components["responses"]["StateReplay"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 进度 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProgress"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    getSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentSettings"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    patchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description 修改后的设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentSettings"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    submitFeedback: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentFeedback"];
+            };
+        };
+        responses: {
+            /** @description 已收到 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    listPractice: {
+        parameters: {
+            query?: {
+                chapter?: string;
+                difficulty?: components["schemas"]["DifficultyBand"];
+                status?: "todo" | "active" | "done";
+                /** @description 题目、章节、题面、标签里的关键词 */
+                q?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 一页题目 + 分面 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeList"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    randomPractice: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    chapter?: string;
+                    difficulty?: components["schemas"]["DifficultyBand"];
+                };
+            };
+        };
+        responses: {
+            /** @description 一道题（客户端随后调用 start） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeItem"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    startPractice: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                problemId: components["parameters"]["problemId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    classId?: string;
+                };
+            };
+        };
+        responses: {
+            200: components["responses"]["StateReplay"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getPracticeSolution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                problemId: components["parameters"]["problemId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前可见级别与内容 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeSolution"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    revealPracticeSolution: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                problemId: components["parameters"]["problemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    level: "approach" | "full";
+                };
+            };
+        };
+        responses: {
+            /** @description 查看后的内容 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeSolution"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     getAttempt: {
@@ -5347,13 +6570,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        proofs: components["schemas"]["MathText"][];
-                        note?: components["schemas"]["MathText"];
-                    };
+                    "application/json": components["schemas"]["PublishedReview"];
                 };
             };
             403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     recognizeInk: {
@@ -5553,7 +6774,10 @@ export interface operations {
     flagTeacher: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -5561,14 +6785,51 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    noteFeedback: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    useful: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 已记录 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     ingestEvents: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5761,6 +7022,30 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    resetStudentPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+                rosterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已重置 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
     rotateInvite: {
         parameters: {
             query?: never;
@@ -5858,6 +7143,30 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    getSelfStudy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 自学进度 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfStudyView"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     getAttemptDetail: {
@@ -6302,6 +7611,16 @@ export interface operations {
             query?: {
                 status?: "draft" | "pending" | "returned" | "published" | "retired";
                 chapter?: string;
+                /** @description 标题、章节或题号关键词 */
+                q?: string;
+                /** @description 老师审核 = teacher；AI 整理（批量导入）= auto */
+                reviewSource?: "teacher" | "auto";
+                /** @description 主题 = main；迁移题 = transfer */
+                kind?: "main" | "transfer";
+                /** @description 给了才分页（1–100）；不给 = 返回全部，兼容旧调用 */
+                limit?: number;
+                /** @description 上一页响应头 X-Next-Cursor */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -6309,9 +7628,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 题目 */
+            /** @description 题目（分页时下一页游标在响应头 X-Next-Cursor，没有下一页则不返回该头） */
             200: {
                 headers: {
+                    "X-Next-Cursor"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6320,6 +7640,38 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    setProblemVisibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                problemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hidden: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 当前状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemVisibility"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };
@@ -6493,18 +7845,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        ok?: boolean;
-                        version?: string;
-                        deps?: {
+                        ok: boolean;
+                        /** @enum {string} */
+                        status: "ok";
+                        service: string;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    healthDetails: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-health-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 状态明细 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        /** @enum {string} */
+                        status: "ok";
+                        service: string;
+                        env: string;
+                        uptimeSec: number;
+                        deps: {
                             [key: string]: "ok" | "degraded" | "down" | "disabled";
                         };
-                        flags?: {
+                        flags: {
                             [key: string]: boolean;
                         };
                     };
                 };
             };
-            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
 }

@@ -17,10 +17,14 @@ import {
   isMockMode,
   login as apiLogin,
   logout as apiLogout,
+  logoutAll as apiLogoutAll,
+  type LoginCredentials,
   mockConsentDoc,
   setStudentAgeBand,
+  setStudentPassword,
   submitConsents,
 } from '@/api/client'
+import { setAuthLostHandler, setPasswordSetupHandler } from '@/api/http'
 import { ageGateFor, isReadOnlyConsentSection, type AgeGateDecision } from '@/auth/ageBand'
 import type { AgeBand, ConsentChoices, ConsentDoc, ConsentKey, ConsentSectionKey, MeAgeBand, MeView } from '@/types/attempt'
 
@@ -89,7 +93,53 @@ function choices(): ConsentChoices {
 
 const requiredOk = computed(() => items.value.filter((item) => item.required).every((item) => item.value))
 
-const mockSleep = (ms = 80) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+/** 登录已失效的统一提示文案（401 / wrong_app 403）。 */
+export const AUTH_EXPIRED_TOAST = '登录已过期，请重新登录'
+const LOGIN_PAGE = 'pages/login/index'
+/** 登录页、镜像页（令牌访问）和登录前试玩页（没有会话）不跳。 */
+const NO_REDIRECT_PAGES = [LOGIN_PAGE, 'pages/mirror/index', 'pages/tour/index', 'pages/privacy-policy/index']
+export const SET_PASSWORD_PAGE = 'pages/set-password/index'
+let lastAuthRedirectAt = 0
+
+function currentPageRoute(): string {
+  if (typeof getCurrentPages !== 'function') return ''
+  const pages = getCurrentPages()
+  return (pages[pages.length - 1] as { route?: string } | undefined)?.route ?? ''
+}
+
+/**
+ * 非登录类接口返回 401（或浏览器里只有教师端会话的 403 wrong_app）：清掉本地会话，提示后回登录页。
+ * 并发的多个请求同时失败时只跳一次；mock 模式不走 http，不会到这里。
+ */
+export function handleAuthLost(): void {
+  me.value = null
+  loggedIn.value = false
+  consented.value = false
+  const route = currentPageRoute().replace(/^\//, '')
+  if (NO_REDIRECT_PAGES.includes(route)) return
+  const now = Date.now()
+  if (now - lastAuthRedirectAt < 2000) return
+  lastAuthRedirectAt = now
+  if (typeof uni === 'undefined') return
+  uni.showToast({ title: AUTH_EXPIRED_TOAST, icon: 'none' })
+  uni.reLaunch({ url: `/${LOGIN_PAGE}` })
+}
+
+setAuthLostHandler(handleAuthLost)
+
+/**
+ * 服务端 403 PASSWORD_SETUP_REQUIRED：这个账号还没设密码，其余接口都被挡住。
+ * 不是错误也不是登录失效：记下 needsPassword，把学生带去设置密码页（已经在该页或登录页就不动）。
+ */
+export function handlePasswordSetupRequired(): void {
+  if (me.value) me.value = { ...me.value, needsPassword: true }
+  const route = currentPageRoute().replace(/^\//, '')
+  if (route === SET_PASSWORD_PAGE || route === LOGIN_PAGE) return
+  if (typeof uni === 'undefined') return
+  uni.reLaunch({ url: `/${SET_PASSWORD_PAGE}` })
+}
+
+setPasswordSetupHandler(handlePasswordSetupRequired)
 
 export function useSession() {
   /** GET /consents：加载服务端同意书文本；mock 模式回落到内置占位（正文只从 GET /consents 取）。 */
@@ -180,9 +230,17 @@ export function useSession() {
     loading.value = true
     error.value = null
     try {
-      me.value = await getMe()
+      const restored = await getMe()
+      // 学生端只认学生身份：服务端若给出别的角色（旧服务端、配置错误），当作没有会话，留在登录页。
+      if (restored.role !== 'student') {
+        me.value = null
+        loggedIn.value = false
+        consented.value = false
+        return false
+      }
+      me.value = restored
       loggedIn.value = true
-      consented.value = !me.value.consentRequired
+      consented.value = !restored.consentRequired
       return true
     } catch {
       loggedIn.value = false
@@ -192,23 +250,49 @@ export function useSession() {
     }
   }
 
-  /** POST /auth/student/login。返回是否登录成功；错误文案放在 error。 */
-  async function login(invite: string, no: string): Promise<boolean> {
-    inviteCode.value = invite
-    studentNo.value = no
-    if (!invite || !no) {
+  /**
+   * POST /auth/student/login。返回是否登录成功；错误文案放在 error。
+   * 学号 + 密码（已设密码）或 邀请码 + 学号（首次 / 被老师重置后）；第二个班：学号 + 密码 + 邀请码。
+   */
+  async function login(credentials: LoginCredentials): Promise<boolean> {
+    inviteCode.value = credentials.inviteCode ?? ''
+    studentNo.value = credentials.studentNo
+    if (!credentials.studentNo || (!credentials.inviteCode && !credentials.password)) {
       loggedIn.value = false
       return false
     }
     loading.value = true
     error.value = null
     try {
-      me.value = await apiLogin(invite, no)
+      me.value = await apiLogin(credentials)
       loggedIn.value = true
       consented.value = !me.value.consentRequired
       return true
     } catch (e) {
       loggedIn.value = false
+      error.value = errorMessage(e)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** 登录后是否要先去设置密码（Me.needsPassword，以服务端为准）。 */
+  const needsPassword = computed(() => me.value?.needsPassword === true)
+
+  /**
+   * POST /auth/student/password：首次设置不传 current；修改要传。成功返回 true 并刷新 Me（needsPassword 变 false）；
+   * 失败返回 false，服务端文案（策略不通过、当前密码不对……）放在 error。
+   */
+  async function setPassword(newPassword: string, currentPassword?: string): Promise<boolean> {
+    loading.value = true
+    error.value = null
+    try {
+      await setStudentPassword(newPassword, currentPassword)
+      if (me.value) me.value = { ...me.value, needsPassword: false }
+      await refreshMe()
+      return true
+    } catch (e) {
       error.value = errorMessage(e)
       return false
     } finally {
@@ -223,7 +307,8 @@ export function useSession() {
     error.value = null
     try {
       if (isMockMode()) {
-        await mockSleep()
+        // 演示数据：让客户端记下“已签”，引导演示场景里再次登录才不会又回到同意页；返回的 Me 不采用（默认演示数据里它是未签）。
+        await submitConsents(docVersion.value, choices())
         consented.value = true
       } else {
         applyMe(await submitConsents(docVersion.value, choices()))
@@ -240,6 +325,17 @@ export function useSession() {
   async function logout(): Promise<void> {
     try {
       await apiLogout()
+    } finally {
+      me.value = null
+      loggedIn.value = false
+      consented.value = false
+    }
+  }
+
+  /** POST /auth/logout-all：退出所有设备（含当前），本地状态一并清掉。 */
+  async function logoutAll(): Promise<void> {
+    try {
+      await apiLogoutAll()
     } finally {
       me.value = null
       loggedIn.value = false
@@ -267,8 +363,11 @@ export function useSession() {
     loadConsentDoc,
     restore,
     login,
+    needsPassword,
+    setPassword,
     submitConsent,
     logout,
+    logoutAll,
     // #145：Me 刷新 / 年龄守卫 / 提交年龄分档 / 原目标交接
     refreshMe,
     ensureAgeBand,
@@ -280,6 +379,7 @@ export function useSession() {
 
 /** 测试隔离：恢复到初始状态（mock 文案、未登录）。 */
 export function __resetSessionForTests(): void {
+  lastAuthRedirectAt = 0
   items.value = toItems(mockConsentDoc)
   docVersion.value = mockConsentDoc.version
   signed.value = null

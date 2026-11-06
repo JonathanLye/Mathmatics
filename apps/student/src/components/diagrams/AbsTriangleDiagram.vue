@@ -150,18 +150,18 @@ function labelStyle(label: OverlayLabel): string {
 .pg-svg__label {
   position: absolute;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-svg);
   line-height: 1.2;
   white-space: nowrap;
   color: var(--ink);
 }
-.pg-svg__label--tick { color: var(--ink-2); font-size: 9px; }
-.pg-svg__label--small { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--tick { color: var(--ink-2); font-size: var(--fs-svg-small); }
+.pg-svg__label--small { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-abs__axis { stroke: var(--rule); stroke-width: 1; }
 .pg-abs__seg { stroke-width: 7; stroke-linecap: round; }
 .pg-abs__seg--accent { stroke: var(--accent); }
 .pg-abs__seg--ink { stroke: var(--ink-2); }
-.pg-abs__seg--margin { stroke: var(--margin); }
+.pg-abs__seg--margin { stroke: var(--sea); }
 .pg-abs__seg--soft { stroke: var(--accent-soft); stroke-width: 10; }
 .pg-abs__caption { color: var(--ink-2); }
 </style>

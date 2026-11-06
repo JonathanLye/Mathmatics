@@ -1,6 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 
-import { requireAuth, type AuthContext } from '../../auth/session.ts';
+import { requireApp, type AuthContext } from '../../auth/session.ts';
 import type { Queryable } from '../../db/index.ts';
 import type { SerializedAttemptState } from '@proof-gym/engine';
 import { AppError } from '../../errors.ts';
@@ -9,11 +9,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 // 04 §1 权限：教师只看自己的班级；管理员看全部并审批实名导出。教师接口一律先过这里。
 export async function requireTeacher(db: Queryable, request: FastifyRequest): Promise<AuthContext> {
-  const auth = await requireAuth(db, request);
-  if (auth.role !== 'teacher' && auth.role !== 'admin') {
-    throw new AppError('FORBIDDEN', 403, '需要教师账号');
-  }
-  return auth;
+  // 另一端（学生）的会话在场时返回 403 wrong_app，没有任何会话才是 401（auth/session.ts requireApp）。
+  return requireApp(db, request, 'teacher');
 }
 
 // 班级归属（04 §1）：

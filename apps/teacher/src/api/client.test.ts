@@ -11,7 +11,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
-describe('api client（06 §1）', () => {
+describe('api client', () => {
   it('POST 带 JSON content-type、CSRF 头与 credentials', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
     vi.stubGlobal('fetch', fetchMock);
@@ -34,6 +34,15 @@ describe('api client（06 §1）', () => {
     const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
     const init = calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)['x-requested-with']).toBeUndefined();
+  });
+
+  it('getPage：数组响应体 + 响应头里的下一页游标；最后一页没有游标', async () => {
+    const withCursor = new Response(JSON.stringify([{ problemId: 'a' }]), { status: 200, headers: { 'x-next-cursor': 'abc' } });
+    const last = new Response(JSON.stringify([]), { status: 200 });
+    const fetchMock = vi.fn().mockResolvedValueOnce(withCursor).mockResolvedValueOnce(last);
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await api.getPage('/api/v1/teacher/problems?limit=1')).toEqual({ data: [{ problemId: 'a' }], nextCursor: 'abc' });
+    expect(await api.getPage('/api/v1/teacher/problems?limit=1&cursor=abc')).toEqual({ data: [], nextCursor: null });
   });
 
   it('错误 envelope 解析为 ApiError（code/status/message/detail）', async () => {
@@ -66,6 +75,55 @@ describe('api client（06 §1）', () => {
 
     await expect(api.get('/api/v1/me')).rejects.toBeInstanceOf(ApiError);
     expect(hits).toBe(1);
+  });
+
+  it('每个请求都带 X-Pg-App: teacher（/me、退出据此读教师 Cookie）', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.get('/api/v1/me');
+    await api.post('/api/v1/auth/logout');
+    await api.patch('/api/v1/x', {});
+    await api.delete('/api/v1/x');
+    await api.postCsv('/api/v1/x', new File(['a'], 'a.csv'));
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls).toHaveLength(5);
+    for (const [, init] of calls) {
+      expect((init.headers as Record<string, string>)['x-pg-app']).toBe('teacher');
+    }
+  });
+
+  it('403 且服务端标明 wrong_app（只登录了学生端）：和 401 一样派发 pg:unauthorized', async () => {
+    const target = new EventTarget();
+    vi.stubGlobal('window', target);
+    let hits = 0;
+    target.addEventListener('pg:unauthorized', () => {
+      hits += 1;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({ error: { code: 'FORBIDDEN', message: '需要教师账号', detail: { reason: 'wrong_app' } } }, 403),
+      ),
+    );
+
+    await expect(api.get('/api/v1/teacher/classes')).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    expect(hits).toBe(1);
+  });
+
+  it('业务 403（没有 wrong_app 标记）照常抛给页面就地显示，不触发跳登录', async () => {
+    const target = new EventTarget();
+    vi.stubGlobal('window', target);
+    let hits = 0;
+    target.addEventListener('pg:unauthorized', () => {
+      hits += 1;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ error: { code: 'FORBIDDEN', message: '管理员补发暂不支持' } }, 403)),
+    );
+
+    await expect(api.post('/api/v1/teacher/attempts/x/unlock', {})).rejects.toMatchObject({ message: '管理员补发暂不支持' });
+    expect(hits).toBe(0);
   });
 
   it('204 返回 undefined', async () => {

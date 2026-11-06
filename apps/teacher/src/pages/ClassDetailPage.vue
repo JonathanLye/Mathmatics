@@ -8,9 +8,14 @@ import type { AssignmentCard, ClassSettings, ClassSummary, LiveRow, LiveSnapshot
 import ExportPanel from '../components/ExportPanel.vue';
 import LiveBoard from '../components/LiveBoard.vue';
 import MetricsPanel from '../components/MetricsPanel.vue';
+import ProblemSelect from '../components/ProblemSelect.vue';
+import SelfStudyPanel from '../components/SelfStudyPanel.vue';
 import StudentDetailDrawer from '../components/StudentDetailDrawer.vue';
-import { defaultsForMode, normalizeAssignmentSettings, parseProofIds } from '../utils/assignments.ts';
+import { defaultsForMode, normalizeAssignmentSettings } from '../utils/assignments.ts';
+import { assignmentStatusLabel } from '../utils/labels.ts';
+import { layerName } from '../utils/layers.ts';
 import { filterRows, sortRows, type BoardFilter } from '../utils/liveBoard.ts';
+import type { ProblemRow } from '../utils/problemSearch.ts';
 
 const route = useRoute();
 const classId = computed(() => String(route.params.classId ?? ''));
@@ -26,11 +31,10 @@ const classSettings = ref({
 });
 const savingSettings = ref(false);
 
-// 学生详情抽屉（#35：解锁 / 发一句话 / 处理标记）
+// 学生详情抽屉（解锁、发一句话、处理求助和提醒）
 const drawerVisible = ref(false);
 const selectedAttemptId = ref<string | null>(null);
 
-const ASSIGNMENT_STATUS: Record<string, string> = { open: '进行中', scheduled: '未开放', closed: '已关闭', cancelled: '已取消' };
 function formatWhen(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -43,7 +47,7 @@ function openAttempt(row: LiveRow): void {
   drawerVisible.value = true;
 }
 
-// 实时看板（#51 提供 /live；未上线时显示提示，不阻塞其他页签）
+// 实时看板（失败时只在看板里提示，不影响其他页签）
 const live = ref<LiveSnapshot | null>(null);
 const liveError = ref('');
 const liveLoading = ref(false);
@@ -58,7 +62,7 @@ const assignmentsError = ref('');
 // 首屏由 onMounted 顺序加载；watch 只响应之后教师的切换，避免首屏重复请求。
 let pageReady = false;
 
-// 名单（04 §10）
+// 名单
 const fileInput = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const importResult = ref<RosterImportResult | null>(null);
@@ -67,22 +71,17 @@ const rosterEntries = ref<RosterEntry[]>([]);
 const rosterLoading = ref(false);
 const rosterError = ref('');
 const unclaiming = ref<string | null>(null);
+const resetting = ref<string | null>(null);
 
-// 布置（04 §7）
+// 布置
 const createdAssignments = ref<AssignmentCard[]>([]);
 const creating = ref(false);
-interface PublishedProblem {
-  problemId: string;
-  title: string;
-  chapter?: string;
-  version: number;
-  kind: 'main' | 'transfer';
-}
-const publishedProblems = ref<PublishedProblem[]>([]);
+// 远程搜索选中的题（含题号和版本）；没选时为空
 const selectedProblem = ref('');
-const problemsLoading = ref(false);
-const problemsError = ref('');
-const problemKey = (item: PublishedProblem): string => `${item.problemId}@${item.version}`;
+const pickedProblem = ref<ProblemRow | null>(null);
+function onProblemSelect(item: ProblemRow | null): void {
+  pickedProblem.value = item;
+}
 
 const closingId = ref<string | null>(null);
 const assignmentForm = ref({
@@ -96,7 +95,7 @@ const assignmentForm = ref({
   durationMin: 0,
 });
 
-// 04 §7：切模式时重置默认（测验求助/拍照默认关）。
+// 切模式时重置默认（测验的求助、拍照默认关）。
 watch(
   () => assignmentForm.value.mode,
   (mode) => {
@@ -104,17 +103,15 @@ watch(
   },
 );
 
-// 04 §6：关闭布置后发布参考证明与讲评（A/B 组同时发布）
+// 关闭布置后发布参考证明与讲评
 const publishVisible = ref(false);
 const publishTarget = ref<AssignmentCard | null>(null);
-const publishProofIds = ref('');
 const publishNote = ref('');
 const publishError = ref('');
 const publishing = ref(false);
 
 function openPublish(card: AssignmentCard): void {
   publishTarget.value = card;
-  publishProofIds.value = '';
   publishNote.value = '';
   publishError.value = '';
   publishVisible.value = true;
@@ -125,10 +122,9 @@ async function submitPublish(): Promise<void> {
   publishing.value = true;
   publishError.value = '';
   try {
-    const proofIds = parseProofIds(publishProofIds.value);
     await api.post<AssignmentCard>(
       `/api/v1/teacher/assignments/${publishTarget.value.assignmentId}/publish-review`,
-      { ...(proofIds.length > 0 ? { proofIds } : {}), ...(publishNote.value.trim() === '' ? {} : { note: publishNote.value.trim() }) },
+      publishNote.value.trim() === '' ? {} : { note: publishNote.value.trim() },
     );
     await loadAssignments();
     MessagePlugin.success('讲评已发布');
@@ -143,33 +139,33 @@ async function submitPublish(): Promise<void> {
 
 const STATUS_LABEL: Record<string, string> = {
   not_started: '未开始',
-  active: '活跃',
-  idle: '空闲',
+  active: '正在做',
+  idle: '暂停中',
   away: '离开中',
-  parked: '搁置',
-  locked: '锁定',
+  parked: '先搁置',
+  locked: '已锁定',
   completed: '已完成',
 };
 const FLAG_LABEL: Record<string, string> = {
-  help: '求助',
-  integrity: '诚信',
-  budget_exhausted: '额度用完',
-  low_conf: '低置信',
+  help: '求助老师',
+  integrity: '诚信提醒',
+  budget_exhausted: '提示额度用完',
+  low_conf: '识别把握不大',
 };
 
 const liveColumns = [
   { colKey: 'displayName', title: '学生' },
   { colKey: 'status', title: '状态' },
-  { colKey: 'layer', title: '层' },
+  { colKey: 'layer', title: '所在层' },
   { colKey: 'keysOwn', title: '自己写出' },
-  { colKey: 'reveal', title: '透露' },
+  { colKey: 'reveal', title: '提示额度' },
   { colKey: 'stuckSec', title: '无进展' },
   { colKey: 'flags', title: '标记' },
   { colKey: 'lastActiveAt', title: '最近活动' },
   { colKey: 'actions', title: '操作', width: 90 },
 ];
 
-// v2：筛选键即看板状态（help/stuck/write/away/done/idle），KPI 点击切换；同一份筛选同时作用于卡片与表格视图。
+// 筛选键即看板状态，点顶部的数字切换；同一份筛选同时作用于卡片与表格视图。
 const liveFilter = ref<BoardFilter>(null);
 const liveView = ref<'tiles' | 'table'>('tiles');
 const FILTER_LABEL: Record<string, string> = { help: '需要你', stuck: '卡住', write: '在写', away: '离开中', done: '已完成', idle: '未开始' };
@@ -185,7 +181,7 @@ function messageOf(caught: unknown): string {
   return caught instanceof ApiError ? caught.message : caught instanceof Error ? caught.message : '请求失败';
 }
 
-// 04 §7：班级默认设置作为新布置表单的初值，教师仍可逐次修改。
+// 班级默认设置作为新布置表单的初值，老师仍可逐次修改。
 function applyClassDefaultsToForm(): void {
   assignmentForm.value.revealBudget = classSettings.value.revealBudget;
   assignmentForm.value.maxSwitches = classSettings.value.testMaxSwitches;
@@ -213,7 +209,7 @@ async function loadClassInfo(): Promise<void> {
   }
 }
 
-// #48 C 侧：看板 SSE（06 §6 row/flag/ping）；失败时保留 5s 轮询兜底。
+// 实时推送：某个学生的行有变化就合并进看板；断线时保留每 5 秒刷新兜底。
 function mergeLiveRow(row: LiveRow): void {
   const current = live.value;
   if (current === null) return;
@@ -221,7 +217,7 @@ function mergeLiveRow(row: LiveRow): void {
   const index = rows.findIndex((item) => item.anonCode === row.anonCode);
   if (index >= 0) rows[index] = row;
   else rows.push(row);
-  // summary 口径以服务端 /live 为准（08 §4）；SSE 只更新行，5s 轮询覆盖 summary。
+  // 汇总数字以服务端的完整快照为准；实时推送只更新行，5 秒一次的刷新会覆盖汇总。
   live.value = { ...current, rows };
 }
 
@@ -258,14 +254,15 @@ function connectStream(): void {
   stream.addEventListener('flag', (event) => {
     try {
       const flag = JSON.parse((event as MessageEvent).data) as { type: string; anonCode: string };
-      MessagePlugin.warning(`${flag.anonCode}：${FLAG_LABEL[flag.type] ?? flag.type}标记`);
+      const who = live.value?.rows.find((row) => row.anonCode === flag.anonCode)?.displayName ?? flag.anonCode;
+      MessagePlugin.warning(flag.type === 'help' ? `${who} 点了「求助老师」` : `${who}：${FLAG_LABEL[flag.type] ?? '有新的提醒'}`);
     } catch {
       // ignore
     }
   });
   stream.onerror = () => {
     streamConnected.value = false;
-    streamError.value = '实时连接断开，已回退 5s 轮询，正在重连…';
+    streamError.value = '实时连接断开，改为每 5 秒刷新一次，正在重连…';
     stream?.close();
     stream = undefined;
     scheduleRetry();
@@ -324,22 +321,18 @@ async function unclaim(rosterId: string): Promise<void> {
   }
 }
 
-async function loadPublishedProblems(): Promise<void> {
-  problemsLoading.value = true;
-  problemsError.value = '';
+// 重置学生密码。学生之后用邀请码 + 学号重新激活并设新密码；该生所有设备上的登录立即失效。
+async function resetPassword(rosterId: string): Promise<void> {
+  if (resetting.value !== null) return;
+  resetting.value = rosterId;
   try {
-    publishedProblems.value = (
-      await api.get<PublishedProblem[]>('/api/v1/teacher/problems?status=published')
-    ).filter((item) => item.kind === 'main');
-    if (!publishedProblems.value.some((item) => problemKey(item) === selectedProblem.value)) {
-      const first = publishedProblems.value[0];
-      selectedProblem.value = first === undefined ? '' : problemKey(first);
-    }
+    await api.post(`/api/v1/teacher/classes/${classId.value}/roster/${rosterId}/reset-password`);
+    MessagePlugin.success('已重置密码：请告诉学生用邀请码重新激活，并设一个新密码');
+    await loadRoster();
   } catch (caught) {
-    publishedProblems.value = [];
-    problemsError.value = messageOf(caught);
+    MessagePlugin.error(messageOf(caught));
   } finally {
-    problemsLoading.value = false;
+    resetting.value = null;
   }
 }
 
@@ -371,7 +364,7 @@ async function loadLive(): Promise<void> {
     live.value = null;
     liveError.value =
       caught instanceof ApiError && (caught.status === 404 || caught.status === 501)
-        ? '实时看板接口尚未上线（#51），上线后自动生效。'
+        ? '实时看板暂时不可用，稍后会自动重试。'
         : caught instanceof ApiError
           ? caught.message
           : '看板加载失败，请检查网络后重试';
@@ -382,9 +375,9 @@ async function loadLive(): Promise<void> {
 
 function startPolling(): void {
   stopPolling();
-  // 04 §2.2：P0 每 5 秒轮询；页面不可见时暂停。
+  // 每 5 秒刷新一次；页面不在前台时暂停。
   pollTimer = window.setInterval(() => {
-    // 只在看板页签且页面可见时轮询（A 复审 P3-11）。
+    // 只在看板页签且页面可见时刷新。
     if (!document.hidden && tab.value === 'live') void loadLive();
   }, 5000);
 }
@@ -438,9 +431,9 @@ async function copyInvite(): Promise<void> {
 }
 
 async function createAssignment(): Promise<void> {
-  const problem = publishedProblems.value.find((item) => problemKey(item) === selectedProblem.value);
-  if (problem === undefined) {
-    MessagePlugin.warning('请选择已发布的题目（无已发布题目请先在题库发布）');
+  const problem = pickedProblem.value;
+  if (problem === null) {
+    MessagePlugin.warning('请先选一道已发布的题目；没有可选的题，请先在题库里发布。');
     return;
   }
   creating.value = true;
@@ -461,6 +454,8 @@ async function createAssignment(): Promise<void> {
     });
     await loadAssignments();
     MessagePlugin.success('布置已创建');
+    selectedProblem.value = '';
+    pickedProblem.value = null;
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
   } finally {
@@ -468,7 +463,7 @@ async function createAssignment(): Promise<void> {
   }
 }
 
-// PATCH 要完整字段（04 §7）：用列表卡片重建，刷新页面后同样能关闭；只有进行中的布置能关（未开放的 closeAt 会早于 openAt）。
+// 关闭布置要提交完整字段：用列表卡片重建，刷新页面后同样能关闭；只有进行中的布置能关（未开放的布置截止时间会早于开放时间）。
 async function closeAssignment(card: AssignmentCard): Promise<void> {
   if (closingId.value !== null) return;
   closingId.value = card.assignmentId;
@@ -492,11 +487,11 @@ async function closeAssignment(card: AssignmentCard): Promise<void> {
 }
 
 function statusLabel(status: string): string {
-  return STATUS_LABEL[status] ?? status;
+  return STATUS_LABEL[status] ?? '其他';
 }
 
 function flagLabel(flag: string): string {
-  return FLAG_LABEL[flag] ?? flag;
+  return FLAG_LABEL[flag] ?? '其他提醒';
 }
 
 watch(selectedAssignmentId, () => {
@@ -507,7 +502,6 @@ watch(selectedAssignmentId, () => {
 
 onMounted(async () => {
   await loadClassInfo();
-  void loadPublishedProblems();
   await loadAssignments();
   await loadLive();
   await loadRoster();
@@ -560,11 +554,11 @@ onBeforeUnmount(() => {
       <t-tab-panel value="live" label="实时看板">
         <t-alert v-if="liveError" theme="warning" :message="liveError" style="margin: 12px 0" />
         <div v-if="createdAssignments.length > 0" class="live-toolbar">
-          <span class="page-sub">布置</span>
+          <span class="page-sub">看哪次布置</span>
           <t-select
             v-model="selectedAssignmentId"
-            :options="createdAssignments.map((item) => ({ label: `${item.title}（${statusLabel(item.status)}）`, value: item.assignmentId }))"
-            style="width: 320px"
+            :options="createdAssignments.map((item) => ({ label: `${item.title}（${assignmentStatusLabel(item.status)}）`, value: item.assignmentId }))"
+            style="width: 320px; max-width: 100%"
           />
         </div>
         <div v-if="liveFilter" class="page-sub" style="margin: 4px 0 8px">
@@ -572,9 +566,11 @@ onBeforeUnmount(() => {
           <t-link theme="primary" @click="liveFilter = null">清除</t-link>
         </div>
         <div class="live-viewtoggle">
-          <button type="button" class="pg-pill" :class="{ on: liveView === 'tiles' }" @click="liveView = 'tiles'">卡片</button>
-          <button type="button" class="pg-pill" :class="{ on: liveView === 'table' }" @click="liveView = 'table'">表格</button>
-          <span class="page-sub" style="margin: 0 0 0 8px">学生按「需要你」的程度排序</span>
+          <t-radio-group v-model="liveView" variant="default-filled" size="small">
+            <t-radio-button value="tiles">卡片</t-radio-button>
+            <t-radio-button value="table">表格</t-radio-button>
+          </t-radio-group>
+          <span class="page-sub" style="margin: 0">需要你处理的同学排在前面</span>
         </div>
         <LiveBoard
           v-if="liveView === 'tiles'"
@@ -593,8 +589,10 @@ onBeforeUnmount(() => {
           hover
           @row-click="(ctx: { row: LiveRow }) => openAttempt(ctx.row)"
         >
+          <template #layer="{ row }">{{ layerName(row.layer) || '—' }}</template>
+          <template #reveal="{ row }">{{ Math.round((row.reveal ?? 0) * 10) / 10 }} / {{ classSettings.revealBudget }}</template>
           <template #status="{ row }">
-            <t-tag :theme="row.status === 'completed' ? 'success' : row.status === 'locked' ? 'danger' : 'default'">
+            <t-tag :theme="row.status === 'completed' ? 'success' : row.status === 'locked' ? 'danger' : 'default'" variant="light">
               {{ statusLabel(row.status) }}
             </t-tag>
           </template>
@@ -614,11 +612,11 @@ onBeforeUnmount(() => {
           </template>
           <template #empty>
             <div class="empty">
-              {{ liveFilter ? '当前筛选下没有学生。' : liveError ? (liveError.includes('尚未上线') ? '看板接口待上线。' : '加载失败，请重试。') : '暂无作答数据：学生用邀请码登录并开始练习后会出现在这里。' }}
+              {{ liveFilter ? '当前筛选下没有学生。' : liveError ? '加载失败，请稍后重试。' : '还没有作答：学生用邀请码登录并开始练习后，会出现在这里。' }}
             </div>
           </template>
         </t-table>
-        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新；页面不可见时暂停（04 §2.2）。{{ streamConnected ? ' SSE 已连接。' : '' }}{{ streamError ? ` ${streamError}` : '' }}</div>
+        <div class="page-sub" style="margin-top: 8px">每 5 秒自动刷新，页面不在前台时暂停。{{ streamConnected ? ' 实时连接正常。' : '' }}{{ streamError ? ` ${streamError}` : '' }}</div>
       </t-tab-panel>
 
       <t-tab-panel value="roster" label="名单">
@@ -632,8 +630,9 @@ onBeforeUnmount(() => {
             { colKey: 'name', title: '姓名' },
             { colKey: 'claimed', title: '认领' },
             { colKey: 'claimedAt', title: '认领时间' },
-            { colKey: 'claimedByAnon', title: '学生匿名码' },
-            { colKey: 'actions', title: '操作', width: 120 },
+            { colKey: 'claimedByAnon', title: '匿名码' },
+            { colKey: 'passwordSet', title: '已设密码', width: 100 },
+            { colKey: 'actions', title: '操作', width: 200 },
           ]"
           :loading="rosterLoading"
           row-key="rosterId"
@@ -645,9 +644,20 @@ onBeforeUnmount(() => {
           </template>
           <template #claimedAt="{ row }">{{ row.claimedAt ? new Date(row.claimedAt).toLocaleString('zh-CN') : '—' }}</template>
           <template #claimedByAnon="{ row }">{{ row.claimedByAnon ?? '—' }}</template>
+          <template #passwordSet="{ row }">
+            <t-tag v-if="!row.claimed" theme="default" variant="light">—</t-tag>
+            <t-tag v-else :theme="row.passwordSet ? 'success' : 'warning'" variant="light" data-testid="roster-password-set">{{ row.passwordSet ? '已设置' : '未设置' }}</t-tag>
+          </template>
           <template #actions="{ row }">
+            <t-popconfirm
+              v-if="row.claimed && row.passwordSet"
+              content="重置后该学生所有设备上的登录会失效，需要用邀请码重新激活并设新密码。确定重置？"
+              @confirm="resetPassword(row.rosterId)"
+            >
+              <t-link theme="primary" data-testid="roster-reset-password" :disabled="resetting !== null">重置密码</t-link>
+            </t-popconfirm>
             <t-popconfirm v-if="row.claimed" content="解除后学生需重新用邀请码认领，确定？" @confirm="unclaim(row.rosterId)">
-              <t-link theme="danger" :disabled="unclaiming !== null">解除认领</t-link>
+              <t-link theme="danger" style="margin-left: 8px" :disabled="unclaiming !== null">解除认领</t-link>
             </t-popconfirm>
             <span v-else class="page-sub">—</span>
           </template>
@@ -657,10 +667,10 @@ onBeforeUnmount(() => {
           <span>邀请码 <b class="mono">{{ classInfo?.inviteCode ?? '—' }}</b></span>
           <t-button size="small" variant="outline" @click="copyInvite">复制</t-button>
           <t-button size="small" :loading="rotating" @click="rotateInvite">重置邀请码</t-button>
-          <t-button size="small" theme="primary" :loading="importing" @click="fileInput?.click()">导入名单 CSV</t-button>
+          <t-button size="small" theme="primary" :loading="importing" @click="fileInput?.click()">导入名单</t-button>
           <input ref="fileInput" type="file" accept=".csv,text/csv" hidden @change="onFileChange" />
         </div>
-        <div class="page-sub">CSV：<code>学号,姓名</code>（姓名可空）；UTF-8/GBK 自动识别；重复学号合并；非法行会给出原因。</div>
+        <div class="page-sub">名单文件（CSV）每行两列：<code>学号,姓名</code>，姓名可以不填。编码自动识别，重复的学号会合并，不合格的行会列出原因。</div>
         <t-table
           v-if="importResult"
           :data="importResult.invalid"
@@ -681,20 +691,7 @@ onBeforeUnmount(() => {
       <t-tab-panel value="assignments" label="布置">
         <t-form label-width="90px" style="max-width: 560px; margin-top: 12px">
           <t-form-item label="题目">
-            <t-select
-              v-model="selectedProblem"
-              :loading="problemsLoading"
-              placeholder="选择已发布的题目版本"
-              style="width: 360px"
-              filterable
-              :options="publishedProblems.map((item) => ({
-                label: `${item.title}${item.chapter ? ' · ' + item.chapter : ''} · v${item.version}`,
-                value: problemKey(item),
-              }))"
-            />
-          </t-form-item>
-          <t-form-item v-if="publishedProblems.length === 0 && !problemsLoading" label=" ">
-            <t-alert theme="warning" :message="problemsError === '' ? '没有已发布题目：请先在题库完成审核发布。' : `题目列表加载失败：${problemsError}`" />
+            <ProblemSelect v-model="selectedProblem" @select="onProblemSelect" />
           </t-form-item>
           <t-form-item label="模式">
             <t-select v-model="assignmentForm.mode" :options="[{ label: '练习', value: 'practice' }, { label: '测验', value: 'test' }]" />
@@ -705,16 +702,16 @@ onBeforeUnmount(() => {
           <t-form-item label="截止时间">
             <input v-model="assignmentForm.closeAt" class="native-input" type="datetime-local" />
           </t-form-item>
-          <t-form-item label="透露预算">
+          <t-form-item label="提示额度">
             <t-input-number v-model="assignmentForm.revealBudget" :min="0" :max="10" theme="normal" />
           </t-form-item>
           <t-form-item label=" ">
-            <t-alert theme="warning" message="下面的拍照/求助/切出/限时目前只随布置保存，学生端尚未按它们生效；测验模式本身的关提示与切出锁定已生效。" />
+            <t-alert theme="info" message="拍照、求助、切出锁定和限时这几项目前只随布置保存，学生端还没有全部照着执行；测验模式本身会关闭提示，多次切出页面后锁定作答。" />
           </t-form-item>
           <t-form-item label="拍照">
             <t-switch v-model="assignmentForm.photoEnabled" />
           </t-form-item>
-          <t-form-item label="求助">
+          <t-form-item label="允许求助">
             <t-switch v-model="assignmentForm.hintsEnabled" />
           </t-form-item>
           <t-form-item v-if="assignmentForm.mode === 'test'" label="切出锁定">
@@ -724,10 +721,11 @@ onBeforeUnmount(() => {
             <t-input-number v-model="assignmentForm.durationMin" :min="0" :max="300" theme="normal" suffix="分钟" />
           </t-form-item>
           <t-form-item label=" ">
-            <t-button theme="primary" :loading="creating" @click="createAssignment">布置</t-button>
+            <t-button theme="primary" :loading="creating" data-testid="assign-submit" @click="createAssignment">布置</t-button>
           </t-form-item>
         </t-form>
 
+        <h4>已布置的题</h4>
         <t-alert v-if="assignmentsError" theme="warning" :message="`布置列表加载失败：${assignmentsError}`" style="margin: 12px 0" />
         <t-table
           :data="createdAssignments"
@@ -743,7 +741,7 @@ onBeforeUnmount(() => {
         >
           <template #mode="{ row }">{{ row.mode === 'test' ? '测验' : '练习' }}</template>
           <template #status="{ row }">
-            <span class="pg-pill" :class="`pg-pill--${row.status === 'open' ? 'grass' : row.status === 'scheduled' ? 'sea' : 'fox'}`">{{ ASSIGNMENT_STATUS[row.status] ?? row.status }}</span>
+            <span class="pg-pill" :class="`pg-pill--${row.status === 'open' ? 'grass' : row.status === 'scheduled' ? 'sea' : ''}`">{{ assignmentStatusLabel(row.status) }}</span>
           </template>
           <template #openAt="{ row }">{{ formatWhen(row.openAt) }}</template>
           <template #actions="{ row }">
@@ -757,15 +755,12 @@ onBeforeUnmount(() => {
           <template #empty><div class="empty">还没有创建布置。</div></template>
         </t-table>
 
-        <t-dialog v-model:visible="publishVisible" header="发布讲评（参考证明 + 说明）" :footer="false">
+        <t-dialog v-model:visible="publishVisible" header="发布讲评" :footer="false">
           <t-alert v-if="publishError" theme="error" :message="publishError" style="margin-bottom: 8px" />
-          <t-alert theme="info" message="布置关闭后才可发布；A/B 两组同时可见。P0 会发布该版本全部可发布参考证明；下方 ID 仅用于审计校验，不改变发布选择。" style="margin-bottom: 8px" />
+          <t-alert theme="info" message="布置关闭后才能发布讲评。发布后，学生可以看到这道题的参考证明和你写的讲评。" style="margin-bottom: 8px" />
           <t-form label-width="90px">
-            <t-form-item label="参考证明 ID">
-              <t-input v-model="publishProofIds" placeholder="可空，多个用逗号分隔；仅审计校验，不改变发布选择" />
-            </t-form-item>
             <t-form-item label="讲评">
-              <t-textarea v-model="publishNote" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="讲评说明（MathText，可空）" />
+              <t-textarea v-model="publishNote" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="讲评说明（可不填；公式请用 $…$ 包起来）" />
             </t-form-item>
           </t-form>
           <div class="dialog-actions">
@@ -775,25 +770,29 @@ onBeforeUnmount(() => {
         </t-dialog>
       </t-tab-panel>
 
+      <t-tab-panel value="selfstudy" label="自学进度">
+        <SelfStudyPanel :class-id="classId" :active="tab === 'selfstudy'" />
+      </t-tab-panel>
+
       <t-tab-panel value="metrics" label="指标">
         <MetricsPanel :class-id="classId" :assignment-id="selectedAssignmentId === '' ? undefined : selectedAssignmentId" />
       </t-tab-panel>
 
       <t-tab-panel value="export" label="导出">
-        <ExportPanel :class-id="classId" />
+        <ExportPanel :class-id="classId" :class-name="classInfo?.name" />
       </t-tab-panel>
 
       <t-tab-panel value="settings" label="设置">
-        <t-alert theme="warning" message="这些默认值用作新建布置表单的初值；目前只保存，学生端尚未按它们生效。" style="margin: 12px 0" />
+        <t-alert theme="info" message="这些默认值会作为新建布置表单的初始值；目前只是保存下来，学生端还没有全部照着执行。" style="margin: 12px 0" />
         <t-form label-width="140px" style="max-width: 560px; margin-top: 12px">
           <t-form-item label="拍照">
             <t-switch v-model="classSettings.photoEnabled" />
           </t-form-item>
           <t-form-item label="生成补充讲解">
             <t-switch v-model="classSettings.lessonGenerated" />
-            <span class="page-sub" style="margin-left: 8px">P0 默认关（fail-closed，09 §2）</span>
+            <span class="page-sub" style="margin-left: 8px">默认关闭</span>
           </t-form-item>
-          <t-form-item label="默认透露预算">
+          <t-form-item label="默认提示额度">
             <t-input-number v-model="classSettings.revealBudget" :min="0" :max="10" theme="normal" />
           </t-form-item>
           <t-form-item label="诚信策略">
@@ -828,37 +827,37 @@ onBeforeUnmount(() => {
 .live-viewtoggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin: 4px 0 12px;
-}
-.live-viewtoggle .pg-pill {
-  border: 2px solid var(--pg-rule);
-  background: var(--pg-surface);
-  color: var(--pg-ink-3);
-  cursor: pointer;
-  font-family: inherit;
-}
-.live-viewtoggle .pg-pill.on {
-  border-color: var(--pg-sea);
-  background: var(--pg-sea-soft);
-  color: var(--pg-sea-text);
+  flex-wrap: wrap;
 }
 .live-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 8px 0;
+  flex-wrap: wrap;
 }
-.invite-bar { margin: 16px 0 8px; padding: 12px 14px; border: 2px solid var(--pg-border); border-bottom-width: 4px; border-radius: 14px; }
+.invite-bar { margin: 16px 0 8px; padding: 10px 14px; border: 1px solid var(--pg-border); border-radius: var(--pg-radius); background: var(--pg-surface); }
 :deep(.t-form__controls .t-select),
 :deep(.t-form__controls .t-input) { max-width: 360px; }
 .native-input {
   height: 32px;
   padding: 0 8px;
-  border: 1px solid var(--td-component-border, #e3e6eb);
-  border-radius: 4px;
-  background: var(--td-bg-color-container, #fff);
-  color: var(--td-text-color-primary, #1f2329);
+  border: 1px solid var(--pg-rule-2);
+  border-radius: 8px;
+  background: var(--pg-surface);
+  color: var(--pg-text);
   font: inherit;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+@media (max-width: 768px) {
+  :deep(.t-form__label) { width: 76px !important; }
+  :deep(.t-form__controls) { margin-left: 76px !important; }
 }
 </style>

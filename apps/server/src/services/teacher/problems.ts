@@ -14,6 +14,8 @@ export interface ProblemListItemDto {
   status: 'draft' | 'pending' | 'returned' | 'published' | 'retired';
   autoChecks?: Record<string, unknown>;
   source?: string;
+  reviewSource?: 'teacher' | 'auto';
+  hiddenAt?: string;
 }
 
 type ListRow = {
@@ -27,18 +29,40 @@ type ListRow = {
   provenance: Record<string, unknown> | null;
   reviewer: string | null;
   reviewed_at: string | null;
+  review_source: 'teacher' | 'auto';
+  hidden_at: string | null;
 };
 
-export async function listProblems(
+export interface ProblemListPage {
+  items: ProblemListItemDto[];
+  // 只在传了 limit 且还有下一页时有值。
+  nextCursor: string | null;
+}
+
+// 分页与搜索（题库上千题时教师端用搜索下拉）：不传 limit = 返回全部（旧调用不变）；
+// 传了 limit 就按（题号, 版本）稳定顺序分页，cursor 是上一页的 nextCursor。
+export async function listProblemsPage(
   db: Queryable,
-  filter: { status?: string; chapter?: string },
-): Promise<ProblemListItemDto[]> {
+  filter: { status?: string; chapter?: string; q?: string; reviewSource?: string; kind?: string; limit?: number; cursor?: string },
+): Promise<ProblemListPage> {
+  let after: [string, number] | null = null;
+  if (filter.cursor !== undefined) {
+    try {
+      const parsed = JSON.parse(Buffer.from(filter.cursor, 'base64url').toString('utf8')) as unknown;
+      if (!Array.isArray(parsed) || typeof parsed[0] !== 'string' || !Number.isInteger(parsed[1])) throw new Error('bad');
+      after = [parsed[0], parsed[1] as number];
+    } catch {
+      throw new AppError('VALIDATION_FAILED', 422, 'cursor 不合法');
+    }
+  }
+  const needle = (filter.q ?? '').trim().toLowerCase();
+  const limit = filter.limit;
   const rows = (
     await db.query<ListRow>(
       `select p.id as problem_id, p.title, p.chapter, p.kind, v.version,
-              v.review_status, v.auto_checks, v.provenance,
+              v.review_status, v.auto_checks, v.provenance, v.review_source,
               coalesce(ru.display_name, ru.anon_code) as reviewer,
-              rr.at::text as reviewed_at
+              rr.at::text as reviewed_at, p.hidden_at::text as hidden_at
          from content.problems p
          join content.problem_versions v
            on v.problem_id = p.id
@@ -51,12 +75,28 @@ export async function listProblems(
          left join app.users ru on ru.id = rr.reviewer_id
         where ($1::text is null or v.review_status = $1)
           and ($2::text is null or p.chapter = $2)
-        order by p.id, v.version`,
-      [filter.status ?? null, filter.chapter ?? null],
+          and ($3 = '' or position($3 in lower(p.id || ' ' || p.title || ' ' || coalesce(p.chapter, ''))) > 0)
+          and ($4::text is null or (p.id, v.version) > ($4::text, $5::int))
+          and ($7::text is null or v.review_source = $7)
+          and ($8::text is null or p.kind = $8)
+        order by p.id, v.version
+        limit $6`,
+      [
+        filter.status ?? null,
+        filter.chapter ?? null,
+        needle,
+        after?.[0] ?? null,
+        after?.[1] ?? 0,
+        limit === undefined ? null : limit + 1,
+        filter.reviewSource ?? null,
+        filter.kind ?? null,
+      ],
     )
   ).rows;
 
-  return rows.flatMap((row) =>
+  const paged = limit !== undefined && rows.length > limit;
+  const pageRows = paged ? rows.slice(0, limit) : rows;
+  const items = pageRows.flatMap((row) =>
     row.version === null
       ? []
       : [
@@ -69,11 +109,49 @@ export async function listProblems(
             status: row.review_status,
             autoChecks: row.auto_checks ?? {},
             ...(typeof row.provenance?.source === 'string' ? { source: row.provenance.source } : {}),
+            reviewSource: row.review_source,
+            ...(row.hidden_at === null ? {} : { hiddenAt: new Date(row.hidden_at).toISOString() }),
             ...(row.reviewer === null ? {} : { reviewedBy: row.reviewer }),
             ...(row.reviewed_at === null ? {} : { reviewedAt: new Date(row.reviewed_at).toISOString() }),
           },
         ],
   );
+  const lastRow = pageRows.at(-1);
+  return {
+    items,
+    nextCursor: paged && lastRow ? Buffer.from(JSON.stringify([lastRow.problem_id, lastRow.version])).toString('base64url') : null,
+  };
+}
+
+// 下架 / 恢复：只动 content.problems.hidden_at（不进路径与练习区）；题目版本、已有作答和老师已布置的题都不受影响。
+export async function setProblemHidden(
+  db: Db,
+  actorId: string,
+  problemId: string,
+  hidden: boolean,
+): Promise<{ problemId: string; hiddenAt: string | null }> {
+  return db.tx(async (tx) => {
+    const row = (
+      await tx.query<{ hidden_at: string | null }>(
+        `update content.problems set hidden_at = case when $2::boolean then coalesce(hidden_at, now()) else null end
+          where id = $1 returning hidden_at::text as hidden_at`,
+        [problemId, hidden],
+      )
+    ).rows[0];
+    if (!row) throw new AppError('NOT_FOUND', 404, '题目不存在');
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, $2, $3, $4::jsonb)`,
+      [actorId, hidden ? 'hide_problem' : 'unhide_problem', problemId, JSON.stringify({ problemId })],
+    );
+    return { problemId, hiddenAt: row.hidden_at === null ? null : new Date(row.hidden_at).toISOString() };
+  });
+}
+
+export async function listProblems(
+  db: Queryable,
+  filter: { status?: string; chapter?: string },
+): Promise<ProblemListItemDto[]> {
+  return (await listProblemsPage(db, filter)).items;
 }
 
 type PackageRow = {

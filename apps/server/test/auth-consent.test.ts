@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { requireStudentConsent } from '../src/auth/consent.ts';
-import { createSession, SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
+import { createSession, TEACHER_SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
 import { loadContract } from '../src/contract.ts';
 import type { Db } from '../src/db/index.ts';
 
@@ -67,10 +67,10 @@ async function teacherCookie(): Promise<string> {
     ip: null,
     ttlMs: STUDENT_SESSION_MS,
   });
-  return `${SESSION_COOKIE}=${app.signCookie(session.id)}`;
+  return `${TEACHER_SESSION_COOKIE}=${app.signCookie(session.id)}`;
 }
 
-function signConsent(cookie: string, body: Record<string, unknown> = { version: 'p0-v1', items: ALL_REQUIRED }, headers: Record<string, string> = {}) {
+function signConsent(cookie: string, body: Record<string, unknown> = { version: 'v2', items: ALL_REQUIRED }, headers: Record<string, string> = {}) {
   return app.inject({
     method: 'POST',
     url: '/api/v1/consents',
@@ -88,11 +88,10 @@ describe('知情同意书接口', () => {
     expect(res.statusCode).toBe(200);
     const doc = res.json();
     contract.validate('ConsentDoc', doc);
-    expect(doc.version).toBe('p0-v1');
+    expect(doc.version).toBe('v2');
     expect(doc.sections.map((s: { key: string }) => s.key)).toEqual([
       'service',
       'crossBorderHosting',
-      'crossBorderModel',
       'monitoring',
       'research',
     ]);
@@ -116,7 +115,7 @@ describe('知情同意书接口', () => {
     const cookie = await studentCookie();
 
     const res = await signConsent(cookie, {
-      version: 'p0-v1',
+      version: 'v2',
       items: { ...ALL_REQUIRED, crossBorderHosting: false },
     });
 
@@ -129,7 +128,7 @@ describe('知情同意书接口', () => {
   it('客户端多余的键不写入库：只保存五个契约键', async () => {
     const cookie = await studentCookie();
 
-    const res = await signConsent(cookie, { version: 'p0-v1', items: { ...ALL_REQUIRED, admin: true } });
+    const res = await signConsent(cookie, { version: 'v2', items: { ...ALL_REQUIRED, admin: true } });
 
     expect(res.statusCode).toBe(200);
     const row = await db.query<{ items: Record<string, unknown> }>('select items from app.consents');
@@ -142,13 +141,13 @@ describe('知情同意书接口', () => {
     const res = await signConsent(cookie, { version: 'p0-v0', items: ALL_REQUIRED });
 
     expect(res.statusCode).toBe(422);
-    expect(res.json().error.detail).toEqual({ currentVersion: 'p0-v1' });
+    expect(res.json().error.detail).toEqual({ currentVersion: 'v2' });
   });
 
   it('必选项全部勾选：返回 consentRequired=false，记录 IP /24 掩码与 UA 哈希', async () => {
     const cookie = await studentCookie();
 
-    const res = await signConsent(cookie, { version: 'p0-v1', items: ALL_REQUIRED }, { 'user-agent': 'test-agent/1.0' });
+    const res = await signConsent(cookie, { version: 'v2', items: ALL_REQUIRED }, { 'user-agent': 'test-agent/1.0' });
 
     expect(res.statusCode).toBe(200);
     contract.validate('Me', res.json());
@@ -157,7 +156,7 @@ describe('知情同意书接口', () => {
     const row = await db.query<{ ip_masked: string; ua_hash: string; version: string }>(
       'select ip_masked, ua_hash, version from app.consents',
     );
-    expect(row.rows[0]).toMatchObject({ ip_masked: '127.0.0.0/24', version: 'p0-v1' });
+    expect(row.rows[0]).toMatchObject({ ip_masked: '127.0.0.0/24', version: 'v2' });
     expect(row.rows[0]?.ua_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -167,7 +166,7 @@ describe('知情同意书接口', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/v1/consents', headers: { cookie } });
 
-    expect(res.json().signed).toMatchObject({ version: 'p0-v1', items: ALL_REQUIRED });
+    expect(res.json().signed).toMatchObject({ version: 'v2', items: ALL_REQUIRED });
     contract.validate('ConsentDoc', res.json());
   });
 
@@ -212,6 +211,30 @@ describe('同意书守卫（作答接口挂载点）', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/v1/probe/attempt', headers: { cookie } });
 
+    expect(res.json().error.code).toBe('CONSENT_REQUIRED');
+  });
+
+  it('境外决策模型不再可选：客户端传 true 也记为不同意（U22）', async () => {
+    const cookie = await studentCookie();
+    const res = await signConsent(cookie, { version: 'v2', items: { ...ALL_REQUIRED, crossBorderModel: true } });
+    expect(res.statusCode, res.body).toBe(200);
+    const stored = await db.query<{ items: Record<string, boolean> }>('select items from app.consents order by created_at desc limit 1');
+    expect(stored.rows[0]?.items.crossBorderModel).toBe(false);
+  });
+
+  it('v2：文案明确写出求助内容去标识后发给通义千问或 DeepSeek；v1 的签署不再有效（所有人重签一次）', async () => {
+    const cookie = await studentCookie();
+    const doc = (await app.inject({ method: 'GET', url: '/api/v1/consents', headers: { cookie } })).json();
+    const text = doc.sections.map((section: { body: string }) => section.body).join('');
+    expect(text).toContain('你在求助里写的内容、你写的定义和证明行，会去掉身份信息后发给 DeepSeek 或通义千问');
+    expect(text).toContain('中国境内');
+    expect(text).not.toContain('香港');
+    const student = await db.query<{ user_id: string }>('select user_id from app.student_profiles');
+    await db.query(`insert into app.consents (user_id, version, items) values ($1, 'p0-v1', $2::jsonb)`, [
+      student.rows[0]?.user_id,
+      JSON.stringify(ALL_REQUIRED),
+    ]);
+    const res = await app.inject({ method: 'GET', url: '/api/v1/probe/attempt', headers: { cookie } });
     expect(res.json().error.code).toBe('CONSENT_REQUIRED');
   });
 

@@ -40,7 +40,7 @@ describe('教师密码登录', () => {
     contract.validate('Me', me);
     expect(me).toMatchObject({ role: 'teacher', consentRequired: false });
     expect(me.anonCode).toMatch(/^T-/);
-    expect(String(res.headers['set-cookie'])).toMatch(/^pg_sid=/);
+    expect(String(res.headers['set-cookie'])).toMatch(/^pg_sid_t=/);
     expect(String(res.headers['set-cookie'])).toContain('HttpOnly');
   });
 
@@ -73,7 +73,7 @@ describe('教师密码登录', () => {
   it('带教师 Cookie 访问 /me 成功', async () => {
     const cookie = cookieFrom((await login({ username: USERNAME, password: PASSWORD })).headers['set-cookie']);
 
-    const res = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { cookie } });
+    const res = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { cookie, 'x-pg-app': 'teacher' } });
 
     expect(res.statusCode).toBe(200);
     expect(res.json().role).toBe('teacher');

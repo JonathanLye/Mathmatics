@@ -35,7 +35,7 @@ const text = computed(() => leaveWarningText(props.count, props.maxWarnings))
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: rgba(0, 0, 0, 0.48);
+  background: var(--mask);
 }
 .pg-leavewarn__sheet {
   width: min(420px, 100%);
@@ -44,17 +44,17 @@ const text = computed(() => leaveWarningText(props.count, props.maxWarnings))
   gap: var(--sp-2);
   padding: var(--sp-4);
   background: var(--sheet);
-  border-radius: var(--radius-sheet);
+  border-radius: var(--radius-24);
   box-shadow: var(--shadow-sheet);
-  border-left: 4px solid var(--hint);
+  border-left: 4px solid var(--bee);
 }
-.pg-leavewarn__title { font-size: 18px; font-weight: 900; color: var(--ink); }
-.pg-leavewarn__text { color: var(--margin-text); font-size: 16px; }
+.pg-leavewarn__title { font-size: var(--fs-18); font-weight: var(--fw-black); color: var(--ink); }
+.pg-leavewarn__text { color: var(--sea-text); font-size: var(--fs-16); }
 .pg-leavewarn__note { color: var(--ink-2); line-height: 1.6; }
 .pg-leavewarn__btn {
   min-height: 44px;
-  border-radius: var(--radius-input);
-  border: 1px solid var(--rule);
+  border-radius: var(--radius-12);
+  border: var(--bw) solid var(--rule);
   background: var(--sheet);
   color: var(--ink);
 }

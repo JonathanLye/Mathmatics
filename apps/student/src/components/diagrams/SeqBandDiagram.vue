@@ -232,19 +232,19 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
 .pg-svg__label {
   position: absolute;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-svg);
   line-height: 1.2;
   white-space: nowrap;
   color: var(--ink);
 }
-.pg-svg__label--muted { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--muted { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-svg__label--ink { color: var(--ink); }
-.pg-svg__label--margin { color: var(--margin-text); }
-.pg-svg__label--tick { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--margin { color: var(--sea-text); }
+.pg-svg__label--tick { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-seq__band { fill: var(--accent-soft); }
 .pg-seq__axis { stroke: var(--rule); stroke-width: 1; }
 .pg-seq__center { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 4 3; }
-.pg-seq__threshold { stroke: var(--margin); stroke-width: 1; stroke-dasharray: 2 3; }
+.pg-seq__threshold { stroke: var(--sea); stroke-width: 1; stroke-dasharray: 2 3; }
 .pg-seq__dot--inside { fill: var(--accent); }
 .pg-seq__dot--outside { fill: var(--ink-2); }
 .pg-seq__slider { width: 100%; }

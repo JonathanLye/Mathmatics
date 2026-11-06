@@ -274,6 +274,55 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
   else if (result.mode === 'dry-run') console.log('dry-run：设置 DATABASE_URL 后会写入 content.problem_versions / vault.* / review_records。');
 }
 
+async function commandBatch(parsed: ParsedArgs): Promise<void> {
+  const dir = parsed.positionals[0];
+  if (dir === undefined) throw new Error('用法：pnpm import:batch <dir> [--out imports/batch-<id>] [--dry-run] [--max N] [--concurrency 3] [--budget-cny X] [--resume]');
+  const { runBatch, ALL_STAGES } = await import('./batch/run.ts');
+  const pagesSpec = optional(parsed, 'pages');
+  const maxRaw = optional(parsed, 'max');
+  const result = await runBatch({
+    dir,
+    out: optional(parsed, 'out') ?? join('imports', `batch-${newJobId()}`),
+    dryRun: parsed.flags.has('dry-run'),
+    resume: parsed.flags.has('resume'),
+    concurrency: intOption(parsed, 'concurrency', 3, 1, 64),
+    budgetCny: Number(optional(parsed, 'budget-cny') ?? '150'),
+    stages: optional(parsed, 'stages')?.split(',').map((stage) => stage.trim()) ?? ALL_STAGES,
+    log: (line) => console.log(line),
+    ...(maxRaw === undefined ? {} : { max: intOption(parsed, 'max', 0, 1, 100000) }),
+    ...(optional(parsed, 'verify-max') === undefined ? {} : { verifyMax: intOption(parsed, 'verify-max', 0, 1, 100000) }),
+    ...(optional(parsed, 'draft-model') === undefined ? {} : { draftModel: optional(parsed, 'draft-model') as string }),
+    ...(optional(parsed, 'variation-rate') === undefined ? {} : { variationRate: Number(optional(parsed, 'variation-rate')) }),
+    ...(optional(parsed, 'book-titles') === undefined
+      ? {}
+      : {
+          bookTitles: Object.fromEntries(
+            (optional(parsed, 'book-titles') as string).split(';').map((pair) => pair.split('=', 2) as [string, string]),
+          ),
+        }),
+    ...(pagesSpec === undefined ? {} : { pages: parsePageRange(pagesSpec) }),
+  });
+  if (result.dryRun !== undefined) console.log(JSON.stringify(result.dryRun, null, 2));
+  if (result.budgetStopped) process.exitCode = 3;
+}
+
+// 只重新打包：不调模型，读 drafts/ 里通过门禁的题，写 bundle.jsonl.gz、failed.json、report.json。
+async function commandBundle(parsed: ParsedArgs): Promise<void> {
+  const out = optional(parsed, 'out');
+  if (out === undefined) throw new Error('用法：pnpm import:bundle --out imports/batch-<id>');
+  const { runBatch } = await import('./batch/run.ts');
+  await runBatch({
+    dir: parsed.positionals[0] ?? join(out, 'sources'),
+    out,
+    dryRun: false,
+    resume: true,
+    concurrency: 1,
+    budgetCny: Number(optional(parsed, 'budget-cny') ?? '150'),
+    stages: ['bundle'],
+    log: (line) => console.log(line),
+  });
+}
+
 function usage(): void {
   console.log(`证明陪练场 · 题库导入 CLI（10 §6）
 
@@ -283,6 +332,8 @@ function usage(): void {
   pnpm import:publish imports/<jobId>/<problemId>.json --reviewer T-01 --minutes 90 [--concepts concepts.json]
   pnpm import:submit imports/<jobId>/<problemId>.json [--database-url postgres://…] [--concepts concepts.json]
   pnpm import:run --file <pdf> --pages 27-58 --ocr-fixture <dir> [--max 4] [--draft-fixture-a/b …] [--submit]
+  pnpm import:batch <dir> [--out imports/batch-<id>] [--dry-run] [--max N] [--verify-max N] [--variation-rate 0.1] [--concurrency 3] [--budget-cny X] [--resume] [--stages a,b] [--pages 1-20] [--draft-model m] [--book-titles 'id=书名;id=书名']
+  pnpm import:bundle --out imports/batch-<id>
 
 仓库内自带的最小 fixtures：apps/import/fixtures/ch2（OCR）、fixtures/epsN.json 与 epsN-alt.json（两稿）。
 离线模式：OCR 用 --ocr-fixture，起草用 --draft-fixture-a/b；真实 OCR 需 SIMPLETEX_API_KEY / DASHSCOPE_API_KEY 并渲染页面；起草需 DEEPSEEK_API_KEY。`);
@@ -313,6 +364,12 @@ export async function run(argv: string[]): Promise<void> {
       break;
     case 'run':
       await commandRun(parsed);
+      break;
+    case 'batch':
+      await commandBatch(parsed);
+      break;
+    case 'bundle':
+      await commandBundle(parsed);
       break;
     default:
       usage();

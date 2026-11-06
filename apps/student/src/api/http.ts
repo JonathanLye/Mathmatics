@@ -2,7 +2,10 @@
  * 真实接口的 fetch 封装（issue #24）。
  *
  * 契约真源：`packages/contracts/openapi.yaml`（servers: /api/v1）与 06-接口契约.md §1：
- * - 鉴权：HttpOnly + SameSite=Lax 会话 Cookie `pg_sid`，因此每个请求都必须 `credentials: 'include'`；
+ * - 鉴权：HttpOnly + SameSite=Lax 会话 Cookie `pg_sid_s`（学生端；教师端是另一个 `pg_sid_t`，同一浏览器可同时登录两端），
+ *   因此每个请求都必须 `credentials: 'include'`；每个请求带 `X-Pg-App: student`，`/me`、`/auth/logout` 据此读学生 Cookie；
+ * - 登录失效：非登录类接口返回 401，或 403 且 `detail.reason === 'wrong_app'`（浏览器里只有教师端会话），
+ *   统一通知 `setAuthLostHandler` 登记的处理函数（stores/session.ts：清会话、提示、回登录页）；
  * - CSRF：所有写请求（非 GET/HEAD）带 `X-Requested-With: proof-gym`（服务端 routes/api.ts 的 onRequest 钩子）；
  * - 并发：`If-Match: <stateVersion>` 可选，版本落后返回 409 STATE_STALE，detail.state 是最新状态；
  * - 幂等：`Idempotency-Key: <uuid>` 可选，24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；
@@ -62,6 +65,7 @@ const TERMINAL_CODES: ReadonlySet<string> = new Set([
   'ATTEMPT_LOCKED',
   'RECOG_NOT_CONFIRMED',
   'TEST_MODE_RESTRICTED',
+  'TEST_IN_PROGRESS',
   'PHOTO_DISABLED',
   'WRONG_LAYER',
   'LAYER_LOCKED',
@@ -73,6 +77,40 @@ const TERMINAL_CODES: ReadonlySet<string> = new Set([
   'BAD_REQUEST',
   'NOT_FOUND',
 ])
+
+/** 登录失效通知：由 stores/session.ts 登记；这里只负责判定“服务端说没有这一端的有效会话”。 */
+export interface AuthLostInfo {
+  status: number
+  code: string
+  path: string
+}
+export type AuthLostHandler = (info: AuthLostInfo) => void
+
+let authLostHandler: AuthLostHandler | null = null
+
+export function setAuthLostHandler(handler: AuthLostHandler | null): void {
+  authLostHandler = handler
+}
+
+/** 服务端开启“必须设密码”且本账号还没设：除 /me、退出、设密码本身外的学生接口都会 403 PASSWORD_SETUP_REQUIRED。 */
+export const PASSWORD_SETUP_REQUIRED_CODE = 'PASSWORD_SETUP_REQUIRED'
+export type PasswordSetupHandler = (info: { path: string }) => void
+
+let passwordSetupHandler: PasswordSetupHandler | null = null
+
+export function setPasswordSetupHandler(handler: PasswordSetupHandler | null): void {
+  passwordSetupHandler = handler
+}
+
+/** 这些接口自己处理 401：登录页的恢复会话（/me）、登录失败、退出，不触发统一跳登录。 */
+const AUTH_LOST_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/me', '/auth/student/login', '/auth/logout', '/auth/logout-all'])
+/** 这些接口不会触发“去设密码页”（它们本来就是设密码流程的一部分）。 */
+const PASSWORD_SETUP_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/me', '/auth/student/login', '/auth/student/password', '/auth/logout', '/auth/logout-all'])
+
+/** 401，或 403 且服务端标明 wrong_app。其余 403（同意书、年龄门……）是业务提示，由页面处理。 */
+export function isAuthLostResponse(status: number, detail: Record<string, unknown> | null): boolean {
+  return status === 401 || (status === 403 && detail?.reason === 'wrong_app')
+}
 
 export interface ApiErrorInit {
   status: number
@@ -279,7 +317,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
 
   async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<HttpResult<T>> {
     const method = requestOptions.method ?? 'GET'
-    const headers: Record<string, string> = { Accept: 'application/json', ...(requestOptions.headers ?? {}) }
+    const headers: Record<string, string> = { Accept: 'application/json', 'X-Pg-App': 'student', ...(requestOptions.headers ?? {}) }
     if (WRITE_METHODS.has(method)) headers['X-Requested-With'] = 'proof-gym'
     const isMultipart = typeof FormData !== 'undefined' && requestOptions.formData instanceof FormData
     if (requestOptions.body !== undefined && !isMultipart) headers['Content-Type'] = 'application/json'
@@ -325,6 +363,27 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     const raw = await readBody(response)
     if (!response.ok) {
       const parsed = parseErrorBody(raw, response.status)
+      const bare = path.split('?')[0] ?? path
+      if (authLostHandler !== null && isAuthLostResponse(response.status, parsed.detail) && !AUTH_LOST_EXEMPT_PATHS.has(bare)) {
+        try {
+          authLostHandler({ status: response.status, code: parsed.code, path: bare })
+        } catch {
+          // 通知失败不能掩盖原始错误
+        }
+      }
+      // 403 PASSWORD_SETUP_REQUIRED 不是出错也不是会话失效：把学生带去设密码页（不在页面里显示错误）。
+      if (
+        passwordSetupHandler !== null &&
+        response.status === 403 &&
+        parsed.code === PASSWORD_SETUP_REQUIRED_CODE &&
+        !PASSWORD_SETUP_EXEMPT_PATHS.has(bare)
+      ) {
+        try {
+          passwordSetupHandler({ path: bare })
+        } catch {
+          // 通知失败不能掩盖原始错误
+        }
+      }
       throw new ApiError({ status: response.status, code: parsed.code, message: parsed.message, detail: parsed.detail })
     }
     return { data: parseSuccess<T>(raw, response.status), status: response.status, replayed }

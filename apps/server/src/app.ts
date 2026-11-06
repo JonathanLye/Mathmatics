@@ -38,6 +38,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   registerErrorHandler(app);
+  // requireStudent 通过 request.server 读这个开关（auth/session.ts assertPasswordReady）。
+  app.decorate('studentPasswordEnforce', config.studentPasswordEnforce);
   await app.register(cookie, { secret: config.sessionSecret });
   await app.register(rateLimit, {
     global: false,

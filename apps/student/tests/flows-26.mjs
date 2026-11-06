@@ -171,6 +171,16 @@ async function clickSliderAt(page, testId, ratio) {
   await loc.click({ position: { x: Math.max(2, Math.round(box.width * ratio)), y: Math.round(box.height / 2) } })
 }
 
+/** 提交一题自检。提交后的反馈面板盖着下面：点继续收起。最后一题直接到过场，没有面板。 */
+async function submitSelfcheck(page, testId, label) {
+  await tap(page, testId, label)
+  const panelContinue = page.getByTestId('feedback-continue')
+  if (await panelContinue.waitFor({ state: 'visible', timeout: 1200 }).then(() => true, () => false)) {
+    await panelContinue.click()
+    await page.getByTestId('feedback-panel').waitFor({ state: 'detached', timeout: 5000 })
+  }
+}
+
 async function main() {
   if (!fs.existsSync(distDir)) {
     console.error('[flows-26] 缺少构建产物：' + distDir + '，先运行 npm run build:mock')
@@ -264,15 +274,17 @@ async function main() {
     await page.waitForSelector('.pg-lines__add', { state: 'visible', timeout: 10000 })
     check('mock=l3-ready 打开第 3 层且「写完了」可点', (await isDisabled(page, 'finish-steps')) === false)
     await tap(page, 'finish-steps', '写完了')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'selfcheck-form')
 
-    check('进入第 4 层自检（自适应出题）', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('第 4 层 · 自检'))
+    check('进入第 4 层自检（自适应出题）', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('自检'))
     check('自检页只读展示自己写的证明', (await countTestId(page, 'selfcheck-proof')) === 1)
 
     // 第 1 题答太短 → 服务端记录 failed；自适应提示「先做下一题」并换题（retryGap）
     await fillTestId(page, 'selfcheck-input-SC1', '不知道')
     await waitEnabled(page, 'selfcheck-submit-SC1')
-    await tap(page, 'selfcheck-submit-SC1', '提交 SC1（太短）')
+    await submitSelfcheck(page, 'selfcheck-submit-SC1', '提交 SC1（太短）')
     await waitTestId(page, 'selfcheck-item-SC2')
     await page.waitForFunction(() => (document.querySelector('[data-testid="selfcheck-hint"]')?.textContent || '').includes('先做下一题'))
     check('自检答错：提示先做下一题（retryGap）', true)
@@ -281,30 +293,34 @@ async function main() {
     // SC2 通过 → 隔一道题后回来重试 SC1
     await fillTestId(page, 'selfcheck-input-SC2', 'N 只依赖 ε，与 n 无关。')
     await waitEnabled(page, 'selfcheck-submit-SC2')
-    await tap(page, 'selfcheck-submit-SC2', '提交 SC2')
+    await submitSelfcheck(page, 'selfcheck-submit-SC2', '提交 SC2')
     await page.waitForFunction(() => Boolean(document.querySelector('[data-testid="selfcheck-retry-SC1"]')))
     check('隔一道题后回来重试答错题', (await page.getByTestId('selfcheck-hint').innerText()).includes('再试一次'))
     await fillTestId(page, 'selfcheck-input-SC1', '第 1 行通分以后得到的。')
     await waitEnabled(page, 'selfcheck-submit-SC1')
-    await tap(page, 'selfcheck-submit-SC1', '重试提交 SC1')
+    await submitSelfcheck(page, 'selfcheck-submit-SC1', '重试提交 SC1')
     await waitTestId(page, 'selfcheck-item-SC3')
     check('重试通过后继续下一题', (await countTestId(page, 'selfcheck-item-SC3')) === 1)
 
     await fillTestId(page, 'selfcheck-input-SC3', '第 2 行会因为 n>N 换成 n≥1 而断。')
     await waitEnabled(page, 'selfcheck-submit-SC3')
-    await tap(page, 'selfcheck-submit-SC3', '提交 SC3')
+    await submitSelfcheck(page, 'selfcheck-submit-SC3', '提交 SC3')
     await waitTestId(page, 'selfcheck-item-SC5')
     await fillTestId(page, 'selfcheck-input-SC5', '用到了 n 是正整数（n+2>n>0）。')
     await waitEnabled(page, 'selfcheck-submit-SC5')
-    await tap(page, 'selfcheck-submit-SC5', '提交 SC5')
+    await submitSelfcheck(page, 'selfcheck-submit-SC5', '提交 SC5')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'transfer-form')
     await page.screenshot({ path: path.join(outDir, '4-自检通过.png'), fullPage: true })
     check('四道自检完成（含一次重试）后自动进入第 5 层', (await countTestId(page, 'selfcheck-form')) === 0)
-    check('进入第 5 层迁移题入口', (await bodyText(page)).includes('第 5 层 · 迁移题'))
+    check('进入第 5 层迁移题入口', (await bodyText(page)).includes('换题试试'))
     check('迁移题入口含 #47 思路对照图', (await countTestId(page, 'transfer-outline-preview')) === 1)
 
     // #47 的迁移题「完整作答」流程由 flows-47 覆盖；本流程验证 L5 → L6 跳层后继续总结 → 完成页
     await tap(page, 'transfer-skip', '跳过迁移题')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
 
     await waitTestId(page, 'summary-form')
     check('进入第 6 层总结：五问', (await countTestId(page, 'summary-item-4')) === 1)
@@ -325,7 +341,9 @@ async function main() {
     await waitTestId(page, 'completion-card')
     const doneText = await page.getByTestId('completion-card').innerText()
     check('提交总结后进入完成页（本题完成）', doneText.includes('本题完成'))
-    check('完成页显示 mathlib4 对照与未校验逻辑顺序提示', doneText.includes('mathlib4') && doneText.includes('未校验逻辑顺序'))
+    check('完成页有诚实说明，mathlib4 对照默认收起', doneText.includes('系统核对关键步骤是否齐全') && doneText.includes('延伸') && !doneText.includes('mathlib4'))
+    await page.getByTestId('completion-card').locator('.pg-fold__head').first().click()
+    check('展开“延伸”后看到 mathlib4 对照', (await page.getByTestId('completion-card').innerText()).includes('mathlib4'))
     await page.screenshot({ path: path.join(outDir, '7-完成页.png'), fullPage: true })
 
     await tap(page, 'add-to-notebook', '加入证明本')
@@ -334,9 +352,9 @@ async function main() {
     check('证明本显示已完成作业列表（含本题）', (await countTestId(page, 'notebook-card')) >= 1 && notebookText.includes('数列极限'))
     await page.screenshot({ path: path.join(outDir, '8-证明本.png'), fullPage: true })
 
-    await tap(page, 'notebook-open', '回到该题', 0)
-    await waitTestId(page, 'completion-card')
-    check('证明本「回到该题」重新打开该题（完成页）', (await countTestId(page, 'completion-card')) === 1)
+    await tap(page, 'notebook-open', '看这份证明', 0)
+    await waitTestId(page, 'proof-detail-lines')
+    check('证明本打开证明详情（只读）', page.url().includes('/pages/proof-detail/index') && (await countTestId(page, 'proof-detail-lines')) === 1)
   }
 
   try {

@@ -25,17 +25,17 @@ const LEVEL_TITLE: Record<'H2' | 'H3' | 'H4', string> = {
 export function previewTitle(preview: HintPreview): string {
   const level = preview.level
   if (!level) return ''
-  return '下一条：' + (LEVEL_TITLE[level] ?? '提示') + '（' + level + '）'
+  return '下一条：' + (LEVEL_TITLE[level] ?? '提示')
 }
 
 /** 成本行；没有 cost（blocked preview / 免费提示）时返回空串。 */
 export function previewCostLine(preview: HintPreview, budget?: BudgetView | null): string {
   if (typeof preview.cost !== 'number' || !Number.isFinite(preview.cost)) return ''
   const cost = formatRevealAmount(preview.cost)
-  if (!budget) return '这条会计入透露 ' + cost + '。'
+  if (!budget) return '这条会用掉提示额度 ' + cost + '。'
   const remain = Math.max(0, budget.revealMax - budget.revealUsed - preview.cost)
   return (
-    '这条会计入透露 ' + cost +
+    '这条会用掉提示额度 ' + cost +
     '（你已用 ' + formatRevealAmount(budget.revealUsed) + ' / ' + formatRevealAmount(budget.revealMax) + '），剩余 ' +
     formatRevealAmount(remain) + '。'
   )
@@ -63,7 +63,7 @@ export function previewReasonText(preview: HintPreview, remainSec?: number | nul
     case 'rapid_lock':
       return wait !== null && wait > 0 ? '刚连续点了几次，先歇 ' + wait + ' 秒再来。' : '刚连续点了几次，过一会儿再来。'
     case 'budget':
-      return '本题透露额度已用完，不再升级提示。'
+      return '本题提示额度已用完，不再升级提示。'
     case 'layer':
       return '当前层还不能领取提示。'
     case 'test_mode':
@@ -105,9 +105,9 @@ export const SOFT_LANDING_ORDER: SoftLandingActionId[] = [
   'flag_teacher',
 ]
 
-/** 后端 /flag-teacher 尚未实现（openapi.yaml:591）：按钮置灰并注明「即将上线」，不假成功。 */
-export function softLandingAvailable(action: string): boolean {
-  return action !== 'flag_teacher'
+/** /flag-teacher 已实现（U15）：软着陆出路都可点；是否真能找老师由 state.help.canFlag 决定（见抽屉）。 */
+export function softLandingAvailable(_action: string): boolean {
+  return true
 }
 
 export function softLandingLabel(action: string): string {

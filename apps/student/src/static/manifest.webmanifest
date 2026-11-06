@@ -1,0 +1,17 @@
+{
+  "name": "证明陪练场",
+  "short_name": "证明陪练",
+  "description": "一步一步，把证明写出来。",
+  "lang": "zh-CN",
+  "start_url": "/#/pages/home/index",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0fb5a6",
+  "icons": [
+    { "src": "/static/pwa/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/pwa/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -26,14 +26,35 @@ models:
   decide:
     provider: typesafe
     model: jev-1.13
+  # 求助回答与语义判定（U15）。默认全部走 DeepSeek V4.1 Flash（API 名 deepseek-flash）：只需配 DEEPSEEK_API_KEY。
+  # 通义千问账号恢复后，把下面 fast / strong / review 的 provider 改回 dashscope（模型 qwen3.8-flash），
+  # 或用 MODEL_FAST / MODEL_REVIEW 只覆盖模型名；qwen_fast 是现成的备用条目。
+  # 单价为估算（元 / 百万 token），只用于 app.model_calls.cost_cny 与每日预算。
   fast:
     provider: deepseek
     model: deepseek-flash
     thinking: false
+    inputCnyPerM: 2
+    outputCnyPerM: 8
   strong:
     provider: deepseek
-    model: deepseek-v4-pro
-    thinking: true
+    model: deepseek-flash
+    thinking: false
+    inputCnyPerM: 2
+    outputCnyPerM: 8
+  # 闸门第三层的独立复核（看得到未透露的步骤，和生成不是同一次调用）。
+  review:
+    provider: deepseek
+    model: deepseek-flash
+    thinking: false
+    inputCnyPerM: 2
+    outputCnyPerM: 8
+  qwen_fast:
+    provider: dashscope
+    model: qwen3.8-flash
+    thinking: false
+    inputCnyPerM: 0.3
+    outputCnyPerM: 3
   cross:
     provider: dashscope
     model: qwen3.8-flash
@@ -52,4 +73,8 @@ flags:
   ocr.primary: simpletex
   ocr.cross: true
   photo.enabled: true
+  # 求助回答：关（默认）→ 模板；help.llm.shadow → 模板先返回、模型在后台只记录；help.llm → 模型回答生效（过三重闸门）。
+  # 评测达标后由部署环境变量打开：FLAG_HELP_LLM=true / FLAG_HELP_LLM_SHADOW=true / FLAG_LLM_FALLBACKCLASSIFY=true。
+  help.llm: false
+  help.llm.shadow: false
   llm.fallbackClassify: false
