@@ -8,6 +8,7 @@ import { eventRoutes } from './events.ts';
 import { recognitionRoutes } from './recognitions.ts';
 import { authRoutes, type AuthRouteOptions } from './auth.ts';
 import { consentRoutes } from './consents.ts';
+import { progressRoutes } from './progress.ts';
 import { teacherRoutes } from './teacher/index.ts';
 
 // 06 §1 / 05 §7：写接口必须带 X-Requested-With: proof-gym。跨站表单无法加自定义头，
@@ -31,6 +32,7 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions & { gateway: ModelGa
   await api.register(authRoutes, { db, config, contract });
   await api.register(consentRoutes, { db, config, contract });
   await api.register(attemptRoutes, { db, config, contract });
+  await api.register(progressRoutes, { db, config, contract });
   await api.register(eventRoutes, { db, config, contract });
   await api.register(recognitionRoutes, { db, config, contract, gateway });
   // C：教师端接口（/teacher/*）。本文件属 B，新增这一行注册需要 B 评审。

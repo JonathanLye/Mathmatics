@@ -643,6 +643,200 @@
         }
       }
     },
+    "/student/mistakes": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "我的错题本：按卡点分组（定义没写全 / 依据缺失 / 放缩卡住 / 靠提示写出的步骤 / 自检没通过 / 其他卡点），每项可直接重做",
+        "operationId": "getMistakes",
+        "responses": {
+          "200": {
+            "description": "错题本（空分组不返回；测验布置结束前不出现）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mistakes"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/attempts/{attemptId}/redo": {
+      "post": {
+        "tags": [
+          "attempt"
+        ],
+        "summary": "重做：在本人已完成的作答上新建重做作答（kind=redo，强制练习模式；已有未结束的重做则返回它）",
+        "description": "重做不计经验（来源键与首次相同）、不进指标与导出；第 5 层（迁移题）自动跳过；布置关闭后仍可重做。测验布置开放或未开始期间返回 403 TEST_MODE_RESTRICTED；作答未完成返回 409；他人的作答返回 403。",
+        "operationId": "startRedo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/attemptId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/StateReplay"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/progress": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "学习进度：经验、连胜、本周每日、徽章",
+        "description": "连胜按 Asia/Shanghai 自然日算，当天有经验入账才算一天；每周（周一到周日）自动有一张请假卡。徽章目录在服务端代码里。",
+        "operationId": "getProgress",
+        "responses": {
+          "200": {
+            "description": "进度",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/settings": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "我的设置（昵称、每日目标、默认输入、外观、音效/动效/震动、引导进度）",
+        "description": "要求已签同意书（与作答接口同一守卫）。",
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "description": "设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "student"
+        ],
+        "summary": "修改设置（只传要改的字段）；nickname 写入 users.display_name，trim 后 1–16 个字",
+        "operationId": "patchSettings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentSettingsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "修改后的设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/feedback": {
+      "post": {
+        "tags": [
+          "student"
+        ],
+        "summary": "问题反馈",
+        "operationId": "submitFeedback",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已收到"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/attempts/{attemptId}": {
       "get": {
         "tags": [
@@ -1323,7 +1517,7 @@
         "tags": [
           "attempt"
         ],
-        "summary": "题目关闭且教师已发布讲评后，查看参考证明与讲评（之前返回 403）",
+        "summary": "教师已发布讲评、且本人写完（或布置已结束）后，查看参考证明与讲评（否则 403；读参考证明记审计）",
         "operationId": "getPublishedReview",
         "parameters": [
           {
@@ -1336,26 +1530,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "proofs"
-                  ],
-                  "properties": {
-                    "proofs": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/MathText"
-                      }
-                    },
-                    "note": {
-                      "$ref": "#/components/schemas/MathText"
-                    }
-                  }
+                  "$ref": "#/components/schemas/PublishedReview"
                 }
               }
             }
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3870,6 +4053,9 @@
               "properties": {
                 "state": {
                   "$ref": "#/components/schemas/AttemptState"
+                },
+                "rewards": {
+                  "$ref": "#/components/schemas/Rewards"
                 }
               }
             }
@@ -4804,7 +4990,8 @@
             "type": "string",
             "enum": [
               "main",
-              "transfer"
+              "transfer",
+              "redo"
             ]
           },
           "status": {
@@ -6152,6 +6339,7 @@
         "properties": {
           "cards": {
             "type": "array",
+            "description": "本人已完成的作答（kind=main|redo），最新在前，最多 100 条",
             "items": {
               "type": "object",
               "properties": {
@@ -6159,7 +6347,31 @@
                   "type": "string",
                   "format": "uuid"
                 },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "main",
+                    "redo"
+                  ]
+                },
+                "parentAttemptId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid"
+                },
+                "assignmentId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "problemId": {
+                  "type": "string"
+                },
                 "title": {
+                  "type": "string"
+                },
+                "chapter": {
                   "type": "string"
                 },
                 "proof": {
@@ -6168,6 +6380,28 @@
                     "$ref": "#/components/schemas/MathText"
                   },
                   "description": "学生自己写的证明"
+                },
+                "lines": {
+                  "type": "array",
+                  "description": "同 proof，带行号与依据",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "n",
+                      "statement"
+                    ],
+                    "properties": {
+                      "n": {
+                        "type": "integer"
+                      },
+                      "statement": {
+                        "$ref": "#/components/schemas/MathText"
+                      },
+                      "justification": {
+                        "$ref": "#/components/schemas/MathText"
+                      }
+                    }
+                  }
                 },
                 "summary": {
                   "type": "array",
@@ -6183,7 +6417,22 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "description": "本次出现过的卡点分组名"
+                },
+                "teacherNote": {
+                  "$ref": "#/components/schemas/MathText",
+                  "description": "教师已发布的讲评（未发布时没有）"
+                },
+                "reviewPublished": {
+                  "type": "boolean"
+                },
+                "canRedo": {
+                  "type": "boolean",
+                  "description": "测验布置未结束时为 false"
+                },
+                "independence": {
+                  "type": "number"
                 },
                 "completedAt": {
                   "type": "string",
@@ -6196,7 +6445,469 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AssignmentCard"
+            },
+            "description": "有卡点且还没重做成功的作答（attemptId 即可重做的作答）"
+          }
+        }
+      },
+      "MistakeItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "group",
+          "problemTitle",
+          "chapter",
+          "attemptId",
+          "lineExcerpt",
+          "note",
+          "createdAt",
+          "canRedo"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "definition",
+              "basis",
+              "scaling",
+              "hinted",
+              "selfcheck",
+              "other"
+            ]
+          },
+          "problemTitle": {
+            "type": "string"
+          },
+          "chapter": {
+            "type": "string"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "重做时调用 POST /student/attempts/{attemptId}/redo"
+          },
+          "lineExcerpt": {
+            "$ref": "#/components/schemas/MathText"
+          },
+          "note": {
+            "$ref": "#/components/schemas/MathText",
+            "description": "以问题或提醒的口吻，不判对错"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "canRedo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Mistakes": {
+        "type": "object",
+        "required": [
+          "groups",
+          "total"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "group",
+                "title",
+                "count",
+                "items"
+              ],
+              "properties": {
+                "group": {
+                  "type": "string",
+                  "enum": [
+                    "definition",
+                    "basis",
+                    "scaling",
+                    "hinted",
+                    "selfcheck",
+                    "other"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MistakeItem"
+                  }
+                }
+              }
             }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "Rewards": {
+        "type": "object",
+        "description": "这一步记入的经验与徽章（add-only；没有新经验时不返回；测验作答不返回，完成时在后台一次结算）",
+        "required": [
+          "xp",
+          "items",
+          "badges"
+        ],
+        "properties": {
+          "xp": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "amount",
+                "label"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "key_own",
+                    "key_hinted",
+                    "layer",
+                    "problem",
+                    "daily"
+                  ]
+                },
+                "amount": {
+                  "type": "integer"
+                },
+                "label": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "badges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "title",
+                "desc"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "streak": {
+            "type": "object",
+            "required": [
+              "current",
+              "extended"
+            ],
+            "properties": {
+              "current": {
+                "type": "integer"
+              },
+              "extended": {
+                "type": "boolean",
+                "description": "今天第一次有进展"
+              }
+            }
+          },
+          "goalReached": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StudentProgress": {
+        "type": "object",
+        "required": [
+          "xpTotal",
+          "xpToday",
+          "keysToday",
+          "dailyGoal",
+          "streak",
+          "week",
+          "badges",
+          "daysLearned"
+        ],
+        "properties": {
+          "xpTotal": {
+            "type": "integer"
+          },
+          "xpToday": {
+            "type": "integer"
+          },
+          "keysToday": {
+            "type": "integer",
+            "description": "今天自己写出的关键步骤数（含借助提示）"
+          },
+          "dailyGoal": {
+            "type": "integer"
+          },
+          "streak": {
+            "type": "object",
+            "required": [
+              "current",
+              "best",
+              "freezeAvailable",
+              "usedFreezeDays"
+            ],
+            "properties": {
+              "current": {
+                "type": "integer"
+              },
+              "best": {
+                "type": "integer"
+              },
+              "freezeAvailable": {
+                "type": "boolean",
+                "description": "本周的请假卡还没用"
+              },
+              "usedFreezeDays": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            }
+          },
+          "week": {
+            "type": "array",
+            "description": "本周（周一到周日，Asia/Shanghai）每天的经验与关键步骤",
+            "items": {
+              "type": "object",
+              "required": [
+                "day",
+                "xp",
+                "keys"
+              ],
+              "properties": {
+                "day": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "xp": {
+                  "type": "integer"
+                },
+                "keys": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "badges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "title",
+                "desc",
+                "earnedAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "earnedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "progress": {
+                  "type": "object",
+                  "required": [
+                    "current",
+                    "target"
+                  ],
+                  "properties": {
+                    "current": {
+                      "type": "integer"
+                    },
+                    "target": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "daysLearned": {
+            "type": "integer"
+          }
+        }
+      },
+      "StudentSettings": {
+        "type": "object",
+        "required": [
+          "nickname",
+          "dailyGoal",
+          "defaultInput",
+          "theme",
+          "sound",
+          "motion",
+          "haptics",
+          "onboarding"
+        ],
+        "properties": {
+          "nickname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dailyGoal": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "defaultInput": {
+            "type": "string",
+            "enum": [
+              "hand",
+              "keyboard",
+              "photo"
+            ]
+          },
+          "theme": {
+            "type": "string",
+            "enum": [
+              "system",
+              "light",
+              "dark"
+            ]
+          },
+          "sound": {
+            "type": "boolean"
+          },
+          "motion": {
+            "type": "boolean"
+          },
+          "haptics": {
+            "type": "boolean"
+          },
+          "onboarding": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "StudentSettingsPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "dailyGoal": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "defaultInput": {
+            "type": "string",
+            "enum": [
+              "hand",
+              "keyboard",
+              "photo"
+            ]
+          },
+          "theme": {
+            "type": "string",
+            "enum": [
+              "system",
+              "light",
+              "dark"
+            ]
+          },
+          "sound": {
+            "type": "boolean"
+          },
+          "motion": {
+            "type": "boolean"
+          },
+          "haptics": {
+            "type": "boolean"
+          },
+          "onboarding": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "StudentFeedback": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "body"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "idea",
+              "content",
+              "other"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "page": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      },
+      "PublishedReview": {
+        "type": "object",
+        "required": [
+          "proofs"
+        ],
+        "properties": {
+          "proofs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MathText"
+            }
+          },
+          "note": {
+            "$ref": "#/components/schemas/MathText"
           }
         }
       }

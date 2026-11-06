@@ -359,7 +359,7 @@ CREATE TABLE app.attempts (
   user_id            uuid NOT NULL REFERENCES app.users(id),
   problem_id         text NOT NULL,
   problem_version    integer NOT NULL,
-  kind               text NOT NULL DEFAULT 'main' CHECK (kind IN ('main', 'transfer')),
+  kind               text NOT NULL DEFAULT 'main' CONSTRAINT attempts_kind_check CHECK (kind IN ('main', 'transfer', 'redo')),  -- redo：学生在证明本/错题本里重做（0003）；不进指标与导出
   parent_attempt_id  uuid REFERENCES app.attempts(id),
   mode               text NOT NULL CHECK (mode IN ('practice', 'test')),
   arm                text CHECK (arm IN ('A', 'B')),
@@ -381,6 +381,7 @@ CREATE TABLE app.attempts (
 );
 CREATE UNIQUE INDEX attempts_one_main ON app.attempts (assignment_id, user_id) WHERE kind = 'main';
 CREATE UNIQUE INDEX attempts_one_transfer ON app.attempts (parent_attempt_id) WHERE kind = 'transfer';
+CREATE UNIQUE INDEX attempts_one_open_redo ON app.attempts (parent_attempt_id) WHERE kind = 'redo' AND status IN ('active', 'parked', 'locked');
 CREATE INDEX attempts_user ON app.attempts (user_id, started_at DESC);
 CREATE INDEX attempts_assignment_status ON app.attempts (assignment_id, status);
 
@@ -619,6 +620,49 @@ CREATE TABLE app.attempt_metrics (
   metrics      jsonb NOT NULL,                        -- 见 08-事件与数据字典.md §4
   computed_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- 学生设置、进度与反馈（0005）
+CREATE TABLE app.student_settings (
+  user_id      uuid PRIMARY KEY REFERENCES app.users(id),
+  daily_goal   smallint NOT NULL DEFAULT 3 CHECK (daily_goal BETWEEN 1 AND 20),   -- 每天自己写出的关键步骤数
+  default_input text NOT NULL DEFAULT 'hand' CHECK (default_input IN ('hand', 'keyboard', 'photo')),
+  theme        text NOT NULL DEFAULT 'system' CHECK (theme IN ('system', 'light', 'dark')),
+  sound        boolean NOT NULL DEFAULT true,
+  motion       boolean NOT NULL DEFAULT true,
+  haptics      boolean NOT NULL DEFAULT true,
+  onboarding   jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.xp_ledger (            -- 经验台账：只追加；(user_id, source_key) 唯一保证幂等，重做/重放不重复发
+  id          bigserial PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES app.users(id),
+  source_key  text NOT NULL,                          -- key:{题}:{步骤} / layer:{题}:L{n} / done:{题} / daily:{日期}
+  kind        text NOT NULL CHECK (kind IN ('key_own', 'key_hinted', 'layer', 'problem', 'daily')),
+  amount      integer NOT NULL,
+  day         date NOT NULL,                          -- Asia/Shanghai 自然日
+  attempt_id  uuid REFERENCES app.attempts(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, source_key)
+);
+CREATE INDEX xp_ledger_user_day ON app.xp_ledger (user_id, day);
+
+CREATE TABLE app.student_badges (
+  user_id    uuid NOT NULL REFERENCES app.users(id),
+  badge_id   text NOT NULL,                           -- 徽章目录在代码里（apps/server/src/progress/badges.ts）
+  earned_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, badge_id)
+);
+
+CREATE TABLE app.student_feedback (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES app.users(id),
+  kind        text NOT NULL CHECK (kind IN ('bug', 'idea', 'content', 'other')),
+  body        text NOT NULL,
+  page        text,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX student_feedback_created ON app.student_feedback (created_at DESC);
 
 -- =====================================================================
 -- 8. 只追加事件（按月分区）

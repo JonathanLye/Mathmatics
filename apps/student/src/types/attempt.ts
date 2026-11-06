@@ -8,7 +8,7 @@
 
 export type LayerId = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6'
 export type LayerStatusValue = 'locked' | 'active' | 'done' | 'skipped' | 'disabled'
-export type AttemptKind = 'main' | 'transfer'
+export type AttemptKind = 'main' | 'transfer' | 'redo'
 export type AttemptStatus = 'active' | 'parked' | 'locked' | 'completed' | 'abandoned'
 export type AttemptMode = 'practice' | 'test'
 export type NoteKind = 'annotation' | 'hint' | 'concept' | 'system' | 'refusal' | 'lesson' | 'nudge' | 'student'
@@ -305,13 +305,54 @@ export interface NotebookCard {
   mock?: string
   /** 以下为「稍后重做」需要的字段（对应 openapi Notebook/AssignmentCard 子集；#24 由服务端提供）。 */
   problemId?: string
-  kind?: 'main' | 'transfer'
+  kind?: 'main' | 'transfer' | 'redo'
   independence?: number | null
   revealUsed?: number
   keysTotal?: number
   redoRecommended?: boolean
   assignmentId?: string | null
   problemVersion?: number
+  /** 以下来自真实 GET /student/notebook（openapi Notebook.cards，Task 6 新增，均可缺省）。 */
+  parentAttemptId?: string | null
+  chapter?: string
+  lines?: Array<{ n: number; statement: string; justification?: string }>
+  teacherNote?: string
+  reviewPublished?: boolean
+  /** 测验布置未结束时为 false；缺省按 true */
+  canRedo?: boolean
+}
+
+export type MistakeGroupId = 'definition' | 'basis' | 'scaling' | 'hinted' | 'selfcheck' | 'other'
+
+/** GET /student/mistakes 的一项（openapi MistakeItem）。attemptId 即重做所用的作答 ID。 */
+export interface MistakeItem {
+  id: string
+  group: MistakeGroupId
+  problemTitle: string
+  chapter: string
+  attemptId: string
+  lineExcerpt: string
+  note: string
+  createdAt: string
+  canRedo: boolean
+}
+
+export interface MistakeGroup {
+  group: MistakeGroupId
+  title: string
+  count: number
+  items: MistakeItem[]
+}
+
+export interface MistakesView {
+  groups: MistakeGroup[]
+  total: number
+}
+
+/** GET /attempts/{id}/review（openapi PublishedReview）。 */
+export interface PublishedReview {
+  proofs: string[]
+  note?: string
 }
 
 export interface NotebookView {
@@ -428,3 +469,45 @@ export interface InputMeta {
   recogId?: string
   pasteChars?: number
 }
+
+/** 作答写接口响应里可选的 rewards（openapi Rewards）。测验作答不返回。 */
+export interface RewardsView {
+  xp: number
+  items: Array<{ kind: 'key_own' | 'key_hinted' | 'layer' | 'problem' | 'daily'; amount: number; label: string }>
+  badges: Array<{ id: string; title: string; desc: string }>
+  streak?: { current: number; extended: boolean }
+  goalReached?: boolean
+}
+
+/** GET /student/progress（openapi StudentProgress）。 */
+export interface ProgressView {
+  xpTotal: number
+  xpToday: number
+  keysToday: number
+  dailyGoal: number
+  streak: { current: number; best: number; freezeAvailable: boolean; usedFreezeDays: string[] }
+  week: Array<{ day: string; xp: number; keys: number }>
+  badges: Array<{
+    id: string
+    title: string
+    desc: string
+    earnedAt: string | null
+    progress?: { current: number; target: number }
+  }>
+  daysLearned: number
+}
+
+/** GET/PATCH /student/settings（openapi StudentSettings）。 */
+export interface SettingsView {
+  nickname: string | null
+  dailyGoal: number
+  defaultInput: 'hand' | 'keyboard' | 'photo'
+  theme: 'system' | 'light' | 'dark'
+  sound: boolean
+  motion: boolean
+  haptics: boolean
+  onboarding: Record<string, unknown>
+}
+export type SettingsPatch = Partial<Omit<SettingsView, 'nickname'>> & { nickname?: string }
+
+export type FeedbackKind = 'bug' | 'idea' | 'content' | 'other'

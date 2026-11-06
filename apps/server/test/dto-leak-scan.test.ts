@@ -72,6 +72,15 @@ const MAIN_OPS = [
   'POST /recognitions/{recogId}/confirm',
   'GET /attempts/{attemptId}/lesson/{conceptId}',
   'POST /attempts/{attemptId}/lesson/{conceptId}/check',
+  // Task 6 / 9：证明本、错题本、重做、讲评、进度、设置、反馈
+  'GET /student/notebook',
+  'GET /student/mistakes',
+  'POST /student/attempts/{attemptId}/redo',
+  'GET /attempts/{attemptId}/review',
+  'GET /student/progress',
+  'GET /student/settings',
+  'PATCH /student/settings',
+  'POST /student/feedback',
 ] as const;
 
 // 迁移题子作答（kind=transfer，从第 3 层开始）走到的接口。
@@ -217,7 +226,7 @@ async function call(
   owner: string,
   opts: { params?: Record<string, string>; payload?: unknown; extraExempt?: readonly string[]; tag?: Tag; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; json: Record<string, any>; body: string; headers: Record<string, unknown> }> {
-  const [method, template] = op.split(' ') as ['GET' | 'POST', string];
+  const [method, template] = op.split(' ') as ['GET' | 'POST' | 'PATCH', string];
   const params = opts.params ?? {};
   const url = template.replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? `{${name}}`);
   const attemptId = params.attemptId;
@@ -555,6 +564,19 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   });
   await call(ctx, 'GET /attempts/{attemptId}', main, { params });
   const done = (await call(ctx, 'GET /student/home', main)).json;
+
+  // —— 完成之后：证明本、错题本、重做（新建的是 kind=redo 的空白作答）、进度、设置、反馈。
+  // 学生自己写的行会回显，已写出的路线 key 按 call() 的口径豁免；其余字段（错因提示语、徽章文案……）一律要 0 命中。
+  await call(ctx, 'GET /student/notebook', main);
+  await call(ctx, 'GET /student/mistakes', main);
+  await call(ctx, 'POST /student/attempts/{attemptId}/redo', main, { params });
+  await call(ctx, 'GET /student/progress', main);
+  await call(ctx, 'GET /student/settings', main);
+  await call(ctx, 'PATCH /student/settings', main, { payload: { nickname: '小明', theme: 'dark' } });
+  await call(ctx, 'POST /student/feedback', main, { payload: { kind: 'idea', body: '希望键盘能快一点' } });
+  // 讲评：教师发布后返回参考证明——这是有意公开的内容，所以豁免本题全部 key；其余题目的片段仍然要 0 命中。
+  await db.query(`update app.assignments set review_published_at = now(), review_note = '讲评：先看整体结构。' where id = $1`, [assignmentId]);
+  await call(ctx, 'GET /attempts/{attemptId}/review', main, { params, extraExempt: secret.keys.map((k) => k.id) });
 
   await call(ctx, 'POST /auth/logout', main);
   // 退出所有设备：用学号 + 密码重新登录一次拿到新会话，再整体作废

@@ -72,7 +72,7 @@ export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<Vie
   ).rows[0];
   const child = (
     await q.query<{ id: string; problem_id: string; problem_version: number }>(
-      `select id, problem_id, problem_version from app.attempts where parent_attempt_id = $1 order by started_at limit 1`,
+      `select id, problem_id, problem_version from app.attempts where parent_attempt_id = $1 and kind = 'transfer' order by started_at limit 1`,
       [row.id],
     )
   ).rows[0];

@@ -26,7 +26,7 @@ export const CATALOG = [
   ['consent.submit', V, '提交知情同意', { version: str('同意书版本'), items: { type: 'object', properties: { service: bool('服务所需处理（必选）'), crossBorderHosting: bool('数据存储于中国香港服务器（P0 必选）'), crossBorderModel: bool('去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev）'), monitoring: bool('作答过程监测与切屏记录（必选）'), research: bool('匿名数据用于教研（可选）') } } }, ['version', 'items']],
   ['nav.page', S, '页面切换', { page: str('页面 ID'), from: str('来源页面') }, ['page']],
   // —— 作答生命周期
-  ['attempt.start', V, '开始或恢复一次作答', { resumed: bool('是否恢复'), kind: en(['main', 'transfer'], '主题或迁移题'), parentAttemptId: str('迁移题的父作答', { format: 'uuid' }) }, ['resumed', 'kind']],
+  ['attempt.start', V, '开始或恢复一次作答', { resumed: bool('是否恢复'), kind: en(['main', 'transfer', 'redo'], '主题、迁移题或重做'), parentAttemptId: str('迁移题或重做的父作答', { format: 'uuid' }) }, ['resumed', 'kind']],
   ['attempt.park', V, '学生搁置本题', { layer: LAYER }, ['layer']],
   ['attempt.complete', V, '本题完成', { reveal: num('累计透露量'), independence: num('独立度 0–1'), keysOwn: int('自己写出的关键步骤数'), keysTotal: int('关键步骤总数'), durationMs: ms('开始到完成'), activeMs: ms('前台有效时长'), teacherOverrides: arr(str(''), '经教师授权补发的 H4 关键步骤') }, ['reveal', 'independence', 'keysOwn', 'keysTotal', 'durationMs']],
   ['attempt.abandon', V, '布置关闭时仍未完成', { reason: en(['closed', 'teacher', 'timeout'], '原因'), layer: LAYER }, ['reason']],

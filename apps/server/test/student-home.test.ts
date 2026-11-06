@@ -86,7 +86,14 @@ describe('GET /student/home（#74）', () => {
     const cookie = await studentCookie();
     const { status, body } = await getHome(cookie);
     expect(status).toBe(200);
-    expect(body).toEqual({ inProgress: [], todo: [], done: [] });
+    // Task 6：首页带本周计数与证明本计数（没有作答时都是 0）
+    expect(body).toEqual({
+      inProgress: [],
+      todo: [],
+      done: [],
+      week: { keysOwn: 0, keysTotal: 0, problemsDone: 0 },
+      notebook: { cards: 0, toRedo: 0 },
+    });
   });
 
   it('未开始的布置进 todo，带 assignmentId/title/mode/status', async () => {

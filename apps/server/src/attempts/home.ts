@@ -1,6 +1,8 @@
 import type { ContractValidator } from '../contract.ts';
 import type { Db } from '../db/index.ts';
 
+import { notebookCounts } from './notebook.ts';
+
 // content.problem_versions.public 里首页用到的字段（problem-package.schema.json 的 public 子集）。
 interface PublicProblem {
   title?: string;
@@ -77,7 +79,28 @@ export async function studentHome(db: Db, contract: ContractValidator, userId: s
     else todo.push(card);
   }
 
-  const dto: Record<string, unknown> = { inProgress, todo, done };
+  // 本周（Asia/Shanghai，周一起）自己写出的关键步骤；只统计 kind='main'，重做与迁移题不计入。
+  const week = (
+    await db.query<{ keys_own: string; keys_total: string; problems_done: string }>(
+      `select coalesce(sum(keys_own), 0)::text as keys_own, coalesce(sum(keys_total), 0)::text as keys_total,
+              count(*) filter (where status = 'completed')::text as problems_done
+         from app.attempts
+        where user_id = $1 and kind = 'main'
+          and (updated_at at time zone 'Asia/Shanghai') >= date_trunc('week', now() at time zone 'Asia/Shanghai')`,
+      [userId],
+    )
+  ).rows[0];
+  const dto: Record<string, unknown> = {
+    inProgress,
+    todo,
+    done,
+    week: {
+      keysOwn: Number(week?.keys_own ?? 0),
+      keysTotal: Number(week?.keys_total ?? 0),
+      problemsDone: Number(week?.problems_done ?? 0),
+    },
+    notebook: await notebookCounts(db, userId),
+  };
   contract.validate('StudentHome', dto);
   return dto;
 }

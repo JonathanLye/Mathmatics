@@ -255,6 +255,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/student/mistakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的错题本：按卡点分组（定义没写全 / 依据缺失 / 放缩卡住 / 靠提示写出的步骤 / 自检没通过 / 其他卡点），每项可直接重做 */
+        get: operations["getMistakes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/attempts/{attemptId}/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 重做：在本人已完成的作答上新建重做作答（kind=redo，强制练习模式；已有未结束的重做则返回它）
+         * @description 重做不计经验（来源键与首次相同）、不进指标与导出；第 5 层（迁移题）自动跳过；布置关闭后仍可重做。测验布置开放或未开始期间返回 403 TEST_MODE_RESTRICTED；作答未完成返回 409；他人的作答返回 403。
+         */
+        post: operations["startRedo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 学习进度：经验、连胜、本周每日、徽章
+         * @description 连胜按 Asia/Shanghai 自然日算，当天有经验入账才算一天；每周（周一到周日）自动有一张请假卡。徽章目录在服务端代码里。
+         */
+        get: operations["getProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的设置（昵称、每日目标、默认输入、外观、音效/动效/震动、引导进度）
+         * @description 要求已签同意书（与作答接口同一守卫）。
+         */
+        get: operations["getSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改设置（只传要改的字段）；nickname 写入 users.display_name，trim 后 1–16 个字 */
+        patch: operations["patchSettings"];
+        trace?: never;
+    };
+    "/student/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 问题反馈 */
+        post: operations["submitFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/attempts/{attemptId}": {
         parameters: {
             query?: never;
@@ -541,7 +636,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 题目关闭且教师已发布讲评后，查看参考证明与讲评（之前返回 403） */
+        /** 教师已发布讲评、且本人写完（或布置已结束）后，查看参考证明与讲评（否则 403；读参考证明记审计） */
         get: operations["getPublishedReview"];
         put?: never;
         post?: never;
@@ -1482,7 +1577,7 @@ export interface components {
             parentAttemptId?: string | null;
             stateVersion: number;
             /** @enum {string} */
-            kind: "main" | "transfer";
+            kind: "main" | "transfer" | "redo";
             /** @enum {string} */
             status: "active" | "parked" | "locked" | "completed" | "abandoned";
             /** @enum {string} */
@@ -1883,20 +1978,163 @@ export interface components {
             rows?: number | null;
         };
         Notebook: {
+            /** @description 本人已完成的作答（kind=main|redo），最新在前，最多 100 条 */
             cards?: {
                 /** Format: uuid */
                 attemptId?: string;
+                /** @enum {string} */
+                kind?: "main" | "redo";
+                /** Format: uuid */
+                parentAttemptId?: string | null;
+                /** Format: uuid */
+                assignmentId?: string;
+                problemId?: string;
                 title?: string;
+                chapter?: string;
                 /** @description 学生自己写的证明 */
                 proof?: components["schemas"]["MathText"][];
+                /** @description 同 proof，带行号与依据 */
+                lines?: {
+                    n: number;
+                    statement: components["schemas"]["MathText"];
+                    justification?: components["schemas"]["MathText"];
+                }[];
                 summary?: components["schemas"]["MathText"][];
                 /** @description 通过核验后才展示标准定义 */
                 definition?: components["schemas"]["MathText"];
+                /** @description 本次出现过的卡点分组名 */
                 weakPoints?: string[];
+                /** @description 教师已发布的讲评（未发布时没有） */
+                teacherNote?: components["schemas"]["MathText"];
+                reviewPublished?: boolean;
+                /** @description 测验布置未结束时为 false */
+                canRedo?: boolean;
+                independence?: number;
                 /** Format: date-time */
                 completedAt?: string;
             }[];
+            /** @description 有卡点且还没重做成功的作答（attemptId 即可重做的作答） */
             toRedo?: components["schemas"]["AssignmentCard"][];
+        };
+        MistakeItem: {
+            id: string;
+            /** @enum {string} */
+            group: "definition" | "basis" | "scaling" | "hinted" | "selfcheck" | "other";
+            problemTitle: string;
+            chapter: string;
+            /**
+             * Format: uuid
+             * @description 重做时调用 POST /student/attempts/{attemptId}/redo
+             */
+            attemptId: string;
+            lineExcerpt: components["schemas"]["MathText"];
+            /** @description 以问题或提醒的口吻，不判对错 */
+            note: components["schemas"]["MathText"];
+            /** Format: date-time */
+            createdAt: string;
+            canRedo: boolean;
+        };
+        Mistakes: {
+            groups: {
+                /** @enum {string} */
+                group: "definition" | "basis" | "scaling" | "hinted" | "selfcheck" | "other";
+                title: string;
+                count: number;
+                items: components["schemas"]["MistakeItem"][];
+            }[];
+            total: number;
+        };
+        /** @description 这一步记入的经验与徽章（add-only；没有新经验时不返回；测验作答不返回，完成时在后台一次结算） */
+        Rewards: {
+            xp: number;
+            items: {
+                /** @enum {string} */
+                kind: "key_own" | "key_hinted" | "layer" | "problem" | "daily";
+                amount: number;
+                label: string;
+            }[];
+            badges: {
+                id: string;
+                title: string;
+                desc: string;
+            }[];
+            streak?: {
+                current: number;
+                /** @description 今天第一次有进展 */
+                extended: boolean;
+            };
+            goalReached?: boolean;
+        };
+        StudentProgress: {
+            xpTotal: number;
+            xpToday: number;
+            /** @description 今天自己写出的关键步骤数（含借助提示） */
+            keysToday: number;
+            dailyGoal: number;
+            streak: {
+                current: number;
+                best: number;
+                /** @description 本周的请假卡还没用 */
+                freezeAvailable: boolean;
+                usedFreezeDays: string[];
+            };
+            /** @description 本周（周一到周日，Asia/Shanghai）每天的经验与关键步骤 */
+            week: {
+                /** Format: date */
+                day: string;
+                xp: number;
+                keys: number;
+            }[];
+            badges: {
+                id: string;
+                title: string;
+                desc: string;
+                /** Format: date-time */
+                earnedAt: string | null;
+                progress?: {
+                    current: number;
+                    target: number;
+                };
+            }[];
+            daysLearned: number;
+        };
+        StudentSettings: {
+            nickname: string | null;
+            dailyGoal: number;
+            /** @enum {string} */
+            defaultInput: "hand" | "keyboard" | "photo";
+            /** @enum {string} */
+            theme: "system" | "light" | "dark";
+            sound: boolean;
+            motion: boolean;
+            haptics: boolean;
+            onboarding: {
+                [key: string]: unknown;
+            };
+        };
+        StudentSettingsPatch: {
+            nickname?: string;
+            dailyGoal?: number;
+            /** @enum {string} */
+            defaultInput?: "hand" | "keyboard" | "photo";
+            /** @enum {string} */
+            theme?: "system" | "light" | "dark";
+            sound?: boolean;
+            motion?: boolean;
+            haptics?: boolean;
+            onboarding?: {
+                [key: string]: unknown;
+            };
+        };
+        StudentFeedback: {
+            /** @enum {string} */
+            kind: "bug" | "idea" | "content" | "other";
+            body: string;
+            page?: string;
+        };
+        PublishedReview: {
+            proofs: components["schemas"]["MathText"][];
+            note?: components["schemas"]["MathText"];
         };
         /** @description 打开应用（冷启动或从后台回来） */
         p_app_open: {
@@ -2271,13 +2509,13 @@ export interface components {
             /** @description 是否恢复 */
             resumed: boolean;
             /**
-             * @description 主题或迁移题
+             * @description 主题、迁移题或重做
              * @enum {unknown}
              */
-            kind: "main" | "transfer";
+            kind: "main" | "transfer" | "redo";
             /**
              * Format: uuid
-             * @description 迁移题的父作答
+             * @description 迁移题或重做的父作答
              */
             parentAttemptId?: string;
         } & {
@@ -3205,13 +3443,13 @@ export interface components {
                     /** @description 是否恢复 */
                     resumed: boolean;
                     /**
-                     * @description 主题或迁移题
+                     * @description 主题、迁移题或重做
                      * @enum {unknown}
                      */
-                    kind: "main" | "transfer";
+                    kind: "main" | "transfer" | "redo";
                     /**
                      * Format: uuid
-                     * @description 迁移题的父作答
+                     * @description 迁移题或重做的父作答
                      */
                     parentAttemptId?: string;
                 } & {
@@ -4764,6 +5002,7 @@ export interface components {
             content: {
                 "application/json": {
                     state: components["schemas"]["AttemptState"];
+                    rewards?: components["schemas"]["Rewards"];
                 };
             };
         };
@@ -5152,6 +5391,148 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    getMistakes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 错题本（空分组不返回；测验布置结束前不出现） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mistakes"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    startRedo: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                attemptId: components["parameters"]["attemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["StateReplay"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 进度 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProgress"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    getSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentSettings"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    patchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description 修改后的设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentSettings"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    submitFeedback: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentFeedback"];
+            };
+        };
+        responses: {
+            /** @description 已收到 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     getAttempt: {
@@ -5560,13 +5941,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        proofs: components["schemas"]["MathText"][];
-                        note?: components["schemas"]["MathText"];
-                    };
+                    "application/json": components["schemas"]["PublishedReview"];
                 };
             };
             403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     recognizeInk: {

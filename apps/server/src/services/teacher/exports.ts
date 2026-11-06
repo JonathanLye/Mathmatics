@@ -11,7 +11,7 @@ import type { AuthContext } from '../../auth/session.ts';
 import { AppError } from '../../errors.ts';
 import type { Db, Queryable } from '../../db/index.ts';
 import { computeAttemptMetrics } from '../../metrics/attempt.ts';
-import { csvField } from '../../export/attempts-csv.ts';
+import { csvField, exportableAttemptSql } from '../../export/attempts-csv.ts';
 import { assertClassTeacher } from './auth.ts';
 
 export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
@@ -130,7 +130,8 @@ type Row = Record<string, unknown>;
 async function buildRows(db: Queryable, classId: string, table: ExportTable, assignmentIds?: string[]): Promise<Row[]> {
   const scoped = assignmentIds !== undefined && assignmentIds.length > 0;
   const params: unknown[] = scoped ? [classId, assignmentIds] : [classId];
-  const scopeClause = scoped ? `and t.assignment_id = any($2::uuid[])` : '';
+  // 导出只含 kind≠redo 的作答，且排除撤回了教研同意的学生（见 exportableAttemptSql）。
+  const scopeClause = `${scoped ? 'and t.assignment_id = any($2::uuid[]) ' : ''}and ${exportableAttemptSql('t')}`;
   const baseFrom = `
     from app.attempts t
     join app.assignments asg on asg.id = t.assignment_id

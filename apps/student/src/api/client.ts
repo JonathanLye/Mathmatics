@@ -55,7 +55,14 @@ import type {
   LineDraft,
   MeView,
   Note,
+  MistakesView,
   NotebookView,
+  ProgressView,
+  PublishedReview,
+  RewardsView,
+  SettingsPatch,
+  SettingsView,
+  FeedbackKind,
   ProofLine,
   Recognition,
   StudentHomeView,
@@ -204,6 +211,17 @@ function inputMeta(provenance: InputProvenance, draftId: string): InputMeta {
   return { provenance, draftId }
 }
 
+/**
+ * 最近一次作答写接口带回的 rewards（没有则 null）。读一次即清空：页面在每次 await 写接口之后调用一次，
+ * 把结果交给 useRewards 排队提示。mock 模式永远是 null。
+ */
+let lastRewards: RewardsView | null = null
+export function consumeRewards(): RewardsView | null {
+  const rewards = lastRewards
+  lastRewards = null
+  return rewards
+}
+
 async function writeState(
   path: string,
   body: unknown,
@@ -221,7 +239,7 @@ async function writeStateWith(
 ): Promise<AttemptState> {
   try {
     const result = await withRetry(() =>
-      activeHttp.request<{ state: AttemptState }>(path, {
+      activeHttp.request<{ state: AttemptState; rewards?: RewardsView }>(path, {
         method,
         body,
         ifMatch: options.ifMatch,
@@ -231,6 +249,7 @@ async function writeStateWith(
     if (!isAttemptState(result.data?.state)) {
       throw new ApiError({ status: result.status, code: 'INTERNAL', message: '服务端返回的状态格式不正确' })
     }
+    lastRewards = result.data.rewards ?? null
     return result.data.state
   } catch (error) {
     if (isApiError(error) && error.code === 'STATE_STALE' && isAttemptState(error.staleState)) {
@@ -1611,22 +1630,31 @@ export async function finishTransfer(state: AttemptState): Promise<AttemptState>
 }
 
 /**
- * 证明本「稍后重做」：为同一道题发起一份新作答（mock POST /student/assignments/{id}/attempt）。
- * 返回全新的 main state（从 L1 开始），由证明本页暂存后交给做题页（跨页交接见 stores/attempt.ts）。
- * TODO(#24)：真实接口按 assignmentId/problemId 创建新作答并返回 state。
+ * 重做（POST /student/attempts/{id}/redo）：在本人已完成的作答上新建 kind=redo 的子作答（强制练习模式、从 L1 开始，
+ * 第 5 层自动跳过）。已有未结束的重做则返回它（幂等）。sourceAttemptId 是被重做的**已完成作答**（证明本卡片/错题的 attemptId）。
+ * 错误：409 作答未完成；403 他人的作答或测验尚未结束（TEST_MODE_RESTRICTED）。
+ * 返回新作答的 state，由调用方交给做题页（跨页交接见 stores/attempt.ts）。
  */
 export async function startRedo(sourceAttemptId?: string): Promise<AttemptState> {
+  if (!USE_MOCK) {
+    if (!sourceAttemptId) {
+      throw new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: '缺少要重做的作答' })
+    }
+    return writeState(`/student/attempts/${encodeURIComponent(sourceAttemptId)}/redo`, undefined, {
+      idempotencyKey: newUuid(),
+    })
+  }
   await sleep()
   const next = clone(createMockState('l1-active'))
   next.attemptId = mockUuid()
   next.parentAttemptId = sourceAttemptId ?? null
+  next.kind = 'redo'
   next.stateVersion = 1
   next.status = 'active'
   next.currentLayer = 'L1'
   next.serverTime = new Date().toISOString()
   return next
 }
-
 
 /**
  * 迁移题子作答完成之后，服务端返回**父作答**的新 state：L5 done → L6 active 并下发总结五问。
@@ -1659,6 +1687,55 @@ export async function fetchNotebook(): Promise<NotebookView> {
   if (!USE_MOCK) return activeHttp.get<NotebookView>('/student/notebook')
   await sleep()
   return clone(mockNotebook)
+}
+
+/** mock 错题本：与真实 GET /student/mistakes 同形。 */
+export const mockMistakes: MistakesView = {
+  groups: [
+    {
+      group: 'scaling',
+      title: '放缩卡住',
+      count: 1,
+      items: [
+        {
+          id: '11111111-1111-4111-8111-111111111111:scaling:mock',
+          group: 'scaling',
+          problemTitle: '数列极限 · ε-N',
+          chapter: '第二章 数列极限',
+          attemptId: '11111111-1111-4111-8111-111111111111',
+          lineExcerpt: '取 $N=n+1$',
+          note: '你取的 $N$ 里出现了 $n$。定义里 $N$ 在 $n$ 之前取定，$N$ 能依赖 $n$ 吗？',
+          createdAt: daysAgoIso(3),
+          canRedo: true,
+        },
+      ],
+    },
+  ],
+  total: 1,
+}
+
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+/** 错题本（GET /student/mistakes）：按卡点分组，空分组不返回；每项的 attemptId 可直接传给 startRedo。 */
+export async function fetchMistakes(): Promise<MistakesView> {
+  if (!USE_MOCK) return activeHttp.get<MistakesView>('/student/mistakes')
+  await sleep()
+  return clone(mockMistakes)
+}
+
+/**
+ * 讲评（GET /attempts/{id}/review）：教师发布讲评、且本人写完（或布置结束）后才有；否则 403（FORBIDDEN）。
+ * 参考证明与讲评都是 MathText，显示时走 MathText 组件。
+ */
+export async function fetchReview(attemptId: string): Promise<PublishedReview> {
+  if (!USE_MOCK) return activeHttp.get<PublishedReview>(`/attempts/${encodeURIComponent(attemptId)}/review`)
+  await sleep()
+  return {
+    proofs: ['任取 $\\varepsilon>0$。取 $N=\\lceil 5/\\varepsilon\\rceil$，则当 $n>N$ 时 $|a_n-3|<\\varepsilon$。'],
+    note: '这道题的关键是 $N$ 只依赖 $\\varepsilon$。',
+  }
 }
 
 /**
@@ -1702,3 +1779,68 @@ function studentEchoNote(text: string): Note {
 /** 施压/索要答案的关键词（正式识别在 B 的 #29；这里只让 mock 能走通 pressure 路由）。 */
 const PRESSURE_PATTERN = /答案|直接给|老师说|求你了|写给我|给我结果|快点|别问了/
 
+
+// ---------------------------------------------------------------------------
+// 进度、设置、反馈（Task 9）
+// ---------------------------------------------------------------------------
+
+export const mockProgress: ProgressView = {
+  xpTotal: 120,
+  xpToday: 25,
+  keysToday: 2,
+  dailyGoal: 3,
+  streak: { current: 3, best: 5, freezeAvailable: true, usedFreezeDays: [] },
+  week: ['一', '二', '三', '四', '五', '六', '日'].map((_, i) => ({
+    day: '2026-11-0' + (2 + i),
+    xp: i < 3 ? 20 + i * 5 : 0,
+    keys: i < 3 ? 2 : 0,
+  })),
+  badges: [
+    { id: 'first_step', title: '第一步', desc: '第一次写出有进展的一步', earnedAt: '2026-11-02T08:00:00.000Z' },
+    { id: 'streak_3', title: '连续 3 天', desc: '连续 3 天都有实质进展', earnedAt: null, progress: { current: 3, target: 3 } },
+    { id: 'streak_7', title: '连续 7 天', desc: '连续 7 天都有实质进展', earnedAt: null, progress: { current: 3, target: 7 } },
+  ],
+  daysLearned: 3,
+}
+
+let mockSettings: SettingsView = {
+  nickname: null,
+  dailyGoal: 3,
+  defaultInput: 'hand',
+  theme: 'system',
+  sound: true,
+  motion: true,
+  haptics: true,
+  onboarding: {},
+}
+
+/** 学习进度（GET /student/progress）：经验、连胜、本周每日、徽章。 */
+export async function fetchProgress(): Promise<ProgressView> {
+  if (!USE_MOCK) return activeHttp.get<ProgressView>('/student/progress')
+  await sleep()
+  return clone(mockProgress)
+}
+
+/** 我的设置（GET /student/settings）。要求已签同意书。 */
+export async function fetchSettings(): Promise<SettingsView> {
+  if (!USE_MOCK) return activeHttp.get<SettingsView>('/student/settings')
+  await sleep()
+  return clone(mockSettings)
+}
+
+/** 修改设置（PATCH /student/settings，只传要改的字段）；返回修改后的完整设置。昵称 trim 后 1–16 字，否则 422。 */
+export async function updateSettings(patch: SettingsPatch): Promise<SettingsView> {
+  if (!USE_MOCK) return (await activeHttp.patch<SettingsView>('/student/settings', patch)).data
+  await sleep()
+  mockSettings = { ...mockSettings, ...clone(patch), nickname: patch.nickname?.trim() ?? mockSettings.nickname }
+  return clone(mockSettings)
+}
+
+/** 问题反馈（POST /student/feedback，204）。 */
+export async function sendFeedback(kind: FeedbackKind, body: string, page?: string): Promise<void> {
+  if (!USE_MOCK) {
+    await activeHttp.post('/student/feedback', { kind, body, ...(page === undefined ? {} : { page }) }, { idempotencyKey: newUuid() })
+    return
+  }
+  await sleep()
+}

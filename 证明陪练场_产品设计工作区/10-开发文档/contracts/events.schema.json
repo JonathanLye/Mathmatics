@@ -2117,13 +2117,14 @@
         "kind": {
           "enum": [
             "main",
-            "transfer"
+            "transfer",
+            "redo"
           ],
-          "description": "主题或迁移题"
+          "description": "主题、迁移题或重做"
         },
         "parentAttemptId": {
           "type": "string",
-          "description": "迁移题的父作答",
+          "description": "迁移题或重做的父作答",
           "format": "uuid"
         }
       },
