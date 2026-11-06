@@ -82,7 +82,7 @@ async function signConsent(cookie: string) {
     method: 'POST',
     url: '/api/v1/consents',
     headers: { cookie, ...WRITE_HEADERS },
-    payload: { version: 'p0-v1', items: ALL_REQUIRED },
+    payload: { version: 'v2', items: ALL_REQUIRED },
   });
 }
 

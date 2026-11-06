@@ -73,16 +73,24 @@ describe('selectHint：H0–H4 阶梯、透露量与锁', () => {
     expect(state.reveal).toBe(2);
   });
 
-  it('快速请求：30 秒内第 3 次触发 60 秒锁，锁内 blocked', () => {
-    const out = run([{ at: 0 }, { at: 1 }, { at: 2 }, { at: 3 }]);
-    expect(out[2]).toEqual({ type: 'rapid_lock', waitSec: 60 });
-    expect(out[3]).toEqual({ type: 'blocked', waitSec: 59 });
+  it('快速请求：30 秒内第 3 次起只给温和提示（rapid_soft），不加锁，状态不变（U15）', () => {
+    const start = { ...initialHintState() };
+    const first = selectHint(secret, budget, start, 0);
+    const second = selectHint(secret, budget, first.state, 1 * SEC);
+    const third = selectHint(secret, budget, second.state, 2 * SEC);
+    expect(third.decision).toEqual({ type: 'rapid_soft' });
+    expect(third.state).toEqual(second.state);
+    expect(third.state.blockedUntil).toBeNull();
+    // 没有锁：窗口过去之后立刻恢复
+    const later = selectHint(secret, budget, third.state, 40 * SEC);
+    expect(later.decision.type).not.toBe('rapid_soft');
   });
 
-  it('锁过期后恢复；快速请求被拒绝时不改变 K1 的阶梯位置', () => {
-    // 锁到 62 秒。62 秒时请求的是 K1 的 H2，仍需先写一行。
-    const out = run([{ at: 0 }, { at: 1 }, { at: 2 }, { at: 62 }]);
-    expect(out[3]).toEqual({ type: 'needs_submit' });
+  it('卡住满 stuckMs：收费提示不再要求先写一行；未卡住仍要求', () => {
+    const atStart: HintState = { ...initialHintState(), hintLv: { K1: 2 }, submitsSinceHint: 0 };
+    expect(selectHint(secret, budget, atStart, 100 * SEC).decision).toEqual({ type: 'needs_submit' });
+    const stuck = selectHint(secret, budget, atStart, 100 * SEC, { stuck: true }).decision;
+    expect(stuck).toMatchObject({ type: 'deliver', level: 'H2', cost: 0.5 });
   });
 
   it('30 秒窗口外的请求不计入快速请求', () => {

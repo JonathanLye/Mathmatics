@@ -80,7 +80,7 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
       lessonSuggested: false,
       lessonAvailable: lessonAvailable(problem),
     },
-    notes: overrideNotes(row, state, problem),
+    notes: allNotes(row, state, problem, extras),
     help: helpView(help),
     integrity: { mode: row.mode, locked: row.status === 'locked' },
     serverTime: new Date(now).toISOString(),
@@ -119,6 +119,15 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
     };
   }
   return dto;
+}
+
+// 已下发的提示与批注（落库的）加上教师补发的 H4，按时间排序。概念批注补上本题的概念 ID（微课入口）。
+function allNotes(row: AttemptRow, state: AttemptState, problem: LoadedProblem, extras: ViewExtras): Record<string, unknown>[] {
+  const conceptId = problem.public.def?.conceptId ?? null;
+  const stored = extras.notes.map((note) =>
+    note.kind === 'concept' && note.lessonConceptId === null && conceptId ? { ...note, lessonConceptId: conceptId } : note,
+  );
+  return [...stored, ...overrideNotes(row, state, problem)].sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 
 // 教师补发的 H4（软着陆）以批注形式下发：由引擎状态 overrides 推出，不另存，所以刷新/重连后仍在，回放一致。
@@ -238,5 +247,6 @@ function helpView(help: HelpPreview): Record<string, unknown> {
     exhausted: help.exhausted,
     flagged: help.flagged,
     stuckOffer: help.stuckOffer,
+    canFlag: help.canFlag,
   };
 }
