@@ -280,7 +280,6 @@ function addToNotebook(card: AssignmentCardView): void {
 
       <view v-if="notice" class="pg-home__notice" role="status" data-testid="home-notice">{{ notice }}</view>
     </view>
-    <HomeOnboarding :ready="!loading && !!home" />
 
     <template v-if="wide && home" #rail>
       <view class="pg-home__railcard">
@@ -290,6 +289,7 @@ function addToNotebook(card: AssignmentCardView): void {
       <HomeNotebookCard :home="home" />
     </template>
   </AppShell>
+  <HomeOnboarding :ready="!loading && !!home" />
 </template>
 
 <style scoped>

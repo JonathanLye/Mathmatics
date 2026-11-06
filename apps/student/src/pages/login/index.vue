@@ -115,7 +115,7 @@ async function submit() {
 
         <view :key="mode" class="pg-login__pane">
           <PgField v-if="mode === 'invite'" :label="LOGIN_COPY.invite">
-            <input v-model="invite" class="pg-login__input pg-mono" data-testid="login-invite" maxlength="6" :placeholder="LOGIN_COPY.invitePlaceholder" autocapitalize="characters" />
+            <input v-model="invite" class="pg-login__input" :class="{ 'pg-mono': invite }" data-testid="login-invite" maxlength="6" :placeholder="LOGIN_COPY.invitePlaceholder" autocapitalize="characters" />
           </PgField>
           <PgField :label="LOGIN_COPY.studentNo">
             <input v-model="studentNo" class="pg-login__input" data-testid="login-studentno" :placeholder="LOGIN_COPY.studentNoPlaceholder" @confirm="mode === 'invite' ? submit() : undefined" />

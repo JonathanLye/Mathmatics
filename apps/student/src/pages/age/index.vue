@@ -123,7 +123,6 @@ async function submit(): Promise<void> {
       <!-- 已记录 lt14：暂不开通，不提供继续入口，只有退出登录 -->
       <PgCard v-else-if="blocked" tone="bee" class="pg-age__card" data-testid="age-blocked">
         <text class="pg-age__cardtitle">{{ AGE_COPY.blockedLead }}</text>
-        <text class="pg-age__cardtitle pg-age__cardtitle--sub">暂不开通</text>
         <text class="pg-age__risktext" data-testid="age-risk-note">{{ AGE_BAND_LT14_RISK }}</text>
         <text class="pg-age__hint">训练数据不采集。{{ AGE_COPY.blockedHelp }}</text>
         <PgButton block size="lg" variant="secondary" :loading="loggingOut" data-testid="age-logout" @tap="logout">
@@ -181,7 +180,6 @@ async function submit(): Promise<void> {
 .pg-age__sub { color: var(--ink-2); font-size: var(--fs-13); line-height: var(--lh-body); }
 .pg-age__card { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-age__cardtitle { color: var(--ink); font-size: var(--fs-18); font-weight: var(--fw-black); line-height: var(--lh-tight); }
-.pg-age__cardtitle--sub { color: var(--bee-text); font-size: var(--fs-15); }
 .pg-age__recorded { color: var(--accent-text); font-size: var(--fs-13); }
 .pg-age__loading { display: block; margin-top: var(--sp-3); }
 .pg-age__options { display: flex; flex-direction: column; gap: var(--sp-2); }
