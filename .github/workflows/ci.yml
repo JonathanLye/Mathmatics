@@ -92,7 +92,7 @@ jobs:
           pnpm --filter @proof-gym/student build:prod
           pnpm --filter @proof-gym/teacher build
 
-  # PGlite 覆盖不到 node-postgres 驱动路径与真实 advisory 锁；这个 job 只做迁移/种子冒烟，不进 ci-gate。
+  # PGlite 覆盖不到 node-postgres 驱动路径与真实 advisory 锁；这个 job 做迁移/种子冒烟与并发测试。迁移失败则服务起不来，所以进 ci-gate。
   postgres:
     name: postgres
     runs-on: ubuntu-latest
@@ -252,7 +252,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [contracts, docs, workspace, docker]
+    needs: [contracts, docs, workspace, postgres, docker]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -262,10 +262,11 @@ jobs:
           CONTRACTS: ${{ needs.contracts.result }}
           DOCS: ${{ needs.docs.result }}
           WORKSPACE: ${{ needs.workspace.result }}
+          POSTGRES: ${{ needs.postgres.result }}
           DOCKER: ${{ needs.docker.result }}
         run: |
-          echo "contracts=$CONTRACTS docs=$DOCS workspace=$WORKSPACE docker=$DOCKER"
-          if [ "$CONTRACTS" = "failure" ] || [ "$CONTRACTS" = "cancelled" ] || [ "$DOCS" = "failure" ] || [ "$DOCS" = "cancelled" ] || [ "$WORKSPACE" = "failure" ] || [ "$WORKSPACE" = "cancelled" ] || [ "$DOCKER" = "failure" ] || [ "$DOCKER" = "cancelled" ]; then
+          echo "contracts=$CONTRACTS docs=$DOCS workspace=$WORKSPACE postgres=$POSTGRES docker=$DOCKER"
+          if [ "$CONTRACTS" = "failure" ] || [ "$CONTRACTS" = "cancelled" ] || [ "$DOCS" = "failure" ] || [ "$DOCS" = "cancelled" ] || [ "$WORKSPACE" = "failure" ] || [ "$WORKSPACE" = "cancelled" ] || [ "$POSTGRES" = "failure" ] || [ "$POSTGRES" = "cancelled" ] || [ "$DOCKER" = "failure" ] || [ "$DOCKER" = "cancelled" ]; then
             echo "::error::One or more required jobs failed or were cancelled"
             exit 1
           fi
