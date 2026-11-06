@@ -149,11 +149,11 @@ onMounted(() => {
       <div class="first-run__head">
         <Mascot :expr="nextStep ? 'think' : 'cheer'" :size="72" />
         <div class="first-run__title">
-          <b>{{ nextStep ? '第一次用？四步走通' : '都走通了，接下来就看学生怎么写' }}</b>
+          <b>{{ nextStep ? '新手四步走' : '都走通了，接下来看学生怎么写' }}</b>
           <span class="first-run__sub">建班 → 导名单 → 发邀请码 → 看看板 · 已完成 {{ progress.done }} / {{ progress.total }}</span>
         </div>
         <t-button v-if="classes.length > 0" variant="text" size="small" data-testid="first-run-dismiss" @click="saveLocal({ dismissed: true })">
-          {{ nextStep ? '先不看了' : '收起' }}
+          收起
         </t-button>
       </div>
       <ol class="first-run__steps">
