@@ -39,8 +39,8 @@ export async function setupFixture(): Promise<Fixture> {
   return { db, classId, close: () => db.close() };
 }
 
-export async function buildTestApp(db: Db, overrides: Partial<AppConfig> = {}) {
-  return buildApp({ config: { ...testConfig, ...overrides }, logger: false, db });
+export async function buildTestApp(db: Db, overrides: Partial<AppConfig> = {}, extra: { fetchImpl?: typeof fetch } = {}) {
+  return buildApp({ config: { ...testConfig, ...overrides }, logger: false, db, ...extra });
 }
 
 export function loginBody(overrides: Record<string, unknown> = {}) {

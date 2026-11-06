@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { api } from './api/client.ts';
 import { clearSession, session } from './stores/session.ts';
+import Icon from './components/ui/Icon.vue';
+import Mascot from './components/ui/Mascot.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -59,13 +61,19 @@ async function logout(): Promise<void> {
   <router-view v-if="isPublic" />
   <div v-else class="app-shell">
     <aside class="app-aside">
-      <div class="app-brand">证明陪练场</div>
-      <div class="app-brand-sub">教师端</div>
+      <div class="app-brandrow">
+        <Mascot expr="idle" :size="40" />
+        <div><div class="app-brand">证明陪练场</div><div class="app-brand-sub">教师端</div></div>
+      </div>
       <nav class="app-nav">
-        <router-link class="app-nav-item" to="/classes">我的班级</router-link>
-        <router-link class="app-nav-item" to="/problems">题库审核</router-link>
-        <router-link class="app-nav-item" to="/settings">设置</router-link>
+        <router-link class="app-nav-item" to="/classes"><Icon name="flash" :size="26" />我的班级</router-link>
+        <router-link class="app-nav-item" to="/problems"><Icon name="flag" :size="26" />题库审核</router-link>
+        <router-link class="app-nav-item" to="/settings"><Icon name="me" :size="26" />设置</router-link>
       </nav>
+      <div class="app-me">
+        <span class="pg-avatar" style="width: 34px; height: 34px; background: var(--pg-sea); font-size: 14px">{{ (session.me?.displayName ?? session.me?.anonCode ?? '师').slice(0, 1) }}</span>
+        <span>{{ session.me?.displayName ?? session.me?.anonCode }}</span>
+      </div>
     </aside>
     <div class="app-main">
       <header class="app-header">

@@ -12,11 +12,13 @@
   "dependencies": {
     "@electric-sql/pglite": "catalog:",
     "@fastify/cookie": "catalog:",
+    "@fastify/multipart": "catalog:",
     "@fastify/rate-limit": "catalog:",
     "@node-rs/argon2": "catalog:",
     "@proof-gym/content-checks": "workspace:*",
     "@proof-gym/contracts": "workspace:*",
     "@proof-gym/engine": "workspace:*",
+    "@resvg/resvg-js": "catalog:",
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
     "exceljs": "^4.4.0",

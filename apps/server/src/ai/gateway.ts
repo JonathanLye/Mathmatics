@@ -10,8 +10,10 @@ import { createHash } from 'node:crypto';
 
 import type { Db } from '../db/index.ts';
 
+import { invokeDashscope } from './dashscope.ts';
 import { AdapterError } from './errors.ts';
 import { invokeJev } from './jev.ts';
+import { invokeSimpleTex } from './simpletex.ts';
 import type { ModelEntry, ModelRegistry, ProviderEntry } from './registry.ts';
 
 export type CallStatus = 'ok' | 'error' | 'timeout' | 'skipped';
@@ -26,6 +28,8 @@ export interface CallOptions {
   crossBorderConsent?: boolean;
   // 不传则按注册表：typesafe 且 flags['jev.shadowOnly'] 为真时为影子。L1 语义判定等例外由调用方覆盖（09 §4.3）
   shadow?: boolean;
+  // 输出含学生手写内容（识别服务）时为 true：model_calls.output 只记 {redacted:true}，原文只存在于业务表（app.recognitions）。
+  redactOutput?: boolean;
 }
 
 export interface CallResult {
@@ -70,6 +74,25 @@ type Adapter = (call: AdapterCall) => Promise<Record<string, unknown>>;
 const ADAPTERS: Record<string, Adapter> = {
   typesafe: ({ entry, model, input, signal, fetchImpl }) =>
     invokeJev({
+      baseUrl: entry.values.baseUrl ?? '',
+      apiKey: entry.values.apiKey ?? '',
+      model: model.model ?? '',
+      input,
+      signal,
+      fetchImpl,
+    }),
+  simpletex: ({ entry, model, input, signal, fetchImpl }) =>
+    invokeSimpleTex({
+      baseUrl: entry.values.baseUrl ?? '',
+      appId: entry.values.appId ?? '',
+      appSecret: entry.values.appSecret ?? '',
+      endpoint: model.endpoint ?? '',
+      input,
+      signal,
+      fetchImpl,
+    }),
+  dashscope: ({ entry, model, input, signal, fetchImpl }) =>
+    invokeDashscope({
       baseUrl: entry.values.baseUrl ?? '',
       apiKey: entry.values.apiKey ?? '',
       model: model.model ?? '',
@@ -176,7 +199,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
           latencyMs,
           status,
           shadow,
-          JSON.stringify(output ?? { reason }),
+          JSON.stringify(output === null ? { reason } : options.redactOutput ? { redacted: true } : output),
         ],
       );
     } catch {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { drawerSize } from '../utils/viewport.ts';
 import { onMounted, ref } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
@@ -279,7 +280,7 @@ onMounted(load);
       <template #empty><div class="empty">题库为空。导入流水线发布后会出现。</div></template>
     </t-table>
 
-    <t-drawer :visible="selected !== null" size="720px" header="题目详情（含 secret，仅教师可见）" @close="close">
+    <t-drawer :footer="false" :visible="selected !== null" :size="drawerSize" header="题目详情（含 secret，仅教师可见）" @close="close">
       <t-alert v-if="pkgError" theme="error" :message="pkgError" />
       <t-loading v-else-if="pkgLoading" />
       <div v-else-if="selected && pkg">
@@ -391,7 +392,7 @@ onMounted(load);
       </div>
     </t-dialog>
 
-    <t-dialog v-model:visible="editVisible" header="编辑题目包并发布新版本" width="820px" :footer="false">
+    <t-dialog v-model:visible="editVisible" header="编辑题目包并发布新版本" width="min(820px, 96vw)" :footer="false">
       <t-alert v-if="editError" theme="error" :message="editError" style="margin-bottom: 8px" />
       <t-alert
         theme="warning"

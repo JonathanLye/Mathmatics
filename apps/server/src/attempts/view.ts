@@ -1,5 +1,16 @@
-import { type AttemptState, type HelpPreview, helpPreview, type SerializedAttemptState } from '@proof-gym/engine';
+import { createHash } from 'node:crypto';
 
+import {
+  type AttemptState,
+  gateRule,
+  type HelpPreview,
+  helpPreview,
+  independenceOf,
+  nextKey,
+  type SerializedAttemptState,
+} from '@proof-gym/engine';
+
+import type { ViewExtras } from './extras.ts';
 import type { LoadedProblem } from './problem.ts';
 
 // app.attempts 的一行（只列服务端用到的列）。用 type 而非 interface：Queryable.query 要求 Record<string, unknown>。
@@ -24,13 +35,23 @@ export interface Snapshot {
   state: AttemptState;
   problem: LoadedProblem;
   now: number;
+  extras: ViewExtras;
 }
+
+// 总结五问（01 §L6 原文）。题目包里没有这一项，所有题共用。
+export const SUMMARY_QUESTIONS = [
+  '这个证明证了什么？',
+  '分几块？块与块之间是什么关系？',
+  '哪个选择决定了成败？',
+  '写到哪一步才算证完？',
+  '哪个做法下次还能用、哪个只适用于本题？',
+];
 
 const LAYER_TITLES = ['定义', '骨架', '写证明', '自检', '迁移', '总结'];
 
 // 学生端唯一的状态来源（AttemptState，05 §4）。只输出 openapi 列出的字段：不含题目的 secret、
-// 不含引擎的内部计数，也不含学生原文（原文只在 app.attempt_lines 里）。
-export function toAttemptState({ row, state, problem, now }: Snapshot): Record<string, unknown> {
+// 不含引擎的内部计数，也不含服务端对行的判断（cls / keys / errorId）。学生自己写的行原文要回显（StepsView、DefView.last 等）。
+export function toAttemptState({ row, state, problem, now, extras }: Snapshot): Record<string, unknown> {
   const { pkg } = problem.ctx;
   const keysTotal = pkg.secret.keys.length;
   const pub = problem.public;
@@ -51,22 +72,95 @@ export function toAttemptState({ row, state, problem, now }: Snapshot): Record<s
       keysOwn: state.hint.matched.size,
       keysTotal,
     },
-    def: { conceptId: pub.def?.conceptId ?? '', submissions: state.def.attempts, lessonSuggested: false },
-    notes: [],
+    def: {
+      ...(pub.def?.task === undefined ? {} : { task: pub.def.task }),
+      conceptId: pub.def?.conceptId ?? '',
+      submissions: state.def.attempts,
+      ...(extras.defLast === null ? {} : { last: extras.defLast }),
+      lessonSuggested: false,
+    },
+    notes: overrideNotes(row, state, problem),
     help: helpView(help),
     integrity: { mode: row.mode, locked: row.status === 'locked' },
     serverTime: new Date(now).toISOString(),
   };
+  if (pub.frame) {
+    dto.frame = {
+      task: pub.frame.task,
+      ...(pub.frame.lessonId === undefined ? {} : { lessonId: pub.frame.lessonId }),
+      ...(extras.frameLast === null ? {} : { last: extras.frameLast }),
+      templateShown: extras.templateShown,
+      template: extras.templateShown ? (pub.frame.template ?? null) : null,
+    };
+  }
+  dto.steps = {
+    lines: extras.lines.map((l) => ({
+      lineId: l.lineId,
+      n: l.n,
+      statement: l.statement,
+      ...(l.justification === null ? {} : { justification: l.justification }),
+      provenance: l.provenance,
+      flagged: l.flagged,
+      createdAt: l.createdAt,
+    })),
+    // 与引擎 finish.try 同一判据：本题路线上的关键步骤都已写出。
+    canFinish: state.layer === 3 && nextKey(problem.ctx.pkg.secret, state.hint.matched) === null,
+  };
   if (state.selfcheck.items.length > 0) dto.selfcheck = selfcheckView(state, problem);
+  if (pub.transferProblemId !== undefined) dto.transfer = transferView(state, extras);
+  if (state.layer === 6 || state.done) dto.summary = summaryView(state, problem, extras);
   if (state.done) {
     dto.completion = {
       done: true,
-      independence: Math.max(0, 1 - state.hint.reveal / keysTotal),
+      independence: independenceOf(state, keysTotal),
       reviewAvailable: false,
       leanCard: null,
     };
   }
   return dto;
+}
+
+// 教师补发的 H4（软着陆）以批注形式下发：由引擎状态 overrides 推出，不另存，所以刷新/重连后仍在，回放一致。
+// 文本是题目包里该步骤的 H4 提示，补发时已过闸门（H4 放行本步骤片段）。noteId 由作答与步骤确定，便于前端去重/关闭。
+function overrideNotes(row: AttemptRow, state: AttemptState, problem: LoadedProblem): Record<string, unknown>[] {
+  return (state.overrides ?? []).flatMap((keyId) => {
+    const hint = problem.ctx.pkg.secret.keys.find((k) => k.id === keyId)?.hints.find((h) => h.level === 'H4');
+    if (!hint) return [];
+    const h = createHash('sha256').update(`${row.id}:override:${keyId}`).digest('hex');
+    const noteId = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+    return [
+      {
+        noteId,
+        kind: 'hint',
+        who: 'H4 · 老师补发',
+        text: hint.text,
+        lineId: null,
+        level: 'H4',
+        cost: 0,
+        lessonConceptId: null,
+        at: new Date(state.overrideAt?.[keyId] ?? Date.now()).toISOString(),
+      },
+    ];
+  });
+}
+
+function transferView(state: AttemptState, extras: ViewExtras): Record<string, unknown> {
+  const done = state.status[5];
+  const status = done === 'skip' ? 'skipped' : done === 'done' ? 'completed' : extras.transfer ? 'active' : 'not_started';
+  return {
+    childAttemptId: extras.transfer?.childAttemptId ?? null,
+    ...(extras.transfer?.stem ? { stem: extras.transfer.stem } : {}),
+    status,
+  };
+}
+
+// 总结五问 + 已交的回答；第一次缺要点时给追问（取缺的第一个要点预写的追问，过闸门，被拦就不给）。
+function summaryView(state: AttemptState, problem: LoadedProblem, extras: ViewExtras): Record<string, unknown> {
+  const secret = problem.ctx.pkg.secret;
+  const missing = extras.summaryMissing ?? [];
+  const point = state.summary.asked && !state.done ? secret.summaryPoints.find((p) => missing.includes(p.id)) : undefined;
+  const followup = point !== undefined && gateRule(secret, point.question, new Set(state.hint.matched), []).ok ? point.question : null;
+  return { questions: SUMMARY_QUESTIONS, answers: extras.summaryAnswers, followup };
 }
 
 function problemView(row: AttemptRow, problem: LoadedProblem): Record<string, unknown> {

@@ -24,6 +24,8 @@ import {
 import type { AssignmentCardView } from '@/types/attempt'
 import OfflineBar from '@/components/OfflineBar.vue'
 import WechatHint from '@/components/WechatHint.vue'
+import PgIcon from '@/components/ui/PgIcon.vue'
+import PgMascot from '@/components/ui/PgMascot.vue'
 import { initIntegrity } from '@/integrity/sdk'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { maskStudentNo, useSession } from '@/stores/session'
@@ -130,6 +132,19 @@ function goPractice(card: AssignmentCardView): void {
   uni.navigateTo({ url: '/pages/practice/index' + query })
 }
 
+/** 路径节点的蛇形偏移（px）：循环 0 → 右 → 中右 → 左 → 中左。 */
+const OFFSETS = [0, 64, 36, -36, -64, -36]
+function nodeStyle(i: number): Record<string, string> {
+  return { transform: 'translateX(' + OFFSETS[i % OFFSETS.length] + 'px)' }
+}
+
+/** 顶部横幅显示的章：进行中的第一题，否则第一个待做，否则第一个已完成。 */
+const unitChapter = computed(() => {
+  const h = home.value
+  const card = h?.inProgress[0] ?? h?.todo[0] ?? h?.done[0]
+  return card?.chapter ?? '我的练习'
+})
+
 function goProofbook(): void {
   uni.navigateTo({ url: '/pages/proofbook/index' })
 }
@@ -150,118 +165,133 @@ function addToNotebook(card: AssignmentCardView): void {
     <OfflineBar @retry="handleOfflineRetry" />
     <!-- #37 微信内打开提示：非阻塞横条，非微信 UA 不渲染 -->
     <WechatHint />
-    <view class="pg-home__head">
-      <text class="pg-home__hello" data-testid="home-greeting">{{ greeting }}</text>
-      <text v-if="home?.week" class="pg-home__stat pg-small" data-testid="home-week">
-        本周你自己写出了 {{ home.week.keysOwn }} 个关键步骤（共 {{ home.week.keysTotal }} 个）
-      </text>
-      <text v-else class="pg-home__stat pg-small" data-testid="home-week-empty">本周统计暂不可用（服务端未下发 week）</text>
-      <view class="pg-home__headrow">
-        <button class="pg-home__book pg-small" role="button" data-testid="home-proofbook" @tap="goProofbook">证明本</button>
-        <text v-if="mockMode" class="pg-home__mode pg-small" data-testid="home-mock-badge">mock 演示（?api=real 走真实接口）</text>
+
+    <view class="pg-home__stats">
+      <view v-if="home" class="pg-home__chip pg-home__chip--bee" data-testid="home-done-count">
+        <PgIcon name="qed" :size="22" color="#ffc800" />{{ home.done.length }}<text class="pg-home__chipsub">题</text>
       </view>
+      <view v-if="home?.week" class="pg-home__chip pg-home__chip--grass" data-testid="home-week">
+        <PgIcon name="check" :size="20" />{{ home.week.keysOwn }}/{{ home.week.keysTotal }}<text class="pg-home__chipsub">本周自己写出的关键步骤</text>
+      </view>
+    </view>
+    <text class="pg-home__hello" data-testid="home-greeting">{{ greeting }}</text>
+    <text v-if="mockMode" class="pg-home__mode pg-small" data-testid="home-mock-badge">mock 演示（?api=real 走真实接口）</text>
+
+    <view class="pg-home__unit">
+      <view class="pg-home__unitmain">
+        <text class="pg-home__unitkick">当前章节</text>
+        <text class="pg-home__unittitle">{{ unitChapter }}</text>
+      </view>
+      <view class="pg-home__unitbook"><PgIcon name="book" :size="24" /></view>
     </view>
 
     <view v-if="slow" class="pg-home__slow pg-small" role="status" data-testid="home-slow">
       网络较慢，正在自动重试…（你的内容不会丢）
     </view>
 
-    <view v-if="loading" class="pg-home__skeleton pg-sheet" data-testid="home-loading" aria-busy="true">
-      <view class="pg-home__line" /><view class="pg-home__line" /><view class="pg-home__line" />
+    <view v-if="loading" class="pg-home__skeleton" data-testid="home-loading" aria-busy="true">
+      <view class="pg-home__ghost" style="transform: translateX(36px)" />
+      <view class="pg-home__ghost" style="transform: translateX(-36px)" />
+      <view class="pg-home__ghost" style="transform: translateX(36px)" />
       <text class="pg-home__skeletontip pg-small">{{ retrying ? '正在重试…' : '正在加载首页…' }}</text>
     </view>
 
-    <view v-else-if="error" class="pg-home__error pg-sheet" data-testid="home-error" role="alert">
+    <view v-else-if="error" class="pg-home__error" data-testid="home-error" role="alert">
+      <PgMascot expr="oops" :size="88" />
       <text class="pg-home__errortitle">首页加载失败</text>
       <text class="pg-home__errorbody pg-small">{{ error }}</text>
-      <button class="pg-home__btn pg-home__btn--primary" role="button" data-testid="home-retry" :disabled="retrying" @tap="loadHome(true)">
+      <button class="pg-btn" role="button" data-testid="home-retry" :disabled="retrying" @tap="loadHome(true)">
         {{ retrying ? '正在重试…' : '重试' }}
       </button>
     </view>
 
-    <template v-else-if="home">
-      <!-- 进行中 -->
-      <text class="pg-home__section">进行中</text>
-      <view v-if="home.inProgress.length === 0" class="pg-home__empty pg-small" data-testid="home-inprogress-empty">
-        暂无进行中的题，从下面「待完成」开始一道。
-      </view>
+    <view v-else-if="home" class="pg-home__path">
+      <!-- 进行中：绿色大节点 + 浮动“继续”气泡 -->
       <view
         v-for="(card, i) in home.inProgress"
         :key="card.assignmentId"
-        class="pg-home__card pg-sheet"
+        class="pg-home__node pg-home__node--cur"
+        :style="nodeStyle(i)"
         data-testid="home-inprogress-card"
         :data-assignment-id="card.assignmentId"
       >
-        <view class="pg-home__cardmain">
+        <button class="pg-home__go" role="button" :data-testid="'home-continue-' + i" @tap="goPractice(card)">继续</button>
+        <view class="pg-home__face pg-home__face--cur" @tap="goPractice(card)"><PgIcon name="pen" :size="40" /></view>
+        <view class="pg-home__label">
           <text class="pg-home__cardtitle">{{ card.title }}</text>
-          <text class="pg-home__cardsub pg-small">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
+          <text class="pg-home__cardsub">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
         </view>
-        <button class="pg-home__btn" role="button" :data-testid="'home-continue-' + i" @tap="goPractice(card)">继续</button>
+        <view v-if="i === 0" class="pg-home__mascot"><PgMascot expr="idle" :size="84" /></view>
+      </view>
+      <view v-if="home.inProgress.length === 0" class="pg-home__empty pg-small" data-testid="home-inprogress-empty">
+        <text class="pg-home__emptytext">暂无进行中的题，从下面「待完成」开始一道。</text>
       </view>
 
-      <!-- 待完成：scheduled/closed 禁用并说明 -->
-      <text class="pg-home__section">待完成</text>
-      <view v-if="home.todo.length === 0" class="pg-home__empty pg-small" data-testid="home-todo-empty">
-        暂时没有待完成的布置。
-      </view>
+      <!-- 待完成：蓝=可开始；灰=未开放（scheduled / closed / cancelled，说明原因） -->
       <view
         v-for="(card, i) in home.todo"
         :key="card.assignmentId"
-        class="pg-home__card pg-sheet"
+        class="pg-home__node"
+        :class="isOpen(card) ? 'pg-home__node--todo' : 'pg-home__node--off'"
+        :style="nodeStyle(home.inProgress.length + i)"
         data-testid="home-todo-card"
         :data-assignment-id="card.assignmentId"
         :data-status="card.status"
       >
-        <view class="pg-home__cardmain">
-          <text class="pg-home__cardtitle">{{ card.title }}</text>
-          <text class="pg-home__cardsub pg-small">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
-          <text v-if="!isOpen(card)" class="pg-home__cardsub pg-small pg-home__disabledreason" :data-testid="'home-todo-reason-' + i">
-            {{ disabledReason(card) }}
-          </text>
-        </view>
         <button
           v-if="isOpen(card)"
-          class="pg-home__btn pg-home__btn--primary"
+          class="pg-home__face pg-home__face--todo"
           role="button"
+          :aria-label="(card.attemptId ? '继续 ' : '开始 ') + card.title"
           :data-testid="'home-todo-start-' + i"
           @tap="goPractice(card)"
         >
-          {{ card.attemptId ? '继续' : '开始' }}
+          <PgIcon name="book" :size="34" />
         </button>
         <button
           v-else
-          class="pg-home__btn pg-home__btn--disabled"
+          class="pg-home__face pg-home__face--off"
           role="button"
           disabled
+          :aria-label="(card.status === 'scheduled' ? '未开始 ' : '已关闭 ') + card.title"
           :data-testid="'home-todo-disabled-' + i"
         >
-          {{ card.status === 'scheduled' ? '未开始' : '已关闭' }}
+          <PgIcon name="lock" :size="30" />
         </button>
+        <view class="pg-home__label">
+          <text class="pg-home__cardtitle">{{ card.title }}</text>
+          <text class="pg-home__cardsub">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
+          <text v-if="!isOpen(card)" class="pg-home__cardsub pg-home__disabledreason" :data-testid="'home-todo-reason-' + i">
+            {{ disabledReason(card) }}
+          </text>
+        </view>
+      </view>
+      <view v-if="home.todo.length === 0" class="pg-home__empty pg-small" data-testid="home-todo-empty">
+        <text class="pg-home__emptytext">暂时没有待完成的布置。</text>
       </view>
 
-      <!-- 已完成 -->
-      <text class="pg-home__section">已完成</text>
-      <view v-if="home.done.length === 0" class="pg-home__empty pg-small" data-testid="home-done-empty">
-        还没有完成的题，完成后会出现在这里。
-      </view>
+      <!-- 已完成：金色 ∎ 节点（放在路径末尾，当前题永远在首屏） -->
+      <text v-if="home.done.length" class="pg-home__divider">已完成</text>
       <view
         v-for="(card, i) in home.done"
         :key="card.assignmentId"
-        class="pg-home__card pg-sheet pg-home__card--done"
+        class="pg-home__node pg-home__node--done"
+        :style="nodeStyle(home.inProgress.length + home.todo.length + i)"
         data-testid="home-done-card"
         :data-assignment-id="card.assignmentId"
       >
-        <view class="pg-home__cardmain">
+        <view class="pg-home__face pg-home__face--done" @tap="goProofbook"><PgIcon name="qed" :size="34" color="#fff" /></view>
+        <view class="pg-home__label">
           <text class="pg-home__cardtitle">{{ card.title }}</text>
-          <text class="pg-home__cardsub pg-small">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
+          <text class="pg-home__cardsub">{{ card.chapter ?? '' }} · {{ cardLayerLabel(card) }} · {{ card.mode === 'test' ? '测验' : '练习' }}</text>
           <text v-if="card.reviewPublished" class="pg-home__reviewbadge" :data-testid="'home-done-reviewbadge-' + i">讲评已发布</text>
         </view>
         <view class="pg-home__actions">
-          <button class="pg-home__btn pg-home__btn--small" role="button" :data-testid="'home-done-view-' + i" @tap="goProofbook">查看</button>
-          <button class="pg-home__btn pg-home__btn--small" role="button" :data-testid="'home-done-notebook-' + i" @tap="addToNotebook(card)">加入证明本</button>
+          <button class="pg-btn pg-btn--out pg-btn--sm" role="button" :data-testid="'home-done-view-' + i" @tap="goProofbook">查看</button>
+          <button class="pg-btn pg-btn--out pg-btn--sm" role="button" :data-testid="'home-done-notebook-' + i" @tap="addToNotebook(card)">加入证明本</button>
           <button
             v-if="card.reviewPublished"
-            class="pg-home__btn pg-home__btn--small pg-home__btn--primary"
+            class="pg-btn pg-btn--sm"
             role="button"
             :data-testid="'home-done-review-' + i"
             @tap="openReview(card)"
@@ -270,67 +300,83 @@ function addToNotebook(card: AssignmentCardView): void {
           </button>
         </view>
       </view>
+      <view v-if="home.done.length === 0" class="pg-home__empty" data-testid="home-done-empty">
+        <PgMascot expr="idle" :size="72" />
+        <text class="pg-home__emptytext">还没有完成的题，完成后会出现在这里。</text>
+      </view>
 
       <!-- 证明本摘要：契约可选字段，缺省时降级 -->
       <view class="pg-home__notebook pg-sheet" data-testid="home-notebook">
         <text class="pg-home__cardtitle">证明本</text>
-        <text v-if="home.notebook" class="pg-home__cardsub pg-small" data-testid="home-notebook-summary">
+        <text v-if="home.notebook" class="pg-home__cardsub" data-testid="home-notebook-summary">
           已收录 {{ home.notebook.cards }} 份证明 · {{ home.notebook.toRedo }} 题待重做
         </text>
-        <text v-else class="pg-home__cardsub pg-small" data-testid="home-notebook-empty">
-          证明本摘要暂不可用（服务端未下发 notebook），可以先点上方「证明本」打开。
+        <text v-else class="pg-home__cardsub" data-testid="home-notebook-empty">
+          写完的证明会收进证明本，随时可以回看。点下方「证明本」打开。
         </text>
       </view>
-    </template>
+    </view>
 
-    <view v-if="notice" class="pg-home__notice pg-small" role="status" data-testid="home-notice">{{ notice }}</view>
+    <view v-if="notice" class="pg-home__notice" role="status" data-testid="home-notice">{{ notice }}</view>
 
     <text class="pg-home__hint pg-small">
-      {{ mockMode ? '当前 mock 模式：数据形状与契约 StudentHome 一致；加 ?api=real 可走真实接口。' : '数据来自服务端 GET /student/home 与 GET /me；弱网会自动重试。' }}
+      {{ mockMode ? '当前 mock 模式：数据形状与契约 StudentHome 一致；加 ?api=real 可走真实接口。' : '网络不稳时会自动重试。' }}
     </text>
+
+    <view class="pg-home__nav">
+      <view class="pg-home__tab pg-home__tab--on"><PgIcon name="home" :size="28" /><text>路径</text></view>
+      <button class="pg-home__tab" role="button" data-testid="home-proofbook" @tap="goProofbook"><PgIcon name="book" :size="28" /><text>证明本</text></button>
+    </view>
   </view>
 </template>
 
 <style scoped>
-.pg-home { padding-top: calc(var(--safe-top) + var(--sp-4)); padding-bottom: calc(var(--sp-6) + var(--safe-bottom)); }
-.pg-home__head { display: flex; flex-direction: column; gap: var(--sp-1); margin-bottom: var(--sp-4); }
-.pg-home__headrow { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.pg-home__hello { font-family: var(--font-serif); font-size: 22px; font-weight: 600; }
-.pg-home__stat { color: var(--ink-2); }
-.pg-home__book { min-height: 36px; padding: 0 var(--sp-3); border: 1px solid var(--rule); border-radius: 999px; background: transparent; color: var(--ink-2); }
-.pg-home__mode { color: var(--ink-2); }
-.pg-home__slow { padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-input); background: var(--hint-soft); color: var(--ink); margin-bottom: var(--sp-2); }
-.pg-home__section { display: block; margin: var(--sp-4) 0 var(--sp-2); font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--ink); }
-.pg-home__card { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3); margin-bottom: var(--sp-2); min-width: 0; }
-.pg-home__cardmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pg-home__cardtitle { font-size: 15px; color: var(--ink); }
-.pg-home__cardsub { color: var(--ink-2); }
+.pg-home { padding-top: calc(var(--safe-top) + var(--sp-3)); padding-bottom: calc(96px + var(--safe-bottom)); }
+.pg-home__stats { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.pg-home__chip { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 var(--sp-3) 0 var(--sp-2); border-radius: var(--radius-input); font-size: 17px; font-weight: 900; color: var(--ink-2); }
+.pg-home__chip--bee { color: var(--hint); }
+.pg-home__chip--grass { color: var(--accent-text); }
+.pg-home__chipsub { font-size: 12px; font-weight: 800; letter-spacing: 0.4px; opacity: 0.85; }
+.pg-home__hello { display: block; margin: var(--sp-1) 0 var(--sp-3); font-size: 13px; font-weight: 800; color: var(--ink-2); }
+.pg-home__mode { display: block; color: var(--ink-2); margin-bottom: var(--sp-2); }
+.pg-home__unit { position: sticky; top: calc(var(--safe-top) + 4px); z-index: 3; display: flex; align-items: center; gap: var(--sp-3); min-height: 84px; padding: 0 var(--sp-3) 0 var(--sp-4); border-radius: 18px; background: var(--accent); color: var(--on-accent); box-shadow: 0 5px 0 var(--accent-lip); }
+.pg-home__unitmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pg-home__unitkick { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; opacity: 0.8; }
+.pg-home__unittitle { font-size: 21px; font-weight: 900; line-height: 1.2; }
+.pg-home__unitbook { width: 48px; height: 48px; border-radius: 14px; border: 2px solid rgba(20, 41, 10, 0.25); border-bottom-width: 4px; display: flex; align-items: center; justify-content: center; }
+.pg-home__slow { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-input); background: var(--hint-soft); color: var(--ink); font-weight: 700; }
+.pg-home__path { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 36px 0 var(--sp-4); overflow-x: clip; }
+.pg-home__node { position: relative; display: flex; flex-direction: column; align-items: center; width: 220px; max-width: 100%; }
+.pg-home__face { width: 76px; height: 76px; border-radius: 50%; border: 0; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--on-accent); }
+.pg-home__face::after { display: none; }
+.pg-home__face--done { background: var(--hint-fill); box-shadow: 0 8px 0 var(--hint-lip); transform: rotate(0); }
+.pg-home__face--todo { background: var(--margin); color: var(--on-margin); box-shadow: 0 8px 0 var(--margin-lip); }
+.pg-home__face--todo:active { transform: translateY(6px); box-shadow: 0 2px 0 var(--margin-lip); }
+.pg-home__face--off,
+.pg-home__face--off[disabled] { background: var(--rule); color: var(--ink-3); box-shadow: 0 8px 0 var(--ink-3); opacity: 0.85; }
+.pg-home__face--cur { width: 88px; height: 88px; background: var(--accent); color: var(--on-accent); box-shadow: 0 8px 0 var(--accent-lip), 0 0 0 7px var(--accent-soft); }
+.pg-home__go { margin-bottom: 14px; min-height: 40px; padding: 0 var(--sp-4); border: 2px solid var(--rule); border-bottom-width: 4px; border-radius: 14px; background: var(--sheet); color: var(--accent-text); font-size: 15px; font-weight: 900; letter-spacing: 1px; animation: pg-bob 1.6s ease-in-out 3; }
+.pg-home__label { margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.pg-home__cardtitle { font-size: 16px; font-weight: 900; color: var(--ink); line-height: 1.3; }
+.pg-home__cardsub { font-size: 13px; font-weight: 700; color: var(--ink-2); }
 .pg-home__disabledreason { color: var(--hint); }
-.pg-home__card--done { align-items: flex-start; flex-wrap: wrap; }
-.pg-home__actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-.pg-home__reviewbadge { align-self: flex-start; padding: 1px var(--sp-2); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
-.pg-home__btn {
-  flex: 0 0 auto;
-  min-height: 44px;
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-input);
-  background: var(--sheet);
-  color: var(--ink);
-  font-size: 15px;
-  line-height: 1.2;
-}
-.pg-home__btn--small { min-height: 36px; font-size: 13px; padding: 0 var(--sp-2); }
-.pg-home__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-.pg-home__btn--disabled { opacity: 0.45; }
-.pg-home__empty { color: var(--ink-2); padding: var(--sp-2) 0; }
-.pg-home__notebook { padding: var(--sp-3); margin-top: var(--sp-3); display: flex; flex-direction: column; gap: 2px; }
-.pg-home__skeleton { padding: var(--sp-3); }
+.pg-home__reviewbadge { margin-top: 2px; padding: 1px var(--sp-2); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: 12px; font-weight: 900; }
+.pg-home__divider { align-self: stretch; text-align: center; font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--ink-3); border-top: 2px solid var(--rule); padding-top: var(--sp-3); margin-top: var(--sp-2); }
+.pg-home__tab::after { display: none; }
+.pg-home__actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: var(--sp-2); }
+.pg-home__mascot { position: absolute; left: 156px; top: 40px; }
+.pg-home__empty { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+.pg-home__emptytext { font-size: 14px; font-weight: 700; color: var(--ink-2); text-align: center; }
+.pg-home__notebook { width: 100%; padding: var(--sp-3); margin-top: var(--sp-3); display: flex; flex-direction: column; gap: 2px; }
+.pg-home__skeleton { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 36px 0; }
 .pg-home__skeletontip { color: var(--ink-2); }
-.pg-home__line { height: 16px; border-radius: 4px; background: var(--paper); margin: var(--sp-2) 0; }
-.pg-home__error { padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-home__errortitle { font-family: var(--font-serif); font-weight: 600; color: var(--ink); }
-.pg-home__errorbody { color: var(--ink-2); }
-.pg-home__notice { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-input) var(--radius-input) 0; background: var(--accent-soft); color: var(--ink); }
-.pg-home__hint { display: block; margin-top: var(--sp-4); color: var(--ink-2); text-align: center; }
+.pg-home__ghost { width: 76px; height: 76px; border-radius: 50%; background: var(--rule); box-shadow: 0 8px 0 var(--ink-3); opacity: 0.5; }
+.pg-home__error { margin-top: var(--sp-6); padding: var(--sp-4); display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+.pg-home__errortitle { font-size: 20px; font-weight: 900; color: var(--ink); }
+.pg-home__errorbody { color: var(--ink-2); text-align: center; }
+.pg-home__notice { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 2px solid var(--margin); border-radius: var(--radius-input); background: var(--margin-soft); color: var(--ink); font-size: 13px; font-weight: 700; }
+.pg-home__hint { display: block; margin-top: var(--sp-4); color: var(--ink-3); text-align: center; }
+.pg-home__nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; justify-content: space-around; padding: 10px var(--sp-4) calc(10px + var(--safe-bottom)); background: var(--paper); border-top: 2px solid var(--rule); }
+.pg-home__tab { width: 112px; min-height: 58px; border: 2px solid transparent; border-radius: 14px; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--ink-3); font-size: 11px; font-weight: 900; letter-spacing: 0.6px; }
+.pg-home__tab--on { background: var(--margin-soft); border-color: var(--margin); color: var(--margin-text); }
 </style>

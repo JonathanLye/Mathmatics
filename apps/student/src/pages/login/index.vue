@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PgMascot from '@/components/ui/PgMascot.vue'
 /** 登录（02 §4.1）：邀请码 6 位 + 学号；邀请码可从链接参数带入。真实接口（#18/#24）：POST /auth/student/login。 */
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
@@ -46,8 +47,9 @@ async function submit() {
   <view class="pg-page pg-login">
     <WechatHint />
     <view class="pg-login__brand">
+      <PgMascot expr="happy" :size="96" />
       <text class="pg-login__title">证明陪练场</text>
-      <text class="pg-login__sub pg-small">一张稿纸，一支红笔。写证明，不抄答案。</text>
+      <text class="pg-login__sub pg-small">一行一行写证明，不抄答案。</text>
     </view>
     <view class="pg-login__form pg-sheet">
       <text class="pg-login__label pg-small">邀请码</text>
@@ -58,28 +60,27 @@ async function submit() {
       <button class="pg-login__submit" data-testid="login-submit" :disabled="loading" @tap="submit">{{ loading ? '登录中…' : '进入' }}</button>
     </view>
     <text class="pg-login__hint pg-small">
-      {{ mockMode ? '当前为 mock 模式（离线演示）；接真实接口用 VITE_USE_MOCK=false 或 setMockMode(false)。' : '登录走服务端 #18：邀请码 + 学号认领名单，服务端写 HttpOnly 会话 Cookie。' }}
+      {{ mockMode ? '当前为 mock 模式（离线演示）；接真实接口用 VITE_USE_MOCK=false 或 setMockMode(false)。' : '输入老师给你的 6 位邀请码和你的学号。第一次登录会自动认领名单里的你。' }}
     </text>
   </view>
 </template>
 
 <style scoped>
 .pg-login { display: flex; flex-direction: column; justify-content: center; min-height: 100vh; min-height: 100dvh; padding: var(--sp-6); }
-.pg-login__brand { margin-bottom: var(--sp-6); }
-.pg-login__title { display: block; font-family: var(--font-serif); font-size: 30px; font-weight: 600; color: var(--ink); }
+.pg-login__brand { margin-bottom: var(--sp-6); display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+.pg-login__title { display: block; font-size: 30px; font-weight: 900; color: var(--ink); }
 .pg-login__sub { display: block; margin-top: var(--sp-2); color: var(--ink-2); }
 .pg-login__form { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
 .pg-login__label { color: var(--ink-2); margin-top: var(--sp-2); }
 .pg-login__input {
   min-height: 44px; margin-top: var(--sp-1); padding: 0 var(--sp-3);
-  border: 1px solid var(--rule); border-radius: var(--radius-input);
-  background: var(--sheet); color: var(--ink); font-size: 16px;
+  border: 2px solid var(--rule); border-bottom-width: var(--lip); border-radius: var(--radius-input);
+  background: var(--sheet); color: var(--ink); font-size: 16px; font-weight: 700;
 }
-.pg-login__error { color: var(--margin); margin-top: var(--sp-1); }
-.pg-login__submit {
-  margin-top: var(--sp-3); min-height: 48px; border-radius: var(--radius-input);
-  background: var(--accent); color: var(--on-accent); border: 0; font-size: 16px;
-}
-.pg-login__submit:disabled { opacity: 0.5; }
+.pg-login__error { color: var(--margin-text); margin-top: var(--sp-1); }
+.pg-login__submit { margin-top: var(--sp-3); min-height: 52px; border: 0; border-radius: var(--radius-card); background: var(--accent); box-shadow: 0 var(--lip) 0 var(--accent-lip); color: var(--on-accent); font-size: 16px; font-weight: 900; letter-spacing: 0.5px; }
+.pg-login__submit::after { display: none; }
+.pg-login__submit:active { transform: translateY(var(--lip)); box-shadow: none; }
+.pg-login__submit:disabled { background: var(--rule); box-shadow: none; color: var(--ink-3); }
 .pg-login__hint { margin-top: var(--sp-4); color: var(--ink-2); text-align: center; }
 </style>

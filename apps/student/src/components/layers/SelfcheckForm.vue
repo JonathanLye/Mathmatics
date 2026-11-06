@@ -148,7 +148,7 @@ function statusText(item: SelfcheckItem): string {
   min-width: 0;
 }
 .pg-layer__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.pg-layer__title { font-family: var(--font-serif); font-size: 17px; font-weight: 600; color: var(--ink); }
+.pg-layer__title { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--ink-2); }
 .pg-layer__step { color: var(--ink-2); flex: 0 0 auto; }
 .pg-layer__hint { color: var(--ink-2); }
 .pg-layer__row { display: flex; gap: var(--sp-2); }
@@ -173,12 +173,12 @@ function statusText(item: SelfcheckItem): string {
 .pg-check__item { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
 .pg-check__qhead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .pg-check__qno { color: var(--ink-2); font-size: 12px; }
-.pg-check__status { padding: 1px var(--sp-2); border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); }
+.pg-check__status { padding: 1px var(--sp-2); border-radius: 999px; border: 2px solid var(--rule); color: var(--ink-2); }
 .pg-check__status--accepted { border-color: var(--ok); color: var(--ok); }
-.pg-check__status--followup { border-color: var(--margin); color: var(--margin); }
-.pg-check__followup { color: var(--margin); }
+.pg-check__status--followup { border-color: var(--margin); color: var(--margin-text); }
+.pg-check__followup { color: var(--margin-text); }
 .pg-check__done { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); }
-.pg-check__donetitle { font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-check__donetitle { font-size: 16px; font-weight: 900; }
 .pg-check__passed { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
 .pg-check__passedrow { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-1) 0; border-bottom: 1px dashed var(--rule); }
 .pg-check__passedrow:last-child { border-bottom: 0; }
@@ -187,7 +187,7 @@ function statusText(item: SelfcheckItem): string {
   display: block;
   width: 100%;
   height: 96px;
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--paper);
   overflow: hidden;
@@ -214,7 +214,7 @@ function statusText(item: SelfcheckItem): string {
   margin: 0;
   min-height: 44px;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);

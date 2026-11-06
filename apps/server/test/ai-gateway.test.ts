@@ -90,6 +90,14 @@ describe('模型注册表', () => {
     expect(missing.providers.typesafe).toMatchObject({ configured: false, missing: ['JEV_API_KEY'] });
   });
 
+  it('MODEL_<ROLE> 环境变量覆盖模型 ID，未设置时用 yaml 默认', () => {
+    const base = loadModelRegistry(MODELS_PATH, {});
+    const overridden = loadModelRegistry(MODELS_PATH, { MODEL_CROSS: 'qwen-flash', MODEL_FAST: '' });
+    expect(overridden.models.cross?.model).toBe('qwen-flash');
+    expect(overridden.models.fast?.model).toBe(base.models.fast?.model);
+    expect(overridden.models.decide?.model).toBe(base.models.decide?.model);
+  });
+
   it('models 引用未知 provider 时报错，指出角色名', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'registry-'));
     const file = path.join(dir, 'models.yaml');
@@ -218,11 +226,12 @@ describe('Jev 请求体', () => {
 });
 
 describe('deps 状态', () => {
-  it('没有 key：typesafe degraded；未接入适配器的 provider 为 disabled', () => {
+  it('没有 key：已接入适配器的 provider degraded；未接入的为 disabled', () => {
     const deps = gatewayFor({}).health().deps;
     expect(deps.typesafe).toBe('degraded');
+    expect(deps.simpletex).toBe('degraded');
+    expect(deps.dashscope).toBe('degraded');
     expect(deps.deepseek).toBe('disabled');
-    expect(deps.simpletex).toBe('disabled');
   });
 
   it('有 key 且没有失败：typesafe ok', () => {

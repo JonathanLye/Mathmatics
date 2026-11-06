@@ -45,7 +45,7 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
   // 这里只防整段脚本式爆破，不防单个学号被猜。同邀请码失败锁定：未实现，策略需产品确认（见复审报告 P1-5）。
   app.post(
     '/auth/student/login',
-    { config: { rateLimit: { max: LOGIN_MAX_PER_MINUTE, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: config.rateLimits.login ?? LOGIN_MAX_PER_MINUTE, timeWindow: '1 minute' } } },
     async (request, reply) => {
       contract.validateRequest('/auth/student/login', 'post', request.body);
       const body = request.body as StudentLoginBody;

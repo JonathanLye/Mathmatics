@@ -94,9 +94,10 @@ export interface StepsView {
 export interface CheckQuestion {
   q: string
   options: string[]
-  answer: number
-  right: string
-  wrong: string
+  /** mock 才有；真实接口不下发 answer/right/wrong，选完由 POST /lesson/check 判定并给反馈。 */
+  answer?: number
+  right?: string
+  wrong?: string
 }
 
 /**

@@ -217,7 +217,7 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
 }
 .pg-svg__label--muted { color: var(--ink-2); font-size: 9px; }
 .pg-svg__label--ink { color: var(--ink); }
-.pg-svg__label--margin { color: var(--margin); font-size: 9px; }
+.pg-svg__label--margin { color: var(--margin-text); font-size: 9px; }
 .pg-svg__label--tick { color: var(--ink-2); font-size: 9px; }
 .pg-fb__hband { fill: var(--accent-soft); }
 .pg-fb__vband { fill: var(--ok); opacity: 0.14; }

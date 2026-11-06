@@ -262,7 +262,7 @@ onUnmounted(cleanup)
   padding: 0 var(--sp-3);
   background: var(--accent-soft);
   border-bottom: 1px solid var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .pg-mirror__bannertext { font-weight: 600; font-size: var(--fs-small); }
 .pg-mirror__status { margin-left: auto; color: var(--ink-2); }
@@ -282,7 +282,7 @@ onUnmounted(cleanup)
   flex-direction: column;
   gap: var(--sp-2);
 }
-.pg-mirror__errortitle { font-family: var(--font-serif); font-weight: 600; color: var(--ink); }
+.pg-mirror__errortitle { font-weight: 900; color: var(--ink); }
 .pg-mirror__errorbody,
 .pg-mirror__loadingtext { color: var(--ink-2); }
 .pg-mirror__shell {
@@ -295,7 +295,7 @@ onUnmounted(cleanup)
   padding-top: var(--sp-3);
 }
 .pg-mirror__head { padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
-.pg-mirror__title { font-family: var(--font-serif); font-size: 17px; font-weight: 600; color: var(--ink); }
+.pg-mirror__title { font-size: 17px; font-weight: 900; color: var(--ink); }
 .pg-mirror__meta { color: var(--ink-2); }
 .pg-mirror__budget { display: flex; gap: var(--sp-2); color: var(--ink-2); flex-wrap: wrap; }
 .pg-mirror__layers { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
@@ -306,11 +306,11 @@ onUnmounted(cleanup)
   border: 1px solid var(--rule);
   color: var(--ink-2);
 }
-.pg-mirror__layer--active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pg-mirror__layer--active { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
 .pg-mirror__layer--done { color: var(--ok); }
 .pg-mirror__problem { padding: var(--sp-3) var(--sp-4); font-family: var(--font-serif); font-size: var(--fs-stem); line-height: var(--lh-body); color: var(--ink); }
 .pg-mirror__section { padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-mirror__sectiontitle { font-family: var(--font-serif); font-size: 15px; font-weight: 600; color: var(--ink); }
+.pg-mirror__sectiontitle { font-size: 15px; font-weight: 900; color: var(--ink); }
 .pg-mirror__label { color: var(--ink-2); }
 .pg-mirror__muted { color: var(--ink-2); }
 .pg-mirror__answer { display: flex; flex-direction: column; gap: var(--sp-1); padding-left: var(--sp-2); border-left: 2px solid var(--rule); }

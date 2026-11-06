@@ -10,7 +10,9 @@ import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
 import type { RouteInput } from '../help/intent.ts';
 import { createIdempotency } from '../idempotency.ts';
+import { createLessonService } from '../help/lesson.ts';
 import { createHelpService } from '../help/service.ts';
+import { assertConfirmedInput } from '../recognition/provenance.ts';
 
 import type { AuthRouteOptions } from './auth.ts';
 
@@ -32,6 +34,8 @@ interface LineSubmission {
   statement: string;
   justification?: string;
   input: InputMeta;
+  // 依据是独立的输入落点（03 §1）：没带时按键盘输入处理，不拿 input 的 recogId 去核对依据文字。
+  justificationInput?: InputMeta;
 }
 
 interface SummarySubmission {
@@ -77,16 +81,15 @@ function parseBody<T>(contract: ContractValidator, path: string, request: Fastif
   return request.body as T;
 }
 
-// 手写、拍照、混合来源需要已确认的识别结果（16 §2）。识别服务本期未接入，因此这些来源一律拒绝。
-function rejectUnconfirmedInput(input: InputMeta): void {
-  if (input.provenance === 'ink' || input.provenance === 'photo' || input.provenance === 'mixed') {
-    throw new AppError('RECOG_NOT_CONFIRMED', 409, '手写或拍照内容需先确认识别结果');
-  }
-}
-
 export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, config, contract }) => {
   const svc = createAttemptService(db, contract);
   const helpSvc = createHelpService({ db, attempts: svc, secret: config.sessionSecret });
+  const lessonSvc = createLessonService({ db, attempts: svc });
+  const conceptParam = (request: FastifyRequest): string => {
+    const raw = (request.params as Record<string, string>).conceptId ?? '';
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(raw)) throw new AppError('NOT_FOUND', 404, '没有这个概念');
+    return raw;
+  };
   // 06 §1：写接口带 Idempotency-Key 时，同键重放返回首次响应。先鉴权/同意书，再占位。
   const idempotency = createIdempotency(db);
   const writable = { preHandler: [requireStudentConsent(db), idempotency.preHandler], onSend: idempotency.onSend };
@@ -115,10 +118,22 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     return { state: await svc.get(auth.userId, attemptId(request)) };
   });
 
+  // 预写微课（06 §4.4）：只读，已过闸门；小核验的答案不下发，由 /check 判定。
+  app.get('/attempts/:attemptId/lesson/:conceptId', async (request) => {
+    const auth = await requireAuth(db, request);
+    return lessonSvc.get(auth.userId, attemptId(request), conceptParam(request));
+  });
+
+  app.post('/attempts/:attemptId/lesson/:conceptId/check', { preHandler: [requireStudentConsent(db)] }, async (request) => {
+    const auth = await requireAuth(db, request);
+    const body = parseBody<{ stepId: string; choice: number }>(contract, '/attempts/{attemptId}/lesson/{conceptId}/check', request);
+    return lessonSvc.check(auth.userId, attemptId(request), conceptParam(request), body);
+  });
+
   app.post('/attempts/:attemptId/definition', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/definition', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
     const state = await svc.command({
       userId: auth.userId,
@@ -127,7 +142,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
       build: () => ({ kind: 'def.submit', lineId, text: body.text }),
       record: async (tx, row, result) => {
         if (!result.events.some((e) => e.type === 'def.submit')) return;
-        await addLine(tx, row, { id: lineId, layer: 'L1', role: 'def', statement: body.text, provenance: body.input.provenance });
+        await addLine(tx, row, { id: lineId, layer: 'L1', role: 'def', statement: body.text, provenance: body.input.provenance, recogId: body.input.recogId });
       },
     });
     return { state };
@@ -136,7 +151,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/framework', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/framework', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
     const state = await svc.command({
       userId: auth.userId,
@@ -145,7 +160,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
       build: () => ({ kind: 'frame.submit', lineId, text: body.text }),
       record: async (tx, row, result) => {
         if (!result.events.some((e) => e.type === 'frame.submit')) return;
-        await addLine(tx, row, { id: lineId, layer: 'L2', role: 'frame', statement: body.text, provenance: body.input.provenance });
+        await addLine(tx, row, { id: lineId, layer: 'L2', role: 'frame', statement: body.text, provenance: body.input.provenance, recogId: body.input.recogId });
       },
     });
     return { state };
@@ -165,7 +180,10 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/lines', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<LineSubmission>(contract, '/attempts/{attemptId}/lines', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.statement]);
+    if (body.justificationInput) {
+      await assertConfirmedInput(db, auth.userId, attemptId(request), body.justificationInput, [body.justification ?? '']);
+    }
     const lineId = randomUUID();
     const state = await svc.command({
       userId: auth.userId,
@@ -189,6 +207,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
           statement: body.statement,
           justification: body.justification ?? null,
           provenance: body.input.provenance,
+          recogId: body.input.recogId,
           cls: String(ev.payload.cls),
           keys: ev.payload.keys as string[],
           newKeys: ev.payload.newKeys as string[],
@@ -213,7 +232,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/selfcheck/:itemId', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/selfcheck/{itemId}', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const itemId = param(request, 'itemId');
     const state = await svc.command({
       userId: auth.userId,
@@ -229,6 +248,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
           slot: itemId,
           statement: body.text,
           provenance: body.input.provenance,
+          recogId: body.input.recogId,
           cls: ev.payload.valid === true ? 'pass' : 'fail',
         });
       },
@@ -245,7 +265,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.post('/attempts/:attemptId/summary', writable, async (request) => {
     const auth = await requireAuth(db, request);
     const body = parseBody<SummarySubmission>(contract, '/attempts/{attemptId}/summary', request);
-    rejectUnconfirmedInput(body.input);
+    await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, body.answers);
     const state = await svc.command({
       userId: auth.userId,
       attemptId: attemptId(request),
@@ -261,6 +281,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
             slot: String(i + 1),
             statement: answer,
             provenance: body.input.provenance,
+            recogId: body.input.recogId,
           });
         }
       },

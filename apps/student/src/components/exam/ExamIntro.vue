@@ -53,7 +53,7 @@ const emit = defineEmits<{ (e: 'start'): void }>()
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: color-mix(in srgb, var(--ink) 42%, transparent);
+  background: rgba(0, 0, 0, 0.52);
 }
 .pg-examgate__sheet {
   width: min(520px, 100%);
@@ -67,11 +67,11 @@ const emit = defineEmits<{ (e: 'start'): void }>()
   border-radius: var(--radius-sheet);
   box-shadow: var(--shadow-sheet);
 }
-.pg-examgate__title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; color: var(--ink); }
+.pg-examgate__title { font-size: 20px; font-weight: 900; color: var(--ink); }
 .pg-examgate__sub { color: var(--ink-2); line-height: 1.6; }
 .pg-examgate__time { display: flex; align-items: baseline; gap: var(--sp-2); }
 .pg-examgate__timelabel { color: var(--ink-2); }
-.pg-examgate__timevalue { font-size: 22px; color: var(--accent); }
+.pg-examgate__timevalue { font-size: 22px; color: var(--accent-text); }
 .pg-examgate__rules { display: flex; flex-direction: column; gap: var(--sp-1); }
 .pg-examgate__rule { color: var(--ink-2); line-height: 1.6; }
 .pg-examgate__fs { color: var(--hint); }

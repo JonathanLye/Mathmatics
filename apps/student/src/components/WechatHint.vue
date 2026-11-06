@@ -171,7 +171,7 @@ function dismiss(): void {
   border: 1px solid var(--accent);
   border-radius: 999px;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--fs-small);
   line-height: 1.2;
 }
@@ -180,7 +180,7 @@ function dismiss(): void {
 }
 .pg-wechat__btn--primary {
   background: var(--accent);
-  color: var(--sheet);
+  color: var(--on-accent);
 }
 .pg-wechat__state {
   flex: 1 1 100%;

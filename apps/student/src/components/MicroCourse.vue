@@ -8,6 +8,8 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import PgIcon from '@/components/ui/PgIcon.vue'
+import PgMascot from '@/components/ui/PgMascot.vue'
 import AiGeneratedTag from '@/components/AiGeneratedTag.vue'
 import { generatedTextOf } from '@/components/aigc'
 // #98 已提供统一的图解组件（N(ε) 只由 diagrams/seqBand.ts 计算）；#26 微课 + #47 图解接线共用。
@@ -19,11 +21,17 @@ import FuncBandDiagram from '@/components/diagrams/FuncBandDiagram.vue'
 import MonotoneStepsDiagram from '@/components/diagrams/MonotoneStepsDiagram.vue'
 import type { LessonStep, LessonView } from '@/types/attempt'
 
-const props = withDefaults(defineProps<{ open?: boolean; lesson?: LessonView | null; busy?: boolean }>(), {
-  open: false,
-  lesson: null,
-  busy: false,
-})
+type CheckVerdict = { correct: boolean; feedback: string } | null
+const props = withDefaults(
+  defineProps<{
+    open?: boolean
+    lesson?: LessonView | null
+    busy?: boolean
+    /** 服务端判定小核验（真实接口不下发答案）；缺省或返回 null 时用题目自带的 answer/right/wrong 本地判定（mock）。 */
+    check?: (stepId: string, choice: number) => Promise<CheckVerdict>
+  }>(),
+  { open: false, lesson: null, busy: false, check: undefined },
+)
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -39,6 +47,8 @@ const KIND_LABEL: Record<LessonStep['kind'], string> = {
 const stepIndex = ref(0)
 const choices = ref<Record<string, number>>({})
 const checkStatus = ref<Record<string, 'idle' | 'wrong' | 'right'>>({})
+/** 服务端给的反馈文案（真实接口）；没有时回退到题目自带的 right/wrong。 */
+const feedbackText = ref<Record<string, string>>({})
 
 const steps = computed(() => props.lesson?.steps ?? [])
 /**
@@ -88,14 +98,28 @@ function reset() {
   stepIndex.value = 0
   choices.value = {}
   checkStatus.value = {}
+  feedbackText.value = {}
 }
 watch(() => props.open, (open) => { if (open) reset() })
 watch(() => props.lesson, () => reset())
 
-function choose(index: number) {
+async function choose(index: number) {
   const s = step.value
   if (!s?.check || status.value === 'right') return
   choices.value = { ...choices.value, [s.id]: index }
+  let verdict: CheckVerdict = null
+  if (props.check) {
+    try {
+      verdict = await props.check(s.id, index)
+    } catch {
+      return // 网络失败：不改判定，学生可以再点一次
+    }
+  }
+  if (verdict) {
+    feedbackText.value = { ...feedbackText.value, [s.id]: verdict.feedback }
+    checkStatus.value = { ...checkStatus.value, [s.id]: verdict.correct ? 'right' : 'wrong' }
+    return
+  }
   checkStatus.value = { ...checkStatus.value, [s.id]: index === s.check.answer ? 'right' : 'wrong' }
 }
 
@@ -117,22 +141,21 @@ function close() {
   <view v-if="props.open && props.lesson" class="pg-micro" role="dialog" aria-modal="true" data-testid="micro-course">
     <view class="pg-micro__shell">
       <view class="pg-micro__head">
-        <text class="pg-micro__stepno pg-mono" data-testid="micro-stepno">第 {{ stepIndex + 1 }} / {{ total }} 步</text>
-        <text class="pg-micro__title">{{ props.lesson.title }}</text>
-        <button class="pg-micro__close pg-small" role="button" data-testid="micro-close" @tap="close">关闭</button>
+        <button class="pg-micro__close" role="button" aria-label="关闭" data-testid="micro-close" @tap="close"><PgIcon name="close" :size="28" /></button>
+        <view class="pg-micro__dots" aria-hidden="true">
+          <view
+            v-for="(s, i) in steps"
+            :key="s.id"
+            class="pg-micro__dot"
+            :class="{
+              'pg-micro__dot--done': i < stepIndex,
+              'pg-micro__dot--current': i === stepIndex,
+            }"
+          ><view class="pg-micro__dotfill" /></view>
+        </view>
+        <text class="pg-micro__stepno" data-testid="micro-stepno">第 {{ stepIndex + 1 }} / {{ total }} 步</text>
       </view>
-
-      <view class="pg-micro__dots" aria-hidden="true">
-        <view
-          v-for="(s, i) in steps"
-          :key="s.id"
-          class="pg-micro__dot"
-          :class="{
-            'pg-micro__dot--done': i < stepIndex,
-            'pg-micro__dot--current': i === stepIndex,
-          }"
-        />
-      </view>
+      <text class="pg-micro__title">{{ props.lesson.title }}</text>
 
       <view
         v-if="generatedText && stepIndex === 0"
@@ -193,10 +216,12 @@ function close() {
             </button>
           </view>
           <view v-if="status === 'wrong'" class="pg-micro__feedback pg-micro__feedback--wrong" data-testid="micro-feedback-wrong">
-            <MathText :text="step.check.wrong" block />
+            <PgMascot expr="oops" :size="56" />
+            <view class="pg-micro__fbtext"><text class="pg-micro__fbtitle">差一点</text><MathText :text="feedbackText[step.id] ?? step.check.wrong ?? ''" block /></view>
           </view>
           <view v-if="status === 'right'" class="pg-micro__feedback pg-micro__feedback--right" data-testid="micro-feedback-right">
-            <MathText :text="'对。' + step.check.right" block />
+            <PgMascot expr="happy" :size="56" />
+            <view class="pg-micro__fbtext"><text class="pg-micro__fbtitle">答对了</text><MathText :text="feedbackText[step.id] ?? '对。' + (step.check.right ?? '')" block /></view>
           </view>
         </view>
       </view>
@@ -230,118 +255,46 @@ function close() {
 </template>
 
 <style scoped>
-.pg-micro {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: var(--paper);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.pg-micro__shell {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-height: 100%;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: calc(var(--safe-top) + var(--sp-3)) max(var(--sp-4), var(--safe-left)) calc(var(--sp-4) + var(--safe-bottom))
-    max(var(--sp-4), var(--safe-right));
-}
-.pg-micro__head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-}
-.pg-micro__stepno { color: var(--ink-2); flex: 0 0 auto; }
-.pg-micro__title { flex: 1; min-width: 0; font-family: var(--font-serif); font-size: 17px; font-weight: 600; color: var(--ink); }
-.pg-micro__close {
-  flex: 0 0 auto;
-  min-height: 36px;
-  padding: 0 var(--sp-2);
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-2);
-}
-.pg-micro__dots { display: flex; gap: 6px; }
-.pg-micro__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
-.pg-micro__dot--done { background: var(--ok); }
-.pg-micro__dot--current { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-/* AI 生成补充讲解：与系统消息同底色（accent-soft），标识在正文下方（12 §7）。 */
-.pg-micro__generated {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 var(--radius-card) var(--radius-card) 0;
-  background: var(--accent-soft);
-}
-.pg-micro__generatedtitle { color: var(--ink-2); }
-.pg-micro__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  min-width: 0;
-}
-.pg-micro__kind { color: var(--ink-2); }
-.pg-micro__text { font-family: var(--font-serif); font-size: 16px; line-height: 1.65; color: var(--ink); }
+.pg-micro { position: fixed; inset: 0; z-index: 90; background: var(--paper); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pg-micro__shell { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 100%; width: 100%; max-width: 720px; margin: 0 auto; padding: calc(var(--safe-top) + var(--sp-3)) max(var(--sp-4), var(--safe-left)) calc(var(--sp-4) + var(--safe-bottom)) max(var(--sp-4), var(--safe-right)); }
+.pg-micro__head { display: flex; align-items: center; gap: var(--sp-3); }
+.pg-micro__close { flex: 0 0 auto; width: 44px; min-height: 44px; margin: 0 0 0 -8px; padding: 0; border: 0; background: transparent; color: var(--ink-3); display: inline-flex; align-items: center; justify-content: center; }
+.pg-micro__close::after { display: none; }
+.pg-micro__dots { flex: 1; min-width: 0; display: flex; gap: 4px; }
+/* 进度条：每步一段，16px 高、顶部高光 */
+.pg-micro__dot { position: relative; flex: 1; height: 16px; border-radius: 8px; background: var(--rule); overflow: hidden; }
+.pg-micro__dotfill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 8px; background: var(--accent); }
+.pg-micro__dotfill::after { content: ''; position: absolute; left: 6px; right: 6px; top: 4px; height: 4px; border-radius: 2px; background: #fff; opacity: 0.35; }
+.pg-micro__dot--done .pg-micro__dotfill { width: 100%; }
+.pg-micro__dot--current .pg-micro__dotfill { width: 45%; }
+.pg-micro__stepno { flex: 0 0 auto; color: var(--ink-2); font-size: 13px; font-weight: 900; letter-spacing: 0.4px; }
+.pg-micro__title { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--margin-text); }
+.pg-micro__generated { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 2px solid var(--accent); border-radius: var(--radius-card); background: var(--accent-soft); }
+.pg-micro__generatedtitle { color: var(--ink-2); font-weight: 800; }
+.pg-micro__card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); min-width: 0; }
+.pg-micro__kind { color: var(--ink-2); font-weight: 900; letter-spacing: 0.6px; }
+.pg-micro__text { font-size: 19px; line-height: 1.55; color: var(--ink); font-weight: 700; }
 .pg-micro__visual { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-micro__visualunknown { color: var(--ink-2); }
-.pg-micro__check { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px dashed var(--rule); }
-.pg-micro__options { display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-micro__option {
-  width: 100%;
-  min-height: 44px;
-  margin: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-input);
-  background: var(--sheet);
-  color: var(--ink);
-  font-size: 15px;
-  text-align: left;
-  line-height: 1.5;
-  display: flex;
-  align-items: center;
-}
-.pg-micro__option--picked { border-color: var(--accent); }
-.pg-micro__option--right { border-color: var(--ok); background: var(--accent-soft); }
-.pg-micro__option--wrong { border-color: var(--margin); background: var(--margin-soft); }
-.pg-micro__feedback {
-  display: block;
-  padding: var(--sp-2);
-  border-left: 3px solid var(--rule);
-  border-radius: 0 var(--radius-input) var(--radius-input) 0;
-  font-size: 14px;
-  line-height: 1.55;
-}
-.pg-micro__feedback--wrong { border-left-color: var(--margin); background: var(--margin-soft); color: var(--ink); }
-.pg-micro__feedback--right { border-left-color: var(--ok); background: var(--accent-soft); color: var(--ink); }
-.pg-micro__foot {
-  display: flex;
-  gap: var(--sp-2);
-  margin-top: auto;
-  padding: var(--sp-2) 0 calc(var(--sp-2) + var(--safe-bottom));
-  position: sticky;
-  bottom: 0;
-  background: var(--paper);
-}
-.pg-micro__btn {
-  flex: 1;
-  min-height: 44px;
-  margin: 0;
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-input);
-  background: var(--sheet);
-  color: var(--ink);
-  font-size: 15px;
-  line-height: 1.2;
-}
-.pg-micro__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-.pg-micro__btn[disabled] { opacity: 0.45; }
+.pg-micro__check { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 2px dashed var(--rule); }
+.pg-micro__options { display: flex; flex-direction: column; gap: var(--sp-3); }
+/* 选项：厚边行，选中=蓝，答对=绿，答错=红（微课是唯一有对错判决的地方） */
+.pg-micro__option { width: 100%; min-height: 54px; margin: 0; padding: var(--sp-2) var(--sp-4); border: 2px solid var(--rule); border-bottom-width: var(--lip); border-radius: var(--radius-card); background: var(--sheet); color: var(--ink); font-size: 16px; font-weight: 800; text-align: left; line-height: 1.5; display: flex; align-items: center; }
+.pg-micro__option::after { display: none; }
+.pg-micro__option:active { transform: translateY(2px); border-bottom-width: 2px; }
+.pg-micro__option--picked { border-color: var(--margin); border-bottom-color: var(--margin-lip); background: var(--margin-soft); color: var(--margin-text); }
+.pg-micro__option--right { border-color: var(--accent); border-bottom-color: var(--accent-lip); background: var(--accent-soft); color: var(--ink); }
+.pg-micro__option--wrong { border-color: var(--danger); border-bottom-color: var(--danger-face); background: var(--danger-soft); color: var(--danger-text); animation: pg-shake 240ms 1; }
+.pg-micro__feedback { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border-radius: var(--radius-card); font-size: 15px; font-weight: 700; line-height: 1.55; animation: pg-note-pop 260ms var(--ease-pop) both; }
+.pg-micro__fbtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pg-micro__fbtitle { font-size: 18px; font-weight: 900; }
+.pg-micro__feedback--wrong { background: var(--danger-soft); color: var(--danger-text); }
+.pg-micro__feedback--right { background: var(--accent-soft); color: var(--accent-text); }
+@keyframes pg-note-pop { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.pg-micro__foot { display: flex; gap: var(--sp-3); margin-top: auto; padding: var(--sp-3) 0 calc(var(--sp-2) + var(--safe-bottom)); position: sticky; bottom: 0; background: var(--paper); }
+.pg-micro__btn { flex: 1; min-height: 52px; margin: 0; padding: 0 var(--sp-3); border: 2px solid var(--rule); border-radius: var(--radius-card); box-shadow: 0 2px 0 var(--rule); background: var(--sheet); color: var(--margin-text); font-size: 16px; font-weight: 900; line-height: 1.2; }
+.pg-micro__btn::after { display: none; }
+.pg-micro__btn--primary { border: 0; background: var(--accent); box-shadow: 0 var(--lip) 0 var(--accent-lip); color: var(--on-accent); }
+.pg-micro__btn:active { transform: translateY(2px); }
+.pg-micro__btn[disabled] { background: var(--rule); box-shadow: none; color: var(--ink-3); }
 </style>

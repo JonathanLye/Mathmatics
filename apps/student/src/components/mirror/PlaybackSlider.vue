@@ -327,7 +327,7 @@ const isEmpty = computed(() => duration.value <= 0)
   border: 1px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .pg-playback__toggle::after {

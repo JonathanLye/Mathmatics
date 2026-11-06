@@ -23,7 +23,8 @@ import {
   type HttpClient,
   type HttpMethod,
 } from './http'
-import { createMockState, DEFAULT_MOCK, mockRecognition, type MockKey } from '@/mocks/attemptStates'
+import { createMockState, DEFAULT_MOCK, mockPhotoRecognition, mockRecognition, type MockKey } from '@/mocks/attemptStates'
+import { ImageCompressError } from '@/utils/imageCompress'
 import { AGE_BAND_LOCKED_MESSAGE, ageBandFromQuery } from '@/auth/ageBand'
 import {
   mockGeneratedLesson,
@@ -735,7 +736,12 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   const body = {
     statement: draft.statement,
     ...(draft.justification ? { justification: draft.justification } : {}),
-    input: { provenance: draft.input.provenance, draftId: options.draftId ?? draft.input.draftId ?? newDraftId() },
+    input: {
+      provenance: draft.input.provenance,
+      draftId: options.draftId ?? draft.input.draftId ?? newDraftId(),
+      // #25：photo/ink 行必须带已确认的 recogId（openapi InputMeta；漏传服务端会 RECOG_NOT_CONFIRMED）
+      ...(draft.input.recogId ? { recogId: draft.input.recogId } : {}),
+    },
   }
   return writeState(`/attempts/${state.attemptId}/lines`, body, {
     ifMatch: state.stateVersion,
@@ -1111,10 +1117,151 @@ export async function fetchAttempt(mock: MockKey = DEFAULT_MOCK): Promise<Attemp
   return createMockState(mock)
 }
 
-/** 手写识别（B 的 #21/#74 未完成：真实模式下没有可调接口，保留 mock）。 */
-export async function recognizeInk(_inkJson: string): Promise<Recognition> {
-  await sleep(600)
-  return clone(mockRecognition) as Recognition
+export interface RecognizeInkInput {
+  attemptId: string
+  /** 一行一个 draftId（03 §1）；确认后提交这一行时复用同一个。 */
+  draftId: string
+  target: 'def' | 'frame' | 'line_statement' | 'line_justification' | 'selfcheck' | 'summary' | 'help_text'
+  /** InkCanvas finish 事件给出的 gzip(ink-v1 JSON) 的 base64（≤256KB）。 */
+  ink: string
+}
+
+/**
+ * POST /recognitions/ink（#21）：写完这一行时调用一次，不做实时识别。
+ * - 不自动重试：识别请求没有幂等键，重试会产生重复识别记录并多计一次每日额度；
+ * - mock 模式（或传入字符串）返回演示结果，供 e2e/截图。
+ */
+export async function recognizeInk(input: string | RecognizeInkInput): Promise<Recognition> {
+  if (USE_MOCK || typeof input === 'string') {
+    await sleep(600)
+    return clone(mockRecognition) as Recognition
+  }
+  const result = await activeHttp.post<Recognition>('/recognitions/ink', input)
+  return result.data
+}
+
+// ---------------------------------------------------------------------------
+// #25 拍照识别：POST /recognitions/photo（multipart）与 confirm
+// ---------------------------------------------------------------------------
+
+export type PhotoSource = 'camera' | 'album'
+/** openapi InputTarget（拍照行默认 line_statement）。 */
+export type PhotoTarget =
+  | 'def'
+  | 'frame'
+  | 'line_statement'
+  | 'line_justification'
+  | 'selfcheck'
+  | 'summary'
+  | 'help_text'
+
+export interface RecognizePhotoInput {
+  attemptId: string
+  /** 一次拍照（整页）一个 draftId；确认后每行用各自 draftId（03 §1）。 */
+  draftId: string
+  target: PhotoTarget
+  source: PhotoSource
+  /** 已压缩的 JPEG（长边 ≤2000、≤2MB、已去 EXIF）。 */
+  image: Blob
+}
+
+export interface ConfirmRecognitionResult {
+  recogId: string
+  edited: boolean
+  rendered?: boolean
+}
+
+/**
+ * POST /recognitions/photo（multipart/form-data）：
+ * - FormData 由浏览器生成 boundary，**不手设 Content-Type**；写请求带 X-Requested-With（http 统一加）；
+ * - 不自动重试：识别请求没有幂等键，重试可能产生重复识别结果；
+ * - mock 返回 3 行 Recognition（mockPhotoRecognition），供演示/e2e。
+ */
+export async function recognizePhoto(input: RecognizePhotoInput): Promise<Recognition> {
+  if (USE_MOCK) {
+    await sleep(220)
+    return clone(mockPhotoRecognition) as Recognition
+  }
+  if (typeof FormData === 'undefined') {
+    throw new ApiError({ status: 0, code: 'INTERNAL', message: '当前环境不支持图片上传' })
+  }
+  const form = new FormData()
+  form.append('attemptId', input.attemptId)
+  form.append('draftId', input.draftId)
+  form.append('target', input.target)
+  form.append('source', input.source)
+  // 第三个参数是 multipart 的 filename；JPEG 与压缩结果一致。
+  form.append('image', input.image, 'photo.jpg')
+  const result = await activeHttp.request<Recognition>('/recognitions/photo', {
+    method: 'POST',
+    formData: form,
+  })
+  return result.data
+}
+
+/** POST /recognitions/{recogId}/confirm：学生确认（可改过）识别结果；lines 为拍照确认后的各行。 */
+export async function confirmRecognition(
+  recogId: string,
+  text: string,
+  lines: string[] = [],
+): Promise<ConfirmRecognitionResult> {
+  if (USE_MOCK) {
+    await sleep(120)
+    return { recogId, edited: false, rendered: true }
+  }
+  const result = await activeHttp.post<ConfirmRecognitionResult>(
+    '/recognitions/' + encodeURIComponent(recogId) + '/confirm',
+    { text, ...(lines.length > 0 ? { lines } : {}) },
+  )
+  return result.data
+}
+
+/**
+ * 拍照识别错误 → 学生可读文案（#25）：
+ * 后端 #21 未实现时 404 必须降级为「即将上线」，不能显示「请求的内容不存在」。
+ */
+export function photoRecognitionErrorMessage(error: unknown): string {
+  if (error instanceof ImageCompressError) {
+    switch (error.code) {
+      case 'unsupported':
+        return '当前环境不支持拍照压缩，请改用键盘或手写'
+      case 'empty':
+        return '没有选择图片，请重新拍照或用键盘'
+      case 'invalid_type':
+        return '只支持图片文件，请重新拍照'
+      case 'decode':
+      case 'encode':
+        return '图片处理失败，请靠近一点重拍或用键盘'
+      case 'too_large':
+        return '图片太大，压缩后仍超过 2MB，请靠近一点重拍或用键盘'
+      default:
+        return '拍照识别暂不可用，请用键盘或手写'
+    }
+  }
+  if (isApiError(error)) {
+    if (error.status === 404 || error.code === 'NOT_FOUND') {
+      return '拍照识别即将上线，请改用键盘/手写'
+    }
+    if (error.code === 'PHOTO_DISABLED') {
+      return '本场考试已关闭拍照识别，请用键盘或手写'
+    }
+    if (error.code === 'PAYLOAD_TOO_LARGE' || error.status === 413) {
+      return '图片仍然太大，请靠近一点重拍或用键盘'
+    }
+    if (error.code === 'RATE_LIMITED' || error.status === 429) {
+      return '识别太频繁，请等几秒再试'
+    }
+    if (error.code === 'TEST_MODE_RESTRICTED') {
+      return '测验模式下拍照识别不可用，请用键盘或手写'
+    }
+    if (error.code === 'NETWORK' || error.status === 0) {
+      return '网络不稳定，拍照识别暂不可用；可以稍后重试或用键盘'
+    }
+    if (error.code === 'UPSTREAM_UNAVAILABLE') {
+      return '识别服务暂时不可用，请稍后重试或用键盘'
+    }
+  }
+  return errorMessage(error)
 }
 
 let seq = 0
@@ -1154,6 +1301,26 @@ export async function fetchLesson(state: AttemptState, conceptId?: string): Prom
   return withRetry(() =>
     activeHttp.get<LessonView>(`/attempts/${state.attemptId}/lesson/${encodeURIComponent(topic)}`),
   )
+}
+
+/**
+ * 微课小核验（POST /attempts/{id}/lesson/{conceptId}/check）：服务端判定，不下发答案。
+ * mock 返回 null，表示由 MicroCourse 用 mock 题里自带的 answer/right/wrong 本地判定。
+ */
+export async function checkLesson(
+  state: AttemptState,
+  conceptId: string,
+  stepId: string,
+  choice: number,
+): Promise<{ correct: boolean; feedback: string } | null> {
+  if (USE_MOCK) return null
+  const result = await withRetry(() =>
+    activeHttp.request<{ correct: boolean; feedback: string }>(
+      `/attempts/${state.attemptId}/lesson/${encodeURIComponent(conceptId)}/check`,
+      { method: 'POST', body: { stepId, choice }, idempotencyKey: newUuid() },
+    ),
+  )
+  return { correct: result.data.correct, feedback: result.data.feedback }
 }
 
 /**

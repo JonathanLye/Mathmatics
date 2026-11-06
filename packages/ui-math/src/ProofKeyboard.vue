@@ -279,7 +279,7 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   border-radius: var(--radius-input, 6px) var(--radius-input, 6px) 0 0;
 }
 .ui-pk__tab--active {
-  color: var(--accent, #2b4fa3);
+  color: var(--accent-text, #3c8400);
   background: var(--accent-soft, #e8eefb);
   font-weight: 600;
 }
@@ -322,7 +322,7 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
 }
 .ui-pk__key--template {
   background: var(--accent-soft, #e8eefb);
-  color: var(--accent, #2b4fa3);
+  color: var(--accent-text, #3c8400);
 }
 .ui-pk__key--phrase {
   background: var(--paper, #f7f6f2);
@@ -379,7 +379,7 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   background: var(--accent-soft, #e8eefb);
 }
 .ui-pk__action--system {
-  color: var(--accent, #2b4fa3);
+  color: var(--accent-text, #3c8400);
   font-weight: 600;
 }
 .ui-pk__action--done {
@@ -423,7 +423,7 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   align-items: center;
   min-height: 44px;
   font-size: var(--fs-small, 13px);
-  color: var(--accent, #2b4fa3);
+  color: var(--accent-text, #3c8400);
 }
 .ui-pk__variantrow {
   display: flex;

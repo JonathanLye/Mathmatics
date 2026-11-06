@@ -14,6 +14,11 @@ export default defineConfig({
   },
   server: {
     fs: { allow: [path.resolve(__dirname, '../..')] },
+    // 本地联调：客户端走同源 /api/v1（生产由 Caddy 反代），开发服务器把 /api 转给本机 server。
+    // 目标可用 VITE_DEV_API_TARGET 覆盖；只在 dev server 生效，不影响构建产物。
+    proxy: {
+      '/api': { target: process.env.VITE_DEV_API_TARGET ?? 'http://127.0.0.1:3000', changeOrigin: false },
+    },
   },
   optimizeDeps: { include: ['katex'] },
 })

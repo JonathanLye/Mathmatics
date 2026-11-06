@@ -62,7 +62,7 @@ function canSelect(l: LayerStatus): boolean {
   background: var(--rule);
   margin: var(--sp-1) auto var(--sp-2);
 }
-.pg-layersheet__title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-layersheet__title { font-size: 16px; font-weight: 900; }
 .pg-layersheet__row {
   display: flex;
   align-items: center;

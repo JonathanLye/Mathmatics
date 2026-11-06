@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PgIcon from '@/components/ui/PgIcon.vue'
+import PgMascot from '@/components/ui/PgMascot.vue'
 /**
  * 做题页（issue #10/#11/#12/#16 的集成页）。
  * 只渲染 AttemptState；不做层/预算/门槛/归类判定（08 §8 AI 规则 3）。
@@ -56,9 +58,14 @@ import { getDraftStore } from '@/storage/drafts'
 import { filterDismissedNotes, formatNoteTime, mergeNotes, nextLineNoOf, parseNote } from '@/components/layers/proofLines'
 import MathText from '@ui-math/MathText.vue'
 import RecognitionConfirm from '@ui-math/RecognitionConfirm.vue'
+import InkCanvas from '@ui-math/InkCanvas.vue'
+import PhotoRecognitionPanel from '@/components/PhotoRecognitionPanel.vue'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { softLandingLabel } from '@/components/hintPreviewCopy'
+import { compressImage, loadImageBlobFromPath } from '@/utils/imageCompress'
+import { uuidv7 } from '@/integrity/ids'
+import { isApiError } from '@/api/http'
 import { useViewport } from '@/composables/useViewport'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import {
@@ -69,11 +76,15 @@ import {
   deleteTransferLine,
   editTransferLine,
   fetchLesson,
+  checkLesson,
   finishSteps,
   finishTransfer,
+  confirmRecognition,
   getAttempt,
   isMockMode,
+  photoRecognitionErrorMessage,
   recognizeInk,
+  recognizePhoto,
   setMockMode,
   requestHelp,
   skipLayer,
@@ -126,7 +137,23 @@ const toast = ref('')
 const recogOpen = ref(false)
 const recogBusy = ref(false)
 const recognition = ref<Recognition | null>(null)
-const recogDraft = ref<{ text: string; recogId: string; at: string } | null>(null)
+const recogDraft = ref<{ text: string; recogId: string; at: string; source?: 'ink' | 'photo'; draftId?: string } | null>(null)
+/** #21 手写：全屏手写面板（InkCanvas）；写完一行 → /recognitions/ink → 确认卡 → 确认 → 行编辑器 → 以 ink 来源提交。 */
+const inkOpen = ref(false)
+const inkValue = ref('')
+/** 本次识别结果的来源：手写（单行确认卡）或拍照（逐行面板）；影响加载文案与「重写」行为。 */
+const recogSource = ref<'ink' | 'photo'>('photo')
+/** 一行一个 draftId（03 §1）：识别请求与随后提交这一行复用同一个。 */
+let inkDraftId = ''
+/** #25 拍照：压缩/识别进度文案；photoAdding=正在把选中的行加入证明。 */
+const photoProgress = ref('')
+const photoAdding = ref(false)
+/** 本次识别结果是否进入「逐行确认」面板（整页拍照；即便加到只剩 1 行也保持该面板，不回退到单行卡）。 */
+const photoPanelActive = ref(false)
+/** 最近一次压缩后的图片：重新识别时复用（不重拍、不再压缩）。 */
+let lastPhoto: { image: Blob; source: 'camera' | 'album' } | null = null
+/** 取消/重开时忽略在途识别结果。 */
+let recogSeq = 0
 /** 第 1 层微课（02 §4.9）：内容由服务端下发，这里只保存在内存里渲染。 */
 const microOpen = ref(false)
 const microLesson = ref<LessonView | null>(null)
@@ -207,6 +234,7 @@ const strictClass = computed(() => ({ 'pg-practice--strict': strictExamActive.va
 /** #27：打开行编辑器时的初始值 —— 识别确认的文本优先（#15 行为），否则用本机未提交草稿。 */
 const editorInitialStatement = computed(() => recogDraft.value?.text ?? lineDraftInitial.value.statement)
 const editorInitialJustification = computed(() => lineDraftInitial.value.justification)
+/* 拍照整页识别结果统一走逐行确认面板（photoPanelActive）；旧 #15 两路卡只作单行回退。 */
 
 // #27：事件归属随作答/切层/状态更新（currentLayer 声明之后再调用）
 function syncIntegrityContext(): void {
@@ -599,6 +627,12 @@ async function handleLesson() {
   show('本层的讲解入口在 #24 接入')
 }
 
+async function checkMicro(stepId: string, choice: number) {
+  const lesson = microLesson.value
+  if (!lesson) return null
+  return checkLesson(state.value, lesson.conceptId, stepId, choice)
+}
+
 function closeMicro() {
   microOpen.value = false
 }
@@ -693,12 +727,22 @@ function goProofbook() {
   uni.navigateTo({ url: '/pages/proofbook/index' })
 }
 
+/** 手写确认过的文字原样提交 → 来源记为 ink（带 recogId）；改过就按键盘（学生已经自己动了笔）。 */
+function withInkProvenance(draft: LineDraft): LineDraft {
+  const rd = recogDraft.value
+  if (!rd || rd.source !== 'ink' || !rd.recogId) return draft
+  if (draft.statement.trim() !== rd.text.trim()) return draft
+  return { ...draft, input: { provenance: 'ink', draftId: rd.draftId || draft.input.draftId, recogId: rd.recogId } }
+}
+
 async function handleAddLine(draft: LineDraft) {
   const attemptId = state.value.attemptId
-  const next = await run(() => addLine(state.value, draft))
+  const toSend = withInkProvenance(draft)
+  const next = await run(() => addLine(state.value, toSend))
   if (next) {
     apply(next)
     editorOpen.value = false
+    recogDraft.value = null
     // #27：加行成功后清除这一行的本机草稿（失败时保留，便于重试）。
     lineDraftInitial.value = { statement: '', justification: '' }
     restoredDraft.value = null
@@ -859,43 +903,292 @@ watch(
   () => resetLineNoteState(),
 )
 
+function openInkSheet() {
+  inkValue.value = ''
+  inkDraftId = uuidv7()
+  inkOpen.value = true
+}
+
 function handleInk() {
-  editorOpen.value = true
-  show('手写画布由 #14 提供，本轮先进入行编辑器')
+  // 手写与拍照一样用于第 3 层写证明行（其他层的输入框先用键盘）。
+  if (state.value.currentLayer !== 'L3') {
+    show('手写用于第 3 层写证明行；这一层先用键盘')
+    return
+  }
+  if (recogBusy.value) return
+  openInkSheet()
+}
+
+function handleInkCancel() {
+  inkOpen.value = false
+}
+
+/** 手写识别错误 → 学生可读文案（不暗示对错，给出键盘兜底）。 */
+function inkRecognitionErrorMessage(err: unknown): string {
+  if (isApiError(err)) {
+    if (err.code === 'RATE_LIMITED' || err.status === 429) return '识别太频繁或今天的次数用完了，可以先用键盘'
+    if (err.code === 'UPSTREAM_UNAVAILABLE' || err.status === 503) return '没认出来，再写一次，或者用键盘'
+    if (err.code === 'PAYLOAD_TOO_LARGE' || err.status === 413) return '这一行写得太满了，分两行写或用键盘'
+    if (err.code === 'ATTEMPT_LOCKED') return '本题已锁定，请联系老师'
+    if (err.code === 'NETWORK' || err.status === 0) return '网络不稳定，手写识别暂不可用；可以稍后重试或用键盘'
+  }
+  return '手写识别暂不可用，请用键盘'
+}
+
+/** 「写完这一行」：InkCanvas 给出 gzip(ink-v1) 的 base64，调 /recognitions/ink，结果进确认卡。 */
+async function handleInkFinish(base64: string) {
+  inkOpen.value = false
+  if (!base64) return
+  const seq = ++recogSeq
+  recogSource.value = 'ink'
+  recogBusy.value = true
+  recogOpen.value = true
+  recognition.value = null
+  photoPanelActive.value = false
+  photoProgress.value = '正在识别这一行…'
+  try {
+    const result = await recognizeInk({
+      attemptId: state.value.attemptId,
+      draftId: inkDraftId || uuidv7(),
+      target: 'line_statement',
+      ink: base64,
+    })
+    if (seq !== recogSeq) return
+    if (result.status === 'empty' || !result.text) {
+      recogOpen.value = false
+      show('没有识别到内容，请再写一次，或者用键盘')
+      return
+    }
+    recognition.value = result
+    recogOpen.value = false
+  } catch (err) {
+    if (seq !== recogSeq) return
+    recogOpen.value = false
+    show(inkRecognitionErrorMessage(err))
+  } finally {
+    if (seq === recogSeq) {
+      recogBusy.value = false
+      photoProgress.value = ''
+    }
+  }
 }
 
 function handleKeyboard() {
   editorOpen.value = true
 }
 
-/** #15：拍照 → mock 识别 → 确认面板（真实 /recognitions/photo 接口在 #25 接入） */
+/**
+ * H5 选图：优先 uni.chooseImage（返回 tempFilePath）；若运行环境未注册该 API（本构建的 H5 运行时按需注册），
+ * 退回原生 <input type=file>（返回 File）。两条路都支持相机/相册：camera 带 capture=environment。
+ * 取消选择返回 null（不弹错误）。
+ */
+function pickImageWithDomInput(source: 'camera' | 'album'): Promise<File | null> {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      reject(new Error('当前环境不支持拍照，请用键盘或手写'))
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    if (source === 'camera') input.setAttribute('capture', 'environment')
+    input.setAttribute('data-testid', 'photo-file-input')
+    input.style.position = 'fixed'
+    input.style.left = '-9999px'
+    input.style.top = '0'
+    input.style.opacity = '0'
+    document.body.appendChild(input)
+    let settled = false
+    const cleanup = (): void => {
+      if (input.parentNode) input.parentNode.removeChild(input)
+    }
+    input.addEventListener('change', () => {
+      if (settled) return
+      settled = true
+      const file = input.files && input.files[0] ? input.files[0] : null
+      cleanup()
+      resolve(file)
+    })
+    input.addEventListener('cancel', () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(null)
+    })
+    input.click()
+  })
+}
+
+function choosePhotoFile(source: 'camera' | 'album'): Promise<File | string | null> {
+  const uniApi = (typeof uni !== 'undefined' ? uni : undefined) as
+    | { chooseImage?: (options: Record<string, unknown>) => void }
+    | undefined
+  if (typeof uniApi?.chooseImage !== 'function') {
+    return pickImageWithDomInput(source)
+  }
+  return new Promise((resolve, reject) => {
+    uniApi.chooseImage?.({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: [source],
+      success: (result: { tempFilePaths?: string[] }) => {
+        const path = result?.tempFilePaths?.[0]
+        resolve(typeof path === 'string' && path.length > 0 ? path : null)
+      },
+      fail: (error: { errMsg?: string } | undefined) => {
+        const message = String(error?.errMsg ?? error ?? '')
+        if (/cancel/i.test(message)) {
+          resolve(null)
+          return
+        }
+        reject(new Error(message || '选择图片失败'))
+      },
+    })
+  })
+}
+
+/**
+ * #25 拍照识别：选择图片 → 压缩（长边≤2000/≤2MB/去 EXIF）→ POST /recognitions/photo → 逐行确认。
+ * - 真实后端未实现时 404 会降级提示「即将上线」，不伪造识别结果；
+ * - 测验模式 photo 已禁用；取消选择不提示错误；
+ * - 取消/重新打开时用 recogSeq 忽略在途结果。
+ */
 async function startPhotoRecognition() {
   if (recogBusy.value) return
-  // 测验模式下拍照禁用（03 §3.3）
   if (state.value.integrity.mode === 'test') {
     show('测验模式下拍照不可用')
     return
   }
-  recogOpen.value = true
-  recogBusy.value = true
-  recognition.value = null
-  const result = await run(() => recognizeInk('mock-photo'))
-  recogBusy.value = false
-  if (!result) {
-    recogOpen.value = false
-    show('识别暂不可用，请用键盘')
+  // 拍照识别用于整页切行后加入第 3 层证明行（复用 addLine；其他层没有行列表落点）。
+  if (state.value.currentLayer !== 'L3') {
+    show('拍照识别用于第 3 层写证明行；请先完成前两层')
     return
   }
-  recognition.value = result
+  const seq = ++recogSeq
+  recogSource.value = 'photo'
+  recogBusy.value = true
+  recogOpen.value = true
+  recognition.value = null
+  photoPanelActive.value = false
+  photoProgress.value = '正在打开相机…'
+  try {
+    const picked = await choosePhotoFile('camera')
+    if (seq !== recogSeq) return
+    if (!picked) {
+      closeRecogLoading()
+      return
+    }
+    photoProgress.value = '正在压缩图片…'
+    const sourceBlob = typeof picked === 'string' ? await loadImageBlobFromPath(picked) : picked
+    const compressed = await compressImage(sourceBlob, { maxEdge: 2000, maxBytes: 2 * 1024 * 1024 })
+    if (seq !== recogSeq) return
+    lastPhoto = { image: compressed.blob, source: 'camera' }
+    photoProgress.value = '正在识别…'
+    const result = await recognizePhoto({
+      attemptId: state.value.attemptId,
+      draftId: uuidv7(),
+      target: 'line_statement',
+      source: 'camera',
+      image: compressed.blob,
+    })
+    if (seq !== recogSeq) return
+    recognition.value = result
+    photoPanelActive.value = true
+    recogOpen.value = false
+  } catch (error) {
+    if (seq !== recogSeq) return
+    recogOpen.value = false
+    show(photoRecognitionErrorMessage(error))
+  } finally {
+    if (seq === recogSeq) {
+      recogBusy.value = false
+      photoProgress.value = ''
+    }
+  }
 }
 
 function handlePhoto() {
   void startPhotoRecognition()
 }
 
-/** 「重新识别」：重新跑一次 mock 识别（面板留在原处，识别中再次显示加载态） */
-async function handleRecogRewrite() {
+/** 逐行确认面板：加入勾选行/单行 → 走既有 addLine（provenance=photo + recogId）→ 调 confirm。 */
+async function handlePhotoAdd(payload: { texts: string[]; indices: number[] }) {
+  const current = recognition.value
+  if (!current || photoAdding.value) return
+  if (payload.texts.length === 0) {
+    show('没有可加入的行')
+    return
+  }
+  photoAdding.value = true
   recogBusy.value = true
+  const recogId = current.recogId
+  const added: string[] = []
+  try {
+    // 03 §3.2：只有确认过的识别结果才能用于提交——先 confirm（服务端记下确认的各行），再逐行加入。
+    const toAdd = payload.texts.map((text) => text.trim()).filter((text) => text !== '')
+    try {
+      await confirmRecognition(recogId, toAdd.join('\n'), toAdd)
+    } catch (err) {
+      show(photoRecognitionErrorMessage(err))
+      return
+    }
+    for (const trimmed of toAdd) {
+      const draft: LineDraft = {
+        statement: trimmed,
+        input: { provenance: 'photo', draftId: uuidv7(), recogId },
+      }
+      const next = await run(() => addLine(state.value, draft))
+      if (!next) {
+        show(error.value || '加入行失败，请重试')
+        return
+      }
+      apply(next)
+      added.push(trimmed)
+    }
+    if (added.length === 0) {
+      show('没有可加入的行')
+      return
+    }
+    const remainingLines = (current.lines ?? []).filter((_, index) => !payload.indices.includes(index))
+    if (remainingLines.length > 0) {
+      recognition.value = {
+        ...current,
+        lines: remainingLines,
+        text: remainingLines.map((line) => line.text).join('\n'),
+      }
+    } else {
+      recognition.value = null
+      photoPanelActive.value = false
+    }
+    show('已加入 ' + added.length + ' 行（拍照识别）')
+  } finally {
+    photoAdding.value = false
+    recogBusy.value = false
+  }
+}
+
+/** 忽略整次拍照识别。 */
+function handleRecogIgnore() {
+  recogSeq += 1
+  recognition.value = null
+  photoPanelActive.value = false
+  recogOpen.value = false
+  show('已忽略这次拍照识别，可以继续写')
+}
+
+/** 「重新识别」：单行结果（#15 卡）重新跑一次；多行面板暂不提供重识别按钮。 */
+async function handleRecogRewrite() {
+  if (recogSource.value === 'ink') {
+    // 手写：放弃这次结果，回到画布重写一遍（不重复识别同一份笔迹）。
+    recogSeq += 1
+    recognition.value = null
+    recogOpen.value = false
+    recogBusy.value = false
+    openInkSheet()
+    return
+  }
+  recogBusy.value = true
+  photoPanelActive.value = false
   recognition.value = null
   const result = await run(() => recognizeInk('mock-photo'))
   recogBusy.value = false
@@ -908,12 +1201,39 @@ async function handleRecogRewrite() {
 }
 
 /** 确认加入：识别结果进入草稿（mock 下页面能看到结果文本），并回填行编辑器 */
-function handleRecogConfirm(text: string) {
-  const recogId = recognition.value?.recogId ?? ''
+async function handleRecogConfirm(text: string) {
+  const current = recognition.value
+  const recogId = current?.recogId ?? ''
+  const fromInk = recogSource.value === 'ink'
+  if (fromInk && current && !isMockMode()) {
+    // 先 confirm，之后才能以手写来源提交（服务端核对提交文字与确认文字一致）。失败则留在确认卡里，学生可重试。
+    recogBusy.value = true
+    try {
+      await confirmRecognition(recogId, text)
+    } catch (err) {
+      show(inkRecognitionErrorMessage(err))
+      return
+    } finally {
+      recogBusy.value = false
+    }
+  }
+  photoPanelActive.value = false
   recogOpen.value = false
   recognition.value = null
-  recogDraft.value = { text, recogId, at: new Date().toISOString() }
-  show('识别结果已放入草稿，继续写这一行')
+  recogDraft.value = {
+    text,
+    recogId,
+    at: new Date().toISOString(),
+    source: fromInk ? 'ink' : 'photo',
+    draftId: fromInk ? inkDraftId : undefined,
+  }
+  if (fromInk) {
+    // 手写确认后直接进行编辑器：补依据后提交；文字不改则按 ink 来源提交。
+    editorOpen.value = true
+    show('已确认，补上依据后加入证明')
+  } else {
+    show('识别结果已放入草稿，继续写这一行')
+  }
 }
 
 /** 放弃重写：关掉面板，不采用这次识别 */
@@ -924,8 +1244,11 @@ function handleRecogDiscard() {
 }
 
 function closeRecogLoading() {
+  recogSeq += 1
   recogOpen.value = false
   recognition.value = null
+  recogBusy.value = false
+  photoProgress.value = ''
 }
 
 function handleBack() {
@@ -1026,8 +1349,25 @@ function backHome() {
               </view>
             </view>
 
-            <view v-else class="pg-practice__done pg-sheet" data-testid="completion-card">
+            <view v-else class="pg-practice__done pg-practice__done--win" data-testid="completion-card">
+              <view class="pg-win__paper" aria-hidden="true">
+                <view class="pg-win__sk" style="width: 82%" /><view class="pg-win__sk" style="width: 64%" /><view class="pg-win__sk" style="width: 73%" />
+                <view class="pg-win__stamp"><PgIcon name="qed" :size="44" color="#fff" /></view>
+              </view>
+              <view class="pg-win__mascot"><PgMascot expr="cheer" :size="84" tone="bee" /></view>
               <text class="pg-practice__donetitle" data-testid="completion-title">本题完成</text>
+              <text class="pg-win__big" data-testid="completion-independence">{{ state.completion?.independence ?? '-' }}</text>
+              <text class="pg-win__biglabel">独立度</text>
+              <view class="pg-win__keys" aria-hidden="true">
+                <view
+                  v-for="k in state.budget.keysTotal"
+                  :key="k"
+                  class="pg-win__key"
+                  :class="{ 'pg-win__key--hint': k > state.budget.keysOwn }"
+                >
+                  <PgIcon :name="k > state.budget.keysOwn ? 'bulb' : 'check'" :size="26" :tone="'ink'" />
+                </view>
+              </view>
               <text class="pg-practice__donebody pg-small">
                 自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；
                 透露 {{ state.budget.revealUsed }} / {{ state.budget.revealMax }}。
@@ -1038,10 +1378,9 @@ function backHome() {
                 你写出的关键步骤：{{ state.completion?.leanCard?.steps?.map((s) => s.label).join('、') }}
               </text>
               <text class="pg-practice__donebody pg-small">P0 只核对关键步骤齐全，未校验逻辑顺序。</text>
-              <view class="pg-practice__donerow">
-                <button class="pg-practice__btn" role="button" data-testid="back-home" @tap="backHome">回首页</button>
+              <view class="pg-practice__donerow pg-practice__donerow--win">
                 <button
-                  class="pg-practice__btn pg-practice__btn--primary"
+                  class="pg-btn pg-win__btn"
                   role="button"
                   data-testid="add-to-notebook"
                   @tap="goProofbook"
@@ -1049,13 +1388,14 @@ function backHome() {
                   加入证明本
                 </button>
                 <button
-                  class="pg-practice__btn"
+                  class="pg-btn pg-win__btn pg-win__btn--ghost"
                   role="button"
                   data-testid="make-transfer"
                   @tap="handleMakeTransfer"
                 >
                   再做一道迁移题
                 </button>
+                <button class="pg-btn pg-win__btn pg-win__btn--ghost" role="button" data-testid="back-home" @tap="backHome">回首页</button>
               </view>
             </view>
           </template>
@@ -1199,7 +1539,7 @@ function backHome() {
       </view>
     </view>
 
-    <view v-if="mode === 'mobile'" class="pg-practice__dockwrap">
+    <view v-if="mode === 'mobile' && !isCompleted" class="pg-practice__dockwrap">
       <BudgetBar :budget="state.budget" />
       <BottomDock
         :help-busy="busy"
@@ -1251,23 +1591,44 @@ function backHome() {
       @update:draft="handleEditorDraft"
     />
 
+    <!-- #21 手写：全屏手写面板；「写完这一行」才调识别（不做实时识别） -->
+    <view v-if="inkOpen" class="pg-inksheet" data-testid="ink-sheet" role="dialog" aria-modal="true" aria-label="手写这一行">
+      <view class="pg-inksheet__bar">
+        <text class="pg-inksheet__title">手写第 {{ nextLineNo }} 行</text>
+        <button class="pg-practice__btn pg-small" data-testid="ink-cancel" @tap="handleInkCancel">取消</button>
+      </view>
+      <view class="pg-inksheet__stage">
+        <InkCanvas v-model="inkValue" height="100%" @finish="handleInkFinish" />
+      </view>
+    </view>
+
     <!-- #15 拍照识别：识别中的占位（02 §4.5：超过 3 秒提示可先用键盘），拿到结果后进确认面板 -->
     <view v-if="recogOpen && !recognition" class="pg-recogmask">
       <view class="pg-recogloading pg-sheet">
-        <text class="pg-recogloading__title">识别中…</text>
-        <text class="pg-recogloading__hint pg-small">超过 3 秒可以先用键盘；识别结果要你确认后才会用。</text>
+        <text class="pg-recogloading__title" data-testid="photo-progress">{{ photoProgress || '识别中…' }}</text>
+        <text v-if="recogSource === 'ink'" class="pg-recogloading__hint pg-small">识别结果只是候选，要你核对确认后才会用；识别不好可以改用键盘。</text>
+        <text v-else class="pg-recogloading__hint pg-small">图片会先压缩（长边≤2000/≤2MB）再识别；结果要你逐行确认后才会用。</text>
         <button class="pg-practice__btn" @tap="closeRecogLoading">取消</button>
       </view>
     </view>
+    <!-- #25 拍照整页识别：逐行确认（可勾选/编辑/全部加入/逐行加入/忽略） -->
+    <PhotoRecognitionPanel
+      v-if="recognition && photoPanelActive"
+      :recognition="recognition"
+      :busy="recogBusy || photoAdding"
+      @add="handlePhotoAdd"
+      @ignore="handleRecogIgnore"
+    />
+    <!-- 单行结果沿用 #15 两路确认卡 -->
     <RecognitionConfirm
-      v-if="recognition"
+      v-else-if="recognition"
       :recognition="recognition"
       :busy="recogBusy"
       @rewrite="handleRecogRewrite"
       @confirm="handleRecogConfirm"
       @discard="handleRecogDiscard"
     />
-    <MicroCourse :open="microOpen" :lesson="microLesson" @close="closeMicro" />
+    <MicroCourse :open="microOpen" :lesson="microLesson" :check="checkMicro" @close="closeMicro" />
 
     <!-- 真实模式不显示 mock 状态切换（#24） -->
     <MockSwitcher v-if="mockEnabled && !realMode" :model-value="mockKey" @update:model-value="onSwitchMock" />
@@ -1332,8 +1693,8 @@ function backHome() {
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-4);
   background: var(--accent-soft);
-  border-bottom: 1px solid var(--accent);
-  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent-text);
 }
 .pg-exambar__label { font-size: var(--fs-small); font-weight: 600; }
 .pg-exambar__time { margin-left: auto; font-size: var(--fs-body); }
@@ -1346,7 +1707,7 @@ function backHome() {
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: color-mix(in srgb, var(--ink) 48%, transparent);
+  background: rgba(0, 0, 0, 0.55);
 }
 .pg-fsexit__sheet {
   width: min(420px, 100%);
@@ -1355,17 +1716,19 @@ function backHome() {
   gap: var(--sp-2);
   padding: var(--sp-4);
   background: var(--sheet);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-sheet);
-  box-shadow: var(--shadow-sheet);
 }
-.pg-fsexit__title { font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
+.pg-fsexit__title { font-size: 20px; font-weight: 900; color: var(--ink); }
 .pg-fsexit__text { color: var(--ink-2); line-height: 1.6; }
 .pg-fsexit__btn {
-  min-height: 44px;
-  border-radius: var(--radius-input);
-  border: 1px solid var(--accent);
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius-card);
   background: var(--accent);
+  box-shadow: 0 var(--lip) 0 var(--accent-lip);
   color: var(--on-accent);
+  font-weight: 900;
 }
 .pg-practice__shell {
   display: block;
@@ -1412,7 +1775,7 @@ function backHome() {
   color: var(--ink);
 }
 .pg-practice__content {
-  padding: 0 var(--sp-3);
+  padding: 0;
 }
 .pg-draftnotice {
   display: flex;
@@ -1420,10 +1783,11 @@ function backHome() {
   gap: var(--sp-2);
   margin: var(--sp-2) 0;
   padding: var(--sp-2) var(--sp-3);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-card);
   background: var(--accent-soft);
   color: var(--ink);
+  font-weight: 700;
 }
 .pg-draftnotice__text { flex: 1; min-width: 0; }
 .pg-draftnotice__btn {
@@ -1442,13 +1806,14 @@ function backHome() {
   margin: var(--sp-2) 0;
 }
 .pg-practice__layertitle {
-  font-family: var(--font-serif);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.25;
   color: var(--ink);
 }
 .pg-practice__layertask {
   color: var(--ink-2);
+  font-weight: 700;
 }
 .pg-practice__aside {
   border-left: 1px solid var(--rule);
@@ -1457,19 +1822,18 @@ function backHome() {
 }
 .pg-practice__asidetitle {
   display: block;
-  font-family: var(--font-serif);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 900;
   margin-bottom: var(--sp-2);
 }
 .pg-practice__note {
-  padding: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   margin-bottom: var(--sp-2);
-  border-left: 3px solid var(--rule);
+  border-radius: 14px;
 }
-.pg-practice__note--annotation { border-left-color: var(--margin); background: var(--margin-soft); }
-.pg-practice__note--hint { border-left-color: var(--hint); background: var(--hint-soft); }
-.pg-practice__note--concept { border-left-color: var(--accent); background: var(--accent-soft); }
+.pg-practice__note--annotation { border-color: var(--margin); background: var(--margin-soft); }
+.pg-practice__note--hint { border-color: var(--hint-fill); background: var(--hint-soft); }
+.pg-practice__note--concept { border-color: var(--accent); background: var(--accent-soft); }
 .pg-practice__notehead { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 2px; }
 .pg-practice__notewho { display: block; color: var(--ink-2); }
 .pg-practice__notetime { color: var(--ink-2); font-family: var(--font-mono); font-size: var(--fs-mono); }
@@ -1501,7 +1865,7 @@ function backHome() {
 }
 .pg-practice__dockwrap :deep(.pg-budget) {
   background: var(--paper);
-  border-top: 1px solid var(--rule);
+  border-top: 2px solid var(--rule);
 }
 .pg-practice__finishrow {
   display: flex;
@@ -1509,19 +1873,26 @@ function backHome() {
   padding: var(--sp-3) 0 var(--sp-2);
 }
 .pg-practice__btn {
-  min-height: 44px;
+  min-height: 48px;
   padding: 0 var(--sp-4);
-  border-radius: var(--radius-input);
-  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  border: 2px solid var(--rule);
+  box-shadow: 0 2px 0 var(--rule);
   background: var(--sheet);
-  color: var(--ink);
+  color: var(--margin-text);
   font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
 }
+.pg-practice__btn::after { display: none; }
+.pg-practice__btn:active { transform: translateY(2px); box-shadow: none; }
 .pg-practice__btn--primary {
-  border-color: var(--accent);
+  border: 0;
   color: var(--on-accent);
   background: var(--accent);
+  box-shadow: 0 var(--lip) 0 var(--accent-lip);
 }
+.pg-practice__btn--primary:active { transform: translateY(var(--lip)); box-shadow: none; }
 .pg-practice__btn:disabled,
 .pg-practice__btn--disabled {
   opacity: 0.45;
@@ -1533,7 +1904,7 @@ function backHome() {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  border-left: 3px solid var(--accent);
+  border-color: var(--accent);
 }
 .pg-practice__drafthead {
   display: flex;
@@ -1542,9 +1913,8 @@ function backHome() {
   gap: var(--sp-2);
 }
 .pg-practice__drafttitle {
-  font-family: var(--font-serif);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--ink);
 }
 .pg-practice__draftmeta { color: var(--ink-2); }
@@ -1555,13 +1925,30 @@ function backHome() {
   color: var(--ink);
 }
 .pg-practice__draftrow { display: flex; gap: var(--sp-2); }
+.pg-inksheet {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper, #fbf8f1);
+}
+.pg-inksheet__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 2px solid var(--rule, rgba(0, 0, 0, 0.12));
+}
+.pg-inksheet__title { font-size: 18px; font-weight: 900; color: var(--ink); }
+.pg-inksheet__stage { flex: 1; min-height: 0; }
 .pg-recogmask {
   position: fixed;
   inset: 0;
   z-index: 66;
   display: flex;
   align-items: flex-end;
-  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  background: rgba(0, 0, 0, 0.5);
 }
 .pg-recogloading {
   width: 100%;
@@ -1570,17 +1957,44 @@ function backHome() {
   gap: var(--sp-2);
   padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  animation: pg-sheet-up 320ms var(--ease-pop) both;
 }
 .pg-recogloading__title {
-  font-family: var(--font-serif);
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 900;
 }
 .pg-recogloading__hint { color: var(--ink-2); }
 .pg-practice__placeholder { padding: var(--sp-3); }
 .pg-practice__done { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-practice__donetitle { font-family: var(--font-serif); font-size: 20px; font-weight: 600; }
-.pg-practice__donebody { color: var(--ink-2); }
+.pg-practice__donetitle { font-size: 22px; font-weight: 900; }
+.pg-practice__donebody { color: var(--ink-2); font-weight: 700; }
 .pg-practice__donerow { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+/* 完成页：整块深草绿 + ∎ 落章（白字对 #3c8400 ≥ 4.5:1）。 */
+.pg-practice__done--win {
+  position: relative;
+  margin: var(--sp-3) calc(-1 * var(--sp-3)) 0;
+  padding: 150px var(--sp-4) var(--sp-6);
+  align-items: center;
+  gap: var(--sp-2);
+  background: #3c8400;
+  color: #fff;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  text-align: center;
+}
+.pg-win__paper { position: absolute; left: 32px; right: 32px; top: 36px; height: 120px; padding: 20px 22px; border-radius: 20px; background: #fff; box-shadow: 0 6px 0 #2c6200; }
+.pg-win__sk { height: 10px; margin-bottom: 12px; border-radius: 5px; background: #eee; }
+.pg-win__stamp { position: absolute; right: 14px; bottom: -34px; width: 80px; height: 80px; border-radius: 24px; background: var(--accent); border: 5px solid #fff; box-shadow: 0 6px 0 var(--accent-lip); display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); animation: pg-stamp 700ms var(--ease-pop) both; }
+.pg-win__mascot { position: absolute; right: 18px; top: -34px; }
+.pg-practice__done--win .pg-practice__donetitle { margin-top: var(--sp-3); font-size: 15px; letter-spacing: 1.4px; opacity: 0.95; }
+.pg-win__big { font-size: 64px; line-height: 1; font-weight: 900; letter-spacing: -1px; }
+.pg-win__biglabel { font-size: 14px; font-weight: 900; letter-spacing: 1px; opacity: 0.92; }
+.pg-win__keys { display: flex; gap: 10px; justify-content: center; margin: var(--sp-2) 0; }
+.pg-win__key { width: 44px; height: 44px; border-radius: 14px; background: #fff; color: #14290a; box-shadow: 0 4px 0 #2c6200; display: flex; align-items: center; justify-content: center; animation: pg-pop 380ms var(--ease-pop) both; }
+.pg-win__key--hint { background: var(--hint-fill); box-shadow: 0 4px 0 var(--hint-lip); }
+.pg-practice__done--win .pg-practice__donebody { color: #fff; opacity: 0.95; }
+.pg-practice__donerow--win { flex-direction: column; align-self: stretch; margin-top: var(--sp-3); gap: var(--sp-3); }
+.pg-win__btn { background: #fff; color: #2c6200; box-shadow: 0 4px 0 #cfefb0; }
+.pg-win__btn--ghost { background: transparent; color: #fff; border: 2px solid rgba(255, 255, 255, 0.6); box-shadow: none; min-height: 48px; }
 .pg-practice__mask {
   position: fixed;
   inset: 0;

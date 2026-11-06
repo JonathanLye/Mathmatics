@@ -6,6 +6,7 @@ const emit = defineEmits<{
   (e: 'photo'): void
   (e: 'help'): void
 }>()
+import PgIcon from '@/components/ui/PgIcon.vue'
 defineProps<{
   inkActive?: boolean
   helpBusy?: boolean
@@ -18,13 +19,11 @@ defineProps<{
 
 <template>
   <view class="pg-dock">
-    <button class="pg-dock__btn" :class="{ 'pg-dock__btn--active': inkActive }" @tap="emit('ink')">
-      <text class="pg-dock__icon">✍</text>
-      <text class="pg-dock__label">手写</text>
+    <button class="pg-dock__ink pg-btn" :class="{ 'pg-dock__ink--active': inkActive }" data-testid="dock-ink" @tap="emit('ink')">
+      <PgIcon name="pen" :size="22" /><text>手写这一行</text>
     </button>
-    <button class="pg-dock__btn" @tap="emit('keyboard')">
-      <text class="pg-dock__icon">⌨</text>
-      <text class="pg-dock__label">键盘</text>
+    <button class="pg-dock__btn" data-testid="dock-keyboard" @tap="emit('keyboard')">
+      <PgIcon name="keys" :size="26" /><text class="pg-dock__label">键盘</text>
     </button>
     <button
       class="pg-dock__btn pg-dock__btn--photo"
@@ -33,8 +32,7 @@ defineProps<{
       :disabled="photoDisabled"
       @tap="emit('photo')"
     >
-      <text class="pg-dock__icon">📷</text>
-      <text class="pg-dock__label">拍照</text>
+      <PgIcon name="camera" :size="26" /><text class="pg-dock__label">拍照</text>
     </button>
     <button
       class="pg-dock__btn pg-dock__btn--help"
@@ -43,8 +41,7 @@ defineProps<{
       :disabled="helpBusy || helpDisabled"
       @tap="emit('help')"
     >
-      <text class="pg-dock__icon">?</text>
-      <text class="pg-dock__label">求助</text>
+      <PgIcon name="bulb" :size="26" :tone="helpBusy || helpDisabled ? 'off' : 'on'" /><text class="pg-dock__label">求助</text>
     </button>
   </view>
 </template>
@@ -57,31 +54,35 @@ defineProps<{
   bottom: 0;
   z-index: 30;
   display: flex;
-  gap: var(--sp-1);
-  justify-content: space-around;
-  padding: var(--sp-1) max(var(--sp-3), var(--safe-left)) calc(var(--sp-1) + var(--safe-bottom)) max(var(--sp-3), var(--safe-right));
-  background: var(--sheet);
-  border-top: 1px solid var(--rule);
-  box-shadow: var(--shadow-dock);
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-3) max(var(--sp-4), var(--safe-left)) calc(var(--sp-3) + var(--safe-bottom)) max(var(--sp-4), var(--safe-right));
+  background: var(--paper);
+  border-top: 2px solid var(--rule);
   transform: translateY(calc(-1 * var(--keyboard-inset, 0px)));
   transition: transform var(--dur-fast) ease-out;
 }
+.pg-dock__ink { flex: 1; min-width: 0; }
+.pg-dock__ink--active { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 .pg-dock__btn {
-  flex: 1;
-  min-height: 48px;
+  flex: none;
+  width: 58px;
+  min-height: 52px;
+  padding: 0;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  border: 0;
-  background: transparent;
+  gap: 1px;
+  border: 2px solid var(--rule);
+  border-bottom-width: 4px;
+  border-radius: var(--radius-card);
+  background: var(--sheet);
   color: var(--ink-2);
-  border-radius: var(--radius-input);
 }
-.pg-dock__btn--active { color: var(--accent); background: var(--accent-soft); }
-.pg-dock__btn--help { color: var(--accent); }
-.pg-dock__btn--disabled { opacity: 0.4; }
-.pg-dock__icon { font-size: 18px; line-height: 1; }
-.pg-dock__label { font-size: 12px; line-height: 1.2; }
+.pg-dock__btn::after { display: none; }
+.pg-dock__btn:active { transform: translateY(2px); border-bottom-width: 2px; }
+.pg-dock__btn--help { border-color: var(--hint-fill); border-bottom-color: var(--hint-lip); background: var(--hint-soft); color: var(--hint); }
+.pg-dock__btn--disabled { opacity: 0.45; }
+.pg-dock__label { font-size: 10px; font-weight: 900; letter-spacing: 0.5px; line-height: 1; }
 </style>

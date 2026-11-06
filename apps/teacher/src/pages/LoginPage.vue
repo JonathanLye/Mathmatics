@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Mascot from '../components/ui/Mascot.vue';
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -41,6 +42,7 @@ async function submit(): Promise<void> {
 <template>
   <div class="login-wrap">
     <div class="login-card">
+      <div class="pg-login-mascot"><Mascot expr="happy" :size="72" /></div>
       <h1>教师登录</h1>
       <div class="login-sub">证明陪练场 · 教师端（账号由运维创建）</div>
       <div class="login-error">{{ error }}</div>

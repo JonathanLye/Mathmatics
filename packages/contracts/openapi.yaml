@@ -286,11 +286,12 @@ paths:
     get:
       tags: [attempt]
       summary: 第 1–2 层：取微课（直观卡 + 分步讲解 + 图解）
-      description: 文本已按当前作答过闸门；按学生原话生成的补充讲解放在 `generated` 里（可能为空）。
+      description: 文本已按当前作答过闸门（被拦的字符串换成回退文案）；小核验题只下发 q/options，答案由 `/check` 判定；按学生原话生成的补充讲解放在 `generated` 里（P0 恒为 null）。
       operationId: getLesson
       parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/conceptId' }]
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' } # 作答不属于本人，或概念没有已发布的微课
         '200':
           description: 微课
           content:
@@ -314,6 +315,8 @@ paths:
                 choice: { type: integer, minimum: 0 }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' } # 该步没有小核验 / 选项越界 / 步骤不存在
         '200':
           description: 判定与反馈
           content:
@@ -535,7 +538,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Recognition' }
+        '409': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
   /recognitions/photo:
@@ -564,11 +569,17 @@ paths:
               schema: { $ref: '#/components/schemas/Recognition' }
         '403': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /recognitions/{recogId}/confirm:
     post:
       tags: [input]
       summary: 学生确认（可改过）识别结果；之后才能用它提交
+      description: |
+        手写：以最后一次确认为准。拍照：一张照片的 recogId 会被逐批确认（每批 `lines`），已确认的行累加（只增不减）。
+        提交（`/lines` 等）时服务端核对：recogId 属于本人本次作答、已确认、来源类型一致、提交文字与确认文字 canon 后一致，否则 409 `RECOG_NOT_CONFIRMED`。
+        没有结果的识别（status=empty）不能确认（422）。
       operationId: confirmRecognition
       parameters: [{ name: recogId, in: path, required: true, schema: { type: string, format: uuid } }]
       requestBody:
@@ -583,6 +594,9 @@ paths:
                 lines: { type: array, items: { $ref: '#/components/schemas/MathText' }, description: '拍照：确认后的各行' }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
         '200':
           description: 已确认
           content:
@@ -992,9 +1006,12 @@ paths:
             schema:
               type: object
               properties:
-                grantH4: { type: string, description: '解锁时补发 H4 的关键步骤 ID（可选）；补发会记 teacherOverride，且该步需学生补依据≥6字才计入 matched' }
+                grantH4: { type: string, description: '解锁时补发 H4 的关键步骤 ID（可选；空串=下一个未完成的步骤）。只在学生额度耗尽后可用（否则 409），一个步骤只能补发一次（422）；补发会记 teacherOverride（hint.deliver.override=true，不增加 reveal），且该步需学生补依据≥6字才计入 matched；本题完成时 attempt.complete.teacherOverrides 记录，独立度按补发计入。补发的 H4 以批注形式出现在学生的 AttemptState.notes 里。' }
       responses:
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
         '200':
           description: 已解锁
           content:

@@ -10,6 +10,7 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import MathText from '@ui-math/MathText.vue'
+import PgIcon from '@/components/ui/PgIcon.vue'
 import { fetchNotebook, startRedo } from '@/api/client'
 import { setPendingAttempt } from '@/stores/attempt'
 import { buildRedoList, levelLabel, REDO_OPTIONS } from '@/components/proofbook/redoInput'
@@ -72,7 +73,7 @@ function fmtDate(iso?: string): string {
 <template>
   <view class="pg-page pg-book">
     <view class="pg-book__head">
-      <button class="pg-book__back pg-tap" role="button" data-testid="notebook-back" @tap="back">‹</button>
+      <button class="pg-book__back pg-tap" role="button" data-testid="notebook-back" @tap="back"><PgIcon name="back" :size="26" /></button>
       <text class="pg-book__title">我的证明本</text>
     </view>
     <text class="pg-book__hint pg-small">自己写完的证明与总结（只读）。点「回到该题」可以再看一遍。</text>
@@ -159,13 +160,13 @@ function fmtDate(iso?: string): string {
   line-height: 1;
 }
 .pg-book__back::after { border: 0; }
-.pg-book__title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; }
+.pg-book__title { font-size: 20px; font-weight: 900; }
 .pg-book__hint { display: block; margin-bottom: var(--sp-3); color: var(--ink-2); }
 .pg-book__empty { display: block; color: var(--ink-2); }
-.pg-book__subtitle { display: block; margin: var(--sp-3) 0 var(--sp-2); font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-book__subtitle { display: block; margin: var(--sp-3) 0 var(--sp-2); font-size: 16px; font-weight: 900; }
 .pg-book__redo { padding: var(--sp-3); margin-bottom: var(--sp-2); }
 .pg-book__redohead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.pg-book__sectiontitle { font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-book__sectiontitle { font-size: 16px; font-weight: 900; }
 .pg-book__redocount { color: var(--ink-2); }
 .pg-book__redohint { display: block; margin-top: 2px; color: var(--ink-2); }
 .pg-book__redoskip { display: block; margin-top: 2px; color: var(--hint); }
@@ -173,29 +174,33 @@ function fmtDate(iso?: string): string {
 .pg-book__redomain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pg-book__redotitle { font-size: 15px; color: var(--ink); }
 .pg-book__redometa { color: var(--ink-2); }
-.pg-book__redoreason { color: var(--margin); }
+.pg-book__redoreason { color: var(--margin-text); }
 .pg-book__redoopen {
   flex: 0 0 auto;
   min-height: 40px;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--accent);
+  border: 2px solid var(--accent);
+  border-bottom-width: 4px;
+  font-weight: 900;
   border-radius: var(--radius-input);
   background: var(--sheet);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 14px;
 }
 .pg-book__card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); margin-bottom: var(--sp-3); }
-.pg-book__ptitle { font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.pg-book__ptitle { font-size: 16px; font-weight: 900; }
 .pg-book__meta { color: var(--ink-2); }
 .pg-book__section { display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px dashed var(--rule); }
 .pg-book__label { color: var(--ink-2); }
 .pg-book__open {
   margin-top: var(--sp-2);
   min-height: 44px;
-  border: 1px solid var(--accent);
+  border: 2px solid var(--accent);
+  border-bottom-width: 4px;
+  font-weight: 900;
   border-radius: var(--radius-input);
   background: var(--sheet);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 15px;
 }
 .pg-book__skeleton { padding: var(--sp-3); }

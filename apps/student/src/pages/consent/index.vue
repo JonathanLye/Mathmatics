@@ -71,6 +71,7 @@ async function submit() {
           <text v-else class="pg-consent__tag pg-small">可选</text>
           <switch
             class="pg-consent__switch"
+            color="#58cc02"
             :checked="item.value"
             :disabled="item.required"
             :data-testid="'consent-switch-' + item.id"
@@ -89,26 +90,28 @@ async function submit() {
       {{ loading ? '提交中…' : '同意并开始' }}
     </button>
     <text class="pg-consent__hint pg-small">
-      版本 {{ version }} · {{ mockMode ? 'mock 模式：正文为占位（正式文本由服务端 /consents 提供），签署只记在本地。' : '文本与签署状态来自服务端 GET/POST /consents（#18）；guardianNotice 只读、不签署。' }}
+      版本 {{ version }} · {{ mockMode ? 'mock 模式：正文为占位（正式文本由服务端 /consents 提供），签署只记在本地。' : '你可以随时联系老师了解这些安排。' }}
     </text>
   </view>
 </template>
 
 <style scoped>
 .pg-consent { padding-top: calc(var(--safe-top) + var(--sp-4)); padding-bottom: calc(var(--sp-6) + var(--safe-bottom)); }
-.pg-consent__title { display: block; font-family: var(--font-serif); font-size: 22px; font-weight: 600; margin-bottom: var(--sp-2); }
+.pg-consent__title { display: block; font-size: 22px; font-weight: 900; margin-bottom: var(--sp-2); }
 .pg-consent__sub { display: block; color: var(--ink-2); margin-bottom: var(--sp-3); }
 .pg-consent__item { padding: var(--sp-3); margin-bottom: var(--sp-2); }
 .pg-consent__head { display: flex; align-items: center; gap: var(--sp-2); }
 .pg-consent__name { flex: 1; font-weight: 600; font-size: 15px; }
 .pg-consent__tag { padding: 1px 8px; border-radius: 999px; background: var(--paper); color: var(--ink-2); }
-.pg-consent__tag--req { color: var(--accent); background: var(--accent-soft); }
+.pg-consent__tag--req { color: var(--accent-text); background: var(--accent-soft); }
 .pg-consent__switch { transform: scale(0.8); }
 .pg-consent__summary { display: block; margin-top: var(--sp-2); color: var(--ink); }
 .pg-consent__detail { display: block; margin-top: var(--sp-2); padding: var(--sp-2); background: var(--paper); border-radius: var(--radius-input); color: var(--ink-2); line-height: 1.6; }
-.pg-consent__more { display: inline-block; margin-top: var(--sp-2); color: var(--accent); text-decoration: underline; }
-.pg-consent__error { display: block; color: var(--margin); margin: var(--sp-2) 0; }
-.pg-consent__submit { margin-top: var(--sp-3); min-height: 48px; border-radius: var(--radius-input); border: 0; background: var(--accent); color: var(--sheet); font-size: 16px; }
-.pg-consent__submit:disabled { opacity: 0.5; }
+.pg-consent__more { display: inline-block; margin-top: var(--sp-2); color: var(--accent-text); text-decoration: underline; }
+.pg-consent__error { display: block; color: var(--margin-text); margin: var(--sp-2) 0; }
+.pg-consent__submit { margin-top: var(--sp-3); min-height: 52px; border: 0; border-radius: var(--radius-card); background: var(--accent); box-shadow: 0 var(--lip) 0 var(--accent-lip); color: var(--on-accent); font-size: 16px; font-weight: 900; letter-spacing: 0.5px; }
+.pg-consent__submit::after { display: none; }
+.pg-consent__submit:active { transform: translateY(var(--lip)); box-shadow: none; }
+.pg-consent__submit:disabled { background: var(--rule); box-shadow: none; color: var(--ink-3); }
 .pg-consent__hint { display: block; margin-top: var(--sp-3); color: var(--ink-2); }
 </style>

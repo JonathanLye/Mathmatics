@@ -122,12 +122,15 @@ async function main() {
   assert(metrics.n === 1, `metrics.n=${metrics.n}`);
 
   // 4) 看板/详情/指标/导出/题库
+  await page.goto(`${BASE}/t/classes`, { waitUntil: 'networkidle' });
+  await page.locator(`[data-testid="class-card-${cls.classId}"]`).waitFor({ timeout: 5000 });
+  await shot('01b-class-cards-1280');
   await page.goto(`${BASE}/t/classes/${cls.classId}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(6500);
   await shot('02-live-1280');
   // #169：数字卡筛选（在线）
-  await page.locator('.stat-card').filter({ hasText: '在线' }).first().click();
-  await page.getByText(/筛选：在线/).waitFor({ timeout: 5000 });
+  await page.locator('.stat-card').filter({ hasText: '在写' }).first().click();
+  await page.getByText(/筛选：在写/).waitFor({ timeout: 5000 });
   await shot('02c-live-filter-1280');
   await page.getByText('清除', { exact: true }).click();
   // #167：名单列表（姓名/认领状态）
@@ -147,7 +150,7 @@ async function main() {
   await shot('02a-live-switcher-1280');
   // #48 C 侧：看板 SSE 应已连接（页面底部提示）
   await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
-  await page.locator('tbody tr').first().click();
+  await page.locator('.live-tile:not([disabled])').first().click();
   await page.getByText('学生作答详情').waitFor({ timeout: 10000 });
   await shot('03-student-detail-1280');
   // 引擎状态级回放（#143）：打开回放并断言 engine 卡片

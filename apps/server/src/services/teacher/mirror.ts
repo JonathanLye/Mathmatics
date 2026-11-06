@@ -6,6 +6,7 @@ import type { Db, Queryable } from '../../db/index.ts';
 import { AppError } from '../../errors.ts';
 import { nextSeq } from '../../integrity/seq.ts';
 import { loadProblem } from '../../attempts/problem.ts';
+import { loadViewExtras } from '../../attempts/extras.ts';
 import { toAttemptState, type AttemptRow } from '../../attempts/view.ts';
 import { appendTeacherAttemptEvent } from './events.ts';
 
@@ -105,7 +106,7 @@ export async function loadMirrorState(db: Queryable, attemptId: string): Promise
   if (!row) throw new AppError('NOT_FOUND', 404, '作答不存在');
   const state = deserializeState(row.state as AttemptRow['state']);
   const problem = await loadProblem(db, row.problem_id, row.problem_version);
-  return toAttemptState({ row, state, problem, now: Date.now() });
+  return toAttemptState({ row, state, problem, now: Date.now(), extras: await loadViewExtras(db, row) });
 }
 
 // 打开/关闭镜像写 t.mirror（04 §5.1）；由服务端在 SSE 连接建立/断开时记录，避免依赖学生页上报。

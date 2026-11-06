@@ -63,10 +63,10 @@ describe('D2：水印 fill 跟随主题 --ink', () => {
 })
 
 describe('D3：主色按钮文字用 --on-accent，不写死 #fff', () => {
-  it('tokens.css 定义 --on-accent: var(--paper)（深色随 --paper 自动切换）', () => {
+  it('tokens.css 定义 --on-accent（v2：亮绿面上用深字，不再等于 --paper）', () => {
     const css = read('styles/tokens.css')
-    expect(css).toContain('--on-accent: var(--paper)')
-    expect(FALLBACK_TOKEN.paper).toBe('#f7f6f2')
+    expect(css).toMatch(/--on-accent:\s*#[0-9a-fA-F]{6}/)
+    expect(FALLBACK_TOKEN.paper).toBe('#ffffff')
   })
 
   it('13 处主色按钮已替换；唯一保留的 color:#fff 是深色遮罩上的 toast', () => {
@@ -132,34 +132,47 @@ function contrastRatio(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }
 
-describe('#164：主色按钮（ProofKeyboard「完成」）文字对比度 ≥ 4.5', () => {
+describe('#164：厚边按钮「面色 + 文字色」对比度 ≥ 4.5（v2 token）', () => {
   const css = read('styles/tokens.css')
-  const accents = tokenHexes(css, 'accent')
-  const papers = tokenHexes(css, 'paper')
+  const first = (name: string): string => {
+    const hex = tokenHexes(css, name)[0]
+    expect(hex, '--' + name).toBeTruthy()
+    return hex
+  }
 
-  it('tokens.css 有浅色 + 两处深色（媒体查询/html[data-theme]）的 accent/paper', () => {
-    expect(accents.length).toBeGreaterThanOrEqual(3)
+  it('主色按钮：--on-accent 在 --accent 上 ≥ 4.5（浅/深色共用，深色不重定义 accent）', () => {
+    expect(tokenHexes(css, 'accent')).toHaveLength(1)
+    expect(contrastRatio(first('accent'), first('on-accent'))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('蓝/黄按钮：--on-margin 在 --margin 上、--on-hint 在 --hint-fill 上 ≥ 4.5', () => {
+    expect(contrastRatio(first('margin'), first('on-margin'))).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(first('hint-fill'), first('on-hint'))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('红按钮（白字）：--danger-face 上白字 ≥ 4.5；完成页深草绿 #3c8400 上白字 ≥ 4.5', () => {
+    expect(contrastRatio(first('danger-face'), '#ffffff')).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio('#3c8400', '#ffffff')).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('深色文字色（--ink-2 / --accent-text / --margin-text）在深色底 --paper 上 ≥ 4.5；浅色同理', () => {
+    const light = { paper: tokenHexes(css, 'paper')[0], ink2: tokenHexes(css, 'ink-2')[0], accentText: tokenHexes(css, 'accent-text')[0], marginText: tokenHexes(css, 'margin-text')[0] }
+    const darkPaper = tokenHexes(css, 'paper')[1]
+    const dark = { ink2: tokenHexes(css, 'ink-2')[1], accentText: tokenHexes(css, 'accent-text')[1], marginText: tokenHexes(css, 'margin-text')[1] }
+    expect(darkPaper).toBeTruthy()
+    for (const c of [light.ink2, light.accentText, light.marginText]) expect(contrastRatio(light.paper, c)).toBeGreaterThanOrEqual(4.5)
+    // --ink-2 在深色里有重定义；accent-text / margin-text 深色也有
+    for (const c of [dark.ink2, dark.accentText, dark.marginText]) expect(contrastRatio(darkPaper, c)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('两处深色（媒体查询 / html[data-theme]）的 paper 必须一致', () => {
+    const papers = tokenHexes(css, 'paper')
     expect(papers.length).toBeGreaterThanOrEqual(3)
-    // 两处深色定义必须一致，否则 media 与手动切换会出现两套对比度
-    expect(accents[1]).toBe(accents[2])
     expect(papers[1]).toBe(papers[2])
   })
 
-  it('浅色：accent #2b4fa3 上的 on-accent(=paper) ≥ 4.5:1', () => {
-    const ratio = contrastRatio(accents[0], papers[0])
-    expect(ratio).toBeGreaterThanOrEqual(4.5)
-  })
-
-  it('深色：accent #8fb0ff 上的 on-accent(=paper) ≥ 4.5:1（#164 修复后）', () => {
-    const ratio = contrastRatio(accents[1], papers[1])
-    expect(ratio).toBeGreaterThanOrEqual(4.5)
-  })
-
-  it('#164 根因回归：深色 accent 上写死 #fff 只有 ≈2:1（必须用 --on-accent）', () => {
-    const whiteRatio = contrastRatio('#ffffff', accents[1])
-    expect(whiteRatio).toBeLessThan(4.5)
-    // 与 issue 报告的 2.14:1 一致（允许 0.1 误差）
-    expect(Math.abs(whiteRatio - 2.14)).toBeLessThanOrEqual(0.1)
+  it('#164 根因回归：主色面上写死 #fff 达不到 4.5（所以必须用 --on-accent）', () => {
+    expect(contrastRatio('#ffffff', first('accent'))).toBeLessThan(4.5)
   })
 })
 

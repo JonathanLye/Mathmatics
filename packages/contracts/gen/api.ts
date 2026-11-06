@@ -264,7 +264,7 @@ export interface paths {
         };
         /**
          * 第 1–2 层：取微课（直观卡 + 分步讲解 + 图解）
-         * @description 文本已按当前作答过闸门；按学生原话生成的补充讲解放在 `generated` 里（可能为空）。
+         * @description 文本已按当前作答过闸门（被拦的字符串换成回退文案）；小核验题只下发 q/options，答案由 `/check` 判定；按学生原话生成的补充讲解放在 `generated` 里（P0 恒为 null）。
          */
         get: operations["getLesson"];
         put?: never;
@@ -529,7 +529,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 学生确认（可改过）识别结果；之后才能用它提交 */
+        /**
+         * 学生确认（可改过）识别结果；之后才能用它提交
+         * @description 手写：以最后一次确认为准。拍照：一张照片的 recogId 会被逐批确认（每批 `lines`），已确认的行累加（只增不减）。
+         *     提交（`/lines` 等）时服务端核对：recogId 属于本人本次作答、已确认、来源类型一致、提交文字与确认文字 canon 后一致，否则 409 `RECOG_NOT_CONFIRMED`。
+         *     没有结果的识别（status=empty）不能确认（422）。
+         */
         post: operations["confirmRecognition"];
         delete?: never;
         options?: never;
@@ -5034,6 +5039,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     lessonCheck: {
@@ -5070,6 +5076,8 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     submitFramework: {
@@ -5378,7 +5386,9 @@ export interface operations {
                     "application/json": components["schemas"]["Recognition"];
                 };
             };
+            409: components["responses"]["Error"];
             413: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };
@@ -5420,7 +5430,9 @@ export interface operations {
             };
             403: components["responses"]["Error"];
             413: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     confirmRecognition: {
@@ -5458,6 +5470,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     requestHelp: {
@@ -6011,7 +6026,7 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    /** @description 解锁时补发 H4 的关键步骤 ID（可选）；补发会记 teacherOverride，且该步需学生补依据≥6字才计入 matched */
+                    /** @description 解锁时补发 H4 的关键步骤 ID（可选；空串=下一个未完成的步骤）。只在学生额度耗尽后可用（否则 409），一个步骤只能补发一次（422）；补发会记 teacherOverride（hint.deliver.override=true，不增加 reveal），且该步需学生补依据≥6字才计入 matched；本题完成时 attempt.complete.teacherOverrides 记录，独立度按补发计入。补发的 H4 以批注形式出现在学生的 AttemptState.notes 里。 */
                     grantH4?: string;
                 };
             };
@@ -6027,6 +6042,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     nudgeStudent: {

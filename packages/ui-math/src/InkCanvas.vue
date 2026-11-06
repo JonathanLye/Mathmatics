@@ -942,12 +942,12 @@ defineExpose({
 .ui-ink-canvas__tool--active {
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .ui-ink-canvas__tool--primary {
   margin-left: auto;
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .ui-ink-canvas--readonly {
   cursor: default;

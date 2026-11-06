@@ -1,9 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 
+import type { ModelGateway } from '../ai/gateway.ts';
 import { AppError } from '../errors.ts';
 
 import { attemptRoutes } from './attempts.ts';
 import { eventRoutes } from './events.ts';
+import { recognitionRoutes } from './recognitions.ts';
 import { authRoutes, type AuthRouteOptions } from './auth.ts';
 import { consentRoutes } from './consents.ts';
 import { teacherRoutes } from './teacher/index.ts';
@@ -14,7 +16,10 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CSRF_HEADER = 'x-requested-with';
 const CSRF_VALUE = 'proof-gym';
 
-export const apiRoutes: FastifyPluginAsync<AuthRouteOptions> = async (api, { db, config, contract }) => {
+export const apiRoutes: FastifyPluginAsync<AuthRouteOptions & { gateway: ModelGateway }> = async (
+  api,
+  { db, config, contract, gateway },
+) => {
   api.addHook('onRequest', async (request) => {
     if (SAFE_METHODS.has(request.method)) return;
     if (request.headers[CSRF_HEADER] !== CSRF_VALUE) {
@@ -27,6 +32,7 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions> = async (api, { db,
   await api.register(consentRoutes, { db, config, contract });
   await api.register(attemptRoutes, { db, config, contract });
   await api.register(eventRoutes, { db, config, contract });
+  await api.register(recognitionRoutes, { db, config, contract, gateway });
   // C：教师端接口（/teacher/*）。本文件属 B，新增这一行注册需要 B 评审。
   await api.register(teacherRoutes, { db, config, contract });
 };

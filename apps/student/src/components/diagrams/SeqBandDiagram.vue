@@ -239,7 +239,7 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
 }
 .pg-svg__label--muted { color: var(--ink-2); font-size: 9px; }
 .pg-svg__label--ink { color: var(--ink); }
-.pg-svg__label--margin { color: var(--margin); }
+.pg-svg__label--margin { color: var(--margin-text); }
 .pg-svg__label--tick { color: var(--ink-2); font-size: 9px; }
 .pg-seq__band { fill: var(--accent-soft); }
 .pg-seq__axis { stroke: var(--rule); stroke-width: 1; }

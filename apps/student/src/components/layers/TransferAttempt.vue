@@ -262,7 +262,7 @@ function remove(line: ProofLine) {
   min-width: 0;
 }
 .pg-layer__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.pg-layer__title { font-family: var(--font-serif); font-size: 17px; font-weight: 600; color: var(--ink); }
+.pg-layer__title { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--ink-2); }
 .pg-layer__step { color: var(--ink-2); flex: 0 0 auto; }
 .pg-layer__hint { color: var(--ink-2); }
 .pg-layer__row { display: flex; gap: var(--sp-2); }
@@ -274,7 +274,7 @@ function remove(line: ProofLine) {
   min-height: 44px;
   margin: 0;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);
@@ -290,7 +290,7 @@ function remove(line: ProofLine) {
 .pg-attempt__row { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
 .pg-attempt__rowhead { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .pg-attempt__no { color: var(--ink-2); font-size: 12px; }
-.pg-attempt__badge { padding: 1px var(--sp-2); border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); }
+.pg-attempt__badge { padding: 1px var(--sp-2); border-radius: 999px; border: 2px solid var(--rule); color: var(--ink-2); }
 .pg-attempt__badge--ok { border-color: var(--ok); color: var(--ok); }
 .pg-attempt__badge--warn { border-color: var(--hint); color: var(--hint); }
 .pg-attempt__actions { margin-left: auto; display: flex; gap: var(--sp-2); }
@@ -299,10 +299,10 @@ function remove(line: ProofLine) {
   padding: 0 var(--sp-2);
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 13px;
 }
-.pg-attempt__link--danger { color: var(--margin); }
+.pg-attempt__link--danger { color: var(--margin-text); }
 .pg-attempt__just { color: var(--ink-2); }
 .pg-attempt__note { margin-top: var(--sp-1); padding: var(--sp-1) var(--sp-2); border-left: 3px solid var(--margin); background: var(--margin-soft); }
 .pg-attempt__notehead { display: flex; align-items: center; gap: var(--sp-1); }
@@ -325,12 +325,12 @@ function remove(line: ProofLine) {
 }
 .pg-attempt__notedismiss::after { border: 0; }
 .pg-attempt__editor { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
-.pg-attempt__editortitle { font-family: var(--font-serif); font-size: 15px; font-weight: 600; }
+.pg-attempt__editortitle { font-size: 15px; font-weight: 900; }
 .pg-attempt__input {
   display: block;
   width: 100%;
   height: 96px;
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--paper);
   overflow: hidden;
@@ -356,13 +356,13 @@ function remove(line: ProofLine) {
 .pg-attempt__prov {
   min-height: 32px;
   padding: 0 var(--sp-2);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: 999px;
   background: transparent;
   color: var(--ink-2);
   font-size: 13px;
 }
-.pg-attempt__prov--active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pg-attempt__prov--active { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
 .pg-attempt__footer { display: flex; gap: var(--sp-2); }
 .pg-attempt__footer .pg-layer__btn { flex: 1; }
 </style>

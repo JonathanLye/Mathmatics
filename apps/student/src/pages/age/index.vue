@@ -89,7 +89,7 @@ async function submit(): Promise<void> {
   <view class="pg-page pg-age" data-testid="age-page">
     <text class="pg-age__title">先确认你的年龄段</text>
     <text class="pg-age__sub pg-small">
-      按 13 §4：未满 14 岁暂不开通；14–17 岁可用；18 岁及以上按成年人规则。年龄只会记录一次。
+      未满 14 岁暂不开通；14–17 岁可用；18 岁及以上按成年人规则。年龄只会记录一次。
     </text>
 
     <view v-if="initializing" class="pg-age__card pg-sheet" data-testid="age-loading">
@@ -133,7 +133,7 @@ async function submit(): Promise<void> {
       <button class="pg-age__submit" data-testid="age-submit" :disabled="submitDisabled" @tap="submit">
         {{ loading ? '提交中…' : '确认分档' }}
       </button>
-      <text class="pg-age__hint pg-small">提交后由服务端记录；年龄分档只用于未成年人规则，不影响你的成绩。</text>
+      <text class="pg-age__hint pg-small">年龄分档只用于未成年人规则，不影响你的成绩。</text>
     </template>
 
     <text v-if="errorText && (blocked || recordedNotice)" class="pg-age__error pg-small" data-testid="age-error" role="alert">
@@ -151,16 +151,15 @@ async function submit(): Promise<void> {
   padding-bottom: calc(var(--sp-6) + var(--safe-bottom));
 }
 .pg-age__title {
-  font-family: var(--font-serif);
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--ink);
 }
 .pg-age__sub { color: var(--ink-2); }
 .pg-age__card { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-age__card--blocked { border-left: 3px solid var(--margin); }
-.pg-age__cardtitle { font-family: var(--font-serif); font-size: 18px; font-weight: 600; color: var(--ink); }
-.pg-age__recorded { color: var(--accent); }
+.pg-age__cardtitle { font-size: 18px; font-weight: 900; color: var(--ink); }
+.pg-age__recorded { color: var(--accent-text); }
 .pg-age__options { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-age__option {
   /* uni-app H5 的 <button> 默认按内容收缩，这里显式撑满整行 */
@@ -173,43 +172,46 @@ async function submit(): Promise<void> {
   gap: 2px;
   min-height: 56px;
   padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
+  border-bottom-width: 4px;
   border-radius: var(--radius-card);
   background: var(--sheet);
   color: var(--ink);
   text-align: left;
 }
-.pg-age__option--selected { border-color: var(--accent); background: var(--accent-soft); }
-.pg-age__optionlabel { font-size: var(--fs-body); }
+.pg-age__option--selected { border-color: var(--accent); border-bottom-color: var(--accent-lip); background: var(--accent-soft); }
+.pg-age__optionlabel { font-size: var(--fs-body); font-weight: 900; }
 .pg-age__optionhint { color: var(--ink-2); }
 .pg-age__risk {
   padding: var(--sp-2) var(--sp-3);
-  border-left: 3px solid var(--hint);
-  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+  border: 2px solid var(--hint-fill);
+  border-radius: var(--radius-input);
   background: var(--hint-soft);
   color: var(--hint);
   font-size: var(--fs-small);
   line-height: 1.6;
 }
-.pg-age__error { color: var(--margin); }
+.pg-age__error { color: var(--margin-text); }
 .pg-age__submit {
   width: 100%;
   box-sizing: border-box;
   align-self: stretch;
-  min-height: 48px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-input);
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius-card);
   background: var(--accent);
-  color: var(--sheet);
+  box-shadow: 0 var(--lip) 0 var(--accent-lip);
+  color: var(--on-accent);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 900;
+  letter-spacing: 0.5px;
 }
 /* uni-app H5 的 <uni-button> 不是原生表单控件，:disabled 伪类不生效，用属性选择器统一禁用态 */
 .pg-age__option[disabled] { opacity: 0.7; }
 .pg-age__submit[disabled] {
-  border-color: var(--rule);
   background: var(--rule);
-  color: var(--ink-2);
+  box-shadow: none;
+  color: var(--ink-3);
 }
 /* 去掉 uni-app H5 <button> 自带的 ::after 边框，避免与外层边框叠成双线 */
 .pg-age__option::after,

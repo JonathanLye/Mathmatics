@@ -64,7 +64,7 @@ describe('会话级限流', () => {
   });
 
   it('默认上限：事件 120 次/分，求助 60 次/分（每会话）', () => {
-    expect(testConfig.rateLimits).toEqual({ events: 120, help: 60 });
+    expect(testConfig.rateLimits).toEqual({ events: 120, help: 60, login: 120 });
   });
 });
 

@@ -6,6 +6,7 @@ import { openDb } from './db/index.ts';
 import { sweepExports } from './services/teacher/exports.ts';
 import { cleanupExpiredIdempotencyKeys } from './idempotency.ts';
 import { requestSerializer } from './logging.ts';
+import { refreshStaleMetrics } from './metrics/refresh.ts';
 
 const config = loadConfig();
 // 先建 pino 实例：池里空闲连接的错误发生在 app 建立之后，但只有共用同一个 logger 才能进结构化日志。
@@ -32,6 +33,29 @@ const cleanupTimer = setInterval(
 );
 cleanupTimer.unref();
 
+// 派生指标（07 §1 原则 5：可随时重算）：没有 pg-boss worker 的部署由本进程定时刷新，启动时先补一轮。
+// METRICS_REFRESH_SEC=0 关闭。测试不经过 server.ts，所以不会起这个定时器。
+const metricsEverySec = Number(process.env.METRICS_REFRESH_SEC ?? 300);
+let metricsTimer: NodeJS.Timeout | undefined;
+if (Number.isFinite(metricsEverySec) && metricsEverySec > 0) {
+  let running = false;
+  const tick = (): void => {
+    if (running) return;
+    running = true;
+    refreshStaleMetrics(db)
+      .then((n) => {
+        if (n > 0) app.log.info({ refreshed: n }, 'metrics: 已刷新派生指标');
+      })
+      .catch((error: unknown) => app.log.error({ err: error }, 'metrics: 刷新失败'))
+      .finally(() => {
+        running = false;
+      });
+  };
+  tick();
+  metricsTimer = setInterval(tick, metricsEverySec * 1000);
+  metricsTimer.unref();
+}
+
 const address = await app.listen({ host: config.host, port: config.port });
 if (process.env.SMOKE === '1') {
   console.log(`LISTENING ${address}`);
@@ -41,6 +65,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
     app.log.info({ signal }, 'shutting down');
     clearInterval(cleanupTimer);
+    if (metricsTimer) clearInterval(metricsTimer);
     app
       .close()
       .then(() => db.close())

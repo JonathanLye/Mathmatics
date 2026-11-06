@@ -59,7 +59,7 @@ const STATUS_TEXT: Record<string, string> = { locked: '未解锁', active: '进�
   background: transparent;
 }
 .pg-layernav__item--current {
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }

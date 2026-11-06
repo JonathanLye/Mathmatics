@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCount, formatRate, formatSeconds, independenceBand, layerFunnelData } from './metrics.ts';
+import { formatCount, formatRate, formatSeconds, independenceBand, keyHeatRows, layerFunnelData } from './metrics.ts';
 
 describe('指标展示（08 §4 / 04 §3）', () => {
   it('比例与 null', () => {
@@ -33,6 +33,14 @@ describe('指标展示（08 §4 / 04 §3）', () => {
       { name: 'L4', value: 0 },
       { name: 'L5', value: 0 },
       { name: 'L6', value: 0 },
+    ]);
+  });
+
+  it('关键步骤卡点行：保序、缺省为 0、total=own+viaHint', () => {
+    expect(keyHeatRows(undefined)).toEqual([]);
+    expect(keyHeatRows([{ key: 'K1', own: 2, viaHint: 1 }, { label: '取 N', own: Number.NaN }])).toEqual([
+      { label: 'K1', own: 2, viaHint: 1, total: 3 },
+      { label: '取 N', own: 0, viaHint: 0, total: 0 },
     ]);
   });
 });

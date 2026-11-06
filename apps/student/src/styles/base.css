@@ -1,3 +1,6 @@
+@import '@fontsource/nunito/latin-700.css';
+@import '@fontsource/nunito/latin-800.css';
+@import '@fontsource/nunito/latin-900.css';
 /**
  * 基础排版与布局工具。设计口径见 02 §2.3/§2.4、§3、§6。
  */
@@ -40,12 +43,93 @@ body {
   padding-right: max(var(--sp-4), var(--safe-right));
 }
 
-/* 稿纸/卡片 */
+/* 卡片：2px 边；可点的加 .pg-lip 得到 4px 硬下唇 */
 .pg-sheet {
   background: var(--sheet);
   border-radius: var(--radius-card);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
 }
+.pg-lip {
+  border-bottom-width: var(--lip);
+}
+
+/* 厚边按钮：面 + 下唇，按下时唇收起（v2 的核心手感） */
+.pg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 52px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 var(--lip) 0 var(--accent-lip);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+  transition: transform var(--dur-fast) ease-out, box-shadow var(--dur-fast) ease-out;
+}
+.pg-btn:active:not([disabled]) {
+  transform: translateY(var(--lip));
+  box-shadow: 0 0 0 var(--accent-lip);
+}
+.pg-btn::after { display: none; }
+.pg-btn--sea {
+  background: var(--margin);
+  color: var(--on-margin);
+  box-shadow: 0 var(--lip) 0 var(--margin-lip);
+}
+.pg-btn--bee {
+  background: var(--hint-fill);
+  color: var(--on-hint);
+  box-shadow: 0 var(--lip) 0 var(--hint-lip);
+}
+.pg-btn--danger {
+  background: var(--danger-face);
+  color: #fff;
+  box-shadow: 0 var(--lip) 0 var(--danger-lip);
+}
+.pg-btn--out {
+  background: var(--sheet);
+  color: var(--margin-text);
+  border: 2px solid var(--rule);
+  box-shadow: 0 2px 0 var(--rule);
+}
+.pg-btn--out:active:not([disabled]) {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--rule);
+}
+.pg-btn[disabled],
+.pg-btn--off {
+  background: var(--rule);
+  color: var(--ink-3);
+  box-shadow: none;
+}
+.pg-btn--sm {
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  font-size: 14px;
+  border-radius: var(--radius-input);
+}
+
+/* 标签：大写字距小标题 */
+.pg-kicker {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.9px;
+  color: var(--ink-2);
+}
+
+/* v2 动效（只用 transform/opacity；reduced-motion 下被下方规则关掉） */
+@keyframes pg-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes pg-sheet-up { from { transform: translateY(100%); } 60% { transform: translateY(-6px); } to { transform: none; } }
+@keyframes pg-pop { 0% { transform: scale(0); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes pg-shake { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@keyframes pg-stamp { 0% { transform: translateY(-120px) scale(1.4) rotate(-8deg); opacity: 0; } 55% { transform: translateY(0) scale(0.92) rotate(-8deg); opacity: 1; } 75% { transform: scale(1.04) rotate(-8deg); } 100% { transform: scale(1) rotate(-8deg); } }
 
 /* 题面等长文本：衬线、17px */
 .pg-serif {
