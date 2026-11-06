@@ -1,14 +1,16 @@
-// 08 §4 / 04 §3 的教师可见口径；页面只展示，不重算（04 §3、12 §1）。
+import { layerName } from './layers.ts';
+
+// 教师可见的指标口径说明：页面只展示服务端算好的数，不在浏览器里重算。
 export const METRIC_EXPLAIN: Record<string, string> = {
-  completionRate: '完成率：已完成作答数 / 已开始作答数（08 §4.2）',
-  independenceMedian: '独立度：1 − 透露量 / 关键步骤总数；跨题不可比，只用于同题比较（08 §4.1）',
-  firstHelpLatency: '首次求助前时长：进入第 3 层到第一条计透露量提示；从未领取记为删失（08 §4.1）',
-  postHintDwell: '提示后停留：领取提示到下一条证明行的时长中位数（08 §4.1）',
-  autonomousCoverage: '自主覆盖率：从来没领过 H2 及以上提示的关键步骤 / 关键步骤总数（08 §4.1）',
-  rapidHintEvents: '连点：触发连点锁的次数（08 §4.1）',
-  integrity: '诚信：信号最高分 ≥0.5 的人数；只提示、不自动处罚（11 §2/§4）',
-  layerFunnel: '层漏斗：当前处于每一层的人数（08 §4.2）',
-  keyHeat: '关键步骤卡点：每个关键步骤自己写出 / 经提示写出 / 卡在这里的人数（08 §4.2）',
+  completionRate: '完成率：已完成作答数 / 已开始作答数',
+  independenceMedian: '独立度：1 − 提示用掉的额度 / 关键步骤总数。不同题目之间不能比，只用于同一道题比较',
+  firstHelpLatency: '首次求助前时长：进入写证明这一层，到第一条计入提示额度的提示。从未领取的不计入',
+  postHintDwell: '提示后停留：领取提示到下一行证明之间的时长中位数',
+  autonomousCoverage: '自主覆盖率：从来没领过需要计额度的提示的关键步骤 / 关键步骤总数',
+  rapidHintEvents: '连点：连续快速点提示被暂时限制的次数',
+  integrity: '诚信提醒：信号最高分达到 0.5 的人数。只提醒，不自动处罚',
+  layerFunnel: '层漏斗：现在停在每一层的人数',
+  keyHeat: '关键步骤卡点：每个关键步骤自己写出 / 经提示写出的人数',
 };
 
 export function formatRate(value: number | null | undefined): string {
@@ -25,7 +27,7 @@ export function formatCount(value: number | null | undefined): string {
   return value === null || value === undefined ? '—' : String(value);
 }
 
-// 04 §3：独立度分档（阈值可配置，P0 取 0.85 / 0.5；边界按“先 ≥0.85，再 ≥0.5”实现）。
+// 独立度分档：先看 ≥0.85，再看 ≥0.5。
 export function independenceBand(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   if (value >= 0.85) return '独立';
@@ -35,7 +37,7 @@ export function independenceBand(value: number | null | undefined): string {
 
 export function layerFunnelData(funnel: Record<string, number> | undefined): Array<{ name: string; value: number }> {
   const source = funnel ?? {};
-  return ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].map((layer) => ({ name: layer, value: Number(source[layer] ?? 0) }));
+  return ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'].map((layer) => ({ name: layerName(layer), value: Number(source[layer] ?? 0) }));
 }
 
 export interface KeyHeatRow {

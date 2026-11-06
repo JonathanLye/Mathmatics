@@ -194,4 +194,58 @@ describe('审核屏只读接口（#42 / 04 §8）', () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/teacher/problems/epsN/versions/abc', headers: { cookie } })).statusCode).toBe(422);
     expect((await app.inject({ method: 'GET', url: '/api/v1/teacher/problems' })).statusCode).toBe(401);
   });
+  it('审核来源与类型筛选（reviewSource / kind），非法值 422；分页时筛选仍稳定', async () => {
+    await db.query(`update content.problem_versions set review_source = 'auto' where problem_id = 'series' and version = 1`);
+    const list = async (query: string) => {
+      const res = await app.inject({ method: 'GET', url: `/api/v1/teacher/problems?${query}`, headers: { cookie } });
+      expect(res.statusCode, res.body).toBe(200);
+      return res;
+    };
+    const autoOnly = (await list('reviewSource=auto')).json() as Array<{ problemId: string; reviewSource: string }>;
+    expect(autoOnly.map((item) => item.problemId)).toEqual(['series']);
+    const teacherOnly = (await list('reviewSource=teacher')).json() as Array<{ problemId: string; reviewSource: string }>;
+    expect(teacherOnly.length).toBeGreaterThan(0);
+    expect(teacherOnly.every((item) => item.reviewSource === 'teacher' && item.problemId !== 'series')).toBe(true);
+    const mains = (await list('kind=main')).json() as Array<{ kind: string }>;
+    expect(mains.length).toBeGreaterThan(0);
+    expect(mains.every((item) => item.kind === 'main')).toBe(true);
+    const page = await list('kind=main&limit=1');
+    expect((page.json() as unknown[]).length).toBe(1);
+    expect(page.headers['x-next-cursor']).toBeTruthy();
+    expect((await app.inject({ method: 'GET', url: '/api/v1/teacher/problems?reviewSource=x', headers: { cookie } })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/teacher/problems?kind=x', headers: { cookie } })).statusCode).toBe(422);
+  });
+
+  it('PATCH visibility：下架写 hidden_at 与审计，列表带 hiddenAt；恢复后清除；不存在 404；非布尔 422', async () => {
+    const patch = (problemId: string, payload: unknown, withCookie = true) =>
+      app.inject({
+        method: 'PATCH',
+        url: `/api/v1/teacher/problems/${problemId}/visibility`,
+        headers: withCookie ? { ...WRITE_HEADERS, cookie } : WRITE_HEADERS,
+        payload: payload as object,
+      });
+    const hidden = await patch('epsN', { hidden: true });
+    expect(hidden.statusCode, hidden.body).toBe(200);
+    expect(hidden.json()).toMatchObject({ problemId: 'epsN' });
+    expect(hidden.json().hiddenAt).toMatch(/Z$/);
+    const row = (await db.query<{ hidden_at: string | null }>(`select hidden_at::text as hidden_at from content.problems where id = 'epsN'`)).rows[0];
+    expect(row?.hidden_at).not.toBeNull();
+    expect((await db.query(`select 1 from app.audit_log where action = 'hide_problem' and target = 'epsN'`)).rows.length).toBe(1);
+
+    const items = (await app.inject({ method: 'GET', url: '/api/v1/teacher/problems', headers: { cookie } })).json() as Array<{ problemId: string; hiddenAt?: string }>;
+    expect(items.find((item) => item.problemId === 'epsN')?.hiddenAt).toMatch(/Z$/);
+    expect(items.find((item) => item.problemId === 'series')?.hiddenAt).toBeUndefined();
+    // 再下架一次是幂等的：时间不变
+    const again = await patch('epsN', { hidden: true });
+    expect(again.json().hiddenAt).toBe(hidden.json().hiddenAt);
+
+    const restored = await patch('epsN', { hidden: false });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json()).toEqual({ problemId: 'epsN', hiddenAt: null });
+    expect((await db.query(`select 1 from app.audit_log where action = 'unhide_problem' and target = 'epsN'`)).rows.length).toBe(1);
+
+    expect((await patch('nope', { hidden: true })).statusCode).toBe(404);
+    expect((await patch('epsN', { hidden: 'yes' })).statusCode).toBe(422);
+    expect((await patch('epsN', {}, false)).statusCode).toBe(401);
+  });
 });

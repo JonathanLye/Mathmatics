@@ -31,6 +31,7 @@
 | `11-防作弊与数据完整性.md` | 能/不能、客户端与服务端信号、练习/测验流程、水印、小程序 API | A+B |
 | `12-分工与开发计划.md` | 2/3 人分工、Day 0–3 计划与 DoD、P1/P2、测试、上线检查单、AI 协作规则 | Lead/PO |
 | `13-合规与运营.md` | 同意书、数据出境、未成年人、AIGC 标识、版权、伦理、备案、成本、运营 | Lead/PO |
+| `14-演示脚本.md` | 给老师演示的 10 分钟走查：演示前准备、逐步点击与话术、兜底、清理（配合 `tools/demo-seed.mjs`） | C+Lead |
 | `contracts/` | OpenAPI、JSON Schema、DDL、键盘布局、seed、参考实现与门禁（`npm run check`） | B 唯一维护；生成物禁止手改 |
 
 > **编辑规则**：生成区（08 §3、06 §3、`events.schema.json`、`openapi.yaml`、`schema.sql`）禁止手改，改源后重跑生成；契约改动开 PR，B 维护、A/C 审；git 基线见 12 §2。

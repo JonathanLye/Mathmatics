@@ -5,6 +5,8 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
 import type { HelpFlagItem, IntegrityItem, TeacherAttemptDetail, TeacherLine } from '../api/types.ts';
 import { MIRROR_IFRAME_SANDBOX, isMirrorPageUrl } from '../utils/mirror.ts';
+import { CLS_OPTIONS, dispositionLabel, hintLevelLabel, integritySignalLabel, lineClsLabel, timelineText } from '../utils/labels.ts';
+import { layerName } from '../utils/layers.ts';
 import ReplayDialog from './ReplayDialog.vue';
 import MathTextView from './MathTextView.vue';
 import Icon from './ui/Icon.vue';
@@ -50,25 +52,25 @@ function provOf(key: string): { label: string; icons: ProvIcon[] } {
   return PROVENANCE[key] ?? { label: key, icons: [] };
 }
 
-// 时间线圆点语义色：蓝=学生/系统动作，黄=提示，红=求助/锁，绿=提交/完成。
+// 操作记录圆点：灰=一般操作，金=提示，红=求助或锁定，绿=提交或完成。
 function dotTone(type: string): string {
   if (/hint/.test(type)) return 'bee';
   if (/help|lock|flag|integrity/.test(type)) return 'chili';
   if (/complete|pass|submit|confirm/.test(type)) return 'grass';
-  return 'sea';
+  return 'plain';
 }
 function timeOf(at: string): string {
   return new Date(at).toLocaleTimeString('zh-CN');
 }
 
 const lineColumns = [
-  { colKey: 'layer', title: '层', width: 60 },
-  { colKey: 'n', title: '行', width: 50 },
+  { colKey: 'layer', title: '所在层', width: 80 },
+  { colKey: 'n', title: '行', width: 44 },
   { colKey: 'statement', title: '这一行' },
   { colKey: 'justification', title: '依据' },
-  { colKey: 'keys', title: '关键步骤', width: 140 },
-  { colKey: 'meta', title: '归类', width: 150 },
-  { colKey: 'actions', title: '改判', width: 70 },
+  { colKey: 'keys', title: '关键步骤', width: 90 },
+  { colKey: 'meta', title: '识别情况', width: 120 },
+  { colKey: 'actions', title: '改判', width: 56 },
 ];
 
 function messageOf(caught: unknown): string {
@@ -82,7 +84,7 @@ async function load(): Promise<void> {
   error.value = '';
   try {
     const loaded = await api.get<TeacherAttemptDetail>(`/api/v1/teacher/attempts/${attemptId}`);
-    // 契约尚未命名 helpFlags/timeline 等字段（见 PR #106 缺口清单）：缺字段时按空数组兜底。
+    // 服务端偶尔省略空列表：缺字段时按空数组处理。
     detail.value = {
       ...loaded,
       helpFlags: loaded.helpFlags ?? [],
@@ -129,7 +131,7 @@ async function submitReclassify(): Promise<void> {
       ...(reclassifyErrorId.value.trim() === '' ? {} : { errorId: reclassifyErrorId.value.trim() }),
       ...(reclassifyNote.value.trim() === '' ? {} : { note: reclassifyNote.value.trim() }),
     });
-    MessagePlugin.success('已改判（写审计，不改学生已见内容）');
+    MessagePlugin.success('已改判，并留下了记录；学生已经看到的内容不变');
     reclassifyVisible.value = false;
     await load();
     emit('refresh');
@@ -148,27 +150,27 @@ async function unlock(): Promise<void> {
   if (props.attemptId === null) return;
   try {
     detail.value = await api.post<TeacherAttemptDetail>(`/api/v1/teacher/attempts/${props.attemptId}/unlock`, {});
-    MessagePlugin.success('已解锁（计数不清零，阈值 +1）');
+    MessagePlugin.success('已解锁（离开页面的次数不清零，允许次数加 1）');
     emit('refresh');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
   }
 }
 
-// 软着陆（01 §4、11 §5.2）：学生额度用尽后，教师补发一条 H4（下一个未完成的步骤）。
-// 服务端只在额度耗尽后接受；学生需补 ≥6 字依据，该步才计入；本题标记"含教师补发"。
+// 学生提示额度用完后，老师可以补发一条提示（下一个还没写出的步骤）。
+// 服务端只在额度用完后接受；学生要补上依据，这一步才计入；这道题会标记为“含教师补发”。
 async function grantHint(): Promise<void> {
   if (props.attemptId === null) return;
   try {
     detail.value = await api.post<TeacherAttemptDetail>(`/api/v1/teacher/attempts/${props.attemptId}/unlock`, { grantH4: '' });
-    MessagePlugin.success('已补发一条 H4：学生补上依据后才计入，本题标记含教师补发');
+    MessagePlugin.success('已补发一条提示：学生补上依据后才计入，这道题会标记为含教师补发');
     emit('refresh');
   } catch (caught) {
     MessagePlugin.error(messageOf(caught));
   }
 }
 
-// 04 §5.1：取 5 分钟只读令牌，iframe 打开学生镜像页（/s/mirror，A 侧页面）。
+// 取 5 分钟有效的只读令牌，在弹窗里打开学生当前作答页的只读镜像。
 async function openMirror(): Promise<void> {
   if (props.attemptId === null) return;
   mirrorLoading.value = true;
@@ -178,7 +180,7 @@ async function openMirror(): Promise<void> {
       {},
     );
     const url = new URL(res.url, window.location.origin).toString();
-    if (!isMirrorPageUrl(url)) throw new Error('镜像地址不合法（必须 /s/mirror + attempt + token）');
+    if (!isMirrorPageUrl(url)) throw new Error('镜像地址不可用，请稍后再试');
     mirrorUrl.value = url;
     mirrorVisible.value = true;
   } catch (caught) {
@@ -226,8 +228,8 @@ async function resolve(flagId: string | undefined, disposition: 'dismissed' | 'n
 }
 
 function lineMeta(line: TeacherLine): string {
-  const conf = line.conf === null ? '' : `conf ${line.conf.toFixed(2)}`;
-  return [line.cls, line.path, conf].filter((item) => item !== '').join(' · ');
+  const conf = line.conf === null ? '' : `把握度 ${line.conf.toFixed(2)}`;
+  return [lineClsLabel(line.cls), conf].filter((item) => item !== '').join(' · ');
 }
 </script>
 
@@ -247,28 +249,29 @@ function lineMeta(line: TeacherLine): string {
           <b class="detail-head__name">{{ detail.displayName ?? detail.anonCode }}</b>
           <span class="page-sub detail-head__sub">{{ detail.anonCode }} · {{ detail.problem.title }} · {{ detail.mode === 'test' ? '测验' : '练习' }}</span>
         </div>
-        <span class="pg-pill" :class="`pg-pill--${detail.status === 'locked' ? 'chili' : detail.status === 'completed' ? 'grass' : 'sea'}`">
+        <span class="pg-pill" :class="`pg-pill--${detail.status === 'locked' ? 'chili' : detail.status === 'completed' ? 'grass' : 'accent'}`">
           {{ STATUS_LABEL[detail.status] ?? detail.status }}
         </span>
       </div>
 
       <div class="intervene">
-        <t-popconfirm content="解锁后计数不清零、阈值 +1，确定解锁？" @confirm="unlock">
+        <t-popconfirm content="解锁后，离开页面的次数不清零，允许次数加 1。确定解锁？" @confirm="unlock">
           <t-button size="small" :disabled="detail.status !== 'locked'">解锁</t-button>
         </t-popconfirm>
-        <t-popconfirm content="学生额度用尽时才可用：补发一条 H4（下一个未完成的步骤），学生需补依据才计入，本题不再算独立完成。确定补发？" @confirm="grantHint">
-          <t-button size="small" :disabled="detail.status === 'completed'" data-testid="grant-h4">补发提示（额度用尽）</t-button>
+        <t-popconfirm content="学生提示额度用完后才能用：补发一条提示（下一个还没写出的步骤）。学生需要补上依据才计入，这道题不再算独立完成。确定补发？" @confirm="grantHint">
+          <t-button size="small" :disabled="detail.status === 'completed'" data-testid="grant-h4">补发提示（额度用完后）</t-button>
         </t-popconfirm>
         <t-button size="small" :loading="mirrorLoading" @click="openMirror">镜像预览</t-button>
         <t-button size="small" @click="replayVisible = true">回放</t-button>
         <div class="nudge-box">
-          <t-input v-model="nudgeText" placeholder="发给学生一句话（≤200 字，过闸门）" :maxlength="200" />
+          <t-input v-model="nudgeText" placeholder="发给学生一句话（最多 200 字）" :maxlength="200" />
           <t-button size="small" theme="primary" :loading="nudgeSending" @click="sendNudge">发送</t-button>
         </div>
       </div>
 
       <h4 class="sec">证明行</h4>
       <t-table :data="detail.lines" :columns="lineColumns" row-key="lineId" size="small">
+        <template #layer="{ row }">{{ layerName(row.layer) }}</template>
         <template #statement="{ row }"><MathTextView :text="row.statement" /></template>
         <template #justification="{ row }"><MathTextView :text="row.justification" /></template>
         <template #keys="{ row }">
@@ -296,20 +299,20 @@ function lineMeta(line: TeacherLine): string {
       <div v-if="detail.hints.length === 0" class="empty">还没有领取提示。</div>
       <div v-for="hint in detail.hints" :key="hint.hintId" class="hint-item">
         <div class="hint-meta">
-          <span class="pg-pill pg-pill--bee">{{ hint.level }}</span>
-          <span>透露 {{ hint.cost }}</span>
+          <span class="pg-pill pg-pill--bee">{{ hintLevelLabel(hint.level) }}</span>
+          <span>计入提示额度 {{ hint.cost }}</span>
           <span>{{ timeOf(hint.deliveredAt) }}</span>
         </div>
         <MathTextView :text="hint.text" />
       </div>
 
-      <h4 class="sec">诚信信号（只记录，不自动处罚）</h4>
-      <div v-if="detail.integrity.length === 0" class="empty">没有诚信信号。</div>
+      <h4 class="sec">诚信提醒（只记录，不自动处罚）</h4>
+      <div v-if="detail.integrity.length === 0" class="empty">没有诚信提醒。</div>
       <div v-for="(signal, index) in detail.integrity" :key="`${signal.signal}-${index}`" class="flag-item">
         <div>
-          <b>{{ signal.signal }}</b>
-          <span class="page-sub"> 分数 {{ signal.score.toFixed(2) }} · {{ signal.source ?? '' }}
-            <template v-if="signal.disposition"> · 已处理：{{ signal.disposition }}</template>
+          <b>{{ integritySignalLabel(signal.signal) }}</b>
+          <span class="page-sub"> 强度 {{ signal.score.toFixed(2) }}
+            <template v-if="signal.disposition"> · {{ dispositionLabel(signal.disposition) }}</template>
           </span>
         </div>
         <t-space v-if="signal.flagId && !signal.disposition">
@@ -319,12 +322,12 @@ function lineMeta(line: TeacherLine): string {
         </t-space>
       </div>
 
-      <h4 class="sec">求助标记</h4>
-      <div v-if="detail.helpFlags.length === 0" class="empty">没有待处理的求助标记。</div>
+      <h4 class="sec">求助老师</h4>
+      <div v-if="detail.helpFlags.length === 0" class="empty">没有待处理的求助。</div>
       <div v-for="flag in detail.helpFlags" :key="flag.flagId" class="flag-item">
         <div>
-          <b>求助</b>
-          <span class="page-sub"> {{ flag.layer ?? '' }} · {{ new Date(flag.at).toLocaleTimeString('zh-CN') }}
+          <b>点了“求助老师”</b>
+          <span class="page-sub"> {{ layerName(flag.layer) }} · {{ new Date(flag.at).toLocaleTimeString('zh-CN') }}
             <template v-if="flag.resolved"> · 已处理</template>
           </span>
         </div>
@@ -334,24 +337,20 @@ function lineMeta(line: TeacherLine): string {
         </t-space>
       </div>
 
-      <h4 class="sec">时间线（最近 100 条）</h4>
+      <h4 class="sec">操作记录（最近 100 条）</h4>
       <div class="timeline">
         <div v-for="item in detail.timeline.slice(0, 100)" :key="item.seq" class="timeline-item">
           <span class="timeline-time">{{ timeOf(item.at) }}</span>
           <i class="timeline-dot" :class="`timeline-dot--${dotTone(item.type)}`" />
-          <span class="mono">{{ item.type }}</span>
-          <span class="page-sub">{{ item.layer ?? '' }}</span>
+          <span>{{ timelineText(item.type, item.layer) }}</span>
         </div>
       </div>
     </div>
 
     <ReplayDialog v-model:visible="replayVisible" :attempt-id="attemptId" />
 
-    <t-dialog v-model:visible="mirrorVisible" header="镜像预览（只读）" width="min(900px, 96vw)" :footer="false">
-      <div class="page-sub" style="margin-bottom: 8px">
-        学生端镜像页（<code>/s/mirror</code>）由 A 侧提供；未上线前 iframe 会显示 404。只读由镜像页自身实现，
-        iframe 只用 <code>allow-scripts</code>，不加 <code>allow-same-origin</code>（04 §5.1 / PR #100 安全结论）。
-      </div>
+    <t-dialog v-model:visible="mirrorVisible" header="学生作答页（只读镜像）" width="min(900px, 96vw)" :footer="false">
+      <div class="page-sub" style="margin-bottom: 8px">学生当前作答页的只读镜像：能看到他此刻看到的内容，但不能操作。</div>
       <iframe
         v-if="mirrorUrl"
         :src="mirrorUrl"
@@ -364,32 +363,25 @@ function lineMeta(line: TeacherLine): string {
     </t-dialog>
   </t-drawer>
 
-    <t-dialog v-model:visible="reclassifyVisible" header="改判该行归类" :footer="false" width="min(560px, 96vw)">
+    <t-dialog v-model:visible="reclassifyVisible" header="改判这一行的归类" :footer="false" width="min(560px, 96vw)">
       <t-alert v-if="reclassifyError" theme="error" :message="reclassifyError" style="margin-bottom: 8px" />
-      <t-alert theme="info" message="改判只更新教师侧归类并写 audit_log，不改变学生已看到的批注/事件。" style="margin-bottom: 8px" />
+      <t-alert theme="info" message="改判只更新老师这边的归类并留下记录，不会改变学生已经看到的批注。" style="margin-bottom: 8px" />
       <t-form label-width="90px">
-        <t-form-item label="归类">
+        <t-form-item label="归类为">
           <t-select
             v-model="reclassifyCls"
-            :options="[
-              { label: '命中 match', value: 'match' },
-              { label: '错误 error', value: 'error' },
-              { label: '未知 unknown', value: 'unknown' },
-              { label: '低置信 lowconf', value: 'lowconf' },
-              { label: '通过 pass', value: 'pass' },
-              { label: '失败 fail', value: 'fail' },
-            ]"
+            :options="CLS_OPTIONS.map((item) => ({ label: item.label, value: item.value }))"
             style="width: 200px"
           />
         </t-form-item>
         <t-form-item label="关键步骤">
-          <t-input v-model="reclassifyKeys" placeholder="K1, K2（可空；逗号分隔）" />
+          <t-input v-model="reclassifyKeys" placeholder="如 K1, K2（可不填，用逗号分隔）" />
         </t-form-item>
-        <t-form-item label="错误 ID">
-          <t-input v-model="reclassifyErrorId" placeholder="如 E1（可空）" />
+        <t-form-item label="错误编号">
+          <t-input v-model="reclassifyErrorId" placeholder="如 E1（可不填）" />
         </t-form-item>
         <t-form-item label="备注">
-          <t-input v-model="reclassifyNote" placeholder="改判理由（可空，≤200 字）" :maxlength="200" />
+          <t-input v-model="reclassifyNote" placeholder="改判理由（可不填，最多 200 字）" :maxlength="200" />
         </t-form-item>
       </t-form>
       <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px">
@@ -408,7 +400,7 @@ function lineMeta(line: TeacherLine): string {
 }
 .detail-head__av { width: 40px; height: 40px; font-size: 18px; }
 .detail-head__who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.detail-head__name { font-size: 18px; font-weight: 900; }
+.detail-head__name { font-size: 17px; font-weight: 700; }
 .detail-head__sub { margin: 0; font-size: 12px; }
 .intervene {
   position: sticky;
@@ -419,10 +411,9 @@ function lineMeta(line: TeacherLine): string {
   align-items: center;
   flex-wrap: wrap;
   padding: 10px 12px;
-  background: var(--td-bg-color-container, #fff);
-  border: 2px solid var(--td-component-border, #e5e5e5);
-  border-bottom-width: 4px;
-  border-radius: 14px;
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius);
   margin-bottom: 16px;
 }
 .empty {
@@ -441,9 +432,8 @@ function lineMeta(line: TeacherLine): string {
   gap: 8px;
   margin: 22px 0 8px;
   font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.9px;
-  color: var(--td-text-color-secondary, #6b6b6b);
+  font-weight: 700;
+  color: var(--td-text-color-secondary);
 }
 .sec__n {
   background: var(--td-bg-color-component, rgba(127, 127, 127, 0.18));
@@ -457,14 +447,14 @@ function lineMeta(line: TeacherLine): string {
   flex-direction: column;
   gap: 2px;
   font-size: 12px;
-  color: var(--td-text-color-secondary, #5e6670);
+  color: var(--td-text-color-secondary);
 }
-.prov { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: var(--td-text-color-primary); }
+.prov { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--td-text-color-primary); }
 .hint-item {
   padding: 10px 12px;
-  border: 2px solid var(--pg-bee, #ffc800);
-  border-bottom-width: 4px;
-  border-radius: 14px;
+  border: 1px solid var(--pg-border);
+  border-left: 4px solid var(--pg-bee);
+  border-radius: var(--pg-radius);
   margin-bottom: 8px;
 }
 .hint-meta {
@@ -472,7 +462,7 @@ function lineMeta(line: TeacherLine): string {
   align-items: center;
   gap: 10px;
   font-size: 12px;
-  color: var(--td-text-color-secondary, #5e6670);
+  color: var(--td-text-color-secondary);
   margin-bottom: 6px;
 }
 .flag-item {
@@ -480,16 +470,15 @@ function lineMeta(line: TeacherLine): string {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border: 2px solid var(--td-component-border, #e5e5e5);
-  border-bottom-width: 4px;
-  border-radius: 14px;
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius);
   margin-bottom: 8px;
 }
 .timeline {
   max-height: 260px;
   overflow: auto;
-  border: 2px solid var(--td-component-border, #e5e5e5);
-  border-radius: 14px;
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius);
   padding: 8px 12px;
 }
 .timeline-item {
@@ -500,19 +489,19 @@ function lineMeta(line: TeacherLine): string {
   font-size: 12px;
 }
 .timeline-time {
-  color: var(--td-text-color-secondary, #5e6670);
+  color: var(--td-text-color-secondary);
   min-width: 72px;
 }
-.timeline-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: #1cb0f6; }
-.timeline-dot--bee { background: #ffc800; }
-.timeline-dot--chili { background: #ff4b4b; }
-.timeline-dot--grass { background: #58cc02; }
+.timeline-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--pg-ink-3); }
+.timeline-dot--bee { background: var(--pg-bee); }
+.timeline-dot--chili { background: var(--pg-chili); }
+.timeline-dot--grass { background: var(--pg-grass); }
 .mirror-frame {
   width: 100%;
   height: 70vh;
-  border: 1px solid var(--td-component-border, #e3e6eb);
+  border: 1px solid var(--pg-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--pg-surface);
 }
 .drawer-error {
   padding: 8px 0;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import Mascot from '../components/ui/Mascot.vue';
+import Icon from '../components/ui/Icon.vue';
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -42,10 +42,10 @@ async function submit(): Promise<void> {
 <template>
   <div class="login-wrap">
     <div class="login-card">
-      <div class="pg-login-mascot"><Mascot expr="happy" :size="72" /></div>
+      <span class="app-logo"><Icon name="qed" :size="22" color="currentColor" /></span>
       <h1>教师登录</h1>
-      <div class="login-sub">证明陪练场 · 教师端（账号由运维创建）</div>
-      <div class="login-error">{{ error }}</div>
+      <div class="login-sub">证明陪练场 · 教师端。账号由管理员创建。</div>
+      <div v-if="error" class="login-error" role="alert">{{ error }}</div>
       <t-form label-width="0" @submit.prevent>
         <t-form-item>
           <t-input v-model="username" placeholder="用户名" size="large" autocomplete="username" />
@@ -63,11 +63,11 @@ async function submit(): Promise<void> {
         <t-form-item>
           <t-input
             v-model="totp"
-            placeholder="6 位动态验证码（启用了两步验证才填）"
+            placeholder="两步验证码（开启后才需要填）"
             size="large"
             autocomplete="one-time-code"
             inputmode="numeric"
-            aria-label="动态验证码"
+            aria-label="两步验证码"
             :maxlength="6"
             @enter="submit"
           />

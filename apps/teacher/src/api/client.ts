@@ -1,4 +1,4 @@
-// 统一的 fetch 封装（06 §1）：
+// 统一的 fetch 封装：
 // - 同源 Cookie（credentials: 'include'）；本地开发由 Vite 代理 /api 到 server。
 // - 非 GET 一律带 X-Requested-With: proof-gym（CSRF 校验）。
 // - 每个请求带 X-Pg-App: teacher：/me、/auth/logout 据此读教师 Cookie（pg_sid_t），与同一浏览器里的学生登录互不影响。
@@ -40,14 +40,16 @@ function isAuthLost(error: ApiError): boolean {
 
 async function handle<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
-  if (!res.ok) {
-    const error = await parseError(res);
-    if (isAuthLost(error) && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('pg:unauthorized'));
-    }
-    throw error;
-  }
+  if (!res.ok) throw await failure(res);
   return (await res.json()) as T;
+}
+
+async function failure(res: Response): Promise<ApiError> {
+  const error = await parseError(res);
+  if (isAuthLost(error) && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pg:unauthorized'));
+  }
+  return error;
 }
 
 function headersFor(method: string, json: boolean): Record<string, string> {
@@ -60,6 +62,12 @@ function headersFor(method: string, json: boolean): Record<string, string> {
 export const api = {
   get<T>(path: string): Promise<T> {
     return fetch(path, { headers: headersFor('GET', false), credentials: 'include' }).then(handle<T>);
+  },
+  // 分页列表：响应体是数组，下一页的游标在响应头 X-Next-Cursor（没有下一页就没有这个头）。
+  async getPage<T>(path: string): Promise<{ data: T; nextCursor: string | null }> {
+    const res = await fetch(path, { headers: headersFor('GET', false), credentials: 'include' });
+    if (!res.ok) throw await failure(res);
+    return { data: (await res.json()) as T, nextCursor: res.headers.get('x-next-cursor') };
   },
   post<T>(path: string, body?: unknown): Promise<T> {
     return fetch(path, {
@@ -84,7 +92,7 @@ export const api = {
       credentials: 'include',
     }).then(handle<T>);
   },
-  // 名单 CSV 用原始字节上传（服务端做 UTF-8/GBK 探测，04 §10）。
+  // 名单 CSV 用原始字节上传（服务端自动识别编码）。
   postCsv<T>(path: string, file: File): Promise<T> {
     return file.arrayBuffer().then((buffer) =>
       fetch(path, {

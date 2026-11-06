@@ -15,7 +15,7 @@ export const router = createRouter({
   ],
 });
 
-// 04 §1：教师端页面都需要教师会话；学生/管理员走同一登录页（管理员接口后续再细化）。
+// 教师端页面都需要教师会话；学生账号进来会被送回登录页。
 router.beforeEach(async (to) => {
   if (to.meta.public) return true;
   if (!session.loaded) await loadSession();

@@ -5,6 +5,7 @@ import type { StoredEvent } from '../api/types.ts';
 import { buildFrames, buildMarkers, frameAt, type ReplayFrame } from '../utils/replay.ts';
 import { buildEngineFrames, engineStateAt, type EngineFrame } from '../utils/replayEngine.ts';
 import type { ProblemPackage } from '@proof-gym/engine';
+import { layerName } from '../utils/layers.ts';
 
 const props = defineProps<{ visible: boolean; attemptId: string | null }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
@@ -54,7 +55,7 @@ async function load(): Promise<void> {
     frames.value = buildFrames(all);
     seq.value = lastSeq.value;
 
-    // 引擎状态级回放：题目包（教师权限、读审计）+ 同一批事件 → engine replay
+    // 按作答状态回放：题目数据（老师权限，会留查看记录）+ 同一批事件
     try {
       const detail = await api.get<{ problem: { problemId: string; version: number } }>(
         `/api/v1/teacher/attempts/${attemptId}`,
@@ -65,7 +66,7 @@ async function load(): Promise<void> {
       engineFrames.value = buildEngineFrames(all, pkg);
     } catch (caught) {
       engineFrames.value = [];
-      engineError.value = caught instanceof ApiError ? caught.message : '题目包加载失败，仅事件级回放';
+      engineError.value = caught instanceof ApiError ? caught.message : '题目信息没能加载，只能按事件回放';
     }
   } catch (caught) {
     frames.value = [];
@@ -109,29 +110,21 @@ watch(
 
 onBeforeUnmount(stop);
 
-const TONE_LABEL: Record<string, string> = {
-  layer: '层切换',
-  line: '提交',
-  hint: '提示',
-  note: '批注',
-  away: '离开',
-  other: '其他',
-};
 </script>
 
 <template>
-  <t-dialog :visible="visible" header="回放（引擎状态级）" width="min(860px, 96vw)" :footer="false" @close="close">
+  <t-dialog :visible="visible" header="作答回放" width="min(860px, 96vw)" :footer="false" @close="close">
     <div v-if="error" style="padding: 8px 0">
       <t-alert theme="error" :message="error" />
     </div>
     <t-loading v-else-if="loading" />
     <div v-else>
       <div class="replay-cards">
-        <div class="replay-card"><b>{{ engineState ? `L${engineState.layer}` : (current?.layer ?? '—') }}</b><span>层</span></div>
+        <div class="replay-card"><b>{{ engineState ? layerName(`L${engineState.layer}`) : (layerName(current?.layer) || '—') }}</b><span>所在层</span></div>
         <div class="replay-card"><b>{{ engineState?.lines ?? current?.lines ?? 0 }}</b><span>已提交行</span></div>
         <div class="replay-card"><b>{{ engineState ? engineState.hint.matched.size : (current?.keys ?? 0) }}</b><span>关键步骤</span></div>
-        <div class="replay-card"><b>{{ engineState?.hint.reveal ?? 0 }}</b><span>透露量</span></div>
-        <div class="replay-card"><b>{{ current?.hints ?? 0 }}</b><span>提示</span></div>
+        <div class="replay-card"><b>{{ engineState?.hint.reveal ?? 0 }}</b><span>已用提示额度</span></div>
+        <div class="replay-card"><b>{{ current?.hints ?? 0 }}</b><span>领取提示</span></div>
         <div class="replay-card"><b>{{ current?.notes ?? 0 }}</b><span>批注</span></div>
         <div class="replay-card"><b>{{ Math.round((current?.awayMs ?? 0) / 1000) }}s</b><span>离开时长</span></div>
       </div>
@@ -157,14 +150,14 @@ const TONE_LABEL: Record<string, string> = {
           style="cursor: pointer"
           @click="seq = marker.seq"
         >
-          #{{ marker.seq }} {{ TONE_LABEL[marker.tone] ?? marker.tone }} · {{ marker.label }}
+          {{ marker.label }}
         </t-tag>
       </div>
 
       <div class="page-sub" style="margin-top: 10px">
-        引擎状态级回放（engine replay）：层/已提交行/关键步骤/透露量/完成状态来自 `packages/engine` 重放；
-        提示/批注/离开来自事件（标题/时间线仍为事件级）。题目包读取会记 `read_problem` 审计。
-        <template v-if="engineError"> 题目包加载失败（{{ engineError }}），当前仅事件级回放。</template>
+        按作答状态回放：所在层、已提交行、关键步骤、已用提示额度和完成情况，都是按学生当时的作答一步步重现出来的；
+        提示、批注和离开时长来自操作记录。打开回放会读取题目信息，系统会留下一条查看记录。
+        <template v-if="engineError"> 题目信息没能加载（{{ engineError }}），现在只能按操作记录回放。</template>
       </div>
     </div>
   </t-dialog>
