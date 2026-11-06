@@ -41,3 +41,10 @@ FROM caddy:2 AS web
 COPY infra/Caddyfile /etc/caddy/Caddyfile
 COPY --from=web-builder /app/apps/student/dist/build/h5 /srv/student
 COPY --from=web-builder /app/apps/teacher/dist /srv/teacher
+
+# ---------------------------------------------------------------- 共用主机变体（infra/shared）
+# 只托管静态文件，监听 8080 明文 HTTP；TLS 与 /api 反代由主机 nginx 负责。
+FROM caddy:2 AS web-shared
+COPY infra/shared/Caddyfile /etc/caddy/Caddyfile
+COPY --from=web-builder /app/apps/student/dist/build/h5 /srv/student
+COPY --from=web-builder /app/apps/teacher/dist /srv/teacher

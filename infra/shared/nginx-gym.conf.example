@@ -1,0 +1,86 @@
+# 新增文件：/etc/nginx/conf.d/<子域名>.conf（例如 gym.bolimc.top.conf）。只新增，不改任何已有 conf。
+# 把 <SUB> 全部替换成实际子域名（精确 server_name，不用通配符——主站规则）。
+#
+# 分两阶段上（因为证书要先签）：
+#   阶段 1：只放下面的“80 端口块”→ nginx -t → nginx -s reload → certbot certonly --webroot -w /var/www/certbot -d <SUB>
+#   阶段 2：再追加“443 端口块”→ nginx -t → nginx -s reload
+# 每次 reload 前必须 nginx -t 通过；出错就删掉本文件对应的块并重新 nginx -t，主站配置没有被改动。
+#
+# 依赖主站已有的 /etc/nginx/conf.d/esa-origin.conf 里的 $esa_edge_ip（只接受 ESA 回源，其余 444）。
+# 与主站一致：real_ip_header Ali-Real-Client-Ip 已在 http 级生效，所以这里的 $remote_addr 是真实学生 IP。
+
+server {
+    listen 80;
+    server_name <SUB>;
+    server_tokens off;
+    if ($esa_edge_ip = 0) { return 444; }
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name <SUB>;
+    server_tokens off;
+
+    ssl_certificate /etc/letsencrypt/live/<SUB>/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/<SUB>/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/<SUB>/chain.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # 重要：conf.d/*.conf 在 http 级被 include，security-headers.conf 里的主站 CSP 会被没有自己 add_header 的
+    # server 块继承。本块在 server 级写了 add_header，就不会继承；不要 include security-headers.conf，
+    # 也不要在任何 location 里写 add_header（会丢掉这里的 server 级头）。学生端自己的 CSP 由 web 容器给出。
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    if ($esa_edge_ip = 0) { return 444; }
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+    }
+
+    # API 直连 server 容器（单跳代理，服务端 trustNearestProxy 取到真实 IP）。
+    # 照片识别上限 2MB、笔迹 264KB；SSE（班级看板）要关缓冲并放宽读超时。
+    location ^~ /api/ {
+        client_max_body_size 3m;
+        proxy_pass http://127.0.0.1:18081;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:18081;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_read_timeout 10s;
+    }
+
+    # 学生端 /、教师端 /t/ 的静态文件（web 容器）。
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_read_timeout 15s;
+    }
+}
