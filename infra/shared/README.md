@@ -8,8 +8,8 @@
 |---|---|
 | 抢 80/443 | 不发布 80/443；只发布 `127.0.0.1:18080`（静态）和 `127.0.0.1:18081`（API） |
 | 公网直连 | 回环端口公网不可达；防火墙本来也只放行 ESA 的 443 |
-| 拖垮主机内存 | 每服务 `mem_limit`=`memswap_limit`（不占 swap），合计约 950MB；`oom_score_adj: 500` 让内核先杀我们 |
-| 抢 CPU | 合计 `cpus` 上限 1.5/2 核，`cpu_shares: 128`（主站进程权重更高） |
+| 拖垮主机内存 | 每服务 `mem_limit`=`memswap_limit`（不占 swap），postgres 384MB + server 320MB + web 48MB，合计约 750MB；`oom_score_adj: 500` 让内核先杀我们 |
+| 抢 CPU | `cpus` 上限 server 1.0 + postgres 0.75 + web 0.25；`cpu_shares: 128`（权重远低于默认 1024，主站进程有负载时优先，空闲时我们才用得满） |
 | 日志写满根盘 | 每服务 json-file 10MB × 3 |
 | 网络冲突 | 独立网络 `br-proofgym`，固定 `10.88.77.0/24` |
 | 动到共享 Docker | 不改 `daemon.json`、不重启 dockerd（`live-restore` 关着，重启会停掉主站的 anubis 容器） |
@@ -36,7 +36,7 @@
    ssh bolimc-prod 'md5sum /etc/nginx/conf.d/*.conf > /root/nginx-conf-baseline.md5; docker ps --format "{{.Names}} {{.Status}}" > /root/docker-ps-baseline.txt; ss -ltn | sort > /root/ports-baseline.txt'
    ```
 
-2. **本机构建并传镜像**（影响：服务器磁盘 +约 700MB，写 `/var/lib/docker`，不启动容器）。先看 `df -h /` 剩余 ≥ 3GB：
+2. **本机构建并传镜像**（影响：服务器根盘 +约 2.1GB（server 镜像 1.39GB、postgres 642MB、web 100MB，写 `/var/lib/docker`；传输时压缩约一半），不启动容器）。先看 `df -h /` 剩余 ≥ 5GB：
 
    ```bash
    infra/shared/ship-images.sh bolimc-prod "$(git rev-parse --short HEAD)"
@@ -44,7 +44,7 @@
 
 3. **放配置**（影响：无）。把 `docker-compose.yml`、`backup.sh` 放到服务器 `/var/www/proofgym/`（数据盘），`.env.example` 复制为 `.env` 并填写，`chmod 600 .env`。
 
-4. **启动 compose**（影响：新增 4 个容器和一个 bridge；用量见下）：
+4. **启动 compose**（影响：新增 3 个常驻容器（postgres、server、web）、一个一次性迁移容器和一个 bridge；用量见下）：
 
    ```bash
    cd /var/www/proofgym && TAG=<步骤 2 的 TAG> docker compose -p proofgym up -d
@@ -94,6 +94,8 @@ cd /var/www/proofgym && TAG=<TAG> docker compose -p proofgym down        # 保�
 
 ## 已知局限
 
-- 没有压测过。合计内存上限约 950MB 是估算；上线前建议用 `tools/loadtest.mjs` 在低峰对 `127.0.0.1:18081` 压一遍，并观察 `free -h`。
+- 不部署 `worker`：仓库里的 worker 只是骨架，启动即退出；指标刷新在 server 进程内完成。
+
+- 压测只在本机做过（`tools/loadtest.mjs 60 6`，60 名学生同时作答 + 教师刷新看板）：峰值内存 postgres 约 106MiB、server 约 90MiB；CPU 上限 server 1.0 / postgres 0.75 时教师看板 p95 约 0.5s，学生各接口 p95 均低于 0.5s。服务器是 2 核共用，实际表现要在服务器上低峰再压一遍（对 `127.0.0.1:18081`，同时观察 `free -h`）。注意 loadtest 在同一数据库上重复跑会因学号已记录年龄段而报 `AGE_BAND_LOCKED`、同 IP 登录超 120 次/分会 429，这不是部署问题。
 - 单机单实例：Postgres 与应用同机，没有高可用。主机重启后容器会自动拉起（`restart: unless-stopped`），但中间有停机。
 - 登录失败锁定在内存里，容器重启即清零（见 `login-throttle.ts`）。
