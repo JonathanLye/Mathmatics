@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { loadProblem } from '../src/attempts/problem.ts';
 import { loadContract } from '../src/contract.ts';
 import { Runner } from '../../../packages/engine/test/support/runner.ts';
-import { DEF_OK, FRAME_TEXT, K1, K2, K3, K4, SCENARIOS, SUMMARY_MISSING_POINT } from '../../../packages/engine/test/support/scenarios.ts';
+import { DEF_OK, DEF_WRONG_ORDER, FRAME_TEXT, K1, K2, K3, K4, SCENARIOS, SUMMARY_MISSING_POINT } from '../../../packages/engine/test/support/scenarios.ts';
 
 import { WRITE_HEADERS } from './support/fixtures.ts';
 import { startHelpHarness, type HelpHarness } from './support/help.ts';
@@ -64,6 +64,33 @@ describe('AttemptState 的作答内容视图', () => {
     state = await view(h);
     expect(state.frame.last).toBe(FRAME_TEXT);
     expect(state.currentLayer).toBe('L3');
+  });
+
+  it('第 1–2 层核对没通过：feedback 一次只说一件事；过了这一层就不再下发', async () => {
+    h = await startHelpHarness('epsN');
+    const missingAll = (await post(h, '/definition', { text: '这是一个还没写好的定义', input: INPUT })).json().state;
+    expect(missingAll.currentLayer).toBe('L1');
+    expect(missingAll.def.last).toBe('这是一个还没写好的定义');
+    expect(missingAll.def.feedback).toContain('对任意');
+    expect(missingAll.def.feedback).not.toContain('存在');
+
+    const wrongOrder = (await post(h, '/definition', { text: DEF_WRONG_ORDER, input: INPUT })).json().state;
+    expect(wrongOrder.currentLayer).toBe('L1');
+    expect(wrongOrder.def.feedback).toContain('顺序');
+
+    const passed = (await post(h, '/definition', { text: DEF_OK, input: INPUT })).json().state;
+    expect(passed.currentLayer).toBe('L2');
+    expect(passed.def.feedback).toBeUndefined();
+    expect(passed.frame.feedback).toBeUndefined();
+
+    const frameMissing = (await post(h, '/framework', { text: '任取 ε>0，后面还没想好', input: INPUT })).json().state;
+    expect(frameMissing.currentLayer).toBe('L2');
+    expect(frameMissing.frame.feedback).toContain('骨架里还缺');
+    contract.validate('AttemptState', frameMissing);
+
+    const framePassed = (await post(h, '/framework', { text: FRAME_TEXT, input: INPUT })).json().state;
+    expect(framePassed.currentLayer).toBe('L3');
+    expect(framePassed.frame.feedback).toBeUndefined();
   });
 
   it('第 3 层：steps.lines 回显学生写的行（不含判断字段）；路线写全前 canFinish=false，写全后 true', async () => {

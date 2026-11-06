@@ -271,6 +271,19 @@ html[data-motion='off'] *::after {
   flex: 1;
   min-width: 0;
 }
+.pg-layer__feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-12);
+  border-left: var(--bw) solid var(--sea);
+  background: var(--sea-soft);
+  color: var(--ink);
+  line-height: 1.5;
+  animation: pg-item-in var(--dur-slow) var(--ease-out) both;
+}
+.pg-layer__feedbackwho { color: var(--sea-text); font-weight: var(--fw-black); }
 .pg-layer__preview {
   display: flex;
   flex-direction: column;

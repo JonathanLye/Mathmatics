@@ -91,6 +91,12 @@ function submit() {
       <MathText :text="text" block />
     </view>
 
+    <!-- 核对没通过：服务端指出缺的那一个成分。问题挂在表单下面，所有宽度都一样。 -->
+    <view v-if="props.view.feedback" class="pg-layer__feedback" data-testid="layer1-feedback" role="status">
+      <text class="pg-layer__feedbackwho pg-small">助教</text>
+      <MathText :text="props.view.feedback" block />
+    </view>
+
     <PgButton block size="lg" data-testid="layer1-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
       {{ props.busy ? '核对中…' : '核对' }}
     </PgButton>

@@ -663,12 +663,22 @@ export async function getAttempt(attemptId: string): Promise<AttemptState> {
 }
 
 /** POST /attempts/{attemptId}/definition：第 1 层提交定义。 */
+/** mock 的第 1、2 层核对：只认有没有写到 ε（演示用，真实判定在服务端）。 */
+const MOCK_EPS = /ε|varepsilon|epsilon/
+
 export async function submitDef(state: AttemptState, text: string, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {
   await sleep()
   const next = clone(state)
   next.stateVersion += 1
-  next.def = { ...(next.def ?? {}), submissions: (next.def?.submissions ?? 0) + 1, last: text, lessonSuggested: false }
+  const submissions = (next.def?.submissions ?? 0) + 1
+  // 演示：没写到 ε 就算没通过，走和真实服务端一样的 feedback。
+  if (!MOCK_EPS.test(text)) {
+    next.def = { ...(next.def ?? {}), submissions, last: text, feedback: '缺少“对任意 $\\varepsilon>0$”。', lessonSuggested: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  next.def = { ...(next.def ?? {}), submissions, last: text, feedback: null, lessonSuggested: false }
   next.layers = next.layers.map((l) => (l.layer === 'L1' ? { ...l, status: 'done' as const } : l.layer === 'L2' ? { ...l, status: 'active' as const } : l))
   next.currentLayer = 'L2'
   next.serverTime = new Date().toISOString()
@@ -687,7 +697,12 @@ export async function submitFramework(state: AttemptState, text: string, options
   await sleep()
   const next = clone(state)
   next.stateVersion += 1
-  next.frame = { ...(next.frame ?? {}), last: text, templateShown: true }
+  if (!MOCK_EPS.test(text)) {
+    next.frame = { ...(next.frame ?? {}), last: text, feedback: '骨架里还缺：开头——先固定任意的 $\\varepsilon>0$。' }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  next.frame = { ...(next.frame ?? {}), last: text, feedback: null, templateShown: true }
   next.layers = next.layers.map((l) =>
     l.layer === 'L1' ? { ...l, status: 'done' as const } :
     l.layer === 'L2' ? { ...l, status: 'done' as const } :

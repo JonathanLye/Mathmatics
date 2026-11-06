@@ -93,6 +93,11 @@ function showTemplate() {
       <MathText :text="text" block />
     </view>
 
+    <view v-if="props.view.feedback" class="pg-layer__feedback" data-testid="layer2-feedback" role="status">
+      <text class="pg-layer__feedbackwho pg-small">助教</text>
+      <MathText :text="props.view.feedback" block />
+    </view>
+
     <PgButton block size="lg" data-testid="layer2-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
       {{ props.busy ? '核对中…' : '核对' }}
     </PgButton>

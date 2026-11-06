@@ -77,6 +77,7 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
       conceptId: pub.def?.conceptId ?? '',
       submissions: state.def.attempts,
       ...(extras.defLast === null ? {} : { last: extras.defLast }),
+      ...defFeedback(state, problem, extras),
       lessonSuggested: false,
     },
     notes: overrideNotes(row, state, problem),
@@ -89,6 +90,7 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
       task: pub.frame.task,
       ...(pub.frame.lessonId === undefined ? {} : { lessonId: pub.frame.lessonId }),
       ...(extras.frameLast === null ? {} : { last: extras.frameLast }),
+      ...frameFeedback(state, problem, extras),
       templateShown: extras.templateShown,
       template: extras.templateShown ? (pub.frame.template ?? null) : null,
     };
@@ -118,6 +120,24 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
     };
   }
   return dto;
+}
+
+// 第 1 层核对没通过：一次只说一件事（01 §L1）——第一个缺的成分；成分齐了才问顺序。文案已过泄题检查（engine/leak.ts）。
+function defFeedback(state: AttemptState, problem: LoadedProblem, extras: ViewExtras): { feedback?: string } {
+  const check = extras.defCheck;
+  if (state.layer !== 1 || !check || check.pass) return {};
+  const secret = problem.ctx.pkg.secret.def;
+  const missing = secret?.components.find((c) => check.components[c.id] === false)?.missing;
+  const text = missing ?? (check.orderOk ? undefined : secret?.orderQuestion);
+  return text ? { feedback: text } : {};
+}
+
+// 第 2 层同理：第一个没写到的骨架部分。
+function frameFeedback(state: AttemptState, problem: LoadedProblem, extras: ViewExtras): { feedback?: string } {
+  const check = extras.frameCheck;
+  if (state.layer !== 2 || !check || check.pass) return {};
+  const text = problem.ctx.pkg.secret.frame?.checks.find((c) => check.missing.includes(c.id))?.missing;
+  return text ? { feedback: text } : {};
 }
 
 // 教师补发的 H4（软着陆）以批注形式下发：由引擎状态 overrides 推出，不另存，所以刷新/重连后仍在，回放一致。

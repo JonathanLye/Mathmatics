@@ -74,6 +74,8 @@ export interface DefView {
   conceptId?: string
   submissions?: number
   last?: string | null
+  /** 最近一次核对没通过时缺的那一个成分（或顺序追问）；服务端判定，通过或离开本层后不再下发。 */
+  feedback?: string | null
   lessonSuggested?: boolean
 }
 
@@ -81,6 +83,8 @@ export interface FrameView {
   task?: string
   lessonId?: string
   last?: string | null
+  /** 最近一次核对没通过时缺的那一部分骨架。 */
+  feedback?: string | null
   templateShown?: boolean
   template?: string | null
 }

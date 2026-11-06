@@ -179,6 +179,21 @@ async function main() {
     check('点已完成的层：列表收起，不弹提示', !(await bodyText(page)).includes('还不能跳过去'))
   }
 
+  const scenarioCheckFeedback = async (page) => {
+    // ---- 核对没通过：服务端的问题挂在表单下面，手机和桌面都能看到 ----
+    await openMock(page, base, 'l1-active')
+    await waitTestId(page, 'layer1-form')
+    check('还没核对时没有问题卡', (await testIdCount(page, 'layer1-feedback')) === 0)
+    await fillForm(page, '数列越来越接近某个数')
+    await waitEnabled(page, 'layer1-check')
+    await tap(page, 'layer1-check', '核对（缺成分）')
+    await waitTestId(page, 'layer1-feedback')
+    check('核对没通过：留在第 1 层，问题卡显示缺的成分', (await testIdCount(page, 'layer1-form')) === 1 && (await page.getByTestId('layer1-feedback').innerText()).includes('缺少'))
+    check('问题卡里的公式由 MathText 渲染', (await katexCount(page, 'layer1-feedback')) > 0)
+    check('写的内容还在输入框里', (await page.getByRole('textbox').inputValue()) === '数列越来越接近某个数')
+    await page.screenshot({ path: path.join(outDir, '0-l1-feedback-' + page.viewportSize().width + '.png'), fullPage: true })
+  }
+
   const scenarioFill = async (page) => {
     // ---- 场景 1：L1 填写 → 核对 → L2 → 看通用骨架 → 核对 → L3 ----
     await openMock(page, base, 'l1-active')
@@ -278,6 +293,7 @@ async function main() {
 
     for (const [name, scenario] of [
       ['层列表不出开发提示', scenarioLayerList],
+      ['第 1 层核对没通过（手机）', scenarioCheckFeedback],
       ['填写并核对 L1→L2→L3', scenarioFill],
       ['跳层 L1→L2→L3', scenarioSkip],
     ]) {
@@ -290,6 +306,14 @@ async function main() {
 
     check('页面无未捕获 JS 异常（pageerror）', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '))
     await ctx.close()
+
+    const wide = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 })
+    try {
+      await scenarioCheckFeedback(await wide.newPage())
+    } catch (e) {
+      check('场景「第 1 层核对没通过（桌面）」未中断', false, e instanceof Error ? e.message : String(e))
+    }
+    await wide.close()
   } finally {
     await browser.close()
     await new Promise((r) => server.close(r))
