@@ -76,7 +76,7 @@ export async function buildAttemptsCsv(db: Db, classId: string): Promise<string>
        join app.assignments asg on asg.id = t.assignment_id
        join app.users u on u.id = t.user_id
        left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
-      where asg.class_id = $1 and ${exportableAttemptSql('t')}
+      where asg.class_id = $1 and asg.origin = 'teacher' and ${exportableAttemptSql('t')}
       order by t.started_at, t.id`,
     [classId],
   );
