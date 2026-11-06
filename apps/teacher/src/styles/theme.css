@@ -350,7 +350,7 @@ h3 + .page-sub { margin-top: -8px; margin-bottom: 16px; }
 .t-button { font-weight: 900; letter-spacing: 0.3px; }
 .t-button--theme-primary:not(.t-button--variant-text):not(.t-is-disabled) {
   border: 0;
-  border-bottom: 3px solid #0c5a85;
+  border-bottom: 3px solid color-mix(in srgb, var(--td-brand-color) 72%, #000);
   border-radius: 12px;
 }
 .t-button--theme-primary.t-button--variant-base:not(.t-is-disabled):active { transform: translateY(2px); border-bottom-width: 1px; }

@@ -80,8 +80,8 @@ describe('D3：文字色不写死 #fff；token 只有一个来源', () => {
     expect(FALLBACK_TOKEN.paper).toBe('#ffffff')
   })
 
-  it('学生端和 ui-math 的 .vue 都没有写死 #fff 文字色（登录页归登录任务）', () => {
-    const vue = [...walkVue(SRC_DIR), ...walkVue(UI_MATH_DIR)].filter((file) => !file.includes(path.join('pages', 'login')))
+  it('学生端和 ui-math 的 .vue 都没有写死 #fff 文字色', () => {
+    const vue = [...walkVue(SRC_DIR), ...walkVue(UI_MATH_DIR)]
     const hits = vue.filter((file) => /(?<![-\w])color:\s*#fff\b/.test(fs.readFileSync(file, 'utf8')))
     expect(hits).toEqual([])
     // #164：ProofKeyboard「完成」按钮曾因此漏扫
