@@ -110,3 +110,22 @@ describe('0003 重做迁移（attempts.kind 放宽为 main|transfer|redo）', ()
     return { assignmentId: asg, userId: user, attemptId: attempt };
   }
 });
+
+describe('0005 学生进度迁移（设置/经验台账/徽章/反馈）', () => {
+  it('旧库缺这四张表时迁移补上；经验台账 (user_id, source_key) 唯一', async () => {
+    await applySchema(db);
+    await db.exec('drop table if exists public.schema_migrations');
+    for (const t of ['student_feedback', 'student_badges', 'xp_ledger', 'student_settings']) await db.exec(`drop table app.${t}`);
+    expect(await hasTable('app.xp_ledger')).toBe(false);
+
+    await migrate(db);
+    await migrate(db);
+    for (const t of ['student_feedback', 'student_badges', 'xp_ledger', 'student_settings']) expect(await hasTable(`app.${t}`)).toBe(true);
+
+    const user = (await db.query<{ id: string }>(`insert into app.users (role, anon_code) values ('student', 'S-MIG002') returning id`)).rows[0]?.id as string;
+    const add = () =>
+      db.query(`insert into app.xp_ledger (user_id, source_key, kind, amount, day) values ($1, 'key:p:K1', 'key_own', 10, '2026-11-05')`, [user]);
+    await add();
+    await expect(add()).rejects.toThrow();
+  });
+});

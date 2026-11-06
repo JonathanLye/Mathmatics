@@ -6,7 +6,8 @@ import { requireStudentConsent } from '../auth/consent.ts';
 import { bySession, requireAuth } from '../auth/session.ts';
 import { studentHome } from '../attempts/home.ts';
 import { loadReview, studentMistakes, studentNotebook } from '../attempts/notebook.ts';
-import { addLine, createAttemptService } from '../attempts/service.ts';
+import { addLine, createAttemptService, type StepSpec } from '../attempts/service.ts';
+import type { RewardsDto } from '../progress/service.ts';
 import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
 import type { RouteInput } from '../help/intent.ts';
@@ -101,6 +102,17 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   };
   const param = (request: FastifyRequest, name: string): string => (request.params as Record<string, string>)[name] ?? '';
   const attemptId = (request: FastifyRequest): string => uuidParam(param(request, 'attemptId'));
+  // 作答写入 + 经验结算：响应在 { state } 之外，有新经验/徽章时多一个 rewards（add-only；镜像与教师端视图不带）。
+  const run = async (spec: StepSpec): Promise<{ state: Record<string, unknown>; rewards?: RewardsDto }> => {
+    let rewards: RewardsDto | undefined;
+    const state = await svc.command({
+      ...spec,
+      onRewards: (r) => {
+        rewards = r;
+      },
+    });
+    return rewards ? { state, rewards } : { state };
+  };
 
   // 学生首页（06 §3.1）：只读聚合，不要求同意书（未签同意也能先看到作业列表）。
   app.get('/student/home', async (request) => {
@@ -160,7 +172,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/definition', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
@@ -170,7 +182,6 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
         await addLine(tx, row, { id: lineId, layer: 'L1', role: 'def', statement: body.text, provenance: body.input.provenance, recogId: body.input.recogId });
       },
     });
-    return { state };
   });
 
   app.post('/attempts/:attemptId/framework', writable, async (request) => {
@@ -178,7 +189,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/framework', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
@@ -188,18 +199,16 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
         await addLine(tx, row, { id: lineId, layer: 'L2', role: 'frame', statement: body.text, provenance: body.input.provenance, recogId: body.input.recogId });
       },
     });
-    return { state };
   });
 
   app.post('/attempts/:attemptId/framework/template', writable, async (request) => {
     const auth = await requireAuth(db, request);
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
       build: () => ({ kind: 'frame.template' }),
     });
-    return { state };
   });
 
   app.post('/attempts/:attemptId/lines', writable, async (request) => {
@@ -210,7 +219,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
       await assertConfirmedInput(db, auth.userId, attemptId(request), body.justificationInput, [body.justification ?? '']);
     }
     const lineId = randomUUID();
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
@@ -240,18 +249,16 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
         });
       },
     });
-    return { state };
   });
 
   app.post('/attempts/:attemptId/finish', writable, async (request) => {
     const auth = await requireAuth(db, request);
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
       build: () => ({ kind: 'finish.try' }),
     });
-    return { state };
   });
 
   app.post('/attempts/:attemptId/selfcheck/:itemId', writable, async (request) => {
@@ -259,7 +266,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/selfcheck/{itemId}', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const itemId = param(request, 'itemId');
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
@@ -278,7 +285,6 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
         });
       },
     });
-    return { state };
   });
 
   app.post('/attempts/:attemptId/transfer', writable, async (request) => {
@@ -291,7 +297,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     const auth = await requireAuth(db, request);
     const body = parseBody<SummarySubmission>(contract, '/attempts/{attemptId}/summary', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, body.answers);
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
@@ -311,7 +317,6 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
         }
       },
     });
-    return { state };
   });
 
   app.post('/attempts/:attemptId/park', writable, async (request) => {
@@ -323,14 +328,13 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   // 只跳过当前层；层不符返回 409 WRONG_LAYER，不可跳过的层返回 409 LAYER_LOCKED。
   app.post('/attempts/:attemptId/layers/:layer/skip', writable, async (request) => {
     const auth = await requireAuth(db, request);
-    const state = await svc.command({
+    return run({
       userId: auth.userId,
       attemptId: attemptId(request),
       ifMatch: ifMatchOf(request),
       layer: layerParam(param(request, 'layer')),
       build: () => ({ kind: 'layer.skip', reason: 'self' }),
     });
-    return { state };
   });
 
   // 求助（06 §4.2）：按钮意图与自由提问共用一个入口，服务端判意图。

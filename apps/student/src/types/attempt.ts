@@ -467,3 +467,45 @@ export interface InputMeta {
   recogId?: string
   pasteChars?: number
 }
+
+/** 作答写接口响应里可选的 rewards（openapi Rewards）。测验作答不返回。 */
+export interface RewardsView {
+  xp: number
+  items: Array<{ kind: 'key_own' | 'key_hinted' | 'layer' | 'problem' | 'daily'; amount: number; label: string }>
+  badges: Array<{ id: string; title: string; desc: string }>
+  streak?: { current: number; extended: boolean }
+  goalReached?: boolean
+}
+
+/** GET /student/progress（openapi StudentProgress）。 */
+export interface ProgressView {
+  xpTotal: number
+  xpToday: number
+  keysToday: number
+  dailyGoal: number
+  streak: { current: number; best: number; freezeAvailable: boolean; usedFreezeDays: string[] }
+  week: Array<{ day: string; xp: number; keys: number }>
+  badges: Array<{
+    id: string
+    title: string
+    desc: string
+    earnedAt: string | null
+    progress?: { current: number; target: number }
+  }>
+  daysLearned: number
+}
+
+/** GET/PATCH /student/settings（openapi StudentSettings）。 */
+export interface SettingsView {
+  nickname: string | null
+  dailyGoal: number
+  defaultInput: 'hand' | 'keyboard' | 'photo'
+  theme: 'system' | 'light' | 'dark'
+  sound: boolean
+  motion: boolean
+  haptics: boolean
+  onboarding: Record<string, unknown>
+}
+export type SettingsPatch = Partial<Omit<SettingsView, 'nickname'>> & { nickname?: string }
+
+export type FeedbackKind = 'bug' | 'idea' | 'content' | 'other'

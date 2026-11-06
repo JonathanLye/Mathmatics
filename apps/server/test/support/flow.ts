@@ -172,6 +172,7 @@ export async function leaks(env: Env): Promise<string[]> {
     else if (value && typeof value === 'object') Object.values(value).forEach((v) => walk(v, out));
   };
   for (const { body } of env.seen) {
+    if (body === '') continue;
     const strings: string[] = [];
     walk(JSON.parse(body), strings);
     for (const text of strings) {

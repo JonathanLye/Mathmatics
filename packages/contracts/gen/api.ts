@@ -224,6 +224,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/student/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 学习进度：经验、连胜、本周每日、徽章
+         * @description 连胜按 Asia/Shanghai 自然日算，当天有经验入账才算一天；每周（周一到周日）自动有一张请假卡。徽章目录在服务端代码里。
+         */
+        get: operations["getProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的设置（昵称、每日目标、默认输入、外观、音效/动效/震动、引导进度）
+         * @description 要求已签同意书（与作答接口同一守卫）。
+         */
+        get: operations["getSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改设置（只传要改的字段）；nickname 写入 users.display_name，trim 后 1–16 个字 */
+        patch: operations["patchSettings"];
+        trace?: never;
+    };
+    "/student/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 问题反馈 */
+        post: operations["submitFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/attempts/{attemptId}": {
         parameters: {
             query?: never;
@@ -1890,6 +1948,94 @@ export interface components {
                 items: components["schemas"]["MistakeItem"][];
             }[];
             total: number;
+        };
+        /** @description 这一步记入的经验与徽章（add-only；没有新经验时不返回；测验作答不返回，完成时在后台一次结算） */
+        Rewards: {
+            xp: number;
+            items: {
+                /** @enum {string} */
+                kind: "key_own" | "key_hinted" | "layer" | "problem" | "daily";
+                amount: number;
+                label: string;
+            }[];
+            badges: {
+                id: string;
+                title: string;
+                desc: string;
+            }[];
+            streak?: {
+                current: number;
+                /** @description 今天第一次有进展 */
+                extended: boolean;
+            };
+            goalReached?: boolean;
+        };
+        StudentProgress: {
+            xpTotal: number;
+            xpToday: number;
+            /** @description 今天自己写出的关键步骤数（含借助提示） */
+            keysToday: number;
+            dailyGoal: number;
+            streak: {
+                current: number;
+                best: number;
+                /** @description 本周的请假卡还没用 */
+                freezeAvailable: boolean;
+                usedFreezeDays: string[];
+            };
+            /** @description 本周（周一到周日，Asia/Shanghai）每天的经验与关键步骤 */
+            week: {
+                /** Format: date */
+                day: string;
+                xp: number;
+                keys: number;
+            }[];
+            badges: {
+                id: string;
+                title: string;
+                desc: string;
+                /** Format: date-time */
+                earnedAt: string | null;
+                progress?: {
+                    current: number;
+                    target: number;
+                };
+            }[];
+            daysLearned: number;
+        };
+        StudentSettings: {
+            nickname: string | null;
+            dailyGoal: number;
+            /** @enum {string} */
+            defaultInput: "hand" | "keyboard" | "photo";
+            /** @enum {string} */
+            theme: "system" | "light" | "dark";
+            sound: boolean;
+            motion: boolean;
+            haptics: boolean;
+            onboarding: {
+                [key: string]: unknown;
+            };
+        };
+        StudentSettingsPatch: {
+            nickname?: string;
+            dailyGoal?: number;
+            /** @enum {string} */
+            defaultInput?: "hand" | "keyboard" | "photo";
+            /** @enum {string} */
+            theme?: "system" | "light" | "dark";
+            sound?: boolean;
+            motion?: boolean;
+            haptics?: boolean;
+            onboarding?: {
+                [key: string]: unknown;
+            };
+        };
+        StudentFeedback: {
+            /** @enum {string} */
+            kind: "bug" | "idea" | "content" | "other";
+            body: string;
+            page?: string;
         };
         PublishedReview: {
             proofs: components["schemas"]["MathText"][];
@@ -4761,6 +4907,7 @@ export interface components {
             content: {
                 "application/json": {
                     state: components["schemas"]["AttemptState"];
+                    rewards?: components["schemas"]["Rewards"];
                 };
             };
         };
@@ -5093,6 +5240,106 @@ export interface operations {
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+        };
+    };
+    getProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 进度 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProgress"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    getSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentSettings"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
+    patchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description 修改后的设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentSettings"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    submitFeedback: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentFeedback"];
+            };
+        };
+        responses: {
+            /** @description 已收到 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     getAttempt: {

@@ -20,6 +20,8 @@ import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
 
 import { nextSeq } from '../integrity/seq.ts';
+import { BLANK_REWARD_STATE, rewardStateOf, type RewardState } from '../progress/rewards.ts';
+import { type RewardsDto, settleRewards } from '../progress/service.ts';
 
 import { loadProblem } from './problem.ts';
 import { EMPTY_EXTRAS, loadViewExtras } from './extras.ts';
@@ -34,6 +36,8 @@ export interface StepSpec {
   build(ctx: Context): Command;
   // 与状态变化同一事务写入的行（如第 3 层的一行），只在命令产生了对应事件时调用。
   record?(tx: Queryable, row: AttemptRow, result: StepResult): Promise<void>;
+  // 这一步记入的经验/徽章（同一事务内结算）。测验作答不回传：测验中不显示，完成时一次结算入账。
+  onRewards?(rewards: RewardsDto): void;
 }
 
 export interface LineInput {
@@ -250,6 +254,30 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     return saved;
   }
 
+  // 经验结算（不写 ev.events）：比较这一步前后的状态。测验作答进行中什么都不发，完成时从空白状态一次结算；
+  // 重做走同一套来源键（题 + 步骤），所以不会重复得分。返回 null 表示没有新经验/徽章。
+  async function settle(tx: Queryable, snap: Snapshot, saved: AttemptRow, next: AttemptState): Promise<RewardsDto | null> {
+    const after = rewardStateOf(next);
+    if (saved.mode === 'test' && !after.done) return null;
+    const before: RewardState = saved.mode === 'test' ? BLANK_REWARD_STATE : rewardStateOf(snap.state);
+    const unchanged =
+      before.matched.length === after.matched.length &&
+      before.done === after.done &&
+      JSON.stringify(before.layerStatus) === JSON.stringify(after.layerStatus);
+    if (unchanged) return null;
+    return settleRewards(tx, {
+      userId: saved.user_id,
+      attemptId: saved.id,
+      attemptKind: saved.kind,
+      problemId: saved.problem_id,
+      keyIds: snap.problem.ctx.pkg.secret.keys.map((k) => k.id),
+      ...(snap.problem.public.chapter === undefined ? {} : { chapter: snap.problem.public.chapter }),
+      before,
+      after,
+      now: snap.now,
+    });
+  }
+
   async function command(spec: StepSpec): Promise<Record<string, unknown>> {
     return db.tx(async (tx) => {
       const row = await lockOwned(tx, spec.attemptId, spec.userId);
@@ -265,6 +293,8 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const anon = await userAnon(tx, row.user_id);
       const saved = await commit(tx, row, result, row.status, anon, `L${snap.state.layer}`);
       if (spec.record) await spec.record(tx, saved, result);
+      const rewards = await settle(tx, snap, saved, result.state);
+      if (rewards && saved.mode !== 'test') spec.onRewards?.(rewards);
       if (saved.kind === 'transfer' && saved.status === 'completed' && saved.parent_attempt_id !== null) {
         await completeTransferParent(tx, saved.parent_attempt_id, saved.user_id);
       }
@@ -285,7 +315,8 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     const result = step(snap.problem.ctx, snap.state, { kind: 'transfer.complete' }, snap.now);
     if (result.rejected || result.events.length === 0) return;
     const anon = await userAnon(tx, parent.user_id);
-    await commit(tx, parent, result, parent.status, anon, `L${snap.state.layer}`);
+    const saved = await commit(tx, parent, result, parent.status, anon, `L${snap.state.layer}`);
+    await settle(tx, snap, saved, result.state);
   }
 
   async function grantH4(spec: GrantH4Spec): Promise<void> {

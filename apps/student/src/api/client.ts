@@ -57,7 +57,12 @@ import type {
   Note,
   MistakesView,
   NotebookView,
+  ProgressView,
   PublishedReview,
+  RewardsView,
+  SettingsPatch,
+  SettingsView,
+  FeedbackKind,
   ProofLine,
   Recognition,
   StudentHomeView,
@@ -206,6 +211,17 @@ function inputMeta(provenance: InputProvenance, draftId: string): InputMeta {
   return { provenance, draftId }
 }
 
+/**
+ * 最近一次作答写接口带回的 rewards（没有则 null）。读一次即清空：页面在每次 await 写接口之后调用一次，
+ * 把结果交给 useRewards 排队提示。mock 模式永远是 null。
+ */
+let lastRewards: RewardsView | null = null
+export function consumeRewards(): RewardsView | null {
+  const rewards = lastRewards
+  lastRewards = null
+  return rewards
+}
+
 async function writeState(
   path: string,
   body: unknown,
@@ -223,7 +239,7 @@ async function writeStateWith(
 ): Promise<AttemptState> {
   try {
     const result = await withRetry(() =>
-      activeHttp.request<{ state: AttemptState }>(path, {
+      activeHttp.request<{ state: AttemptState; rewards?: RewardsView }>(path, {
         method,
         body,
         ifMatch: options.ifMatch,
@@ -233,6 +249,7 @@ async function writeStateWith(
     if (!isAttemptState(result.data?.state)) {
       throw new ApiError({ status: result.status, code: 'INTERNAL', message: '服务端返回的状态格式不正确' })
     }
+    lastRewards = result.data.rewards ?? null
     return result.data.state
   } catch (error) {
     if (isApiError(error) && error.code === 'STATE_STALE' && isAttemptState(error.staleState)) {
@@ -1728,3 +1745,68 @@ function studentEchoNote(text: string): Note {
 /** 施压/索要答案的关键词（正式识别在 B 的 #29；这里只让 mock 能走通 pressure 路由）。 */
 const PRESSURE_PATTERN = /答案|直接给|老师说|求你了|写给我|给我结果|快点|别问了/
 
+
+// ---------------------------------------------------------------------------
+// 进度、设置、反馈（Task 9）
+// ---------------------------------------------------------------------------
+
+export const mockProgress: ProgressView = {
+  xpTotal: 120,
+  xpToday: 25,
+  keysToday: 2,
+  dailyGoal: 3,
+  streak: { current: 3, best: 5, freezeAvailable: true, usedFreezeDays: [] },
+  week: ['一', '二', '三', '四', '五', '六', '日'].map((_, i) => ({
+    day: '2026-11-0' + (2 + i),
+    xp: i < 3 ? 20 + i * 5 : 0,
+    keys: i < 3 ? 2 : 0,
+  })),
+  badges: [
+    { id: 'first_step', title: '第一步', desc: '第一次写出有进展的一步', earnedAt: '2026-11-02T08:00:00.000Z' },
+    { id: 'streak_3', title: '连续 3 天', desc: '连续 3 天都有实质进展', earnedAt: null, progress: { current: 3, target: 3 } },
+    { id: 'streak_7', title: '连续 7 天', desc: '连续 7 天都有实质进展', earnedAt: null, progress: { current: 3, target: 7 } },
+  ],
+  daysLearned: 3,
+}
+
+let mockSettings: SettingsView = {
+  nickname: null,
+  dailyGoal: 3,
+  defaultInput: 'hand',
+  theme: 'system',
+  sound: true,
+  motion: true,
+  haptics: true,
+  onboarding: {},
+}
+
+/** 学习进度（GET /student/progress）：经验、连胜、本周每日、徽章。 */
+export async function fetchProgress(): Promise<ProgressView> {
+  if (!USE_MOCK) return activeHttp.get<ProgressView>('/student/progress')
+  await sleep()
+  return clone(mockProgress)
+}
+
+/** 我的设置（GET /student/settings）。要求已签同意书。 */
+export async function fetchSettings(): Promise<SettingsView> {
+  if (!USE_MOCK) return activeHttp.get<SettingsView>('/student/settings')
+  await sleep()
+  return clone(mockSettings)
+}
+
+/** 修改设置（PATCH /student/settings，只传要改的字段）；返回修改后的完整设置。昵称 trim 后 1–16 字，否则 422。 */
+export async function updateSettings(patch: SettingsPatch): Promise<SettingsView> {
+  if (!USE_MOCK) return (await activeHttp.patch<SettingsView>('/student/settings', patch)).data
+  await sleep()
+  mockSettings = { ...mockSettings, ...clone(patch), nickname: patch.nickname?.trim() ?? mockSettings.nickname }
+  return clone(mockSettings)
+}
+
+/** 问题反馈（POST /student/feedback，204）。 */
+export async function sendFeedback(kind: FeedbackKind, body: string, page?: string): Promise<void> {
+  if (!USE_MOCK) {
+    await activeHttp.post('/student/feedback', { kind, body, ...(page === undefined ? {} : { page }) }, { idempotencyKey: newUuid() })
+    return
+  }
+  await sleep()
+}
