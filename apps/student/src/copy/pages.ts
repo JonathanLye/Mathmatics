@@ -85,6 +85,8 @@ export const ZONE_COPY = {
   loadFailedTitle: '题目没加载出来',
   emptyTitle: '这里没有符合条件的题',
   emptyBody: '放宽一点筛选条件试试。',
+  noneTitle: '题库还在准备',
+  noneBody: '老师发布题目之后，这里就能挑题练了。',
   emptyAction: '清除筛选',
   keyCount: (n: number) => `${n} 个关键步骤`,
   solutionEntry: '解题思路',

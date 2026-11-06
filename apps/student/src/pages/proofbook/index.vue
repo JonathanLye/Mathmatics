@@ -64,13 +64,10 @@ function goPath(): void {
   uni.reLaunch({ url: '/pages/home/index' })
 }
 
-function openCard(card: NotebookCard, section?: string): void {
-  uni.navigateTo({ url: '/pages/proof-detail/index?attemptId=' + encodeURIComponent(card.attemptId) + (section ? '&section=' + section : '') })
-}
-
-function cardMeta(card: NotebookCard): string {
-  const parts = [card.chapter, card.completedAt ? BOOK_COPY.completedAt(formatDate(card.completedAt)) : ''].filter(Boolean)
-  return parts.join(' · ')
+/** 讲评已发布的直接滚到讲评。 */
+function openCard(card: NotebookCard): void {
+  const section = card.reviewPublished ? '&section=review' : ''
+  uni.navigateTo({ url: '/pages/proof-detail/index?attemptId=' + encodeURIComponent(card.attemptId) + section })
 }
 
 function cardStats(card: NotebookCard): string {
@@ -130,7 +127,7 @@ async function startRedoEntry(entry: RedoEntry): Promise<void> {
           <view v-for="(entry, index) in redoList.redoable" :key="entry.sourceAttemptId" class="pg-book__redoitem" :data-testid="'redo-item-' + index">
             <view class="pg-book__redomain">
               <MathText class="pg-book__redotitle" :text="entry.title" />
-              <text class="pg-book__muted">{{ redoIndependenceText(entry) }} · 完成于 {{ formatDate(entry.completedAt) }}</text>
+              <text class="pg-book__muted">{{ redoIndependenceText(entry) }} · <text class="pg-book__nowrap">完成于 {{ formatDate(entry.completedAt) }}</text></text>
               <text class="pg-book__redoreason">{{ entry.reason }}</text>
             </view>
             <PgButton variant="secondary" size="sm" sound="tap" :data-testid="'redo-start-' + index" :disabled="startingRedo" @tap="startRedoEntry(entry)">{{ BOOK_COPY.redoStart }}</PgButton>
@@ -139,7 +136,19 @@ async function startRedoEntry(entry: RedoEntry): Promise<void> {
 
         <text class="pg-book__sectiontitle pg-book__all">{{ BOOK_COPY.allProofs }}</text>
         <view class="pg-book__list pg-stagger">
-          <PgCard v-for="card in cards" :key="card.attemptId" class="pg-book__card" data-testid="notebook-card" :data-attempt-id="card.attemptId">
+          <PgCard
+            v-for="card in cards"
+            :key="card.attemptId"
+            class="pg-book__card"
+            lip
+            role="button"
+            tabindex="0"
+            :aria-label="BOOK_COPY.open + ' ' + card.title"
+            data-testid="notebook-card"
+            :data-attempt-id="card.attemptId"
+            @tap="openCard(card)"
+            @keydown.enter.prevent="openCard(card)"
+          >
             <view class="pg-book__stamp" aria-hidden="true"><PgIcon name="qed" :size="18" /></view>
             <view class="pg-book__cardmain">
               <view v-if="card.reviewPublished || card.kind === 'redo'" class="pg-book__tags">
@@ -147,10 +156,10 @@ async function startRedoEntry(entry: RedoEntry): Promise<void> {
                 <TagChip v-if="card.kind === 'redo'" tone="accent">{{ BOOK_COPY.redoTag }}</TagChip>
               </view>
               <MathText class="pg-book__ptitle" :text="card.title" />
-              <text v-if="cardMeta(card)" class="pg-book__muted">{{ cardMeta(card) }}</text>
+              <text class="pg-book__muted"><text v-if="card.chapter">{{ card.chapter }} · </text><text v-if="card.completedAt" class="pg-book__nowrap">{{ BOOK_COPY.completedAt(formatDate(card.completedAt)) }}</text></text>
               <text class="pg-book__muted" data-testid="notebook-stats">{{ cardStats(card) }}</text>
-              <PgButton class="pg-book__open" variant="secondary" size="sm" sound="tap" data-testid="notebook-open" @tap="openCard(card, card.reviewPublished ? 'review' : undefined)">{{ card.reviewPublished ? '看讲评' : BOOK_COPY.open }}</PgButton>
             </view>
+            <view class="pg-book__open" data-testid="notebook-open"><PgIcon name="chevron" :size="20" /></view>
           </PgCard>
         </view>
       </template>
@@ -177,10 +186,12 @@ async function startRedoEntry(entry: RedoEntry): Promise<void> {
 .pg-book__redomain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .pg-book__redotitle { color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-heavy); }
 .pg-book__redoreason { color: var(--sea-text); font-size: var(--fs-13); line-height: 1.5; }
-.pg-book__card { display: flex; gap: var(--sp-3); }
+.pg-book__nowrap { white-space: nowrap; }
+.pg-book__card { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; transition: transform var(--dur-base) var(--ease-spring); }
+.pg-book__card:active { transform: translateY(2px); transition-duration: var(--dur-fast); }
 .pg-book__stamp { flex: none; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-12); background: var(--bee-soft); color: var(--bee-lip); }
 .pg-book__cardmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .pg-book__tags { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: 2px; }
 .pg-book__ptitle { color: var(--ink); font-size: var(--fs-16); font-weight: var(--fw-black); line-height: 1.35; overflow-wrap: anywhere; }
-.pg-book__open { align-self: flex-start; margin-top: var(--sp-2); }
+.pg-book__open { flex: none; width: var(--touch); height: var(--touch); margin-right: calc(var(--sp-2) * -1); display: flex; align-items: center; justify-content: center; color: var(--ink-2); }
 </style>

@@ -16,7 +16,7 @@ import PgMascot from '@/components/ui/PgMascot.vue'
 import PgSegmented from '@/components/ui/PgSegmented.vue'
 import PgSheet from '@/components/ui/PgSheet.vue'
 import { useToast } from '@/components/ui/useToast'
-import { ABOUT_COPY, COPY } from '@/copy'
+import { ABOUT_COPY } from '@/copy'
 import manifest from '@/manifest.json'
 import type { FeedbackKind } from '@/types/attempt'
 
@@ -81,7 +81,6 @@ async function send(): Promise<void> {
           <view class="pg-about__dot" aria-hidden="true" />
           <text class="pg-about__itemtext">{{ item }}</text>
         </view>
-        <text class="pg-about__honest">{{ COPY.honestNote }}</text>
       </PgCard>
 
       <PgCard class="pg-about__card">
@@ -114,7 +113,6 @@ async function send(): Promise<void> {
 .pg-about__item { display: flex; gap: var(--sp-2); }
 .pg-about__dot { flex: none; width: 6px; height: 6px; margin-top: 9px; border-radius: 50%; background: var(--accent); }
 .pg-about__itemtext { min-width: 0; color: var(--ink); font-size: var(--fs-15); line-height: var(--lh-body); }
-.pg-about__honest { margin-top: var(--sp-1); color: var(--ink-2); font-size: var(--fs-13); line-height: 1.5; }
 .pg-about__sheet { display: flex; flex-direction: column; gap: var(--sp-3); }
 .pg-about__sheettitle { color: var(--ink); font-size: var(--fs-18); font-weight: var(--fw-black); }
 .pg-about__error { color: var(--fox-text); font-size: var(--fs-13); line-height: 1.5; }

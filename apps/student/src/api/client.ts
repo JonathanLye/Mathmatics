@@ -1706,7 +1706,7 @@ export const mockMistakes: MistakesView = {
     {
       group: 'scaling',
       title: '放缩卡住',
-      count: 1,
+      count: 2,
       items: [
         {
           id: '11111111-1111-4111-8111-111111111111:scaling:mock',
@@ -1719,10 +1719,57 @@ export const mockMistakes: MistakesView = {
           createdAt: daysAgoIso(3),
           canRedo: true,
         },
+        {
+          id: '33333333-3333-4333-8333-333333333333:scaling:mock',
+          group: 'scaling',
+          problemTitle: '交错级数 · 收敛性',
+          chapter: '第十二章 数项级数',
+          attemptId: '33333333-3333-4333-8333-333333333333',
+          lineExcerpt: '$|S_{n+p}-S_n| \\le a_{n+1}+\\dots+a_{n+p}$',
+          note: '这一步用了绝对值不等式。交错的符号能帮你把这个界再收紧吗？',
+          createdAt: daysAgoIso(5),
+          canRedo: true,
+        },
+      ],
+    },
+    {
+      group: 'definition',
+      title: '定义没用上',
+      count: 1,
+      items: [
+        {
+          id: '44444444-4444-4444-8444-444444444444:definition:mock',
+          group: 'definition',
+          problemTitle: '函数极限 · ε-δ（迁移）',
+          chapter: '第三章 函数极限',
+          attemptId: '44444444-4444-4444-8444-444444444444',
+          lineExcerpt: '因为 $x$ 靠近 $a$，所以 $f(x)$ 靠近 $A$',
+          note: '“靠近”在定义里是怎么说的？能换成 $\\varepsilon$ 和 $\\delta$ 写一遍吗？',
+          createdAt: daysAgoIso(9),
+          canRedo: true,
+        },
+      ],
+    },
+    {
+      group: 'hinted',
+      title: '靠提示写的',
+      count: 1,
+      items: [
+        {
+          id: '55555555-5555-4555-8555-555555555555:hinted:mock',
+          group: 'hinted',
+          problemTitle: '单调有界 · 收敛',
+          chapter: '第二章 数列极限',
+          attemptId: '55555555-5555-4555-8555-555555555555',
+          lineExcerpt: '$a_{n+1}-a_n>0$，所以 $\\{a_n\\}$ 单调递增',
+          note: '这一步是看了提示写出来的。现在不看提示，你能说出为什么先证单调吗？',
+          createdAt: daysAgoIso(1),
+          canRedo: false,
+        },
       ],
     },
   ],
-  total: 1,
+  total: 4,
 }
 
 function daysAgoIso(days: number): string {
@@ -1820,8 +1867,15 @@ export const mockProgress: ProgressView = {
   week: mockWeek(),
   badges: [
     { id: 'first_step', title: '第一步', desc: '第一次写出有进展的一步', earnedAt: '2026-11-02T08:00:00.000Z' },
-    { id: 'streak_3', title: '连续 3 天', desc: '连续 3 天都有实质进展', earnedAt: null, progress: { current: 3, target: 3 } },
+    { id: 'own_write', title: '独立写出', desc: '第一次不靠提示写出一个关键步骤', earnedAt: '2026-11-02T08:20:00.000Z' },
+    { id: 'first_done', title: '证完一道', desc: '第一次完整证完一道题', earnedAt: '2026-11-03T09:00:00.000Z' },
+    { id: 'streak_3', title: '连续 3 天', desc: '连续 3 天都有实质进展', earnedAt: '2026-11-05T09:00:00.000Z' },
     { id: 'streak_7', title: '连续 7 天', desc: '连续 7 天都有实质进展', earnedAt: null, progress: { current: 3, target: 7 } },
+    { id: 'streak_30', title: '连续 30 天', desc: '连续 30 天都有实质进展', earnedAt: null, progress: { current: 3, target: 30 } },
+    { id: 'unit_clear', title: '单元通关', desc: '一个单元布置的题都证完了', earnedAt: null, progress: { current: 0, target: 1 } },
+    { id: 'no_hint_clear', title: '无提示通关', desc: '不用任何提示证完一道题', earnedAt: null, progress: { current: 0, target: 1 } },
+    { id: 'redo_success', title: '重做成功', desc: '把做过的题重新独立证了一遍', earnedAt: null, progress: { current: 0, target: 1 } },
+    { id: 'daily_goal', title: '今日目标达成', desc: '一天内写出的关键步骤达到每日目标', earnedAt: null, progress: { current: 0, target: 1 } },
   ],
   daysLearned: 3,
 }

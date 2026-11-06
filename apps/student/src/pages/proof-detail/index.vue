@@ -17,6 +17,7 @@ import PgSkeleton from '@/components/ui/PgSkeleton.vue'
 import { BOOK_COPY, COPY, DETAIL_COPY, independenceCopy } from '@/copy'
 import type { NotebookCard, PublishedReview } from '@/types/attempt'
 import { formatDate } from '@/utils/date'
+import '@/styles/print.css'
 
 const card = ref<NotebookCard | null>(null)
 const review = ref<PublishedReview | null>(null)
@@ -209,33 +210,4 @@ function print(): void {
 .pg-detail__sectionrow { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
 .pg-detail__sectionnote { color: var(--ink-2); font-size: var(--fs-12); font-weight: var(--fw-heavy); }
 .pg-detail__reviewfail { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
-</style>
-
-<!-- 打印：只留纸面。外壳的类名在别的组件里，scoped 够不着，所以这一段不加 scoped。打印总是白纸黑字，不管当前主题。 -->
-<style>
-@media print {
-  :root,
-  :root:not([data-theme='light']),
-  html[data-theme='dark'] {
-    --paper: white;
-    --paper-2: white;
-    --sheet: white;
-    --ink: black;
-    --ink-2: #444444;
-    --rule: #bbbbbb;
-    --sea-soft: white;
-    --sea: #bbbbbb;
-    --sea-text: black;
-    color-scheme: light;
-  }
-  .pg-tabbar,
-  .pg-shell__rail,
-  .pg-detail__chrome,
-  .pg-offline,
-  .pg-shell__offline { display: none !important; }
-  .pg-shell__body { margin-left: 0 !important; }
-  .pg-shell__main { max-width: none !important; padding: 0 !important; animation: none !important; }
-  .pg-detail__sheet { border: 0 !important; padding: 0 0 16pt !important; break-inside: avoid; }
-  .pg-detail__line { break-inside: avoid; }
-}
 </style>

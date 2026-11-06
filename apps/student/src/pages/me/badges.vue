@@ -40,7 +40,7 @@ const allDone = computed(() => badges.value.length > 0 && earnedCount.value === 
     <view class="pg-badges" data-testid="badges-page">
       <MeSubHeader :title="BADGE_COPY.title" />
 
-      <view v-if="loading && !progress" class="pg-badges__grid" data-testid="badges-loading" aria-busy="true">
+      <view v-if="loading && !progress" class="pg-badges__loading" data-testid="badges-loading" aria-busy="true">
         <PgSkeleton variant="block" :count="4" />
       </view>
 
@@ -81,6 +81,7 @@ const allDone = computed(() => badges.value.length > 0 && earnedCount.value === 
 
 <style scoped>
 .pg-badges { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.pg-badges__loading { display: flex; flex-direction: column; gap: var(--sp-3); }
 .pg-badges__summary { display: flex; flex-direction: column; gap: 2px; }
 .pg-badges__count { color: var(--ink); font-size: var(--fs-16); font-weight: var(--fw-black); }
 .pg-badges__hint { color: var(--ink-2); font-size: var(--fs-13); line-height: 1.5; }

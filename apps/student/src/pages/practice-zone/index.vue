@@ -248,7 +248,7 @@ async function roll(): Promise<void> {
       <view class="pg-zone__filters" data-testid="zone-filters">
         <view class="pg-zone__row">
           <view class="pg-zone__search" :class="{ 'pg-zone__search--on': searchText }">
-            <PgIcon name="eye" :size="18" class="pg-zone__searchicon" />
+            <svg class="pg-zone__searchicon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
             <input v-model="searchText" class="pg-zone__input" data-testid="zone-search" :placeholder="ZONE_COPY.searchPlaceholder" confirm-type="search" />
             <view v-if="searchText" class="pg-zone__clear" role="button" tabindex="0" aria-label="清除搜索" data-testid="zone-search-clear" @tap="clearSearch" @keydown.enter.prevent="clearSearch">
               <PgIcon name="close" :size="16" />
@@ -278,8 +278,8 @@ async function roll(): Promise<void> {
 
       <view v-else-if="!items.length" data-testid="zone-empty">
         <PgEmpty
-          :title="ZONE_COPY.emptyTitle"
-          :body="active ? ZONE_COPY.emptyBody : ''"
+          :title="active ? ZONE_COPY.emptyTitle : ZONE_COPY.noneTitle"
+          :body="active ? ZONE_COPY.emptyBody : ZONE_COPY.noneBody"
           expr="think"
           :motion="['think-tilt', 'blink']"
           :action="active ? ZONE_COPY.emptyAction : ''"
@@ -375,8 +375,8 @@ async function roll(): Promise<void> {
 .pg-zone__search:focus-within,
 .pg-zone__search--on { box-shadow: inset 0 0 0 var(--bw) var(--accent); }
 .pg-zone__searchicon { flex: none; color: var(--ink-2); }
-.pg-zone__input { flex: 1; min-width: 0; height: 40px; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-bold); }
-.pg-zone__clear { flex: none; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--ink-2); cursor: pointer; }
+.pg-zone__input { flex: 1; min-width: 0; height: var(--touch); border: 0; background: transparent; color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-bold); }
+.pg-zone__clear { flex: none; width: var(--touch); height: var(--touch); display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--ink-2); cursor: pointer; }
 .pg-zone__clear:active { background: var(--rule); }
 
 /* 章节按钮 */

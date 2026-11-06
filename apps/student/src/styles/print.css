@@ -1,0 +1,29 @@
+/*
+ * 打印证明（证明详情页引入）：只留一张干净的纸，不管当前主题，总是白纸黑字。
+ * 放在独立文件里：uni-app 会给页面组件的 <style> 都加作用域，够不着外壳的类名和 :root。
+ */
+@media print {
+  :root {
+    --paper: white !important;
+    --paper-2: white !important;
+    --sheet: white !important;
+    --ink: black !important;
+    --ink-2: #444444 !important;
+    --rule: #bbbbbb !important;
+    --sea-soft: white !important;
+    --sea: #bbbbbb !important;
+    --sea-text: black !important;
+    --bee-lip: black !important;
+    color-scheme: light;
+  }
+  body { background: white; }
+  .pg-tabbar,
+  .pg-shell__rail,
+  .pg-shell__offline,
+  .pg-detail__chrome { display: none !important; }
+  .pg-shell__body { margin-left: 0 !important; }
+  .pg-shell__columns { display: block !important; padding: 0 !important; }
+  .pg-shell__main { max-width: none !important; padding: 0 !important; animation: none !important; }
+  .pg-detail__sheet { border: 0 !important; padding: 0 0 16pt !important; break-inside: avoid; }
+  .pg-detail__line { break-inside: avoid; }
+}

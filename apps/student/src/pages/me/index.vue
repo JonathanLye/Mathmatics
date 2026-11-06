@@ -85,7 +85,7 @@ onShow(() => {
 
 watch(editingName, (open) => {
   if (open) {
-    nameDraft.value = name.value
+    nameDraft.value = settings.value?.nickname ?? session.me.value?.displayName ?? ''
     nameMessage.value = ''
   }
 })
