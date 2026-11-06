@@ -594,7 +594,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 标记求助老师（额度用完或卡住时） */
+        /**
+         * 标记求助老师（额度用完，或卡住满 stuckMs 后）
+         * @description 写入 `app.help_flags`，教师看板显示求助；重复调用返回当前状态（幂等）。测验模式 403。
+         */
         post: operations["flagTeacher"];
         delete?: never;
         options?: never;
@@ -1302,6 +1305,8 @@ export interface components {
             cost?: number | null;
             /** @description 有值时显示"看分步讲解"入口 */
             lessonConceptId?: string | null;
+            /** @description 模型生成的回答（界面显示“AI 生成 · 仅作学习提示”，响应头 X-AIGC: 1；13 §5） */
+            aiGenerated?: boolean;
             /** Format: date-time */
             at: string;
         };
@@ -1329,6 +1334,8 @@ export interface components {
             flagged: boolean;
             /** @description 连续卡住，界面可温和询问是否需要提示 */
             stuckOffer?: boolean;
+            /** @description 现在可以“找老师”（额度用完，或卡住满 stuckMs），且还没找过 */
+            canFlag?: boolean;
         };
         IntegrityView: {
             /** @enum {string} */
@@ -2257,6 +2264,8 @@ export interface components {
              * @enum {unknown}
              */
             from?: "L1" | "L2" | "L3" | "L4" | "L5" | "L6" | null;
+            /** @description 去往的层号 1–6 */
+            to?: number;
             /**
              * @description 方式
              * @enum {unknown}
@@ -2496,6 +2505,11 @@ export interface components {
              * @enum {unknown}
              */
             path: "rule" | "jev" | "llm" | "rule+jev";
+            /**
+             * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+             * @enum {unknown}
+             */
+            matchedBy?: "model";
             /** @description Jev 影子判定 */
             jevShadow?: Record<string, never>;
         } & {
@@ -2542,6 +2556,11 @@ export interface components {
              * @enum {unknown}
              */
             path: "rule" | "jev" | "llm" | "rule+jev";
+            /**
+             * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+             * @enum {unknown}
+             */
+            matchedBy?: "model";
             /** @description Jev 影子判定 */
             jevShadow?: Record<string, never>;
         } & {
@@ -2704,7 +2723,7 @@ export interface components {
              * @description 原因
              * @enum {unknown}
              */
-            reason: "need_attempt" | "dwell" | "rapid_lock" | "budget" | "layer" | "test_mode" | "complete";
+            reason: "need_attempt" | "dwell" | "rapid_lock" | "rapid_soft" | "budget" | "layer" | "test_mode" | "complete";
             /** @description 还需等待秒数 */
             waitSec?: number;
         } & {
@@ -3191,6 +3210,8 @@ export interface components {
                      * @enum {unknown}
                      */
                     from?: "L1" | "L2" | "L3" | "L4" | "L5" | "L6" | null;
+                    /** @description 去往的层号 1–6 */
+                    to?: number;
                     /**
                      * @description 方式
                      * @enum {unknown}
@@ -3578,6 +3599,11 @@ export interface components {
                      * @enum {unknown}
                      */
                     path: "rule" | "jev" | "llm" | "rule+jev";
+                    /**
+                     * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+                     * @enum {unknown}
+                     */
+                    matchedBy?: "model";
                     /** @description Jev 影子判定 */
                     jevShadow?: Record<string, never>;
                 } & {
@@ -3624,6 +3650,11 @@ export interface components {
                      * @enum {unknown}
                      */
                     path: "rule" | "jev" | "llm" | "rule+jev";
+                    /**
+                     * @description 模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）
+                     * @enum {unknown}
+                     */
+                    matchedBy?: "model";
                     /** @description Jev 影子判定 */
                     jevShadow?: Record<string, never>;
                 } & {
@@ -3796,7 +3827,7 @@ export interface components {
                      * @description 原因
                      * @enum {unknown}
                      */
-                    reason: "need_attempt" | "dwell" | "rapid_lock" | "budget" | "layer" | "test_mode" | "complete";
+                    reason: "need_attempt" | "dwell" | "rapid_lock" | "rapid_soft" | "budget" | "layer" | "test_mode" | "complete";
                     /** @description 还需等待秒数 */
                     waitSec?: number;
                 } & {
@@ -5573,7 +5604,10 @@ export interface operations {
     flagTeacher: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
             path: {
                 attemptId: components["parameters"]["attemptId"];
             };
@@ -5581,8 +5615,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["State"];
+            200: components["responses"]["StateReplay"];
             401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     ingestEvents: {

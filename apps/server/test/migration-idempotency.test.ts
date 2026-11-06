@@ -28,7 +28,8 @@ describe('0001 迁移（07 §8）', () => {
 
     const result = await migrate(db);
     expect(result.baselined).toBe(true);
-    expect(result.applied).toEqual(['0001_idempotency_keys.sql']);
+    // 其它迁移（0004 …）也会补上；这里只关心 0001 在其中。
+    expect(result.applied).toContain('0001_idempotency_keys.sql');
     expect(await hasTable('app.idempotency_keys')).toBe(true);
 
     const rows = (
@@ -36,7 +37,7 @@ describe('0001 迁移（07 §8）', () => {
         'select version, sha256 from public.schema_migrations order by version',
       )
     ).rows;
-    expect(rows.map((row) => row.version)).toEqual(['0000_init', '0001_idempotency_keys.sql']);
+    expect(rows.map((row) => row.version)).toEqual(['0000_init', ...result.applied]);
     expect(rows[1]?.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -54,5 +55,29 @@ describe('0001 迁移（07 §8）', () => {
         expect(schema, `${file}: schema.sql 缺少列 ${match[1]}.${match[2]}`).toContain(match[2]);
       }
     }
+  });
+});
+
+describe('0004 迁移（求助落库）', () => {
+  it('旧库缺索引和 annotations 新列时，migrate 补上；重复执行不报错', async () => {
+    await applySchema(db);
+    await db.exec('drop table if exists public.schema_migrations');
+    await db.exec('drop index if exists app.hint_deliveries_attempt');
+    await db.exec('drop index if exists app.annotations_attempt');
+    await db.exec('alter table app.annotations drop column help_id, drop column ai_generated, drop column useful');
+
+    const result = await migrate(db);
+    expect(result.applied).toContain('0004_help_notes.sql');
+    const cols = (
+      await db.query<{ column_name: string }>(
+        `select column_name from information_schema.columns where table_schema = 'app' and table_name = 'annotations'`,
+      )
+    ).rows.map((row) => row.column_name);
+    expect(cols).toEqual(expect.arrayContaining(['help_id', 'ai_generated', 'useful']));
+    const idx = (await db.query<{ indexname: string }>(`select indexname from pg_indexes where schemaname = 'app'`)).rows.map((row) => row.indexname);
+    expect(idx).toEqual(expect.arrayContaining(['hint_deliveries_attempt', 'annotations_attempt']));
+
+    const again = await migrate(db);
+    expect(again.applied).toEqual([]);
   });
 });

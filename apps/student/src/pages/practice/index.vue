@@ -72,6 +72,7 @@ import {
   addLine,
   addTransferLine,
   claimHint,
+  flagTeacher,
   completeTransferParent,
   deleteTransferLine,
   editTransferLine,
@@ -878,7 +879,15 @@ function handleDecline() {
 }
 
 /** 软着陆出路（01 §4.4；文案与抽屉/预览卡共用 hintPreviewCopy，页面只显示选择，不实现微课跳转）。 */
-function handleSoftLanding(action: string) {
+async function handleSoftLanding(action: string) {
+  if (action === 'flag_teacher') {
+    const next = await run(() => flagTeacher(state.value))
+    if (next) {
+      apply(next)
+      show('已告诉老师，老师会看到你在这一步的卡点')
+    } else show(error.value ?? '暂时联系不上老师，请稍后再试')
+    return
+  }
   helpOpen.value = false
   helpNote.value = null
   hintPreview.value = null

@@ -1,4 +1,5 @@
 import type { Queryable } from '../db/index.ts';
+import { loadStoredNotes } from '../help/store.ts';
 
 import type { AttemptRow } from './view.ts';
 
@@ -25,6 +26,8 @@ export interface ViewExtras {
   // 最近一次 summary.submit 缺了哪些要点（用于挑追问）；没提交过为 null。
   summaryMissing: string[] | null;
   transfer: { childAttemptId: string; stem: string | null } | null;
+  // 已下发的提示与批注（app.hint_deliveries / app.annotations），刷新后读回。noteId = 行 ID。
+  notes: Record<string, unknown>[];
 }
 
 // 刚创建的作答：还没有任何行与事件。
@@ -36,6 +39,7 @@ export const EMPTY_EXTRAS: ViewExtras = {
   summaryAnswers: [],
   summaryMissing: null,
   transfer: null,
+  notes: [],
 };
 
 export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<ViewExtras> {
@@ -111,5 +115,6 @@ export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<Vie
       .map(([, text]) => text),
     summaryMissing: submitted ? (submitted.payload.missing ?? []) : null,
     transfer: child ? { childAttemptId: child.id, stem: childStem } : null,
+    notes: await loadStoredNotes(q, row.id, null),
   };
 }

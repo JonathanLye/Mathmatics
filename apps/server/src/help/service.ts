@@ -13,12 +13,14 @@ import {
 } from '@proof-gym/engine';
 
 import type { AttemptService } from '../attempts/service.ts';
+import type { AttemptRow } from '../attempts/view.ts';
 import { loadProblem } from '../attempts/problem.ts';
-import type { Db } from '../db/index.ts';
+import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
 
-import { hintTextOf, REFUSAL_TEXT } from './hints.ts';
+import { hintTextOf, REFUSAL_TEXT, SOFT_RAPID_TEXT } from './hints.ts';
 import { routeIntent, type RouteInput } from './intent.ts';
+import { insertHintDelivery, upsertAnnotation } from './store.ts';
 import { PREVIEW_TTL_MS, signPreview, verifyPreview } from './token.ts';
 
 // 文案来自 01 §4（批注）与 09 §7.2（闸门回退）。
@@ -43,12 +45,15 @@ export interface HelpService {
   // extra.lineId：check_line 指向的行（只作记录，不参与路由）。
   help(userId: string, attemptId: string, input: RouteInput, extra?: { lineId?: string }): Promise<Record<string, unknown>>;
   claim(userId: string, attemptId: string, previewToken: string): Promise<Record<string, unknown>>;
+  // 找老师（U15）：额度用完，或卡住满 stuckMs。写 app.help_flags，返回最新状态。已经找过则原样返回状态。
+  flagTeacher(userId: string, attemptId: string): Promise<Record<string, unknown>>;
 }
 
 type Owned = { ctx: Context; state: AttemptState; stateVersion: number; mode: string };
 type Captured = { delivered: EngineEvent | null; denied: EngineEvent | null };
 type Block = { reason: string; waitSec: number | null };
 
+type Recorded = { deliveryId: string };
 const DENIAL_TYPES: ReadonlySet<string> = new Set(['hint.deny', 'hint.rapid_lock', 'budget.exhausted', 'gate.block']);
 // 与 HelpResult.preview.reason 的枚举一致（06 §4.2）。引擎里其它原因（如 gate）映射为 null，不新造枚举值。
 const PREVIEW_REASONS: ReadonlySet<string> = new Set(['need_attempt', 'dwell', 'rapid_lock', 'budget', 'layer', 'complete']);
@@ -56,10 +61,15 @@ const PREVIEW_REASONS: ReadonlySet<string> = new Set(['need_attempt', 'dwell', '
 const previewExpired = () => new AppError('HINT_PREVIEW_EXPIRED', 409, '预览已过期，请重新求助');
 
 // 引擎的拒绝结果：hint.deny / hint.rapid_lock / budget.exhausted / gate.block 都是已记录的事件，不是异常。
-function capture(out: Captured) {
-  return async (_tx: unknown, _row: unknown, result: { events: EngineEvent[] }) => {
+// 同一事务里把下发的提示写进 app.hint_deliveries；行 ID 预先生成，作为 Note 的 noteId。
+function capture(out: Captured & Partial<Recorded>, persist?: (tx: Queryable, row: AttemptRow, event: EngineEvent, id: string) => Promise<void>) {
+  return async (tx: Queryable, row: AttemptRow, result: { events: EngineEvent[] }) => {
     out.delivered = result.events.find((e) => e.type === 'hint.deliver') ?? null;
     out.denied = result.events.find((e) => DENIAL_TYPES.has(e.type)) ?? null;
+    if (out.delivered && persist) {
+      out.deliveryId = randomUUID();
+      await persist(tx, row, out.delivered, out.deliveryId);
+    }
   };
 }
 
@@ -68,6 +78,7 @@ function denial(event: EngineEvent | null, now: number): { reason: string | null
   if (!event) return { reason: null, waitSec: null };
   if (event.type === 'hint.rapid_lock') return { reason: 'rapid_lock', waitSec: secondsUntil(String(event.payload.until), now) };
   if (event.type === 'budget.exhausted') return { reason: 'budget', waitSec: null };
+  if (event.type === 'hint.deny' && event.payload.reason === 'rapid_soft') return { reason: null, waitSec: null };
   if (event.type === 'gate.block') return { reason: null, waitSec: null };
   const reason = String(event.payload.reason);
   if (!PREVIEW_REASONS.has(reason)) return { reason: null, waitSec: null };
@@ -125,13 +136,13 @@ export function createHelpService(deps: HelpDeps): HelpService {
   }
 
   // 批注的统一形状（contracts Note：noteId、kind、who、text、at；不允许多余字段）。
-  function noteOf(kind: string, who: string, text: string): Record<string, unknown> {
-    return { noteId: randomUUID(), kind, who, text, at: new Date(now()).toISOString() };
+  function noteOf(kind: string, who: string, text: string, id: string = randomUUID(), at: string = new Date(now()).toISOString()): Record<string, unknown> {
+    return { noteId: id, kind, who, text, at };
   }
 
   // 概念解释（06 §4.2）：只取本题 public.def.conceptId 已发布的最新版本（10 §4：未审核内容不给学生）。
   // 所有发给学生的字符串都过规则闸门（09 §7.1）；被拦时用 09 §7.2 的 concept 回退文案。词条缺失返回 null。
-  async function conceptNote(owned: Owned): Promise<Record<string, unknown> | null> {
+  async function conceptNote(owned: Owned, attemptId: string, helpId: string | null): Promise<Record<string, unknown> | null> {
     const conceptId = owned.ctx.pkg.public.def?.conceptId;
     if (conceptId === undefined || conceptId === '') return null;
     const row = await db.query<{
@@ -143,7 +154,8 @@ export function createHelpService(deps: HelpDeps): HelpService {
     const text = plain !== '' ? `${concept.title ?? conceptId}：${plain}` : (concept.definition ?? concept.title ?? '').trim();
     if (text === '') return null;
     const shown = passesGate(owned, text) ? text : CONCEPT_GATE_FALLBACK;
-    return { ...noteOf('concept', '助教', shown), level: 'H0', lessonConceptId: conceptId };
+    const saved = await upsertAnnotation(db, { id: randomUUID(), attemptId, lineId: null, kind: 'concept', source: 'rule', text: shown, helpId });
+    return { ...noteOf('concept', '助教', shown, saved.id, saved.at), level: 'H0', lessonConceptId: conceptId };
   }
 
   function passesGate(owned: Owned, text: string): boolean {
@@ -160,7 +172,7 @@ export function createHelpService(deps: HelpDeps): HelpService {
   // 行批注（06 §4.2、01 §4）：指向指定行（缺省最新一行，已删除的行不算）。只用问句，不说对错：
   // 命中错误 → 该错误预写的追问；低置信 → H0 式追问；没写依据 → 追问依据；命中关键步骤且有依据 → 衔接确认；
   // 归不了类 → 通用问句。文本一律过闸门，被拦走 09 §7.2 的回退。
-  async function checkLineNote(owned: Owned, attemptId: string, lineId?: string): Promise<Record<string, unknown> | null> {
+  async function checkLineNote(owned: Owned, attemptId: string, helpId: string | null, lineId?: string): Promise<Record<string, unknown> | null> {
     type LineRow = { id: string; idx: number; justification: string | null; cls: string | null; error_id: string | null };
     const columns = 'id, idx, justification, cls, error_id';
     const row =
@@ -190,16 +202,42 @@ export function createHelpService(deps: HelpDeps): HelpService {
     else if (row.cls === 'match' || row.cls === 'pass') text = `第 ${row.idx} 行和前面衔接上了。`;
     else text = unclassifiedLineText(row.idx);
     const shown = passesGate(owned, text) ? text : h0OrGeneric(owned, row.idx);
-    return { ...noteOf('annotation', '批注', shown), lineId: row.id };
+    const saved = await upsertAnnotation(db, { id: randomUUID(), attemptId, lineId: row.id, kind: 'annotation', source: 'rule', text: shown, helpId });
+    return { ...noteOf('annotation', '批注', shown, saved.id, saved.at), lineId: row.id };
   }
 
-  function hintNote(owned: Owned, event: EngineEvent): Record<string, unknown> {
-    const keyId = String(event.payload.key);
+  function hintTextFor(owned: Owned, event: EngineEvent): string {
+    return hintTextOf(owned.ctx.pkg.secret, String(event.payload.key), String(event.payload.level)) ?? '';
+  }
+
+  // 落库的写入器：在命令的事务里把下发的提示写进 app.hint_deliveries（noteId = 行 ID）。
+  function persistHint(owned: Owned, attemptId: string, helpId: string | null) {
+    return async (tx: Queryable, _row: AttemptRow, event: EngineEvent, id: string): Promise<void> => {
+      const delta = Number(event.payload.revealDelta ?? 0);
+      const after = Number(event.payload.revealAfter ?? 0);
+      await insertHintDelivery(tx, {
+        id,
+        attemptId,
+        helpId,
+        key: String(event.payload.key),
+        level: String(event.payload.level),
+        cost: Number(event.payload.cost),
+        revealBefore: Math.max(0, after - delta),
+        revealAfter: after,
+        text: hintTextFor(owned, event),
+      });
+    };
+  }
+
+  function hintNote(owned: Owned, event: EngineEvent, id: string | undefined): Record<string, unknown> {
     const level = String(event.payload.level);
     const cost = Number(event.payload.cost);
-    const text = hintTextOf(owned.ctx.pkg.secret, keyId, level) ?? '';
-    return noteOf('hint', `${level} · 透露 ${cost}`, text);
+    return { ...noteOf('hint', `${level} · 透露 ${cost}`, hintTextFor(owned, event), id), level, cost };
   }
+
+  // 请求太快的温和提示：不是错误，不扣额度，不落库。
+  const softRapidNote = (): Record<string, unknown> => noteOf('system', '助教', SOFT_RAPID_TEXT);
+  const isSoftRapid = (event: EngineEvent | null): boolean => event?.type === 'hint.deny' && event.payload.reason === 'rapid_soft';
 
   // 拒绝文案：固定一句。练习模式下，如果预写的 H0 指向性提示通过闸门，就附在后面；否则只给拒绝文案。
   function refusalNote(owned: Owned): Record<string, unknown> {
@@ -236,7 +274,7 @@ export function createHelpService(deps: HelpDeps): HelpService {
           await attempts.setHelpOutcome(helpId, 'denied');
           return { routed, preview: blockedPreview({ reason: 'test_mode', waitSec: null }), state: await attempts.get(userId, attemptId) };
         }
-        const note = routed === 'concept' ? await conceptNote(owned) : await checkLineNote(owned, attemptId, extra.lineId);
+        const note = routed === 'concept' ? await conceptNote(owned, attemptId, helpId) : await checkLineNote(owned, attemptId, helpId, extra.lineId);
         // 08 §5.4：outcome 只记实际发生的结局；没有内容下发就保持 NULL。
         if (note !== null) await attempts.setHelpOutcome(helpId, routed === 'concept' ? 'concept' : 'annotation');
         const state = await attempts.get(userId, attemptId);
@@ -258,22 +296,27 @@ export function createHelpService(deps: HelpDeps): HelpService {
 
       // H0/H1 与"已无可用提示"：交给引擎判定并记录结果（hint.deny 等）。
       if (preview.nextLevel === null || preview.nextLevel === 'H0' || preview.nextLevel === 'H1') {
-        const out: Captured = { delivered: null, denied: null };
+        const out: Captured & Partial<Recorded> = { delivered: null, denied: null };
         const state = await attempts.command({
           userId,
           attemptId,
           build: () => ({ kind: 'hint.request' }),
-          record: capture(out),
+          record: capture(out, persistHint(owned, attemptId, helpId)),
         });
         if (!out.delivered) {
-          const { reason, waitSec } = denial(out.denied, now());
           await attempts.setHelpOutcome(helpId, 'denied');
+          if (isSoftRapid(out.denied)) return { routed, note: softRapidNote(), state };
+          const { reason, waitSec } = denial(out.denied, now());
           return { routed, preview: { allowed: false, reason, waitSec }, state };
         }
         await attempts.setHelpOutcome(helpId, 'hint');
-        return { routed, note: hintNote(owned, out.delivered), state };
+        return { routed, note: hintNote(owned, out.delivered, out.deliveryId), state };
       }
 
+      if (preview.tooFast) {
+        await attempts.setHelpOutcome(helpId, 'denied');
+        return { routed, note: softRapidNote(), state: await attempts.get(userId, attemptId) };
+      }
       const block = blockOf(owned, preview);
       if (block !== null) {
         await attempts.setHelpOutcome(helpId, 'denied');
@@ -310,7 +353,7 @@ export function createHelpService(deps: HelpDeps): HelpService {
       if (owned.mode === 'test') throw new AppError('TEST_MODE_RESTRICTED', 403, '本布置不允许提示');
       if (owned.stateVersion !== claims.stateVersion) throw previewExpired();
 
-      const out: Captured = { delivered: null, denied: null };
+      const out: Captured & Partial<Recorded> = { delivered: null, denied: null };
       let state: Record<string, unknown>;
       try {
         state = await attempts.command({
@@ -318,7 +361,7 @@ export function createHelpService(deps: HelpDeps): HelpService {
           attemptId,
           ifMatch: claims.stateVersion,
           build: () => ({ kind: 'hint.request' }),
-          record: capture(out),
+          record: capture(out, persistHint(owned, attemptId, claims.helpId ?? null)),
         });
       } catch (error) {
         if (error instanceof AppError && error.code === 'STATE_STALE') throw previewExpired();
@@ -326,11 +369,34 @@ export function createHelpService(deps: HelpDeps): HelpService {
       }
       if (!out.delivered) {
         if (claims.helpId) await attempts.setHelpOutcome(claims.helpId, 'denied');
+        if (isSoftRapid(out.denied)) return { routed: 'stuck', note: softRapidNote(), state };
         throw claimFailure(out.denied, now());
       }
       if (out.delivered.payload.level !== claims.level) throw previewExpired();
       if (claims.helpId) await attempts.setHelpOutcome(claims.helpId, 'hint');
-      return { routed: 'stuck', note: hintNote(owned, out.delivered), state };
+      return { routed: 'stuck', note: hintNote(owned, out.delivered, out.deliveryId), state };
+    },
+
+    async flagTeacher(userId, attemptId) {
+      const owned = await loadOwned(userId, attemptId);
+      if (owned.mode === 'test') throw new AppError('TEST_MODE_RESTRICTED', 403, '测验时不能求助');
+      if (owned.state.flagged) return attempts.get(userId, attemptId);
+      const flagId = randomUUID();
+      return attempts.command({
+        userId,
+        attemptId,
+        build: () => ({ kind: 'flag.teacher', flagId }),
+        record: async (tx, row, result) => {
+          const event = result.events.find((e) => e.type === 'help.flag_teacher');
+          if (!event) return;
+          await tx.query(`insert into app.help_flags (id, attempt_id, user_id, layer) values ($1, $2, $3, $4)`, [
+            flagId,
+            row.id,
+            row.user_id,
+            String(event.payload.layer),
+          ]);
+        },
+      });
     },
   };
 }

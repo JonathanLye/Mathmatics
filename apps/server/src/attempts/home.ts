@@ -1,5 +1,6 @@
 import type { ContractValidator } from '../contract.ts';
 import type { Db } from '../db/index.ts';
+import { AppError } from '../errors.ts';
 
 // content.problem_versions.public 里首页用到的字段（problem-package.schema.json 的 public 子集）。
 interface PublicProblem {
@@ -80,4 +81,30 @@ export async function studentHome(db: Db, contract: ContractValidator, userId: s
   const dto: Record<string, unknown> = { inProgress, todo, done };
   contract.validate('StudentHome', dto);
   return dto;
+}
+
+// GET /student/assignments/{assignmentId}（openapi AssignmentCard）：只给本班学生；布置不存在或不在自己班里一律 404。
+export async function studentAssignment(
+  db: Db,
+  contract: ContractValidator,
+  userId: string,
+  assignmentId: string,
+): Promise<Record<string, unknown>> {
+  const row = (
+    await db.query<HomeRow & { problem_version: number }>(
+      `select a.id as assignment_id, a.problem_id, a.problem_version, a.mode, a.status, a.open_at, a.close_at,
+              a.review_published_at, pv.public,
+              att.id as attempt_id, att.status as attempt_status, att.current_layer
+         from app.assignments a
+         join app.class_members m on m.class_id = a.class_id and m.user_id = $1
+         join content.problem_versions pv on pv.problem_id = a.problem_id and pv.version = a.problem_version
+         left join app.attempts att on att.assignment_id = a.id and att.user_id = $1 and att.kind = 'main'
+        where a.id = $2 and a.status <> 'cancelled'`,
+      [userId, assignmentId],
+    )
+  ).rows[0];
+  if (!row) throw new AppError('NOT_FOUND', 404, '找不到这份布置');
+  const card = { ...toCard(row), problemId: row.problem_id, version: row.problem_version };
+  contract.validate('AssignmentCard', card);
+  return card;
 }

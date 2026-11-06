@@ -2,9 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
+import { canon } from '@proof-gym/engine';
+
 import { requireStudentConsent } from '../auth/consent.ts';
 import { bySession, requireAuth } from '../auth/session.ts';
-import { studentHome } from '../attempts/home.ts';
+import { studentAssignment, studentHome } from '../attempts/home.ts';
+import { loadProblem } from '../attempts/problem.ts';
 import { addLine, createAttemptService } from '../attempts/service.ts';
 import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
@@ -76,8 +79,13 @@ function ifMatchOf(request: FastifyRequest): number | undefined {
   return version;
 }
 
-function parseBody<T>(contract: ContractValidator, path: string, request: FastifyRequest): T {
-  contract.validateRequest(path, 'post', request.body);
+function parseBody<T>(
+  contract: ContractValidator,
+  path: string,
+  request: FastifyRequest,
+  method: 'post' | 'put' | 'patch' = 'post',
+): T {
+  contract.validateRequest(path, method, request.body);
   return request.body as T;
 }
 
@@ -101,6 +109,26 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   const param = (request: FastifyRequest, name: string): string => (request.params as Record<string, string>)[name] ?? '';
   const attemptId = (request: FastifyRequest): string => uuidParam(param(request, 'attemptId'));
 
+  // 学生自己这次作答里一行未删除的第 3 层证明行；counted 是它计入的关键步骤，otherKeys 是其它行计入的。
+  async function ownStepLine(userId: string, attempt: string, lineId: string) {
+    const rows = (
+      await db.query<{ id: string; idx: number; statement: string; justification: string | null; cls: string | null; keys: string[] }>(
+        `select l.id, l.idx, l.statement, l.justification, l.cls, l.keys
+           from app.attempt_lines l join app.attempts a on a.id = l.attempt_id
+          where l.attempt_id = $1 and a.user_id = $2 and l.role = 'step' and l.deleted_at is null`,
+        [attempt, userId],
+      )
+    ).rows;
+    const line = rows.find((row) => row.id === lineId);
+    if (!line) throw new AppError('NOT_FOUND', 404, '找不到这一行');
+    const counted = (row: { cls: string | null; keys: string[] }): string[] => (row.cls === 'match' ? row.keys : []);
+    return {
+      ...line,
+      counted: counted(line),
+      otherKeys: [...new Set(rows.filter((row) => row.id !== lineId).flatMap(counted))],
+    };
+  }
+
   // 学生首页（06 §3.1）：只读聚合，不要求同意书（未签同意也能先看到作业列表）。
   app.get('/student/home', async (request) => {
     const auth = await requireAuth(db, request);
@@ -116,6 +144,11 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.get('/attempts/:attemptId', async (request) => {
     const auth = await requireAuth(db, request);
     return { state: await svc.get(auth.userId, attemptId(request)) };
+  });
+
+  app.get('/student/assignments/:assignmentId', async (request) => {
+    const auth = await requireAuth(db, request);
+    return studentAssignment(db, contract, auth.userId, uuidParam(param(request, 'assignmentId')));
   });
 
   // 预写微课（06 §4.4）：只读，已过闸门；小核验的答案不下发，由 /check 判定。
@@ -308,6 +341,108 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     return { state };
   });
 
+  // 切换到已解锁的层（06 §4.1）：已完成/已跳过的层或最前沿；其它层 409。
+  app.post('/attempts/:attemptId/layers/:layer/enter', writable, async (request) => {
+    const auth = await requireAuth(db, request);
+    const layer = layerParam(param(request, 'layer'));
+    const state = await svc.command({
+      userId: auth.userId,
+      attemptId: attemptId(request),
+      ifMatch: ifMatchOf(request),
+      build: () => ({ kind: 'layer.enter', layer }),
+    });
+    return { state };
+  });
+
+  // 改一行 / 删一行（05 §4.2 M15）：重新归类，matched 重算，但提示阶梯与 reveal 不减少。
+  app.patch('/attempts/:attemptId/lines/:lineId', writable, async (request) => {
+    const auth = await requireAuth(db, request);
+    const body = parseBody<LineSubmission>(contract, '/attempts/{attemptId}/lines/{lineId}', request, 'patch');
+    const id = attemptId(request);
+    await assertConfirmedInput(db, auth.userId, id, body.input, [body.statement]);
+    if (body.justificationInput) await assertConfirmedInput(db, auth.userId, id, body.justificationInput, [body.justification ?? '']);
+    const line = await ownStepLine(auth.userId, id, uuidParam(param(request, 'lineId')));
+    const justification = body.justification ?? '';
+    const statementChanged = body.statement !== line.statement;
+    const justChanged = justification !== (line.justification ?? '');
+    const field = statementChanged && justChanged ? 'both' : justChanged ? 'justification' : 'statement';
+    const state = await svc.command({
+      userId: auth.userId,
+      attemptId: id,
+      ifMatch: ifMatchOf(request),
+      build: () => ({
+        kind: 'line.edit',
+        lineId: line.id,
+        n: line.idx,
+        s: body.statement,
+        j: justification,
+        field,
+        provenance: body.input.provenance,
+        oldKeys: line.counted,
+        otherKeys: line.otherKeys,
+      }),
+      record: async (tx, row, result) => {
+        const ev = result.events.find((e) => e.type === 'line.edit');
+        if (!ev) return;
+        await tx.query(
+          `update app.attempt_lines
+              set statement = $3, justification = $4, statement_canon = $5, justification_canon = $6, provenance = $7,
+                  recog_id = $8, cls = $9, keys = $10, new_keys = $11, error_id = $12, edited_at = now()
+            where id = $1 and attempt_id = $2`,
+          [
+            line.id,
+            row.id,
+            body.statement,
+            body.justification ?? null,
+            canon(body.statement),
+            body.justification ? canon(body.justification) : null,
+            body.input.provenance,
+            body.input.recogId ?? null,
+            String(ev.payload.cls),
+            ev.payload.keys as string[],
+            ev.payload.newKeys as string[],
+            (ev.payload.errorId as string | undefined) ?? null,
+          ],
+        );
+      },
+    });
+    return { state };
+  });
+
+  app.delete('/attempts/:attemptId/lines/:lineId', writable, async (request) => {
+    const auth = await requireAuth(db, request);
+    const id = attemptId(request);
+    const line = await ownStepLine(auth.userId, id, uuidParam(param(request, 'lineId')));
+    const state = await svc.command({
+      userId: auth.userId,
+      attemptId: id,
+      ifMatch: ifMatchOf(request),
+      build: () => ({ kind: 'line.delete', lineId: line.id, oldKeys: line.counted, otherKeys: line.otherKeys }),
+      record: async (tx, row, result) => {
+        if (!result.events.some((e) => e.type === 'line.delete')) return;
+        await tx.query(`update app.attempt_lines set deleted_at = now() where id = $1 and attempt_id = $2`, [line.id, row.id]);
+      },
+    });
+    return { state };
+  });
+
+  // 草稿备份（前端以 IndexedDB 为主）：每个落点只留最新一份，不进事件，不影响作答状态。
+  app.put('/attempts/:attemptId/draft', { preHandler: [requireStudentConsent(db)] }, async (request, reply) => {
+    const auth = await requireAuth(db, request);
+    const body = parseBody<{ target: string; content: Record<string, unknown> }>(contract, '/attempts/{attemptId}/draft', request, 'put');
+    const raw = JSON.stringify(body.content);
+    if (body.target.length > 64 || raw.length > 64 * 1024) throw new AppError('VALIDATION_FAILED', 422, '草稿太大');
+    const saved = await db.query(
+      `insert into app.drafts (attempt_id, target, content)
+       select a.id, $3, $4::jsonb from app.attempts a where a.id = $1 and a.user_id = $2
+       on conflict (attempt_id, target) do update set content = excluded.content, updated_at = now()
+       returning 1`,
+      [attemptId(request), auth.userId, body.target, raw],
+    );
+    if (saved.rows.length === 0) throw new AppError('NOT_FOUND', 404, '找不到这次作答');
+    return reply.code(204).send();
+  });
+
   // 求助（06 §4.2）：按钮意图与自由提问共用一个入口，服务端判意图。
   app.post('/attempts/:attemptId/help', helpLimited, async (request) => {
     const auth = await requireAuth(db, request);
@@ -320,5 +455,11 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     const auth = await requireAuth(db, request);
     const body = parseBody<{ previewToken: string }>(contract, '/attempts/{attemptId}/hints/claim', request);
     return helpSvc.claim(auth.userId, attemptId(request), body.previewToken);
+  });
+
+  // 找老师（06 §4.2、U15）：额度用完，或卡住满 stuckMs 后可用。教师看板显示“求助”。
+  app.post('/attempts/:attemptId/flag-teacher', helpLimited, async (request) => {
+    const auth = await requireAuth(db, request);
+    return { state: await helpSvc.flagTeacher(auth.userId, attemptId(request)) };
   });
 };

@@ -2286,6 +2286,11 @@
           ],
           "description": "来自哪层"
         },
+        "to": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "去往的层号 1–6"
+        },
         "via": {
           "enum": [
             "advance",
@@ -3091,6 +3096,12 @@
           ],
           "description": "归类来源"
         },
+        "matchedBy": {
+          "enum": [
+            "model"
+          ],
+          "description": "模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）"
+        },
         "jevShadow": {
           "type": "object",
           "description": "Jev 影子判定"
@@ -3190,6 +3201,12 @@
             "rule+jev"
           ],
           "description": "归类来源"
+        },
+        "matchedBy": {
+          "enum": [
+            "model"
+          ],
+          "description": "模型兜底归类时为 model（规则判为 unknown 后由模型给出关键步骤 ID）"
         },
         "jevShadow": {
           "type": "object",
@@ -3551,6 +3568,7 @@
             "need_attempt",
             "dwell",
             "rapid_lock",
+            "rapid_soft",
             "budget",
             "layer",
             "test_mode",

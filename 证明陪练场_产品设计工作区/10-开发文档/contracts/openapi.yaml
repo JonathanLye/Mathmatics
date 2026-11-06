@@ -674,12 +674,15 @@ paths:
   /attempts/{attemptId}/flag-teacher:
     post:
       tags: [help]
-      summary: 标记求助老师（额度用完或卡住时）
+      summary: 标记求助老师（额度用完，或卡住满 stuckMs 后）
+      description: 写入 `app.help_flags`，教师看板显示求助；重复调用返回当前状态（幂等）。测验模式 403。
       operationId: flagTeacher
-      parameters: [{ $ref: '#/components/parameters/attemptId' }]
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
       responses:
         '401': { $ref: '#/components/responses/Error' }
-        '200': { $ref: '#/components/responses/State' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '200': { $ref: '#/components/responses/StateReplay' }
 
   # ------------------------------------------------------------------ events
   /events/batch:
@@ -1559,6 +1562,7 @@ components:
         level: { type: [string, 'null'], enum: [H0, H1, H2, H3, H4, null] }
         cost: { type: [number, 'null'] }
         lessonConceptId: { type: [string, 'null'], description: 有值时显示"看分步讲解"入口 }
+        aiGenerated: { type: boolean, description: '模型生成的回答（界面显示“AI 生成 · 仅作学习提示”，响应头 X-AIGC: 1；13 §5）' }
         at: { type: string, format: date-time }
     BudgetView:
       type: object
@@ -1582,6 +1586,7 @@ components:
         exhausted: { type: boolean }
         flagged: { type: boolean }
         stuckOffer: { type: boolean, description: 连续卡住，界面可温和询问是否需要提示 }
+        canFlag: { type: boolean, description: '现在可以“找老师”（额度用完，或卡住满 stuckMs），且还没找过' }
     IntegrityView:
       type: object
       required: [mode, locked]

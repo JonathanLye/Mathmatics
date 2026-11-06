@@ -867,6 +867,38 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   })
 }
 
+/** POST /attempts/{attemptId}/flag-teacher：找老师（额度用完，或卡住满一段时间后可用；重复调用幂等）。 */
+export async function flagTeacher(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    next.stateVersion += 1
+    next.help = { ...next.help, flagged: true, canFlag: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/flag-teacher`, undefined, {
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** POST /attempts/{attemptId}/layers/{layer}/enter：回到已完成的层（只能去已解锁的层）。 */
+export async function enterLayer(state: AttemptState, layer: LayerId, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    if (next.layers.find((l) => l.layer === layer)?.status === 'locked') return next
+    next.stateVersion += 1
+    next.currentLayer = layer
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/layers/${layer}/enter`, undefined, {
+    ifMatch: state.stateVersion,
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
 /** POST /attempts/{attemptId}/park：先搁置本题。 */
 export async function parkAttempt(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {

@@ -46,6 +46,8 @@ export interface EngineEvent {
   payload: Record<string, unknown>;
 }
 
+export type Provenance = 'ink' | 'keyboard' | 'photo' | 'mixed' | 'paste';
+
 export type Rejection = 'wrong_layer' | 'invalid' | 'not_allowed' | 'unknown_item';
 
 export type Command =
@@ -54,7 +56,23 @@ export type Command =
   | { kind: 'card.answer'; choice: number }
   | { kind: 'frame.template' }
   | { kind: 'frame.submit'; lineId: string; text: string }
-  | { kind: 'line.submit'; lineId: string; s: string; j: string; provenance: 'ink' | 'keyboard' | 'photo' | 'mixed' | 'paste' }
+  // modelKeys：规则判不出（unknown）时，服务端模型兜底归类得到的关键步骤 ID（已过置信度阈值）。引擎只认题目包里存在的 ID。
+  | { kind: 'line.submit'; lineId: string; s: string; j: string; provenance: Provenance; modelKeys?: readonly string[] }
+  // 改行：oldKeys 是这行原来计入的关键步骤，otherKeys 是其它未删除行计入的关键步骤（服务端从 app.attempt_lines 读出）。
+  | {
+      kind: 'line.edit';
+      lineId: string;
+      n: number;
+      s: string;
+      j: string;
+      field: 'statement' | 'justification' | 'both';
+      provenance: Provenance;
+      oldKeys: readonly string[];
+      otherKeys: readonly string[];
+      modelKeys?: readonly string[];
+    }
+  | { kind: 'line.delete'; lineId: string; oldKeys: readonly string[]; otherKeys: readonly string[] }
+  | { kind: 'layer.enter'; layer: number }
   | { kind: 'hint.request' }
   // 教师补发一次 H4（额度耗尽的唯一出口，05 §4）。key 缺省取下一个未完成的关键步骤。
   | { kind: 'teacher.grant_h4'; key?: string }
@@ -108,6 +126,9 @@ export const ENGINE_EVENT_TYPES: ReadonlySet<string> = new Set([
   'frame.template',
   'frame.submit',
   'line.submit',
+  'line.edit',
+  'line.delete',
+  'layer.enter',
   'selfcheck.assign',
   'selfcheck.submit',
   'finish.try',
@@ -155,6 +176,26 @@ export function apply(state: AttemptState, event: EngineEvent): AttemptState {
         hint: { ...state.hint, matched, submitsSinceHint: state.hint.submitsSinceHint + 1 },
       };
     }
+    case 'line.edit':
+    case 'line.delete': {
+      // matched = 所有未删除行命中的并集；reveal / keyCost / hintLv 永不减少（M15）。
+      const lost = new Set((p.lostKeys as string[] | undefined) ?? []);
+      const added = event.type === 'line.edit' ? ((p.newKeys as string[] | undefined) ?? []) : [];
+      const matched = new Set([...state.hint.matched].filter((k) => !lost.has(k)));
+      for (const k of added) matched.add(k);
+      const keyLine = Object.fromEntries(Object.entries(state.keyLine).filter(([k]) => !lost.has(k)));
+      for (const k of added) keyLine[k] ??= Number(p.n ?? state.lines);
+      const progressed = added.length > 0;
+      return {
+        ...state,
+        keyLine,
+        noProgress: progressed ? 0 : state.noProgress,
+        lastProgressAt: progressed ? event.at : state.lastProgressAt,
+        hint: { ...state.hint, matched },
+      };
+    }
+    case 'layer.enter':
+      return { ...state, layer: Number(p.to) };
     case 'selfcheck.assign':
       return { ...state, selfcheck: { items: (p.items as { id: string }[]).map((x) => x.id), passed: {} } };
     case 'selfcheck.submit':
@@ -198,8 +239,9 @@ export function apply(state: AttemptState, event: EngineEvent): AttemptState {
       };
     }
     case 'hint.deny':
-      // 布局类拒绝（layer）与锁内拒绝（rapid_lock，blocked）在 v3 里没有进入计时，不记入快速窗口。
-      if (p.reason === 'layer' || p.reason === 'rapid_lock') return state;
+      // 布局类拒绝（layer）与锁内拒绝（rapid_lock，blocked）在 v3 里没有进入计时，不记入快速窗口；
+      // 温和提示（rapid_soft）同样不改状态。
+      if (p.reason === 'layer' || p.reason === 'rapid_lock' || p.reason === 'rapid_soft') return state;
       return { ...state, hint: pushHintTime(state, event.at) };
     case 'hint.rapid_lock':
       return {
@@ -319,35 +361,60 @@ function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState,
       if (st.layer !== 3) return reject('wrong_layer');
       if (cmd.s.trim().length < 2) return reject('invalid');
       const hasJust = cmd.j.trim() !== '';
-      const r = classifyLine(secret, `${cmd.s}　${cmd.j}`);
       const n = st.lines + 1;
-      let cls: string;
-      let keys: string[] = [];
-      let newKeys: string[] = [];
-      const payload: Record<string, unknown> = { lineId: cmd.lineId, n, provenance: cmd.provenance, path: 'rule', hasJust };
-      if (r.type === 'err') {
-        cls = 'error';
-        payload.errorId = r.errorId;
-      } else if (r.type === 'match') {
-        keys = r.keys;
-        // 用过提示才写出的步骤，没有依据（少于 6 个字）就不计入：标为示范行，等学生补依据。
-        const fromDemo = keys.some((k) => st.viaHint.includes(k) && !st.hint.matched.has(k));
-        if (fromDemo && cmd.j.length < 6) {
-          cls = 'demo_needs_reason';
-        } else {
-          cls = 'match';
-          newKeys = keys.filter((k) => !st.hint.matched.has(k));
-        }
-      } else {
-        cls = 'unknown';
-      }
-      emit('line.submit', { ...payload, cls, keys, newKeys });
+      const c = classifySubmission(secret, st, cmd.s, cmd.j, cmd.modelKeys);
+      const payload: Record<string, unknown> = { lineId: cmd.lineId, n, provenance: cmd.provenance, path: c.matchedBy === 'model' ? 'llm' : 'rule', hasJust };
+      if (c.errorId !== undefined) payload.errorId = c.errorId;
+      if (c.matchedBy === 'model') payload.matchedBy = 'model';
+      emit('line.submit', { ...payload, cls: c.cls, keys: c.keys, newKeys: c.newKeys });
       const after = cur();
       const stuckMs = at - after.lastProgressAt;
       const stuckLimit = ctx.pkg.public.budget.stuckMs ?? 180000;
       if (after.noProgress >= 2 && stuckMs > stuckLimit) {
         emit('proactive.offer', { stuckMs, noProgress: after.noProgress });
       }
+      return;
+    }
+    case 'line.edit': {
+      if (st.layer !== 3) return reject('wrong_layer');
+      if (cmd.s.trim().length < 2) return reject('invalid');
+      const c = classifySubmission(secret, st, cmd.s, cmd.j, cmd.modelKeys, cmd.oldKeys);
+      // 失去的关键步骤：原来由这行计入、现在不再命中、其它未删除行也没有。
+      const keep = new Set([...cmd.otherKeys, ...(c.cls === 'match' ? c.keys : [])]);
+      const lostKeys = cmd.oldKeys.filter((k) => st.hint.matched.has(k) && !keep.has(k));
+      const payload: Record<string, unknown> = {
+        lineId: cmd.lineId,
+        n: cmd.n,
+        field: cmd.field,
+        provenance: cmd.provenance,
+        hasJust: cmd.j.trim() !== '',
+        cls: c.cls,
+        keys: c.keys,
+        newKeys: c.newKeys,
+        lostKeys,
+        path: c.matchedBy === 'model' ? 'llm' : 'rule',
+      };
+      if (c.errorId !== undefined) payload.errorId = c.errorId;
+      if (c.matchedBy === 'model') payload.matchedBy = 'model';
+      emit('line.edit', payload);
+      return;
+    }
+    case 'line.delete': {
+      if (st.layer !== 3) return reject('wrong_layer');
+      const keep = new Set(cmd.otherKeys);
+      const lostKeys = cmd.oldKeys.filter((k) => st.hint.matched.has(k) && !keep.has(k));
+      emit('line.delete', { lineId: cmd.lineId, lostKeys });
+      return;
+    }
+    case 'layer.enter': {
+      // 只能去已解锁的层：已完成/已跳过的层，或最前沿（第一个还没完成的启用层）。
+      const n = cmd.layer;
+      if (!Number.isInteger(n) || n < 1 || n > 6 || !enabledLayer(ctx, n)) return reject('not_allowed');
+      const frontier = [1, 2, 3, 4, 5, 6].find((x) => enabledLayer(ctx, x) && !st.status[x]) ?? 6;
+      const unlocked = st.status[n] === 'done' || st.status[n] === 'skip' || n === frontier;
+      if (!unlocked || n > frontier) return reject('not_allowed');
+      if (n === st.layer) return;
+      emit('layer.enter', { from: `L${st.layer}`, to: n, via: 'nav' });
       return;
     }
     case 'hint.request':
@@ -412,14 +479,44 @@ function decide(ctx: Context, cmd: Command, at: number, cur: () => AttemptState,
       return;
     }
     case 'flag.teacher':
-      if (!st.hint.exhausted || st.flagged) return reject('not_allowed');
+      // 额度用完，或卡住满 stuckMs，都可以找老师（U15）。
+      if (st.flagged || !(st.hint.exhausted || isStuck(ctx, st, at))) return reject('not_allowed');
       emit('help.flag_teacher', { flagId: cmd.flagId, layer: `L${st.layer}` });
       return;
   }
 }
 
+// 一行提交（或改行）的归类：规则先行；规则判为 unknown 时才采用模型兜底给出的关键步骤 ID（只认题目包里存在的 ID）。
+// oldKeys：改行时这行原来计入的关键步骤，不算"新获得"。
+function classifySubmission(
+  secret: Secret,
+  st: AttemptState,
+  s: string,
+  j: string,
+  modelKeys: readonly string[] | undefined,
+  oldKeys: readonly string[] = [],
+): { cls: string; keys: string[]; newKeys: string[]; errorId?: string; matchedBy: 'rule' | 'model' } {
+  const r = classifyLine(secret, `${s}　${j}`);
+  let keys: string[] = [];
+  let matchedBy: 'rule' | 'model' = 'rule';
+  if (r.type === 'err') return { cls: 'error', keys, newKeys: [], errorId: r.errorId, matchedBy };
+  if (r.type === 'match') keys = r.keys;
+  else {
+    const known = new Set(secret.keys.map((k) => k.id));
+    keys = [...new Set(modelKeys ?? [])].filter((k) => known.has(k));
+    if (keys.length === 0) return { cls: 'unknown', keys, newKeys: [], matchedBy };
+    matchedBy = 'model';
+  }
+  // 用过提示才写出的步骤，没有依据（少于 6 个字）就不计入：标为示范行，等学生补依据。
+  const fromDemo = keys.some((k) => st.viaHint.includes(k) && !st.hint.matched.has(k) && !oldKeys.includes(k));
+  if (fromDemo && j.length < 6) return { cls: 'demo_needs_reason', keys, newKeys: [], matchedBy };
+  return { cls: 'match', keys, newKeys: keys.filter((k) => !st.hint.matched.has(k)), matchedBy };
+}
+
 // 第 n 层完成：下一层为启用的下一层；没有下一层则作答完成。
+// 回到已完成的层再提交时不重复推进（层的完成只发生一次）。
 function layerDone(ctx: Context, n: number, at: number, cur: () => AttemptState, emit: Emit): void {
+  if (cur().status[n] === 'done' || cur().status[n] === 'skip') return;
   const next = nextEnabled(ctx, n);
   emit('layer.done', { layer: `L${n}`, next });
   if (next === null) completeAttempt(ctx, at, cur, emit);
@@ -495,8 +592,11 @@ function requestHint(ctx: Context, at: number, st: AttemptState, emit: Emit): vo
     emit('hint.deny', { reason: 'layer' });
     return;
   }
-  const { decision } = selectHint(ctx.pkg.secret, ctx.pkg.public.budget, st.hint, at);
+  const { decision } = selectHint(ctx.pkg.secret, ctx.pkg.public.budget, st.hint, at, { stuck: isStuck(ctx, st, at) });
   switch (decision.type) {
+    case 'rapid_soft':
+      emit('hint.deny', { reason: 'rapid_soft' });
+      return;
     case 'blocked':
       emit('hint.deny', { reason: 'rapid_lock', waitSec: decision.waitSec });
       return;
@@ -535,6 +635,11 @@ function requestHint(ctx: Context, at: number, st: AttemptState, emit: Emit): vo
   }
 }
 
+// 卡住：距上次推进（写出新的关键步骤）已满 stuckMs。时间由调用方传入，保持确定性。
+export function isStuck(ctx: Context, st: AttemptState, now: number): boolean {
+  return now - st.lastProgressAt >= (ctx.pkg.public.budget.stuckMs ?? 180000);
+}
+
 // 只读的提示预览（GET 用）：读状态与时间，不计入快速窗口，不改状态。
 export interface HelpPreview {
   hintAvailable: boolean;
@@ -546,6 +651,10 @@ export interface HelpPreview {
   exhausted: boolean;
   flagged: boolean;
   stuckOffer: boolean;
+  // 现在可以找老师（额度用完，或卡住满 stuckMs），且还没找过。
+  canFlag: boolean;
+  // 再请求一次就会触发"请求太快"的温和提示（服务端不下发提示，只回一句话）。
+  tooFast: boolean;
 }
 
 export function helpPreview(ctx: Context, state: AttemptState, now: number): HelpPreview {
@@ -567,11 +676,15 @@ export function helpPreview(ctx: Context, state: AttemptState, now: number): Hel
     nextLevel: hint ? hint.level : null,
     nextCost: hint ? Math.max(0, hint.cost - (state.hint.keyCost[key?.id ?? ''] ?? 0)) : null,
     waitSec,
-    needAttempt: hint !== null && hint.cost > 0 && state.hint.submitsSinceHint < 1,
+    needAttempt: hint !== null && hint.cost > 0 && state.hint.submitsSinceHint < 1 && !isStuck(ctx, state, now),
     rapidLockUntil: locked ? state.hint.blockedUntil : null,
     exhausted: state.hint.exhausted,
     flagged: state.flagged,
     stuckOffer: state.noProgress >= 2 && now - state.lastProgressAt > stuckMs,
+    tooFast:
+      locked === false &&
+      state.hint.hintTimes.filter((t) => now - t < (policy.rapidWindowSec ?? 30) * 1000).length + 1 >= (policy.rapidCount ?? 3),
+    canFlag: !state.flagged && state.layer === 3 && (state.hint.exhausted || isStuck(ctx, state, now)),
   };
 }
 

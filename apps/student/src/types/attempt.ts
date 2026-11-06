@@ -66,6 +66,8 @@ export interface Note {
   level?: HintLevel
   cost?: number | null
   lessonConceptId?: string | null
+  /** 模型生成的回答：界面显示 AI 生成标签（13 §5）。 */
+  aiGenerated?: boolean
   at: string
 }
 
@@ -191,6 +193,8 @@ export interface HelpState {
   exhausted: boolean
   flagged: boolean
   stuckOffer?: boolean
+  /** 现在可以找老师（额度用完，或卡住满 stuckMs），且还没找过。 */
+  canFlag?: boolean
 }
 
 export interface IntegrityView {

@@ -96,7 +96,7 @@ function hintSession(onAsk?: (before: HelpPreview, ev: EngineEvent) => void) {
   ask(BASE + 120 * SEC); // H2（收费 0.5）
   submit(BASE + 122 * SEC);
   ask(BASE + 125 * SEC); // 距上次给提示 5 秒：dwell
-  ask(BASE + 126 * SEC); // 30 秒内第三次请求：rapid_lock
+  ask(BASE + 126 * SEC); // 30 秒内第三次请求：rapid_soft（温和提示，不加锁）
   return { initial, events, state };
 }
 
@@ -200,11 +200,10 @@ describe('作答接口需要的引擎能力', () => {
         expect(before.waitSec, '预览的等待秒数').toBe(ev.payload.waitSec);
       }
     });
-    expect(seen).toEqual(['hint.deliver', 'hint.deliver', 'deny:need_attempt', 'hint.deliver', 'deny:dwell', 'hint.rapid_lock']);
+    expect(seen).toEqual(['hint.deliver', 'hint.deliver', 'deny:need_attempt', 'hint.deliver', 'deny:dwell', 'deny:rapid_soft']);
 
-    // 连点锁定后，预览给出解锁时间（来自 hint.rapid_lock 的 until）。
-    const until = Date.parse(events[events.length - 1].payload.until as string);
-    expect(helpPreview(ctx, state, BASE + 127 * SEC).rapidLockUntil).toBe(until);
-    expect(helpPreview(ctx, state, BASE + 127 * SEC).waitSec).toBe(59);
+    // 温和提示不加锁：预览没有解锁时间；停留门槛照常。
+    expect(events[events.length - 1].payload).toEqual({ reason: 'rapid_soft' });
+    expect(helpPreview(ctx, state, BASE + 127 * SEC).rapidLockUntil).toBeNull();
   });
 });
