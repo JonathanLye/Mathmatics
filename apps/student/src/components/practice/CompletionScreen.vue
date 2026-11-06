@@ -1,102 +1,147 @@
 <script setup lang="ts">
-/** 完成页：主作答的完成卡，或迁移题子作答的完成卡（给出回到本题 / 加入证明本的出口，01 §L5）。 */
+/**
+ * 完成页：全屏庆祝（撒花、音效、经验累加、连胜、关键步骤一排、新徽章）。主作答和换题的子作答共用。
+ * 测验模式安静：没有撒花、音效和奖励数字，只说写完了。诚实说明一直在：系统没有校验逻辑顺序。
+ */
+import { computed } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import PgButton from '@/components/ui/PgButton.vue'
+import PgCelebration from '@/components/ui/PgCelebration.vue'
 import PgFold from '@/components/ui/PgFold.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
-import PgMascot from '@/components/ui/PgMascot.vue'
+import PgStatChip from '@/components/ui/PgStatChip.vue'
 import { COPY, independenceCopy } from '@/copy'
-import type { AttemptState } from '@/types/attempt'
+import { useCountUp } from '@/motion/useCountUp'
+import type { AttemptState, RewardsView } from '@/types/attempt'
 
-defineProps<{ state: AttemptState; child?: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    state: AttemptState
+    child?: boolean
+    rewards?: RewardsView | null
+    /** 从哪儿进来的：错题本、证明本重做时，主按钮回到那里。 */
+    origin?: 'mistakes' | 'redo' | null
+    busy?: boolean
+  }>(),
+  { child: false, rewards: null, origin: null, busy: false },
+)
 defineEmits<{
   (e: 'back-to-parent'): void
   (e: 'proofbook'): void
   (e: 'make-transfer'): void
+  (e: 'next'): void
+  (e: 'review'): void
   (e: 'home'): void
 }>()
+
+const testMode = computed(() => props.state.mode === 'test')
+const xp = computed(() => (testMode.value ? 0 : (props.rewards?.xp ?? 0)))
+const displayXp = useCountUp(() => xp.value)
+const streak = computed(() => (testMode.value ? null : (props.rewards?.streak ?? null)))
+const badges = computed(() => (testMode.value ? [] : (props.rewards?.badges ?? [])))
+const independence = computed(() => independenceCopy(props.state.budget.keysOwn, props.state.budget.keysTotal))
+/** 一排步骤：前面的靠自己，后面的看过提示。 */
+const stepChips = computed(() => {
+  const { keysOwn, keysTotal } = props.state.budget
+  return Array.from({ length: Math.max(0, keysTotal) }, (_, i) => ({ n: i + 1, own: i < keysOwn }))
+})
+const theorems = computed(() => props.state.completion?.leanCard?.theorems ?? [])
+const nextLabel = computed(() => (props.origin === 'mistakes' ? '回错题本' : props.origin === 'redo' ? '回证明本' : '下一题'))
+/** 换题只有带迁移题的主作答才有；重做和测验没有。 */
+const canTransfer = computed(() => props.state.kind === 'main' && !testMode.value && !props.origin)
+const reviewAvailable = computed(() => props.state.completion?.reviewAvailable === true)
 </script>
 
 <template>
-  <view v-if="child" class="pg-practice__done pg-sheet" data-testid="transfer-complete-card">
-    <text class="pg-practice__donetitle" data-testid="transfer-complete-title">这道题也完成了</text>
-    <view class="pg-practice__donebody pg-small">
-      <MathText :text="state.problem.title" />：你把 $\varepsilon$-$N$ 的骨架用到了 $\varepsilon$-$\delta$ 上。
+  <PgCelebration v-if="child" open :quiet="testMode" title="这道题也完成了" expr="happy" :size="112">
+    <view class="pg-done" data-testid="transfer-complete-card">
+      <text class="pg-done__big" data-testid="transfer-complete-title">{{ independence }}</text>
+      <view class="pg-done__note"><MathText :text="state.problem.title" /></view>
+      <text class="pg-done__note">{{ COPY.honestNote }}</text>
     </view>
-    <text class="pg-practice__donebody pg-small">{{ independenceCopy(state.budget.keysOwn, state.budget.keysTotal) }}。</text>
-    <PgFold :title="COPY.extensionFold" class="pg-practice__donebody">
-      <text>mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}</text>
-    </PgFold>
-    <view class="pg-practice__donerow">
-      <PgButton variant="secondary" data-testid="back-to-parent" @tap="$emit('back-to-parent')">回到本题完成页</PgButton>
-      <PgButton data-testid="transfer-add-to-notebook" @tap="$emit('proofbook')">加入证明本</PgButton>
-    </view>
-  </view>
+    <template #actions>
+      <PgButton block size="lg" data-testid="back-to-parent" @tap="$emit('back-to-parent')">回到本题</PgButton>
+      <PgButton block variant="secondary" data-testid="transfer-add-to-notebook" @tap="$emit('proofbook')">看我的证明</PgButton>
+    </template>
+  </PgCelebration>
 
-  <view v-else class="pg-practice__done pg-practice__done--win" data-testid="completion-card">
-    <view class="pg-win__paper" aria-hidden="true">
-      <view class="pg-win__sk" style="width: 82%" /><view class="pg-win__sk" style="width: 64%" /><view class="pg-win__sk" style="width: 73%" />
-      <view class="pg-win__stamp"><PgIcon name="qed" :size="44" color="currentColor" /></view>
-    </view>
-    <view class="pg-win__mascot"><PgMascot expr="cheer" :size="84" /></view>
-    <text class="pg-practice__donetitle" data-testid="completion-title">本题完成</text>
-    <text class="pg-win__big" data-testid="completion-independence">{{ independenceCopy(state.budget.keysOwn, state.budget.keysTotal) }}</text>
-    <view class="pg-win__keys" aria-hidden="true">
-      <view
-        v-for="k in state.budget.keysTotal"
-        :key="k"
-        class="pg-win__key"
-        :class="{ 'pg-win__key--hint': k > state.budget.keysOwn }"
-      >
-        <PgIcon :name="k > state.budget.keysOwn ? 'bulb' : 'check'" :size="26" tone="ink" />
+  <PgCelebration v-else open :quiet="testMode" :title="testMode ? '写完了' : ''" :expr="testMode ? 'idle' : 'cheer'" :size="testMode ? 96 : 128">
+    <view class="pg-done" data-testid="completion-card">
+      <text class="pg-done__title pg-practice__donetitle" data-testid="completion-title">本题完成</text>
+
+      <view v-if="xp > 0 || streak" class="pg-done__stats">
+        <PgStatChip v-if="xp > 0" tone="bee" icon="star" :value="'+' + displayXp" label="经验" data-testid="completion-xp" />
+        <PgStatChip v-if="streak" tone="fox" icon="flame" :value="streak.current" label="天连胜" data-testid="completion-streak" />
       </view>
+
+      <template v-if="!testMode">
+        <text class="pg-done__big" data-testid="completion-independence">{{ independence }}</text>
+        <view class="pg-done__steps" data-testid="completion-steps" role="list" :aria-label="independence">
+          <view
+            v-for="step in stepChips"
+            :key="step.n"
+            class="pg-done__step"
+            :class="{ 'pg-done__step--hint': !step.own }"
+            :style="{ animationDelay: step.n * 80 + 'ms' }"
+            role="listitem"
+            :aria-label="'第 ' + step.n + ' 步' + (step.own ? '靠自己' : '看过提示')"
+          >
+            <PgIcon :name="step.own ? 'check' : 'bulb'" :size="24" color="currentColor" />
+          </view>
+        </view>
+      </template>
+
+      <view v-if="badges.length" class="pg-done__badges" data-testid="completion-badges">
+        <view v-for="badge in badges" :key="badge.id" class="pg-done__badge">
+          <PgIcon name="star" :size="24" color="currentColor" />
+          <view class="pg-done__badgetext">
+            <text class="pg-done__badgetitle">{{ badge.title }}</text>
+            <text class="pg-done__badgedesc">{{ badge.desc }}</text>
+          </view>
+        </view>
+      </view>
+
+      <text class="pg-done__note" data-testid="completion-honest">{{ COPY.honestNote }}</text>
+
+      <PgFold v-if="theorems.length" :title="COPY.extensionFold" class="pg-done__fold">
+        <text>mathlib4 对照（只列定理名）：{{ theorems.join('、') }}</text>
+      </PgFold>
     </view>
-    <text class="pg-practice__donebody pg-small">
-      自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；{{ COPY.hintBudget }}用了 {{ state.budget.revealUsed }} / {{ state.budget.revealMax }}。
-    </text>
-    <text v-if="state.completion?.leanCard?.steps?.length" class="pg-practice__donebody pg-small">
-      你写出的关键步骤：{{ state.completion?.leanCard?.steps?.map((s) => s.label).join('、') }}
-    </text>
-    <text class="pg-practice__donebody pg-small">{{ COPY.honestNote }}。</text>
-    <PgFold :title="COPY.extensionFold" class="pg-practice__donebody">
-      <text>mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}</text>
-    </PgFold>
-    <view class="pg-practice__donerow pg-practice__donerow--win">
-      <PgButton class="pg-win__btn" variant="secondary" block size="lg" data-testid="add-to-notebook" @tap="$emit('proofbook')">加入证明本</PgButton>
-      <PgButton class="pg-win__btn pg-win__btn--ghost" variant="ghost" block data-testid="make-transfer" @tap="$emit('make-transfer')">再换一道题试试</PgButton>
-      <PgButton class="pg-win__btn pg-win__btn--ghost" variant="ghost" block data-testid="back-home" @tap="$emit('home')">回首页</PgButton>
-    </view>
-  </view>
+
+    <template #actions>
+      <PgButton v-if="!testMode" block size="lg" data-testid="completion-next" :loading="busy" @tap="$emit('next')">{{ nextLabel }}</PgButton>
+      <PgButton v-if="canTransfer" block variant="secondary" data-testid="make-transfer" :disabled="busy" @tap="$emit('make-transfer')">换题试试</PgButton>
+      <PgButton v-if="reviewAvailable" block variant="secondary" data-testid="completion-review" :disabled="busy" @tap="$emit('review')">看讲评</PgButton>
+      <PgButton block variant="ghost" data-testid="add-to-notebook" :disabled="busy" @tap="$emit('proofbook')">看我的证明</PgButton>
+      <PgButton block variant="ghost" data-testid="back-home" :disabled="busy" @tap="$emit('home')">回首页</PgButton>
+    </template>
+  </PgCelebration>
 </template>
 
 <style scoped>
-.pg-practice__done { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-practice__donetitle { font-size: var(--fs-22); font-weight: var(--fw-black); }
-.pg-practice__donebody { color: var(--ink-2); font-weight: var(--fw-bold); }
-.pg-practice__donerow { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
-/* 完成页：整块主色 + ∎ 落章。文字用 on-accent，深浅主题都够对比度。 */
-.pg-practice__done--win {
-  position: relative;
-  margin: var(--sp-3) calc(-1 * var(--sp-3)) 0;
-  padding: 150px var(--sp-4) var(--sp-6);
+.pg-done { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); width: 100%; }
+.pg-done__title { color: var(--ink); font-size: var(--fs-28); font-weight: var(--fw-black); line-height: var(--lh-tight); }
+.pg-done__big { color: var(--accent-text); font-size: var(--fs-22); font-weight: var(--fw-black); line-height: var(--lh-tight); }
+.pg-done__stats { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
+.pg-done__steps { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
+.pg-done__step {
+  width: 48px;
+  height: 48px;
+  display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  background: var(--accent);
-  color: var(--on-accent);
-  border-radius: var(--radius-24);
-  margin-bottom: var(--sp-6);
-  text-align: center;
+  justify-content: center;
+  border-radius: var(--radius-12);
+  background: var(--ok-soft);
+  color: var(--ok-text);
+  box-shadow: 0 var(--lip) 0 var(--ok);
+  animation: pg-pop 380ms var(--ease-spring) both;
 }
-.pg-win__paper { position: absolute; left: 32px; right: 32px; top: 36px; height: 120px; padding: 20px 22px; border-radius: var(--radius-16); background: var(--sheet); box-shadow: 0 var(--lip) 0 var(--accent-lip); }
-.pg-win__sk { height: 10px; margin-bottom: var(--sp-3); border-radius: var(--radius-pill); background: var(--rule); }
-.pg-win__stamp { position: absolute; right: 14px; bottom: -34px; width: 80px; height: 80px; border-radius: var(--radius-24); background: var(--accent); color: var(--on-accent); border: 5px solid var(--sheet); box-shadow: 0 var(--lip) 0 var(--accent-lip); display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); animation: pg-stamp 700ms var(--ease-spring) both; }
-.pg-win__mascot { position: absolute; right: 18px; top: -34px; }
-.pg-practice__done--win .pg-practice__donetitle { margin-top: var(--sp-3); font-size: var(--fs-15); opacity: 0.95; }
-.pg-win__big { font-size: var(--fs-28); line-height: var(--lh-tight); font-weight: var(--fw-black); }
-.pg-win__keys { display: flex; gap: var(--sp-2); justify-content: center; margin: var(--sp-2) 0; }
-.pg-win__key { width: 44px; height: 44px; border-radius: var(--radius-12); background: var(--sheet); color: var(--ink); box-shadow: 0 var(--lip) 0 var(--accent-lip); display: flex; align-items: center; justify-content: center; animation: pg-pop 380ms var(--ease-spring) both; }
-.pg-win__key--hint { background: var(--bee); color: var(--on-bee); box-shadow: 0 var(--lip) 0 var(--bee-lip); }
-.pg-practice__done--win .pg-practice__donebody { color: var(--on-accent); opacity: 0.95; }
-.pg-practice__donerow--win { flex-direction: column; align-self: stretch; margin-top: var(--sp-3); gap: var(--sp-3); }
-.pg-win__btn--ghost.pg-button { color: var(--on-accent); }
+.pg-done__step--hint { background: var(--bee-soft); color: var(--bee-text); box-shadow: 0 var(--lip) 0 var(--bee); }
+.pg-done__badges { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
+.pg-done__badge { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: var(--bw) solid var(--bee); border-radius: var(--radius-16); background: var(--bee-soft); color: var(--bee-text); text-align: left; animation: pg-item-in var(--dur-slow) var(--ease-out) both; }
+.pg-done__badgetext { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pg-done__badgetitle { color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); }
+.pg-done__badgedesc { color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-bold); }
+.pg-done__note { color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-bold); line-height: 1.5; }
+.pg-done__fold { align-self: stretch; text-align: left; }
 </style>

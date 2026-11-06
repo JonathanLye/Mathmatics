@@ -3,9 +3,8 @@
  * 只搬运服务端结果，不判定门槛与预算。
  */
 import { computed, ref, watch, type ComputedRef } from 'vue'
-import { claimHint, requestHelp } from '@/api/client'
+import { claimHint, flagTeacher, requestHelp, sendNoteFeedback } from '@/api/client'
 import { filterDismissedNotes, mergeNotes, parseNote } from '@/components/layers/proofLines'
-import { softLandingLabel } from '@/components/hintPreviewCopy'
 import { useToast } from '@/components/ui/useToast'
 import type { HelpIntent, HintPreview, Note } from '@/types/attempt'
 import type { AttemptSession } from './useAttemptSession'
@@ -13,6 +12,8 @@ import type { AttemptSession } from './useAttemptSession'
 export function useHelp(
   session: Pick<AttemptSession, 'state' | 'error' | 'apply' | 'run'>,
   exam: { strictHelpOff: ComputedRef<boolean> },
+  /** 软着陆的出口由页面接：回微课、回首页。 */
+  exits: { openLesson: () => void; parkAndLeave: () => void } = { openLesson: () => undefined, parkAndLeave: () => undefined },
 ) {
   const { state, error, apply, run } = session
   const toast = useToast()
@@ -149,20 +150,42 @@ export function useHelp(
     }
     apply(next)
     hintPreview.value = null
-    const wait = typeof next.help.waitSec === 'number' && next.help.waitSec > 0 ? next.help.waitSec : 0
-    toast.show('已领取；下一级要等你再写一行' + (wait > 0 ? '并停留 ' + wait + ' 秒' : '') + '后才能继续')
   }
 
   function decline(): void {
     hintPreview.value = null
   }
 
-  /** 软着陆出路（01 §4.4；文案与抽屉/预览卡共用 hintPreviewCopy，页面只显示选择，不实现微课跳转）。 */
+  /** 软着陆出路（01 §4.4）：卡住时一定有路可走。 */
   function softLanding(action: string): void {
     helpOpen.value = false
     helpNote.value = null
     hintPreview.value = null
-    toast.show('已选「' + softLandingLabel(action) + '」，这个入口还在准备')
+    if (action === 'back_to_definition' || action === 'open_lesson') {
+      exits.openLesson()
+      return
+    }
+    if (action === 'park_and_next') {
+      exits.parkAndLeave()
+      return
+    }
+    if (action === 'flag_teacher') void askTeacher()
+  }
+
+  /** 找老师：老师会看到这一步卡住了。 */
+  async function askTeacher(): Promise<void> {
+    const next = await run(() => flagTeacher(state.value))
+    if (!next) {
+      toast.show('这次没发出去，稍后再试；也可以先做别的题。')
+      return
+    }
+    apply(next)
+    toast.show('告诉老师了，老师会看到你卡在这一步。')
+  }
+
+  /** AI 回答「有用 / 没用」：发不出去也不打扰学生。 */
+  function noteFeedback(noteId: string, useful: boolean): void {
+    void sendNoteFeedback(noteId, useful).catch(() => undefined)
   }
 
   /** #151：关闭一条批注（只影响本页展示，不回写服务端；刷新后以服务端 state 为准）。 */
@@ -206,6 +229,7 @@ export function useHelp(
     claim,
     decline,
     softLanding,
+    noteFeedback,
     dismissNote,
     reset,
   }

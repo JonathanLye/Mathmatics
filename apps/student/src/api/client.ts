@@ -838,6 +838,31 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   })
 }
 
+/** POST /student/notes/{noteId}/feedback：AI 回答「有用 / 没用」（204）。 */
+export async function sendNoteFeedback(noteId: string, useful: boolean): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await activeHttp.post(`/student/notes/${encodeURIComponent(noteId)}/feedback`, { useful }, { idempotencyKey: newUuid() })
+}
+
+/** POST /attempts/{attemptId}/flag-teacher：找老师（测验模式 403）。 */
+export async function flagTeacher(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    next.stateVersion += 1
+    next.help = { ...next.help, flagged: true, canFlag: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/flag-teacher`, undefined, {
+    ifMatch: state.stateVersion,
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
 /** POST /attempts/{attemptId}/finish：第 3 层「写完了」。 */
 export async function finishSteps(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {

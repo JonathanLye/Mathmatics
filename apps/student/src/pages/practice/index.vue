@@ -18,6 +18,8 @@ import TopBar from '@/components/TopBar.vue'
 import WechatHint from '@/components/WechatHint.vue'
 import CompletionScreen from '@/components/practice/CompletionScreen.vue'
 import Composer from '@/components/practice/Composer.vue'
+import DraftNotice from '@/components/practice/DraftNotice.vue'
+import ExamBar from '@/components/practice/ExamBar.vue'
 import ExamOverlays from '@/components/practice/ExamOverlays.vue'
 import LayerDefine from '@/components/practice/LayerDefine.vue'
 import LayerFrame from '@/components/practice/LayerFrame.vue'
@@ -29,9 +31,8 @@ import LayerTransfer from '@/components/practice/LayerTransfer.vue'
 import PracticeFeedback from '@/components/practice/PracticeFeedback.vue'
 import PracticeLoadState from '@/components/practice/PracticeLoadState.vue'
 import PracticeMargin from '@/components/practice/PracticeMargin.vue'
+import PracticeThinking from '@/components/practice/PracticeThinking.vue'
 import StemPeek from '@/components/practice/StemPeek.vue'
-import PgButton from '@/components/ui/PgButton.vue'
-import { useToast } from '@/components/ui/useToast'
 import { mockEnabled, useAttemptSession } from '@/composables/practice/useAttemptSession'
 import { useComposer } from '@/composables/practice/useComposer'
 import { useDrafts } from '@/composables/practice/useDrafts'
@@ -39,38 +40,39 @@ import { useExamMode } from '@/composables/practice/useExamMode'
 import { useFeedback } from '@/composables/practice/useFeedback'
 import { useHelp } from '@/composables/practice/useHelp'
 import { useKeyLines } from '@/composables/practice/useKeyLines'
+import { useLessonPanel } from '@/composables/practice/useLessonPanel'
+import { usePracticeNav } from '@/composables/practice/usePracticeNav'
 import { useViewport } from '@/composables/useViewport'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
-import { checkLesson } from '@/api/client'
 import { initIntegrity } from '@/integrity/sdk'
 import { setFeedbackTestMode } from '@/motion/useFeedbackPrefs'
 import type { MockKey } from '@/mocks/attemptStates'
-import type { LessonView } from '@/types/attempt'
 
-const toast = useToast()
 const { mode } = useViewport()
 
 const drafts = useDrafts()
 const session = useAttemptSession(drafts)
-const { state, mockKey, busy, error, realMode, phase, loadError, currentLayer, lines, isCompleted, nextLineNo, isTransferAttempt, layerTitle, layerTask } = session
+const { state, mockKey, busy, realMode, phase, loadError, currentLayer, lines, isCompleted, nextLineNo, isTransferAttempt, layerTitle, layerTask } = session
 /** 写之前题面完整展开；写起来以后收成一行（桌面位置够，一直展开）。 */
 const stemDefaultOpen = computed(() => mode.value === 'desktop' || lines.value.length === 0)
 const exam = useExamMode(session)
 const examView = reactive(exam)
 const { strictExam, strictExamActive, examIsLocked, countdownText, timeUp, fullscreenNote, strictHelpOff } = exam
-const help = useHelp(session, exam)
+const nav = usePracticeNav(session)
+const { origin, nextBusy } = nav
+const lesson = useLessonPanel(session)
+const { microOpen, microLesson } = lesson
+const help = useHelp(session, exam, { openLesson: () => void lesson.openLesson(), parkAndLeave: nav.backHome })
 const { helpOpen, hintPreview, helpNote, visibleNotes, asideNotes } = help
 const composer = useComposer(session, drafts)
 const composerView = reactive(composer)
 const loop = useFeedback(session)
-const { feedback, interstitial } = loop
+const { feedback, interstitial, completionRewards } = loop
 const { matchedLineIds } = useKeyLines(session)
 const { restoredDraft, l1Initial } = drafts
 
+/** 层列表只用来看进度：层的推进由服务端决定，点已完成或当前层只收起列表。 */
 const layersOpen = ref(false)
-/** 第 1 层微课（02 §4.9）：内容由服务端下发，这里只保存在内存里渲染。 */
-const microOpen = ref(false)
-const microLesson = ref<LessonView | null>(null)
 const offlineRetrying = ref(false)
 
 const modeClass = computed(() => 'pg-practice--' + mode.value)
@@ -113,6 +115,7 @@ onUnload(() => {
 })
 
 onLoad(async (q) => {
+  nav.setOrigin(q?.from)
   if (mockEnabled) exam.ensureExamMockHook()
   session.applyApiFlag(q)
   // #145 年龄门：登录后、同意/练习前必须先有年龄分档（null → 选择页；lt14 → 暂不开通）。
@@ -130,60 +133,16 @@ function onSwitchMock(k: MockKey) {
   drafts.reset()
   void drafts.restoreDrafts()
 }
-
-/** 层列表只用来看进度：层的推进由服务端决定，点已完成或当前层只收起列表。 */
-function closeLayers(): void {
-  layersOpen.value = false
-}
-
-/**
- * 第 1 层「看不懂」→ 取微课并打开分步微课（02 §4.9）；第 2 层「看通用骨架」→ 由服务端返回 templateShown=true 的 state。
- */
-async function handleLesson() {
-  if (currentLayer.value === 'L1') {
-    const lesson = await session.loadLesson()
-    if (!lesson) return
-    microLesson.value = lesson
-    microOpen.value = true
-    return
-  }
-  if (currentLayer.value === 'L2') {
-    await session.showFrameTemplate()
-    return
-  }
-  toast.show('这一层暂时没有讲解')
-}
-
-async function checkMicro(stepId: string, choice: number) {
-  const lesson = microLesson.value
-  if (!lesson) return null
-  return checkLesson(state.value, lesson.conceptId, stepId, choice)
-}
-
-/** 完成页「加入证明本」/ 首页「证明本」：打开证明本页。 */
-function goProofbook() {
-  uni.navigateTo({ url: '/pages/proofbook/index' })
-}
-
-function handleBack() {
-  // 直接打开链接时没有上一页，回到路径。
-  if (getCurrentPages().length > 1) uni.navigateBack()
-  else uni.reLaunch({ url: '/pages/home/index' })
-}
-
-function backHome() {
-  uni.redirectTo({ url: '/pages/home/index' })
-}
 </script>
 
 <template>
-  <PracticeLoadState v-if="phase !== 'ready'" :phase="phase" :message="loadError" @retry="session.retryLoad" @home="backHome" />
+  <PracticeLoadState v-if="phase !== 'ready'" :phase="phase" :message="loadError" @retry="session.retryLoad" @home="nav.backHome" />
   <view v-else class="pg-page pg-practice" :class="[modeClass, strictClass, { 'pg-practice--feedback': feedback }]">
     <TopBar
       :layers="state.layers"
       :completed="isCompleted"
       :help-disabled="busy || strictHelpOff"
-      @back="handleBack"
+      @back="nav.handleBack"
       @open-layers="layersOpen = true"
       @help="help.openHelp"
     />
@@ -194,29 +153,15 @@ function backHome() {
     <WechatHint />
 
     <!-- #46 测验模式：倒计时以服务端 state.serverTime/截止时间为准；到点不在本地结束 -->
-    <view v-if="strictExamActive && !examIsLocked" class="pg-exambar" data-testid="exam-bar">
-      <text class="pg-exambar__label">限时测验 · 只读计时</text>
-      <text class="pg-exambar__time pg-mono" data-testid="exam-countdown">
-        {{ timeUp ? '已到时间，等待服务端提交…' : countdownText }}
-      </text>
-      <text v-if="fullscreenNote" class="pg-exambar__note pg-small" data-testid="exam-fullscreen-note">{{ fullscreenNote }}</text>
-    </view>
-    <view v-if="error" class="pg-practice__error pg-small">
-      <text class="pg-practice__errortext">{{ error }}</text>
-      <PgButton variant="ghost" size="sm" @tap="backHome">回首页</PgButton>
-    </view>
+    <ExamBar v-if="strictExamActive && !examIsLocked" :time-up="timeUp" :countdown="countdownText" :note="fullscreenNote" />
 
     <view class="pg-practice__shell">
       <view class="pg-practice__main">
-        <StemPeek v-if="!isCompleted" :problem="state.problem" :default-open="stemDefaultOpen" />
+        <StemPeek v-if="!isCompleted" :problem="state.problem" :default-open="stemDefaultOpen" :redo="state.kind === 'redo'" />
         <BudgetBar v-if="!isCompleted" :budget="state.budget" :show-keys="currentLayer !== 'L1' && currentLayer !== 'L2'" />
 
         <view class="pg-practice__content">
-          <!-- #27 草稿恢复提示：重新打开时告诉学生内容来自本机未提交草稿 -->
-          <view v-if="restoredDraft" class="pg-draftnotice" data-testid="draft-restored" role="status">
-            <text class="pg-draftnotice__text pg-small">已恢复上次未提交的草稿</text>
-            <PgButton variant="ghost" size="sm" data-testid="draft-restored-dismiss" @tap="restoredDraft = null">知道了</PgButton>
-          </view>
+          <DraftNotice v-if="restoredDraft" @dismiss="restoredDraft = null" />
 
           <view v-if="!isCompleted" class="pg-practice__head">
             <text class="pg-practice__layertitle">{{ layerTitle }}</text>
@@ -231,10 +176,15 @@ function backHome() {
             v-if="isCompleted"
             :state="state"
             :child="isTransferAttempt"
+            :rewards="completionRewards"
+            :origin="origin"
+            :busy="busy || nextBusy"
             @back-to-parent="session.backToParent"
-            @proofbook="goProofbook"
+            @proofbook="nav.goProofbook"
             @make-transfer="session.beginTransfer"
-            @home="backHome"
+            @next="nav.goNext"
+            @review="nav.goReview"
+            @home="nav.backHome"
           />
 
           <LayerTransfer
@@ -259,7 +209,7 @@ function backHome() {
             :initial-text="l1Initial"
             @submit="session.submitText"
             @update:text="drafts.saveDefinition"
-            @lesson="handleLesson"
+            @lesson="lesson.handleLesson"
             @skip="session.skipCurrentLayer"
           />
 
@@ -268,7 +218,7 @@ function backHome() {
             :view="state.frame"
             :busy="busy"
             @submit="session.submitText"
-            @lesson="handleLesson"
+            @lesson="lesson.handleLesson"
             @skip="session.skipCurrentLayer"
           />
 
@@ -323,7 +273,7 @@ function backHome() {
       />
     </view>
 
-    <LayerSheet :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="closeLayers" />
+    <LayerSheet :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="layersOpen = false" />
 
     <HelpDrawer
       :open="helpOpen"
@@ -337,6 +287,7 @@ function backHome() {
       @claim="help.claim"
       @decline="help.decline"
       @soft-landing="help.softLanding"
+      @note-feedback="help.noteFeedback"
     />
 
     <HintPreviewCard
@@ -352,10 +303,11 @@ function backHome() {
 
     <Composer :composer="composerView" :line-no="nextLineNo" :lines="lines" :busy="busy" :photo-disabled="strictExam" />
 
+    <PracticeThinking :busy="busy" />
     <PracticeFeedback :view="feedback" @continue="loop.dismissFeedback" />
     <LayerInterstitial :view="interstitial" :layers="state.layers" @continue="loop.dismissInterstitial" />
 
-    <MicroCourse :open="microOpen" :lesson="microLesson" :check="checkMicro" @close="microOpen = false" />
+    <MicroCourse :open="microOpen" :lesson="microLesson" :check="lesson.checkMicro" @close="microOpen = false" />
 
     <!-- 真实模式和生产构建都不显示演示状态切换（#24） -->
     <MockSwitcher v-if="mockEnabled && !realMode" :model-value="mockKey" @update:model-value="onSwitchMock" />
@@ -374,19 +326,6 @@ function backHome() {
   user-select: none;
   -webkit-user-select: none;
 }
-.pg-exambar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-4);
-  background: var(--accent-soft);
-  border-bottom: 2px solid var(--accent);
-  color: var(--accent-text);
-}
-.pg-exambar__label { font-size: var(--fs-13); font-weight: var(--fw-bold); }
-.pg-exambar__time { margin-left: auto; font-size: var(--fs-16); }
-.pg-exambar__note { flex-basis: 100%; color: var(--bee-text); }
 .pg-practice__shell {
   display: block;
 }
@@ -423,33 +362,9 @@ function backHome() {
 .pg-practice--feedback .pg-practice__main {
   padding-bottom: calc(260px + var(--safe-bottom));
 }
-.pg-practice__error {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin: var(--sp-2) 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-12);
-  background: var(--sea-soft);
-  color: var(--ink);
-}
-.pg-practice__errortext { flex: 1; }
 .pg-practice__content {
   padding: 0;
 }
-.pg-draftnotice {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin: var(--sp-2) 0;
-  padding: var(--sp-2) var(--sp-3);
-  border: 2px solid var(--accent);
-  border-radius: var(--radius-16);
-  background: var(--accent-soft);
-  color: var(--ink);
-  font-weight: var(--fw-bold);
-}
-.pg-draftnotice__text { flex: 1; min-width: 0; }
 .pg-practice__head {
   display: flex;
   flex-direction: column;

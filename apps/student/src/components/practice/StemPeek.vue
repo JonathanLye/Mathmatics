@@ -8,7 +8,7 @@ import MathText from '@ui-math/MathText.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
 import type { ProblemView } from '@/types/attempt'
 
-const props = defineProps<{ problem: ProblemView; defaultOpen: boolean }>()
+const props = defineProps<{ problem: ProblemView; defaultOpen: boolean; redo?: boolean }>()
 const open = ref(props.defaultOpen)
 let touched = false
 
@@ -44,6 +44,7 @@ function toggle(): void {
       @tap="toggle"
       @keydown.enter.prevent="toggle"
     >
+      <text v-if="props.redo" class="pg-problem__badge" data-testid="practice-redo-badge">重做</text>
       <view class="pg-problem__title"><MathText :text="props.problem.title" /></view>
       <text class="pg-problem__toggle">{{ open ? '收起' : '看题' }}</text>
       <PgIcon class="pg-problem__chevron" name="chevron" :size="16" color="currentColor" />
@@ -68,6 +69,7 @@ function toggle(): void {
 }
 .pg-problem__peek { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--touch); padding: 0 var(--sp-3); cursor: pointer; }
 .pg-problem__title { flex: 1; min-width: 0; color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-problem__badge { flex: none; padding: 0 var(--sp-2); border-radius: var(--radius-pill); background: var(--sea-soft); color: var(--sea-text); font-size: var(--fs-12); font-weight: var(--fw-black); line-height: 1.8; }
 .pg-problem__toggle { flex: none; color: var(--sea-text); font-size: var(--fs-13); font-weight: var(--fw-black); }
 .pg-problem__chevron { flex: none; color: var(--sea-text); transform: rotate(90deg); transition: transform var(--dur-base) var(--ease-out); }
 .pg-problem--open .pg-problem__chevron { transform: rotate(-90deg); }

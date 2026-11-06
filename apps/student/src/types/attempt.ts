@@ -66,6 +66,8 @@ export interface Note {
   level?: HintLevel
   cost?: number | null
   lessonConceptId?: string | null
+  /** 这条回答由 AI 生成：要带标识，可以点有用/没用。 */
+  aiGenerated?: boolean
   at: string
 }
 
@@ -195,6 +197,8 @@ export interface HelpState {
   exhausted: boolean
   flagged: boolean
   stuckOffer?: boolean
+  /** 现在能不能「找老师」（测验模式、已标记过时为 false）。 */
+  canFlag?: boolean
 }
 
 export interface IntegrityView {

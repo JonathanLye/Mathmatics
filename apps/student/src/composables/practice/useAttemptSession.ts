@@ -27,6 +27,7 @@ import {
 import { nextLineNoOf } from '@/components/layers/proofLines'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
+import { useToast } from '@/components/ui/useToast'
 import { layerName } from '@/copy'
 import type { AttemptState, InputProvenance, LessonView, LineDraft } from '@/types/attempt'
 import type { DraftsHandle } from './useDrafts'
@@ -120,6 +121,21 @@ export function useAttemptSession(drafts: DraftsHandle) {
     }
   }
 
+  const toast = useToast()
+  /** 服务端的中文文案直接用；英文或空的（断网、代理报错）换成一句人话。 */
+  function friendlyError(message: string | null): string {
+    return message && /[\u4e00-\u9fff]/.test(message) ? message : '网络有点不稳，你写的内容还在，再试一次吧。'
+  }
+  /** 层上的提交动作：失败时弹一条带「重试」的提示，同一份参数再来一次；页面不会空白。 */
+  function guarded<A extends unknown[]>(action: (...args: A) => Promise<void>): (...args: A) => Promise<void> {
+    const wrapped = async (...args: A): Promise<void> => {
+      await action(...args)
+      if (!error.value) return
+      toast.show(friendlyError(error.value), { tone: 'warn', action: { label: '重试', run: () => void wrapped(...args) } })
+    }
+    return wrapped
+  }
+
   function failLoad(message: string): void {
     loadError.value = message
     phase.value = 'error'
@@ -140,6 +156,7 @@ export function useAttemptSession(drafts: DraftsHandle) {
       transferParent.value = null
       apply(pending)
       markReady()
+      pinAttemptInUrl(pending.attemptId, q)
       return
     }
     if (needsServerState()) {
@@ -165,6 +182,13 @@ export function useAttemptSession(drafts: DraftsHandle) {
     if (k) setMock(k)
     else if (String(q?.exam ?? '') === '1' || examFlagFromHash()) setMock('exam-active')
     markReady()
+  }
+
+  /** 跨页交接来的作答，URL 里没有 id：写回去，刷新后还能回到这次作答，而不是错误屏。 */
+  function pinAttemptInUrl(attemptId: string, q: Record<string, unknown> | undefined): void {
+    if (typeof window === 'undefined' || !needsServerState() || q?.attemptId || !attemptId) return
+    const from = q?.from ? '&from=' + encodeURIComponent(String(q.from)) : ''
+    window.history.replaceState(window.history.state, '', '#/pages/practice/index?attemptId=' + encodeURIComponent(attemptId) + from)
   }
 
   /** 错误屏「重试」：用同一份 URL 参数再加载一次。 */
@@ -294,20 +318,20 @@ export function useAttemptSession(drafts: DraftsHandle) {
     layerTask,
     applyApiFlag,
     load,
-    submitText,
+    submitText: guarded(submitText),
     loadLesson,
-    showFrameTemplate,
-    skipCurrentLayer,
-    removeLine,
-    finishProof,
-    answerSelfcheckItem,
-    beginTransfer,
-    addChildLine,
-    editChildLine,
-    deleteChildLine,
-    finishChild,
+    showFrameTemplate: guarded(showFrameTemplate),
+    skipCurrentLayer: guarded(skipCurrentLayer),
+    removeLine: guarded(removeLine),
+    finishProof: guarded(finishProof),
+    answerSelfcheckItem: guarded(answerSelfcheckItem),
+    beginTransfer: guarded(beginTransfer),
+    addChildLine: guarded(addChildLine),
+    editChildLine: guarded(editChildLine),
+    deleteChildLine: guarded(deleteChildLine),
+    finishChild: guarded(finishChild),
     backToParent,
-    submitSummaryAnswers,
+    submitSummaryAnswers: guarded(submitSummaryAnswers),
   }
 }
 
