@@ -24,7 +24,7 @@ export async function refreshStaleMetrics(db: Db, limit = 200): Promise<number> 
     `select a.id
        from app.attempts a
        left join app.attempt_metrics m on m.attempt_id = a.id
-      where exists (select 1 from ev.events e where e.attempt_id = a.id and (m.computed_at is null or e.ts_server > m.computed_at))
+      where a.kind <> 'redo' and exists (select 1 from ev.events e where e.attempt_id = a.id and (m.computed_at is null or e.ts_server > m.computed_at))
       order by (select max(e.ts_server) from ev.events e where e.attempt_id = a.id) desc
       limit $1`,
     [limit],

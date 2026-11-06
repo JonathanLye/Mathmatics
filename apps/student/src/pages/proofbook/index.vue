@@ -21,10 +21,20 @@ const notebook = ref<NotebookView | null>(null)
 const loading = ref(true)
 const startingRedo = ref(false)
 
+const loadFailed = ref(false)
+
 onShow(async () => {
   loading.value = true
-  notebook.value = await fetchNotebook()
-  loading.value = false
+  loadFailed.value = false
+  try {
+    notebook.value = await fetchNotebook()
+  } catch {
+    // 加载失败不能让骨架屏永远转；错误态与重试按钮由证明本页重做（前端设计系统 lane）接手。
+    loadFailed.value = true
+    notebook.value = { cards: [] }
+  } finally {
+    loading.value = false
+  }
 })
 
 const cards = computed(() => notebook.value?.cards ?? [])

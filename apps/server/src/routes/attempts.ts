@@ -5,6 +5,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { requireStudentConsent } from '../auth/consent.ts';
 import { bySession, requireAuth } from '../auth/session.ts';
 import { studentHome } from '../attempts/home.ts';
+import { loadReview, studentMistakes, studentNotebook } from '../attempts/notebook.ts';
 import { addLine, createAttemptService } from '../attempts/service.ts';
 import type { ContractValidator } from '../contract.ts';
 import { AppError } from '../errors.ts';
@@ -105,6 +106,30 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   app.get('/student/home', async (request) => {
     const auth = await requireAuth(db, request);
     return studentHome(db, contract, auth.userId);
+  });
+
+  // 证明本 / 错题本（06 §3.1）：只读，本人已完成的作答；不要求同意书（和首页一致）。
+  app.get('/student/notebook', async (request) => {
+    const auth = await requireAuth(db, request);
+    return studentNotebook(db, contract, auth.userId);
+  });
+
+  app.get('/student/mistakes', async (request) => {
+    const auth = await requireAuth(db, request);
+    return studentMistakes(db, contract, auth.userId);
+  });
+
+  // 重做：在已完成的作答上新建 kind=redo 的子作答（强制练习模式）。已有未结束的重做则返回它。
+  app.post('/student/attempts/:attemptId/redo', writable, async (request) => {
+    const auth = await requireAuth(db, request);
+    const state = await svc.redo(auth.userId, attemptId(request));
+    return { state };
+  });
+
+  // 讲评：教师发布后，本人写完（或布置结束）才可读；参考证明读取记审计。
+  app.get('/attempts/:attemptId/review', async (request) => {
+    const auth = await requireAuth(db, request);
+    return loadReview(db, contract, auth.userId, attemptId(request));
   });
 
   app.post('/student/assignments/:assignmentId/attempt', writable, async (request) => {

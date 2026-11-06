@@ -83,6 +83,8 @@ export interface AttemptService {
   command(spec: StepSpec): Promise<Record<string, unknown>>;
   park(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
   transfer(userId: string, attemptId: string, ifMatch?: number): Promise<Record<string, unknown>>;
+  // 证明本/错题本的「重做」：父作答已完成才能建；强制练习模式；已有未结束的重做则返回它。
+  redo(userId: string, attemptId: string): Promise<Record<string, unknown>>;
   // 教师软着陆（05 §4、11 §5.2）：额度耗尽后补发一条 H4。授权由调用方在事务内做（authorize 抛错即回滚）。
   // 作答若处于锁定状态，同时解除锁定（与 unlockAttempt 一致）。写 hint.deliver{override} 与 attempt.unlock{by, grantH4}。
   grantH4(spec: GrantH4Spec): Promise<void>;
@@ -120,7 +122,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
   }
 
   async function snapshotOf(q: Queryable, row: AttemptRow, now = Date.now()): Promise<Snapshot> {
-    const problem = await loadProblem(q, row.problem_id, row.problem_version);
+    const problem = await loadProblem(q, row.problem_id, row.problem_version, { redo: row.kind === 'redo' });
     return { row, state: deserializeState(row.state), problem, now, extras: await loadViewExtras(q, row) };
   }
 
@@ -133,6 +135,9 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
   // 这里补上已开始的作答，否则测验截止后学生仍能继续改答案。用数据库时钟 now()；start 用应用时钟 Date.now()，
   // 两者在 close_at 边界上可能差毫秒级（可接受，写接口一律以数据库为准）。
   async function guardAssignmentOpen(tx: Queryable, row: AttemptRow): Promise<void> {
+    // 重做（kind=redo）只在已完成的练习/自学或已结束的测验上创建（见 redo()），之后不受布置开关限制：
+    // 布置关闭后学生仍可重做自己的作答。
+    if (row.kind === 'redo') return;
     const closed = (
       await tx.query<{ closed: boolean }>(
         `select (status in ('closed', 'cancelled') or (close_at is not null and close_at <= now())) as closed
@@ -534,9 +539,76 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
     });
   }
 
+  // 重做：新建 kind=redo 的子作答（parent_attempt_id=被重做的作答），沿用布置与题目版本，引擎状态从头开始，
+  // 模式固定为练习。第 5 层不走（loadProblem 的 redo 选项）。服务端只允许重做自己的、已完成的作答；
+  // 测验布置在开放/未开始期间不允许（测验结束后才行）。
+  async function redo(userId: string, attemptId: string): Promise<Record<string, unknown>> {
+    return db.tx(async (tx) => {
+      const parent = (await tx.query<AttemptRow>(`select * from app.attempts where id = $1 for update`, [attemptId])).rows[0];
+      if (!parent) throw new AppError('NOT_FOUND', 404, '找不到这次作答');
+      if (parent.user_id !== userId) throw new AppError('FORBIDDEN', 403, '只能重做自己的作答');
+      if (parent.kind === 'transfer') throw new AppError('VALIDATION_FAILED', 409, '迁移题不能单独重做');
+      if (parent.status !== 'completed') throw new AppError('VALIDATION_FAILED', 409, '这道题还没写完，写完以后才能重做');
+
+      const asg = (
+        await tx.query<{ mode: string; open_test: boolean }>(
+          `select mode,
+                  (mode = 'test' and status in ('scheduled', 'open') and (close_at is null or close_at > now())) as open_test
+             from app.assignments where id = $1`,
+          [parent.assignment_id],
+        )
+      ).rows[0];
+      if (!asg) throw new AppError('NOT_FOUND', 404, '找不到这份布置');
+      if (asg.open_test) throw new AppError('TEST_MODE_RESTRICTED', 403, '测验还没结束，结束以后才能重做');
+
+      const existing = (
+        await tx.query<AttemptRow>(
+          `select * from app.attempts
+            where parent_attempt_id = $1 and kind = 'redo' and status in ('active', 'parked', 'locked') for update`,
+          [parent.id],
+        )
+      ).rows[0];
+      const now = Date.now();
+      const anon = await userAnon(tx, userId);
+      if (existing) {
+        const snap = await snapshotOf(tx, existing, now);
+        if (existing.status !== 'parked') return dto(snap);
+        const events = [{ type: 'attempt.start', at: now, payload: { resumed: true, kind: 'redo', parentAttemptId: parent.id } }];
+        const saved = await commit(tx, existing, { state: snap.state, events }, 'active', anon, `L${snap.state.layer}`);
+        return dto({ ...snap, row: saved });
+      }
+
+      const problem = await loadProblem(tx, parent.problem_id, parent.problem_version, { redo: true });
+      const initial = createAttempt(problem.ctx, now);
+      const inserted = (
+        await tx.query<AttemptRow>(
+          `insert into app.attempts
+             (assignment_id, user_id, problem_id, problem_version, kind, parent_attempt_id, mode, state, keys_total)
+           values ($1, $2, $3, $4, 'redo', $5, 'practice', $6::jsonb, $7)
+           returning *`,
+          [
+            parent.assignment_id,
+            userId,
+            parent.problem_id,
+            parent.problem_version,
+            parent.id,
+            JSON.stringify(serializeState(initial)),
+            problem.ctx.pkg.secret.keys.length,
+          ],
+        )
+      ).rows[0];
+      if (!inserted) throw new AppError('INTERNAL', 500, '重做创建冲突');
+      const events = [{ type: 'attempt.start', at: now, payload: { resumed: false, kind: 'redo', parentAttemptId: parent.id } }];
+      const first = `L${initial.layer}`;
+      const saved = await commit(tx, inserted, { state: initial, events }, 'active', anon, first);
+      return dto({ row: saved, state: initial, problem, now, extras: EMPTY_EXTRAS });
+    });
+  }
+
   return {
     recordHelp,
     setHelpOutcome,
+    redo,
     start,
     get,
     command,

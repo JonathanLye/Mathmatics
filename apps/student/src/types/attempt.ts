@@ -8,7 +8,7 @@
 
 export type LayerId = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6'
 export type LayerStatusValue = 'locked' | 'active' | 'done' | 'skipped' | 'disabled'
-export type AttemptKind = 'main' | 'transfer'
+export type AttemptKind = 'main' | 'transfer' | 'redo'
 export type AttemptStatus = 'active' | 'parked' | 'locked' | 'completed' | 'abandoned'
 export type AttemptMode = 'practice' | 'test'
 export type NoteKind = 'annotation' | 'hint' | 'concept' | 'system' | 'refusal' | 'lesson' | 'nudge' | 'student'
@@ -305,13 +305,54 @@ export interface NotebookCard {
   mock?: string
   /** 以下为「稍后重做」需要的字段（对应 openapi Notebook/AssignmentCard 子集；#24 由服务端提供）。 */
   problemId?: string
-  kind?: 'main' | 'transfer'
+  kind?: 'main' | 'transfer' | 'redo'
   independence?: number | null
   revealUsed?: number
   keysTotal?: number
   redoRecommended?: boolean
   assignmentId?: string | null
   problemVersion?: number
+  /** 以下来自真实 GET /student/notebook（openapi Notebook.cards，Task 6 新增，均可缺省）。 */
+  parentAttemptId?: string | null
+  chapter?: string
+  lines?: Array<{ n: number; statement: string; justification?: string }>
+  teacherNote?: string
+  reviewPublished?: boolean
+  /** 测验布置未结束时为 false；缺省按 true */
+  canRedo?: boolean
+}
+
+export type MistakeGroupId = 'definition' | 'basis' | 'scaling' | 'hinted' | 'selfcheck' | 'other'
+
+/** GET /student/mistakes 的一项（openapi MistakeItem）。attemptId 即重做所用的作答 ID。 */
+export interface MistakeItem {
+  id: string
+  group: MistakeGroupId
+  problemTitle: string
+  chapter: string
+  attemptId: string
+  lineExcerpt: string
+  note: string
+  createdAt: string
+  canRedo: boolean
+}
+
+export interface MistakeGroup {
+  group: MistakeGroupId
+  title: string
+  count: number
+  items: MistakeItem[]
+}
+
+export interface MistakesView {
+  groups: MistakeGroup[]
+  total: number
+}
+
+/** GET /attempts/{id}/review（openapi PublishedReview）。 */
+export interface PublishedReview {
+  proofs: string[]
+  note?: string
 }
 
 export interface NotebookView {

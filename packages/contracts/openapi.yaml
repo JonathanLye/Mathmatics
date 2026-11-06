@@ -236,6 +236,32 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Notebook' }
 
+  /student/mistakes:
+    get:
+      tags: [student]
+      summary: 我的错题本：按卡点分组（定义没写全 / 依据缺失 / 放缩卡住 / 靠提示写出的步骤 / 自检没通过 / 其他卡点），每项可直接重做
+      operationId: getMistakes
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 错题本（空分组不返回；测验布置结束前不出现）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mistakes' }
+  /student/attempts/{attemptId}/redo:
+    post:
+      tags: [attempt]
+      summary: 重做：在本人已完成的作答上新建重做作答（kind=redo，强制练习模式；已有未结束的重做则返回它）
+      description: 重做不计经验（来源键与首次相同）、不进指标与导出；第 5 层（迁移题）自动跳过；布置关闭后仍可重做。测验布置开放或未开始期间返回 403 TEST_MODE_RESTRICTED；作答未完成返回 409；他人的作答返回 403。
+      operationId: startRedo
+      parameters: [{ $ref: '#/components/parameters/attemptId' }, { $ref: '#/components/parameters/idempotencyKey' }]
+      responses:
+        '200': { $ref: '#/components/responses/StateReplay' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
   # ------------------------------------------------------------------ attempt
   /attempts/{attemptId}:
     get:
@@ -497,7 +523,7 @@ paths:
   /attempts/{attemptId}/review:
     get:
       tags: [attempt]
-      summary: 题目关闭且教师已发布讲评后，查看参考证明与讲评（之前返回 403）
+      summary: 教师已发布讲评、且本人写完（或布置已结束）后，查看参考证明与讲评（否则 403；读参考证明记审计）
       operationId: getPublishedReview
       parameters: [{ $ref: '#/components/parameters/attemptId' }]
       responses:
@@ -505,12 +531,8 @@ paths:
           description: 参考证明与讲评
           content:
             application/json:
-              schema:
-                type: object
-                required: [proofs]
-                properties:
-                  proofs: { type: array, items: { $ref: '#/components/schemas/MathText' } }
-                  note: { $ref: '#/components/schemas/MathText' }
+              schema: { $ref: '#/components/schemas/PublishedReview' }
+        '404': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
 
   # ------------------------------------------------------------------ input / recognition
@@ -1648,7 +1670,7 @@ components:
         attemptId: { type: string, format: uuid }
         parentAttemptId: { type: [string, 'null'], format: uuid }
         stateVersion: { type: integer }
-        kind: { type: string, enum: [main, transfer] }
+        kind: { type: string, enum: [main, transfer, redo] }
         status: { type: string, enum: [active, parked, locked, completed, abandoned] }
         mode: { type: string, enum: [practice, test] }
         problem: { $ref: '#/components/schemas/PublicProblemView' }
@@ -1987,14 +2009,68 @@ components:
       properties:
         cards:
           type: array
+          description: 本人已完成的作答（kind=main|redo），最新在前，最多 100 条
           items:
             type: object
             properties:
               attemptId: { type: string, format: uuid }
+              kind: { type: string, enum: [main, redo] }
+              parentAttemptId: { type: [string, 'null'], format: uuid }
+              assignmentId: { type: string, format: uuid }
+              problemId: { type: string }
               title: { type: string }
+              chapter: { type: string }
               proof: { type: array, items: { $ref: '#/components/schemas/MathText' }, description: 学生自己写的证明 }
+              lines:
+                type: array
+                description: 同 proof，带行号与依据
+                items:
+                  type: object
+                  required: [n, statement]
+                  properties:
+                    n: { type: integer }
+                    statement: { $ref: '#/components/schemas/MathText' }
+                    justification: { $ref: '#/components/schemas/MathText' }
               summary: { type: array, items: { $ref: '#/components/schemas/MathText' } }
               definition: { $ref: '#/components/schemas/MathText', description: 通过核验后才展示标准定义 }
-              weakPoints: { type: array, items: { type: string } }
+              weakPoints: { type: array, items: { type: string }, description: 本次出现过的卡点分组名 }
+              teacherNote: { $ref: '#/components/schemas/MathText', description: 教师已发布的讲评（未发布时没有） }
+              reviewPublished: { type: boolean }
+              canRedo: { type: boolean, description: 测验布置未结束时为 false }
+              independence: { type: number }
               completedAt: { type: string, format: date-time }
-        toRedo: { type: array, items: { $ref: '#/components/schemas/AssignmentCard' } }
+        toRedo: { type: array, items: { $ref: '#/components/schemas/AssignmentCard' }, description: 有卡点且还没重做成功的作答（attemptId 即可重做的作答） }
+    MistakeItem:
+      type: object
+      required: [id, group, problemTitle, chapter, attemptId, lineExcerpt, note, createdAt, canRedo]
+      properties:
+        id: { type: string }
+        group: { type: string, enum: [definition, basis, scaling, hinted, selfcheck, other] }
+        problemTitle: { type: string }
+        chapter: { type: string }
+        attemptId: { type: string, format: uuid, description: '重做时调用 POST /student/attempts/{attemptId}/redo' }
+        lineExcerpt: { $ref: '#/components/schemas/MathText' }
+        note: { $ref: '#/components/schemas/MathText', description: 以问题或提醒的口吻，不判对错 }
+        createdAt: { type: string, format: date-time }
+        canRedo: { type: boolean }
+    Mistakes:
+      type: object
+      required: [groups, total]
+      properties:
+        groups:
+          type: array
+          items:
+            type: object
+            required: [group, title, count, items]
+            properties:
+              group: { type: string, enum: [definition, basis, scaling, hinted, selfcheck, other] }
+              title: { type: string }
+              count: { type: integer }
+              items: { type: array, items: { $ref: '#/components/schemas/MistakeItem' } }
+        total: { type: integer }
+    PublishedReview:
+      type: object
+      required: [proofs]
+      properties:
+        proofs: { type: array, items: { $ref: '#/components/schemas/MathText' } }
+        note: { $ref: '#/components/schemas/MathText' }

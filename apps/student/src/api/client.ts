@@ -55,7 +55,9 @@ import type {
   LineDraft,
   MeView,
   Note,
+  MistakesView,
   NotebookView,
+  PublishedReview,
   ProofLine,
   Recognition,
   StudentHomeView,
@@ -1577,22 +1579,31 @@ export async function finishTransfer(state: AttemptState): Promise<AttemptState>
 }
 
 /**
- * 证明本「稍后重做」：为同一道题发起一份新作答（mock POST /student/assignments/{id}/attempt）。
- * 返回全新的 main state（从 L1 开始），由证明本页暂存后交给做题页（跨页交接见 stores/attempt.ts）。
- * TODO(#24)：真实接口按 assignmentId/problemId 创建新作答并返回 state。
+ * 重做（POST /student/attempts/{id}/redo）：在本人已完成的作答上新建 kind=redo 的子作答（强制练习模式、从 L1 开始，
+ * 第 5 层自动跳过）。已有未结束的重做则返回它（幂等）。sourceAttemptId 是被重做的**已完成作答**（证明本卡片/错题的 attemptId）。
+ * 错误：409 作答未完成；403 他人的作答或测验尚未结束（TEST_MODE_RESTRICTED）。
+ * 返回新作答的 state，由调用方交给做题页（跨页交接见 stores/attempt.ts）。
  */
 export async function startRedo(sourceAttemptId?: string): Promise<AttemptState> {
+  if (!USE_MOCK) {
+    if (!sourceAttemptId) {
+      throw new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: '缺少要重做的作答' })
+    }
+    return writeState(`/student/attempts/${encodeURIComponent(sourceAttemptId)}/redo`, undefined, {
+      idempotencyKey: newUuid(),
+    })
+  }
   await sleep()
   const next = clone(createMockState('l1-active'))
   next.attemptId = mockUuid()
   next.parentAttemptId = sourceAttemptId ?? null
+  next.kind = 'redo'
   next.stateVersion = 1
   next.status = 'active'
   next.currentLayer = 'L1'
   next.serverTime = new Date().toISOString()
   return next
 }
-
 
 /**
  * 迁移题子作答完成之后，服务端返回**父作答**的新 state：L5 done → L6 active 并下发总结五问。
@@ -1625,6 +1636,55 @@ export async function fetchNotebook(): Promise<NotebookView> {
   if (!USE_MOCK) return activeHttp.get<NotebookView>('/student/notebook')
   await sleep()
   return clone(mockNotebook)
+}
+
+/** mock 错题本：与真实 GET /student/mistakes 同形。 */
+export const mockMistakes: MistakesView = {
+  groups: [
+    {
+      group: 'scaling',
+      title: '放缩卡住',
+      count: 1,
+      items: [
+        {
+          id: '11111111-1111-4111-8111-111111111111:scaling:mock',
+          group: 'scaling',
+          problemTitle: '数列极限 · ε-N',
+          chapter: '第二章 数列极限',
+          attemptId: '11111111-1111-4111-8111-111111111111',
+          lineExcerpt: '取 $N=n+1$',
+          note: '你取的 $N$ 里出现了 $n$。定义里 $N$ 在 $n$ 之前取定，$N$ 能依赖 $n$ 吗？',
+          createdAt: daysAgoIso(3),
+          canRedo: true,
+        },
+      ],
+    },
+  ],
+  total: 1,
+}
+
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+/** 错题本（GET /student/mistakes）：按卡点分组，空分组不返回；每项的 attemptId 可直接传给 startRedo。 */
+export async function fetchMistakes(): Promise<MistakesView> {
+  if (!USE_MOCK) return activeHttp.get<MistakesView>('/student/mistakes')
+  await sleep()
+  return clone(mockMistakes)
+}
+
+/**
+ * 讲评（GET /attempts/{id}/review）：教师发布讲评、且本人写完（或布置结束）后才有；否则 403（FORBIDDEN）。
+ * 参考证明与讲评都是 MathText，显示时走 MathText 组件。
+ */
+export async function fetchReview(attemptId: string): Promise<PublishedReview> {
+  if (!USE_MOCK) return activeHttp.get<PublishedReview>(`/attempts/${encodeURIComponent(attemptId)}/review`)
+  await sleep()
+  return {
+    proofs: ['任取 $\\varepsilon>0$。取 $N=\\lceil 5/\\varepsilon\\rceil$，则当 $n>N$ 时 $|a_n-3|<\\varepsilon$。'],
+    note: '这道题的关键是 $N$ 只依赖 $\\varepsilon$。',
+  }
 }
 
 /**

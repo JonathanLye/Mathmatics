@@ -186,9 +186,9 @@ describe('证明本「稍后重做」与新作答（mock fetchNotebook / startRe
     expect(notebook.cards.every((card) => Boolean(card.completedAt))).toBe(true)
   })
 
-  it('startRedo 返回全新 main 作答（从 L1 开始，parentAttemptId 指向原作答）', async () => {
+  it('startRedo 返回全新 redo 作答（从 L1 开始，parentAttemptId 指向原作答）', async () => {
     const next = await startRedo('11111111-1111-4111-8111-111111111111')
-    expect(next.kind).toBe('main')
+    expect(next.kind).toBe('redo')
     expect(next.status).toBe('active')
     expect(next.currentLayer).toBe('L1')
     expect(next.parentAttemptId).toBe('11111111-1111-4111-8111-111111111111')

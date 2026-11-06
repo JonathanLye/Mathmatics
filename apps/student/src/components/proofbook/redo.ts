@@ -23,7 +23,7 @@ export interface CompletedAttemptView {
   /** ISO 8601 完成时间 */
   completedAt: string
   /** main = 主题作答；transfer = 迁移题子作答 */
-  kind?: 'main' | 'transfer'
+  kind?: 'main' | 'transfer' | 'redo'
   /** 服务端算好的独立度；缺省时用 revealUsed / keysTotal 兜底 */
   independence?: number | null
   revealUsed?: number

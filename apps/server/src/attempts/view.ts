@@ -20,7 +20,7 @@ export type AttemptRow = {
   user_id: string;
   problem_id: string;
   problem_version: number;
-  kind: 'main' | 'transfer';
+  kind: 'main' | 'transfer' | 'redo';
   parent_attempt_id: string | null;
   mode: 'practice' | 'test';
   status: 'active' | 'parked' | 'locked' | 'completed' | 'abandoned';
@@ -107,7 +107,7 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
     canFinish: state.layer === 3 && nextKey(problem.ctx.pkg.secret, state.hint.matched) === null,
   };
   if (state.selfcheck.items.length > 0) dto.selfcheck = selfcheckView(state, problem);
-  if (pub.transferProblemId !== undefined) dto.transfer = transferView(state, extras);
+  if (pub.transferProblemId !== undefined && row.kind !== 'redo') dto.transfer = transferView(state, extras);
   if (state.layer === 6 || state.done) dto.summary = summaryView(state, problem, extras);
   if (state.done) {
     dto.completion = {
