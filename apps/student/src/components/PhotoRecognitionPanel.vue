@@ -201,7 +201,7 @@ function ignore(): void {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: color-mix(in srgb, var(--ink) 38%, transparent);
+  background: rgba(0, 0, 0, 0.48);
 }
 .pg-photo__sheet {
   width: 100%;
@@ -235,7 +235,7 @@ function ignore(): void {
   flex-direction: column;
   gap: var(--sp-1);
   padding: var(--sp-2);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-card);
   background: var(--paper);
 }
@@ -250,13 +250,13 @@ function ignore(): void {
 }
 .pg-photo__lineno { color: var(--ink-2); }
 .pg-photo__meta { color: var(--ink-2); }
-.pg-photo__editbtn { margin-left: auto; color: var(--accent-text); background: transparent; border: 1px solid var(--rule); border-radius: var(--radius-input); min-height: 32px; padding: 0 var(--sp-2); }
+.pg-photo__editbtn { margin-left: auto; color: var(--accent-text); background: transparent; border: 2px solid var(--rule); border-radius: var(--radius-input); min-height: 32px; padding: 0 var(--sp-2); }
 .pg-photo__linebody { color: var(--ink); }
 .pg-photo__input {
   width: 100%;
   min-height: 64px;
   padding: var(--sp-2);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);
@@ -276,7 +276,7 @@ function ignore(): void {
   flex: 1;
   min-height: 44px;
   border-radius: var(--radius-input);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   background: var(--sheet);
   color: var(--ink);
   font-size: 15px;

@@ -30,6 +30,13 @@ const savingSettings = ref(false);
 const drawerVisible = ref(false);
 const selectedAttemptId = ref<string | null>(null);
 
+const ASSIGNMENT_STATUS: Record<string, string> = { open: '进行中', scheduled: '未开放', closed: '已关闭', cancelled: '已取消' };
+function formatWhen(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 function openAttempt(row: LiveRow): void {
   if (row.attemptId === null || row.attemptId === undefined) return;
   selectedAttemptId.value = row.attemptId;
@@ -646,7 +653,7 @@ onBeforeUnmount(() => {
           </template>
           <template #empty><div class="empty">名单为空，先导入 CSV。</div></template>
         </t-table>
-        <div class="inline-actions" style="margin-bottom: 16px">
+        <div class="inline-actions invite-bar">
           <span>邀请码 <b class="mono">{{ classInfo?.inviteCode ?? '—' }}</b></span>
           <t-button size="small" variant="outline" @click="copyInvite">复制</t-button>
           <t-button size="small" :loading="rotating" @click="rotateInvite">重置邀请码</t-button>
@@ -734,6 +741,11 @@ onBeforeUnmount(() => {
           row-key="assignmentId"
           size="small"
         >
+          <template #mode="{ row }">{{ row.mode === 'test' ? '测验' : '练习' }}</template>
+          <template #status="{ row }">
+            <span class="pg-pill" :class="`pg-pill--${row.status === 'open' ? 'grass' : row.status === 'scheduled' ? 'sea' : 'fox'}`">{{ ASSIGNMENT_STATUS[row.status] ?? row.status }}</span>
+          </template>
+          <template #openAt="{ row }">{{ formatWhen(row.openAt) }}</template>
           <template #actions="{ row }">
             <t-space size="small">
               <t-link theme="primary" :disabled="row.reviewPublished" @click="openPublish(row as AssignmentCard)">
@@ -837,6 +849,9 @@ onBeforeUnmount(() => {
   gap: 10px;
   margin: 8px 0;
 }
+.invite-bar { margin: 16px 0 8px; padding: 12px 14px; border: 2px solid var(--pg-border); border-bottom-width: 4px; border-radius: 14px; }
+:deep(.t-form__controls .t-select),
+:deep(.t-form__controls .t-input) { max-width: 360px; }
 .native-input {
   height: 32px;
   padding: 0 8px;

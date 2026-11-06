@@ -230,7 +230,7 @@ function softLanding(action: string) {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  background: rgba(0, 0, 0, 0.45);
 }
 .pg-help {
   width: 100%;
@@ -337,14 +337,14 @@ function softLanding(action: string) {
   gap: 2px;
   min-height: 56px;
   padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-card);
   background: var(--sheet);
   color: var(--ink);
   text-align: left;
 }
 .pg-help__intent--concept {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--rule));
+  border-color: var(--accent);
   background: var(--accent-soft);
 }
 .pg-help__intenttitle {
@@ -415,7 +415,7 @@ function softLanding(action: string) {
   min-width: 0;
   min-height: 44px;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);
@@ -425,12 +425,15 @@ function softLanding(action: string) {
 .pg-help__send {
   min-width: 72px;
   min-height: 44px;
+  margin: 0;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--accent);
+  border: 2px solid var(--accent);
+  border-bottom: 4px solid var(--accent-lip);
   border-radius: var(--radius-input);
   background: var(--accent);
-  color: var(--sheet);
+  color: var(--on-accent);
   font-size: var(--fs-body);
+  font-weight: 900;
 }
 .pg-help__send:disabled {
   opacity: 0.45;
@@ -453,4 +456,15 @@ function softLanding(action: string) {
   color: var(--ink-2);
   text-align: center;
 }
+/* uni-app 的 <button> 默认左右 auto 边距 + 自带 ::after 描边：选项会缩成不同宽度、关闭按钮多一圈框。 */
+.pg-help__intent,
+.pg-help__send,
+.pg-help__chip,
+.pg-help__close { margin: 0; }
+.pg-help__intent { width: 100%; }
+.pg-help__intent::after,
+.pg-help__send::after,
+.pg-help__chip::after,
+.pg-help__close::after { display: none; }
+.pg-help__intenttitle { font-weight: 900; }
 </style>

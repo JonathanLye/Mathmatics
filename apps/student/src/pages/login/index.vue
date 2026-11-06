@@ -60,7 +60,7 @@ async function submit() {
       <button class="pg-login__submit" data-testid="login-submit" :disabled="loading" @tap="submit">{{ loading ? '登录中…' : '进入' }}</button>
     </view>
     <text class="pg-login__hint pg-small">
-      {{ mockMode ? '当前为 mock 模式（离线演示）；接真实接口用 VITE_USE_MOCK=false 或 setMockMode(false)。' : '登录走服务端 #18：邀请码 + 学号认领名单，服务端写 HttpOnly 会话 Cookie。' }}
+      {{ mockMode ? '当前为 mock 模式（离线演示）；接真实接口用 VITE_USE_MOCK=false 或 setMockMode(false)。' : '输入老师给你的 6 位邀请码和你的学号。第一次登录会自动认领名单里的你。' }}
     </text>
   </view>
 </template>

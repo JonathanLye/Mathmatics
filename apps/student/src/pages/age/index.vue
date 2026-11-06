@@ -89,7 +89,7 @@ async function submit(): Promise<void> {
   <view class="pg-page pg-age" data-testid="age-page">
     <text class="pg-age__title">先确认你的年龄段</text>
     <text class="pg-age__sub pg-small">
-      按 13 §4：未满 14 岁暂不开通；14–17 岁可用；18 岁及以上按成年人规则。年龄只会记录一次。
+      未满 14 岁暂不开通；14–17 岁可用；18 岁及以上按成年人规则。年龄只会记录一次。
     </text>
 
     <view v-if="initializing" class="pg-age__card pg-sheet" data-testid="age-loading">
@@ -133,7 +133,7 @@ async function submit(): Promise<void> {
       <button class="pg-age__submit" data-testid="age-submit" :disabled="submitDisabled" @tap="submit">
         {{ loading ? '提交中…' : '确认分档' }}
       </button>
-      <text class="pg-age__hint pg-small">提交后由服务端记录；年龄分档只用于未成年人规则，不影响你的成绩。</text>
+      <text class="pg-age__hint pg-small">年龄分档只用于未成年人规则，不影响你的成绩。</text>
     </template>
 
     <text v-if="errorText && (blocked || recordedNotice)" class="pg-age__error pg-small" data-testid="age-error" role="alert">
@@ -172,19 +172,20 @@ async function submit(): Promise<void> {
   gap: 2px;
   min-height: 56px;
   padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
+  border-bottom-width: 4px;
   border-radius: var(--radius-card);
   background: var(--sheet);
   color: var(--ink);
   text-align: left;
 }
-.pg-age__option--selected { border-color: var(--accent); background: var(--accent-soft); }
-.pg-age__optionlabel { font-size: var(--fs-body); }
+.pg-age__option--selected { border-color: var(--accent); border-bottom-color: var(--accent-lip); background: var(--accent-soft); }
+.pg-age__optionlabel { font-size: var(--fs-body); font-weight: 900; }
 .pg-age__optionhint { color: var(--ink-2); }
 .pg-age__risk {
   padding: var(--sp-2) var(--sp-3);
-  border-left: 3px solid var(--hint);
-  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+  border: 2px solid var(--hint-fill);
+  border-radius: var(--radius-input);
   background: var(--hint-soft);
   color: var(--hint);
   font-size: var(--fs-small);

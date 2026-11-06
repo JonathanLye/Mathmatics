@@ -262,7 +262,7 @@ function remove(line: ProofLine) {
   min-width: 0;
 }
 .pg-layer__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.pg-layer__title { font-size: 17px; font-weight: 900; color: var(--ink); }
+.pg-layer__title { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--ink-2); }
 .pg-layer__step { color: var(--ink-2); flex: 0 0 auto; }
 .pg-layer__hint { color: var(--ink-2); }
 .pg-layer__row { display: flex; gap: var(--sp-2); }
@@ -274,7 +274,7 @@ function remove(line: ProofLine) {
   min-height: 44px;
   margin: 0;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);
@@ -290,7 +290,7 @@ function remove(line: ProofLine) {
 .pg-attempt__row { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
 .pg-attempt__rowhead { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .pg-attempt__no { color: var(--ink-2); font-size: 12px; }
-.pg-attempt__badge { padding: 1px var(--sp-2); border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); }
+.pg-attempt__badge { padding: 1px var(--sp-2); border-radius: 999px; border: 2px solid var(--rule); color: var(--ink-2); }
 .pg-attempt__badge--ok { border-color: var(--ok); color: var(--ok); }
 .pg-attempt__badge--warn { border-color: var(--hint); color: var(--hint); }
 .pg-attempt__actions { margin-left: auto; display: flex; gap: var(--sp-2); }
@@ -330,7 +330,7 @@ function remove(line: ProofLine) {
   display: block;
   width: 100%;
   height: 96px;
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--paper);
   overflow: hidden;
@@ -356,7 +356,7 @@ function remove(line: ProofLine) {
 .pg-attempt__prov {
   min-height: 32px;
   padding: 0 var(--sp-2);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: 999px;
   background: transparent;
   color: var(--ink-2);

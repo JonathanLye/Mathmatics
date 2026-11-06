@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { drawerSize } from '../utils/viewport.ts';
 import { ref, watch } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
@@ -231,7 +232,7 @@ function lineMeta(line: TeacherLine): string {
 </script>
 
 <template>
-  <t-drawer :visible="visible" size="760px" header="学生作答详情" @close="close">
+  <t-drawer :footer="false" :visible="visible" :size="drawerSize" header="学生作答详情" @close="close">
     <div v-if="error" class="drawer-error">
       <t-alert theme="error" :message="error" />
     </div>
@@ -346,7 +347,7 @@ function lineMeta(line: TeacherLine): string {
 
     <ReplayDialog v-model:visible="replayVisible" :attempt-id="attemptId" />
 
-    <t-dialog v-model:visible="mirrorVisible" header="镜像预览（只读）" width="900px" :footer="false">
+    <t-dialog v-model:visible="mirrorVisible" header="镜像预览（只读）" width="min(900px, 96vw)" :footer="false">
       <div class="page-sub" style="margin-bottom: 8px">
         学生端镜像页（<code>/s/mirror</code>）由 A 侧提供；未上线前 iframe 会显示 404。只读由镜像页自身实现，
         iframe 只用 <code>allow-scripts</code>，不加 <code>allow-same-origin</code>（04 §5.1 / PR #100 安全结论）。
@@ -363,7 +364,7 @@ function lineMeta(line: TeacherLine): string {
     </t-dialog>
   </t-drawer>
 
-    <t-dialog v-model:visible="reclassifyVisible" header="改判该行归类" :footer="false" width="560px">
+    <t-dialog v-model:visible="reclassifyVisible" header="改判该行归类" :footer="false" width="min(560px, 96vw)">
       <t-alert v-if="reclassifyError" theme="error" :message="reclassifyError" style="margin-bottom: 8px" />
       <t-alert theme="info" message="改判只更新教师侧归类并写 audit_log，不改变学生已看到的批注/事件。" style="margin-bottom: 8px" />
       <t-form label-width="90px">

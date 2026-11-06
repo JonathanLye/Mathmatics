@@ -155,11 +155,12 @@ onBeforeUnmount(stopPolling);
     </div>
     <div class="page-sub">说明：导出字段字典随文件提供（Excel 第二工作表 / CSV 同名 .dictionary.csv）。文件 24 小时后删除，过期请重新导出。</div>
     <h4 style="margin: 18px 0 6px">字段字典（08 §5）</h4>
-    <t-table :data="FIELD_DICT_ROWS" :columns="[{ colKey: 'table', title: '表' }, { colKey: 'fields', title: '字段' }]" row-key="table" size="small" />
+    <t-table class="dict-table" :data="FIELD_DICT_ROWS" :columns="[{ colKey: 'table', title: '表' }, { colKey: 'fields', title: '字段' }]" row-key="table" size="small" />
   </div>
 </template>
 
 <style scoped>
+.dict-table :deep(td) { vertical-align: top; }
 .export-status {
   margin-top: 12px;
   padding: 12px 16px;

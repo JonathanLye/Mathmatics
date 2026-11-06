@@ -41,7 +41,7 @@ const title = computed(() => examLockedText())
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  background: rgba(0, 0, 0, 0.65);
 }
 .pg-locked__sheet {
   width: min(440px, 100%);

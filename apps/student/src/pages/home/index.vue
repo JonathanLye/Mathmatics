@@ -173,9 +173,6 @@ function addToNotebook(card: AssignmentCardView): void {
       <view v-if="home?.week" class="pg-home__chip pg-home__chip--grass" data-testid="home-week">
         <PgIcon name="check" :size="20" />{{ home.week.keysOwn }}/{{ home.week.keysTotal }}<text class="pg-home__chipsub">本周自己写出的关键步骤</text>
       </view>
-      <view v-else class="pg-home__chip" data-testid="home-week-empty">
-        <text class="pg-home__chipsub">本周统计暂不可用（服务端未下发 week）</text>
-      </view>
     </view>
     <text class="pg-home__hello" data-testid="home-greeting">{{ greeting }}</text>
     <text v-if="mockMode" class="pg-home__mode pg-small" data-testid="home-mock-badge">mock 演示（?api=real 走真实接口）</text>
@@ -315,7 +312,7 @@ function addToNotebook(card: AssignmentCardView): void {
           已收录 {{ home.notebook.cards }} 份证明 · {{ home.notebook.toRedo }} 题待重做
         </text>
         <text v-else class="pg-home__cardsub" data-testid="home-notebook-empty">
-          证明本摘要暂不可用（服务端未下发 notebook），可以先点下方「证明本」打开。
+          写完的证明会收进证明本，随时可以回看。点下方「证明本」打开。
         </text>
       </view>
     </view>
@@ -323,7 +320,7 @@ function addToNotebook(card: AssignmentCardView): void {
     <view v-if="notice" class="pg-home__notice" role="status" data-testid="home-notice">{{ notice }}</view>
 
     <text class="pg-home__hint pg-small">
-      {{ mockMode ? '当前 mock 模式：数据形状与契约 StudentHome 一致；加 ?api=real 可走真实接口。' : '数据来自服务端 GET /student/home 与 GET /me；弱网会自动重试。' }}
+      {{ mockMode ? '当前 mock 模式：数据形状与契约 StudentHome 一致；加 ?api=real 可走真实接口。' : '网络不稳时会自动重试。' }}
     </text>
 
     <view class="pg-home__nav">

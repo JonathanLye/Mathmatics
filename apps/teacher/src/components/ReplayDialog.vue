@@ -120,7 +120,7 @@ const TONE_LABEL: Record<string, string> = {
 </script>
 
 <template>
-  <t-dialog :visible="visible" header="回放（引擎状态级）" width="860px" :footer="false" @close="close">
+  <t-dialog :visible="visible" header="回放（引擎状态级）" width="min(860px, 96vw)" :footer="false" @close="close">
     <div v-if="error" style="padding: 8px 0">
       <t-alert theme="error" :message="error" />
     </div>

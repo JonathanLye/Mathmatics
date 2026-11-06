@@ -180,7 +180,7 @@ function dismiss(): void {
 }
 .pg-wechat__btn--primary {
   background: var(--accent);
-  color: var(--sheet);
+  color: var(--on-accent);
 }
 .pg-wechat__state {
   flex: 1 1 100%;

@@ -82,6 +82,20 @@
   --pg-bg: #131f24;
   --pg-surface: #131f24;
   --td-brand-color: #1c9ad6;
+  /* TDesign 自带的深色变量优先级与此相同，必须在这里再写一遍，抽屉/标签面板/弹窗才跟我们的调色板走 */
+  --td-bg-color-page: #131f24;
+  --td-bg-color-container: #131f24;
+  --td-bg-color-container-hover: #1b2b32;
+  --td-bg-color-container-active: #202f36;
+  --td-bg-color-secondarycontainer: #1b2b32;
+  --td-bg-color-secondarycontainer-hover: #202f36;
+  --td-bg-color-component: #202f36;
+  --td-bg-color-specialcomponent: #202f36;
+  --td-text-color-primary: #f1f7fb;
+  --td-text-color-secondary: #afc0c9;
+  --td-text-color-placeholder: #6f838e;
+  --td-component-border: #37464f;
+  --td-component-stroke: #37464f;
 }
 
 * {
@@ -214,8 +228,12 @@ body {
 
 .page-sub {
   color: var(--pg-text-secondary);
-  margin: -8px 0 16px;
+  margin: 8px 0 12px;
 }
+/* 紧跟页头标题时才向上收紧 */
+.page-head + .page-sub,
+h2 + .page-sub,
+h3 + .page-sub { margin-top: -8px; margin-bottom: 16px; }
 
 .empty {
   padding: 32px 0;
@@ -369,3 +387,27 @@ body {
 .pg-avatar { background: var(--pg-sea-lip); flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; font-weight: 900; }
 .pg-kicker { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--pg-ink-2); }
 .pg-card { background: var(--pg-surface); border: 2px solid var(--pg-border); border-bottom-width: 4px; border-radius: 16px; }
+
+/* 小按钮：触控/点击面积至少 32px，字号 13px */
+.t-button--size-small { min-height: 32px; padding: 0 14px; font-size: 13px; }
+.t-form__controls .t-select, .t-form__controls .t-input { max-width: 360px; }
+
+/* 提示条：与学生端同一套语义色（绿成功/海蓝信息/狐橙警告/辣椒错误），2px 描边，去掉 TDesign 默认的粉橙底 */
+.t-alert { border: 2px solid transparent; border-radius: 14px; }
+.t-alert--info { background: var(--pg-sea-soft); border-color: var(--pg-sea); }
+.t-alert--success { background: var(--pg-grass-soft); border-color: var(--pg-grass); }
+.t-alert--warning { background: var(--pg-fox-soft); border-color: var(--pg-fox); }
+.t-alert--error { background: var(--pg-chili-soft); border-color: var(--pg-chili); }
+.t-alert__message { color: var(--pg-text); }
+.export-status { margin: 14px 0 10px; }
+
+/* 手机宽度：6 个标签放得下，不出现横向滚动箭头 */
+@media (max-width: 480px) {
+  .t-tabs__nav-item { padding: 0 8px; }
+  .t-tabs__nav-item .t-tabs__nav-item-text-wrapper { font-size: 14px; }
+  .t-tabs__btn--right, .t-tabs__btn--left { display: none; }
+}
+
+.login-card .pg-login-mascot { display: flex; justify-content: center; margin: -8px 0 4px; }
+.login-card .t-form__item { margin-bottom: 16px; }
+.login-card .t-button { margin-top: 22px; }

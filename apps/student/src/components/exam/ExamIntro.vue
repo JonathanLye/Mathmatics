@@ -53,7 +53,7 @@ const emit = defineEmits<{ (e: 'start'): void }>()
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: color-mix(in srgb, var(--ink) 42%, transparent);
+  background: rgba(0, 0, 0, 0.52);
 }
 .pg-examgate__sheet {
   width: min(520px, 100%);

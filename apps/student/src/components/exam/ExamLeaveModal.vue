@@ -35,7 +35,7 @@ const text = computed(() => leaveWarningText(props.count, props.maxWarnings))
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: color-mix(in srgb, var(--ink) 38%, transparent);
+  background: rgba(0, 0, 0, 0.48);
 }
 .pg-leavewarn__sheet {
   width: min(420px, 100%);

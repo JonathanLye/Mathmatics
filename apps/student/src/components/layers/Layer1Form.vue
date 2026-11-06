@@ -125,11 +125,7 @@ function submit() {
   justify-content: space-between;
   gap: var(--sp-2);
 }
-.pg-layer__title {
-  font-size: 17px;
-  font-weight: 900;
-  color: var(--ink);
-}
+.pg-layer__title { font-size: 12px; font-weight: 900; letter-spacing: 0.9px; color: var(--ink-2); }
 .pg-layer__step { color: var(--ink-2); flex: 0 0 auto; }
 .pg-layer__task {
   font-family: var(--font-serif);
@@ -145,7 +141,7 @@ function submit() {
   display: block;
   width: 100%;
   height: 132px;
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--paper);
   overflow: hidden;
@@ -183,7 +179,7 @@ function submit() {
   margin: 0;
   min-height: 44px;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);

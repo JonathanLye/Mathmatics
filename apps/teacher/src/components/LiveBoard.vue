@@ -23,7 +23,8 @@ const kpis = computed(() => [
   { key: 'idle' as const, label: '未开始', value: stats.value.idle },
 ]);
 const ordered = computed(() => sortRows(filterRows(props.rows, props.filter)));
-const queue = computed(() => sortRows(props.rows).filter((row) => ['help', 'stuck'].includes(toneOf(row))).slice(0, 4));
+const queueAll = computed(() => sortRows(props.rows).filter((row) => ['help', 'stuck'].includes(toneOf(row))));
+const queue = computed(() => queueAll.value.slice(0, 5));
 const funnel = computed(() => {
   const counts = [1, 2, 3, 4, 5, 6].map((n) => props.rows.filter((row) => row.status !== 'completed' && layerIndex(row) === n).length);
   const max = Math.max(1, ...counts);
@@ -113,8 +114,9 @@ function toggle(key: Tone): void {
     </div>
 
     <aside class="lb__rail">
-      <div class="lb__railhead"><span class="pg-kicker lb__needs">需要你</span><span class="pg-pill lb__count">{{ queue.length }}</span></div>
+      <div class="lb__railhead"><span class="pg-kicker lb__needs">优先处理</span><span class="pg-pill lb__count">{{ queueAll.length }}</span></div>
       <div v-if="queue.length === 0" class="pg-card lb__ok">现在没有人需要你。</div>
+      <div v-else-if="queueAll.length > queue.length" class="pg-kicker">按紧急度显示前 {{ queue.length }} 位，另有 {{ queueAll.length - queue.length }} 位在左侧卡片里</div>
       <button v-for="row in queue" :key="'q-' + row.anonCode" class="pg-card lb__q" type="button" :disabled="!row.attemptId" @click="emit('open', row)">
         <span class="lb__qtop">
           <span class="pg-avatar" :style="{ width: '30px', height: '30px', fontSize: '13px', background: AVATAR[toneOf(row)] }">{{ initial(row) }}</span>

@@ -267,7 +267,7 @@ function submit() {
   justify-content: center;
   /* 手机软键盘：tokens.css 的 --keyboard-inset 由 visualViewport 写入（02 §6）。 */
   padding-bottom: var(--keyboard-inset, 0px);
-  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .pg-editor {
@@ -330,7 +330,7 @@ function submit() {
   width: 100%;
   min-height: 88px;
   padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);
@@ -360,7 +360,7 @@ function submit() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--paper);
   color: var(--ink);
@@ -384,7 +384,7 @@ function submit() {
 .pg-editor__btn {
   flex: 1;
   min-height: 48px;
-  border: 1px solid var(--rule);
+  border: 2px solid var(--rule);
   border-radius: var(--radius-input);
   background: var(--sheet);
   color: var(--ink);

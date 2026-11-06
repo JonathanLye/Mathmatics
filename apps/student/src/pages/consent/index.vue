@@ -71,6 +71,7 @@ async function submit() {
           <text v-else class="pg-consent__tag pg-small">可选</text>
           <switch
             class="pg-consent__switch"
+            color="#58cc02"
             :checked="item.value"
             :disabled="item.required"
             :data-testid="'consent-switch-' + item.id"
@@ -89,7 +90,7 @@ async function submit() {
       {{ loading ? '提交中…' : '同意并开始' }}
     </button>
     <text class="pg-consent__hint pg-small">
-      版本 {{ version }} · {{ mockMode ? 'mock 模式：正文为占位（正式文本由服务端 /consents 提供），签署只记在本地。' : '文本与签署状态来自服务端 GET/POST /consents（#18）；guardianNotice 只读、不签署。' }}
+      版本 {{ version }} · {{ mockMode ? 'mock 模式：正文为占位（正式文本由服务端 /consents 提供），签署只记在本地。' : '你可以随时联系老师了解这些安排。' }}
     </text>
   </view>
 </template>
