@@ -27,7 +27,10 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
-RUN pnpm install --frozen-lockfile --prod
+# 只安装 server / worker 及其工作区依赖的生产依赖：全量 --prod 会把学生端/教师端（uni-app、TDesign 等）的运行时依赖
+# 也装进来（约 717MB），而它们的静态产物已在 web 阶段构建，运行时不需要。
+RUN pnpm install --frozen-lockfile --prod --filter @proof-gym/server... --filter @proof-gym/worker... \
+ && rm -rf /pnpm/store
 
 ENV NODE_ENV=production
 EXPOSE 3000
@@ -39,5 +42,12 @@ CMD ["node", "apps/server/src/server.ts"]
 # 学生端在 /（uni-app H5），教师端在 /t/（Vite base '/t/'）；/api 与 /health 反代 server。
 FROM caddy:2 AS web
 COPY infra/Caddyfile /etc/caddy/Caddyfile
+COPY --from=web-builder /app/apps/student/dist/build/h5 /srv/student
+COPY --from=web-builder /app/apps/teacher/dist /srv/teacher
+
+# ---------------------------------------------------------------- 共用主机变体（infra/shared）
+# 只托管静态文件，监听 8080 明文 HTTP；TLS 与 /api 反代由主机 nginx 负责。
+FROM caddy:2 AS web-shared
+COPY infra/shared/Caddyfile /etc/caddy/Caddyfile
 COPY --from=web-builder /app/apps/student/dist/build/h5 /srv/student
 COPY --from=web-builder /app/apps/teacher/dist /srv/teacher

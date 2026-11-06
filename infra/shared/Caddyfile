@@ -1,0 +1,41 @@
+# 共用主机变体：只托管静态文件，监听容器内 8080 明文 HTTP。
+# TLS 由 ESA + 主机 nginx 终结；/api 与 /health 由主机 nginx 直接反代到 server，不经过这里。
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	encode gzip
+
+	# 安全头与 infra/Caddyfile 保持一致（05 §7）。
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'"
+	}
+
+	redir /t /t/ 308
+
+	# 镜像预览 iframe（sandbox 无 allow-same-origin）走 CORS，见 infra/Caddyfile 同名注释。
+	header /assets/* Access-Control-Allow-Origin "*"
+
+	@hashed path /assets/* /t/assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@entry not path /assets/* /t/assets/*
+	header @entry Cache-Control "no-cache"
+
+	handle_path /t/* {
+		root * /srv/teacher
+		try_files {path} /index.html
+		file_server
+	}
+
+	handle {
+		root * /srv/student
+		try_files {path} /index.html
+		file_server
+	}
+}
