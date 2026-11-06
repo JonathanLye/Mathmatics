@@ -130,6 +130,9 @@ async function logout(): Promise<void> {
 .settings__dl dt { width: 72px; flex: none; color: var(--pg-text-secondary); }
 .settings__dl dd { margin: 0; }
 .settings__form { max-width: 380px; }
+.settings__form :deep(.t-form__item) { margin-bottom: 14px; }
+.settings__form :deep(.t-form__label) { padding-bottom: 4px; }
+.settings__form > .t-button { margin-top: 4px; }
 .settings__list { margin: 0 0 8px; padding-left: 18px; }
 .settings__list li { margin-bottom: 4px; }
 </style>

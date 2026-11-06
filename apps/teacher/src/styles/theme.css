@@ -147,11 +147,20 @@ a {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+/* 抽屉/弹窗的外层容器会被程序聚焦（tabindex=0），整屏大小，描边会在屏幕底边画出一条蓝线；真正可操作的元素仍有焦点环。 */
+.t-drawer:focus,
+.t-drawer:focus-visible,
+.t-dialog__ctx:focus,
+.t-dialog__ctx:focus-visible,
+.t-dialog__wrap:focus,
+.t-dialog__wrap:focus-visible {
+  outline: none;
+}
 
 /* ===== 外壳：左侧导航 + 顶栏 ===== */
 .app-shell {
   display: flex;
-  min-height: 100%;
+  min-height: 100vh;
 }
 
 .app-aside {
