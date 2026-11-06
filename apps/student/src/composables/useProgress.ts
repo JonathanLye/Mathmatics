@@ -2,7 +2,7 @@
  * 学习进度（GET /student/progress）的页面间共用缓存：首页、右栏、我的、徽章页看到的是同一份。
  * 失败时 progress 保持上一次的值（没有就是 null），页面显示占位，不编数字。
  */
-import { readonly, ref } from 'vue'
+import { computed, readonly, ref } from 'vue'
 import { fetchProgress } from '@/api/client'
 import type { ProgressView } from '@/types/attempt'
 
@@ -41,5 +41,5 @@ export function resetProgress(): void {
 }
 
 export function useProgress() {
-  return { progress: readonly(progress), loading: readonly(loading), failed: readonly(failed), load }
+  return { progress: computed(() => progress.value), loading: readonly(loading), failed: readonly(failed), load }
 }

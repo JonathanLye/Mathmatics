@@ -1795,17 +1795,29 @@ const PRESSURE_PATTERN = /答案|直接给|老师说|求你了|写给我|给我�
 // 进度、设置、反馈（Task 9）
 // ---------------------------------------------------------------------------
 
+/** 演示用的这一周（上海时区，周一到周日）：今天和前两天有进展，和连胜 3 天、今天 2 个关键步骤对得上。 */
+function mockWeek(now: number = Date.now()): ProgressView['week'] {
+  const DAY = 24 * 60 * 60 * 1000
+  const shanghai = now + 8 * 60 * 60 * 1000
+  const weekday = (new Date(shanghai).getUTCDay() + 6) % 7
+  return Array.from({ length: 7 }, (_, i) => {
+    const offset = i - weekday
+    const active = offset <= 0 && offset >= -2
+    return {
+      day: new Date(shanghai + offset * DAY).toISOString().slice(0, 10),
+      xp: active ? 20 + (2 + offset) * 5 : 0,
+      keys: active ? 2 : 0,
+    }
+  })
+}
+
 export const mockProgress: ProgressView = {
   xpTotal: 120,
   xpToday: 25,
   keysToday: 2,
   dailyGoal: 3,
   streak: { current: 3, best: 5, freezeAvailable: true, usedFreezeDays: [] },
-  week: ['一', '二', '三', '四', '五', '六', '日'].map((_, i) => ({
-    day: '2026-11-0' + (2 + i),
-    xp: i < 3 ? 20 + i * 5 : 0,
-    keys: i < 3 ? 2 : 0,
-  })),
+  week: mockWeek(),
   badges: [
     { id: 'first_step', title: '第一步', desc: '第一次写出有进展的一步', earnedAt: '2026-11-02T08:00:00.000Z' },
     { id: 'streak_3', title: '连续 3 天', desc: '连续 3 天都有实质进展', earnedAt: null, progress: { current: 3, target: 3 } },
@@ -1829,7 +1841,7 @@ let mockSettings: SettingsView = {
 export async function fetchProgress(): Promise<ProgressView> {
   if (!USE_MOCK) return activeHttp.get<ProgressView>('/student/progress')
   await sleep()
-  return clone(mockProgress)
+  return clone({ ...mockProgress, dailyGoal: mockSettings.dailyGoal, week: mockWeek() })
 }
 
 /** 我的设置（GET /student/settings）。要求已签同意书。 */

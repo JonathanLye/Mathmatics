@@ -53,25 +53,29 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsView>
 }
 
 /** 开关类的改动：不等接口，失败轻提示。 */
-function saveQuietly(patch: SettingsPatch): void {
-  patchSettings(patch).catch(() => {
-    useToast().show(ME_COPY.saveFailed, { tone: 'warn' })
-  })
+function saveQuietly(patch: SettingsPatch): Promise<void> {
+  return patchSettings(patch).then(
+    () => undefined,
+    () => {
+      useToast().show(ME_COPY.saveFailed, { tone: 'warn' })
+    },
+  )
 }
 
 export function saveTheme(choice: ThemeChoice): void {
   setTheme(choice)
-  saveQuietly({ theme: choice })
+  void saveQuietly({ theme: choice })
 }
 
 export function saveFeedbackPref(key: keyof FeedbackPrefs, value: boolean): void {
   setFeedbackPref(key, value)
-  saveQuietly({ [key]: value })
+  void saveQuietly({ [key]: value })
 }
 
-export function saveChoice(patch: Pick<SettingsPatch, 'dailyGoal' | 'defaultInput'>): void {
+/** 写完才结束：改每日目标后要等账号存好，再重新取进度。 */
+export function saveChoice(patch: Pick<SettingsPatch, 'dailyGoal' | 'defaultInput'>): Promise<void> {
   if (settings.value) settings.value = { ...settings.value, ...patch }
-  saveQuietly(patch)
+  return saveQuietly(patch)
 }
 
 /** 退出登录：下一位同学重新拉。 */
