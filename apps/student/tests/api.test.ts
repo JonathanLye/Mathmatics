@@ -67,7 +67,7 @@ const ME: MeView = {
 
 /** 测试 fixture：正文由服务端返回，与客户端 fallback 无关。 */
 const CONSENT_DOC = {
-  version: 'p0-v1',
+  version: 'v2',
   sections: [
     { key: 'service', title: '服务所需处理', body: '测试正文 A', required: true },
     { key: 'crossBorderHosting', title: '数据存储在中国香港服务器', body: '测试正文 B', required: true },
@@ -112,7 +112,7 @@ describe('真实接口客户端（issue #24）', () => {
     expect(loginBody.deviceId).toMatch(UUID_RE)
 
     const doc = await getConsents()
-    expect(doc.version).toBe('p0-v1')
+    expect(doc.version).toBe('v2')
     expect(doc.sections.map((section) => section.key)).toEqual(CONSENT_KEYS)
 
     const items: ConsentChoices = {
@@ -122,10 +122,10 @@ describe('真实接口客户端（issue #24）', () => {
       monitoring: true,
       research: false,
     }
-    const signed = await submitConsents('p0-v1', items)
+    const signed = await submitConsents('v2', items)
     expect(signed.consentRequired).toBe(false)
     expect(calls[2]?.url).toBe('/api/v1/consents')
-    expect(calls[2]?.body).toEqual({ version: 'p0-v1', items })
+    expect(calls[2]?.body).toEqual({ version: 'v2', items })
   })
 
   it('session store：同意书文本来自服务端，提交后 consented=true', async () => {
@@ -150,7 +150,7 @@ describe('真实接口客户端（issue #24）', () => {
     expect(await session.submitConsent()).toBe(true)
     expect(session.consented.value).toBe(true)
     expect(posted).toEqual({
-      version: 'p0-v1',
+      version: 'v2',
       items: { service: true, crossBorderHosting: true, crossBorderModel: false, monitoring: true, research: false },
     })
   })
@@ -375,7 +375,7 @@ describe('真实接口客户端（issue #24）', () => {
   })
 
   it('离线同意书 fallback 只有占位正文，不复制服务端文本', () => {
-    expect(mockConsentDoc.version).toBe('p0-v1')
+    expect(mockConsentDoc.version).toBe('v2')
     expect(MOCK_CONSENT_SECTIONS.map((section) => section.key)).toEqual(CONSENT_KEYS)
     for (const section of MOCK_CONSENT_SECTIONS) {
       expect(section.title.length).toBeGreaterThan(0)

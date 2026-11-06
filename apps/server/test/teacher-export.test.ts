@@ -92,7 +92,7 @@ beforeEach(async () => {
   expect(login.statusCode, login.body).toBe(200);
   studentCookie = cookieFrom(login.headers['set-cookie']);
   await setStudentAgeBand(app, studentCookie);
-  await post(studentCookie, '/consents', { version: 'p0-v1', items: REQUIRED });
+  await post(studentCookie, '/consents', { version: 'v2', items: REQUIRED });
   const started = await post(studentCookie, `/student/assignments/${assignment.json().assignmentId as string}/attempt`);
   expect(started.statusCode, started.body).toBe(200);
   attemptId = started.json().state.attemptId as string;

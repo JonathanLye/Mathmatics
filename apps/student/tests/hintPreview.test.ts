@@ -126,13 +126,13 @@ describe('softLanding：按钮文案与后端未实现项', () => {
     expect(softLandingLabel('unknown_action')).toBe('unknown_action')
   })
 
-  it('flag_teacher（/flag-teacher 后端未实现）禁用', () => {
-    expect(softLandingAvailable('flag_teacher')).toBe(false)
+  it('flag_teacher（/flag-teacher 已实现，U15）可用', () => {
+    expect(softLandingAvailable('flag_teacher')).toBe(true)
     expect(softLandingAvailable('back_to_definition')).toBe(true)
     const items = previewSoftLandingItems(['back_to_definition', 'flag_teacher', 'unknown_action'])
     expect(items).toHaveLength(3)
     expect(items[0]).toMatchObject({ id: 'back_to_definition', label: '回到定义', disabled: false })
-    expect(items[1]).toMatchObject({ id: 'flag_teacher', label: '求助老师', disabled: true })
+    expect(items[1]).toMatchObject({ id: 'flag_teacher', label: '求助老师', disabled: false })
     expect(items[2]).toMatchObject({ id: 'unknown_action', label: 'unknown_action', disabled: false })
     expect(previewSoftLandingItems(undefined)).toEqual([])
   })

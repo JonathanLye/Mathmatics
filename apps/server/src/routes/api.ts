@@ -32,7 +32,7 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions & { gateway: ModelGa
   // 不能整体转发 options：Fastify 会把 prefix 也带进插件选项，导致前缀重复。
   await api.register(authRoutes, { db, config, contract });
   await api.register(consentRoutes, { db, config, contract });
-  await api.register(attemptRoutes, { db, config, contract });
+  await api.register(attemptRoutes, { db, config, contract, gateway });
   await api.register(progressRoutes, { db, config, contract });
   await api.register(eventRoutes, { db, config, contract });
   await api.register(pathRoutes, { db, config, contract });

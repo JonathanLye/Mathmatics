@@ -1,3 +1,4 @@
+import { CONSENT_VERSION } from '../src/auth/consent.ts';
 import type { AddressInfo } from 'node:net';
 
 import JSZip from 'jszip';
@@ -48,7 +49,7 @@ async function joinStudent(studentNo: string, inviteCode: string): Promise<strin
   expect(login.statusCode, login.body).toBe(200);
   const cookie = cookieFrom(login.headers['set-cookie']);
   await setStudentAgeBand(app, cookie);
-  await post(cookie, '/consents', { version: 'p0-v1', items: REQUIRED });
+  await post(cookie, '/consents', { version: CONSENT_VERSION, items: REQUIRED });
   return cookie;
 }
 
