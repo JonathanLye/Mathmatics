@@ -11,9 +11,11 @@ import PgButton from '@/components/ui/PgButton.vue'
 import PgField from '@/components/ui/PgField.vue'
 import PgMascot from '@/components/ui/PgMascot.vue'
 import { SETPW_COPY } from '@/copy/onboarding'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 const loading = session.loading
 const password = ref('')
 const confirm = ref('')

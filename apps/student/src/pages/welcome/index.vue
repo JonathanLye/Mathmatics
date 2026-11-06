@@ -18,10 +18,12 @@ import PgMascot from '@/components/ui/PgMascot.vue'
 import { deviceIntroSeen, markDeviceIntroSeen, useOnboarding } from '@/composables/useOnboarding'
 import { COPY } from '@/copy'
 import { DAILY_GOALS, INPUT_CHOICES, WELCOME_COPY } from '@/copy/onboarding'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { nextWelcomeStep, previousWelcomeStep, type WelcomeStep } from '@/onboarding/welcomeSteps'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 const onboarding = useOnboarding()
 
 const ready = ref(false)

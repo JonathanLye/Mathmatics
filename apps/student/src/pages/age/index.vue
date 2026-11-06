@@ -16,6 +16,7 @@ import PgCard from '@/components/ui/PgCard.vue'
 import PgMascot from '@/components/ui/PgMascot.vue'
 import PgSkeleton from '@/components/ui/PgSkeleton.vue'
 import { AGE_COPY } from '@/copy/onboarding'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { useSession } from '@/stores/session'
 import {
   AGE_BAND_LT14_RISK,
@@ -27,6 +28,7 @@ import {
 import type { AgeBand } from '@/types/attempt'
 
 const session = useSession()
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 const loading = session.loading
 const selected = ref<AgeBand | null>(null)
 /** 服务端已记录的年龄分档（null=未选择）；用于「已记录」「暂不开通」两种状态。 */

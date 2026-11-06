@@ -12,7 +12,8 @@
  *  5) 首页导览 3 步，走完后不再出现；“重看引导”（开发陈列页里的那一行）能再放一遍；
  *  6) 未满 14 岁页有退出登录，点了回到登录页；
  *  7) 减少动态效果：开场动画不跑动画，第 2 幕停在终点（六个站点都亮）；
- *  8) 服务端按线上同款 CSP 提供页面，不应有任何违规。
+ *  8) 动效开关（本机偏好）关闭：登录页带 data-motion=off，开场动画不跑；
+ *  9) 服务端按线上同款 CSP 提供页面，不应有任何违规。
  * 严格性：按钮用 data-testid 真实点击；监听 pageerror 与 CSP 违规。
  */
 import http from 'node:http'
@@ -413,6 +414,32 @@ async function main() {
     check('减少动态效果：没有还在跑的动画', lit.running === 0, 'running=' + lit.running)
     await rpage.screenshot({ path: path.join(outDir, '14-reduced-scene2.png') })
     await rctx.close()
+  } catch (e) {
+    failed++
+    console.log('FAIL 场景异常 :: ' + (e && e.stack ? e.stack.split('\n').slice(0, 5).join(' ') : String(e)))
+  }
+
+  try {
+    // ---------------- 场景 8：我的页的“动效”开关（登录前的页面也要尊重） ----------------
+    console.log('--- 场景 8：动效开关关闭（本机偏好），登录页和开场动画 ---')
+    const octx = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    await octx.addInitScript(() => {
+      try { window.localStorage.setItem('pg.feedback.v1', JSON.stringify({ sound: true, motion: false, haptics: true })) } catch { /* 忽略 */ }
+    })
+    const opage = await octx.newPage()
+    attachListeners(opage)
+    await gotoFresh(opage, base, '/pages/login/index?onboarding=new')
+    await waitTestId(opage, 'intro-story')
+    await tap(opage, 'intro-next', '下一幕')
+    await opage.waitForTimeout(600)
+    const off = await opage.evaluate(() => ({
+      attr: document.documentElement.getAttribute('data-motion'),
+      running: document.getAnimations().filter((a) => a.playState === 'running').length,
+      left: (() => { const w = document.querySelector('[data-testid="intro-scene"] .pgp__walker'); return w ? parseFloat(getComputedStyle(w).left) : 0 })(),
+    }))
+    check('动效开关关闭：登录页就带上 data-motion=off', off.attr === 'off', JSON.stringify(off))
+    check('动效开关关闭：开场动画第 2 幕没有在跑的动画，直接停在终点', off.running === 0 && off.left > 250, JSON.stringify(off))
+    await octx.close()
   } catch (e) {
     failed++
     console.log('FAIL 场景异常 :: ' + (e && e.stack ? e.stack.split('\n').slice(0, 5).join(' ') : String(e)))

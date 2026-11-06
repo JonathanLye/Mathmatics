@@ -85,12 +85,18 @@ export function canShow(input: CanShowInput): boolean {
 }
 
 /**
- * 要不要先走欢迎页。已经看过，或者昵称早就设好的老用户，都算走过（不去打扰已经在用的学生）。
+ * 要不要先走欢迎页。已经看过，或者昵称早就自己设好的老用户，都算走过（不去打扰已经在用的学生）。
  */
 export function welcomeNeeded(input: { ready: boolean; active: boolean; muted: boolean; seen: SeenMap; nickname: string | null | undefined }): boolean {
   if (!input.ready || !input.active || input.muted) return false
   if (input.seen.welcome === true) return false
-  return !(typeof input.nickname === 'string' && input.nickname.trim() !== '')
+  return !hasChosenNickname(input.nickname)
+}
+
+/** 昵称算“选过”：非空，而且不是系统匿名码（S-XXXX）。服务端 display_name 目前只有设置页写入，学生默认为空；防的是以后老师或导入预填了名字。 */
+export function hasChosenNickname(nickname: string | null | undefined): boolean {
+  const name = typeof nickname === 'string' ? nickname.trim() : ''
+  return name !== '' && !/^S-[0-9A-Z]+$/.test(name)
 }
 
 /** 本机缓存的键：同一台设备可能换人登录，按学生分开存。 */

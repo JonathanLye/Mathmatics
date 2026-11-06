@@ -135,6 +135,7 @@ describe('纯逻辑', () => {
     expect(welcomeNeeded({ ...base, seen: { welcome: true } })).toBe(false)
     expect(welcomeNeeded({ ...base, nickname: '小明' })).toBe(false)
     expect(welcomeNeeded({ ...base, nickname: '  ' })).toBe(true)
+    expect(welcomeNeeded({ ...base, nickname: 'S-7K2Q9M' })).toBe(true) // 系统匿名码不算自己取的昵称
     expect(welcomeNeeded({ ...base, ready: false })).toBe(false)
   })
 

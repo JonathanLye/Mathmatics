@@ -19,9 +19,11 @@ import WechatHint from '@/components/WechatHint.vue'
 import { deviceIntroSeen, markDeviceIntroSeen } from '@/composables/useOnboarding'
 import { LOGIN_COPY } from '@/copy/onboarding'
 import { SANDBOX_READY } from '@/onboarding/logic'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 const loading = session.loading
 const mockMode = isMockMode()
 const mode = ref<LoginMode>(initialLoginMode({ mock: mockMode, inviteFromLink: '' }))

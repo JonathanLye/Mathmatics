@@ -18,9 +18,11 @@ import PgSwitch from '@/components/ui/PgSwitch.vue'
 import { shouldGoWelcome } from '@/composables/useOnboarding'
 import { consentVersionLabel } from '@/copy'
 import { CONSENT_COPY } from '@/copy/onboarding'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 const items = session.items
 const version = session.docVersion
 const requiredOk = session.requiredOk

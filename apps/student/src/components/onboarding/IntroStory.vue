@@ -12,9 +12,12 @@ import PgButton from '@/components/ui/PgButton.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
 import PgMascot from '@/components/ui/PgMascot.vue'
 import { INTRO_SCENES, INTRO_UI } from '@/copy/onboarding'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { introStepFrom, shouldSwipe } from './introLogic'
 
 const emit = defineEmits<{ (e: 'done', payload: { skipped: boolean }): void }>()
+
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 
 const total = INTRO_SCENES.length
 const index = ref(0)

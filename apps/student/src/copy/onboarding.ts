@@ -134,9 +134,10 @@ export const INPUT_CHOICES: ReadonlyArray<{ value: 'hand' | 'keyboard' | 'photo'
 export const TOUR_STEPS = [
   {
     // 路径页由别的任务改版：按这几个选择器依次找，找到第一个就用。
-    target: '[data-testid="home-path-node"], [data-testid^="home-todo-start-"], [data-testid^="home-continue-"], [data-testid="home-todo-card"], [data-testid="home-inprogress-card"]',
+    target: '[data-testid="home-path-node"], [data-testid^="home-todo-start-"], [data-testid^="home-continue-"], [data-testid="home-todo-card"], [data-testid="home-inprogress-card"], [data-testid="home-todo-empty"]',
     title: '这是你的路径',
-    body: '每个圆点是一道题，点亮的就是现在能做的。一步一步往下走。',
+    // 刚进来、老师还没布置题的时候路径是空的，所以这句话在有题和没题时都说得通。
+    body: '老师布置的题会一道一道排在这里，能做的会亮起来，做完一道再往下走。',
   },
   {
     target: '[data-testid="home-daily-goal"], [data-testid="home-week"], [data-testid="home-done-count"]',
