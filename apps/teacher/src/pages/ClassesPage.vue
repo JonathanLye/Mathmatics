@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { MessagePlugin } from 'tdesign-vue-next';
 
 import { api, ApiError } from '../api/client.ts';
 import type { ClassSummary } from '../api/types.ts';
+import Icon from '../components/ui/Icon.vue';
 import Mascot from '../components/ui/Mascot.vue';
+import { session } from '../stores/session.ts';
+import {
+  buildChecklist,
+  EMPTY_LOCAL,
+  firstRunProgress,
+  firstRunStorageKey,
+  nextFirstRunStep,
+  parseFirstRunLocal,
+  showFirstRun,
+  type FirstRunKey,
+  type FirstRunLocal,
+} from '../utils/firstRun.ts';
 
 const router = useRouter();
 
@@ -28,6 +41,55 @@ function claimedShare(c: ClassSummary): number {
   return c.students > 0 ? Math.min(1, (c.claimed ?? 0) / c.students) : 0;
 }
 
+// ---- 首次使用清单：建班 → 导名单 → 发邀请码 → 看看板（状态从数据推，收起和“看板”记在本机）----
+const loaded = ref(false);
+const local = ref<FirstRunLocal>({ ...EMPTY_LOCAL });
+const items = computed(() => buildChecklist(classes.value, local.value));
+const nextStep = computed(() => nextFirstRunStep(items.value));
+const progress = computed(() => firstRunProgress(items.value));
+const showChecklist = computed(() => loaded.value && !error.value && showFirstRun(items.value, local.value));
+const STEP_ACTION: Record<FirstRunKey, string> = { class: '建班', roster: '去导名单', invite: '复制邀请码', board: '打开看板' };
+
+function readLocal(): FirstRunLocal {
+  try {
+    return parseFirstRunLocal(window.localStorage.getItem(firstRunStorageKey(session.me?.userId)));
+  } catch {
+    return { ...EMPTY_LOCAL };
+  }
+}
+function saveLocal(patch: Partial<FirstRunLocal>): void {
+  local.value = { ...local.value, ...patch };
+  try {
+    window.localStorage.setItem(firstRunStorageKey(session.me?.userId), JSON.stringify(local.value));
+  } catch {
+    /* 隐私模式写不进去：本次会话内仍然生效 */
+  }
+}
+
+async function copyInvite(row: ClassSummary): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(row.inviteCode);
+    MessagePlugin.success(`邀请码 ${row.inviteCode} 已复制，发给学生就行`);
+  } catch {
+    MessagePlugin.info(`邀请码是 ${row.inviteCode}，请手动复制发给学生`);
+  }
+  saveLocal({ invite: true });
+}
+
+function runStep(key: FirstRunKey): void {
+  const first = classes.value[0];
+  if (key === 'class' || !first) {
+    dialogVisible.value = true;
+    return;
+  }
+  if (key === 'invite') {
+    void copyInvite(first);
+    return;
+  }
+  if (key === 'board') saveLocal({ board: true });
+  openClass(first);
+}
+
 async function refresh(): Promise<void> {
   loading.value = true;
   error.value = '';
@@ -37,6 +99,7 @@ async function refresh(): Promise<void> {
     error.value = caught instanceof ApiError ? caught.message : '加载班级失败';
   } finally {
     loading.value = false;
+    loaded.value = true;
   }
 }
 
@@ -66,7 +129,10 @@ function openClass(row: ClassSummary): void {
   void router.push(`/classes/${row.classId}`);
 }
 
-onMounted(refresh);
+onMounted(() => {
+  local.value = readLocal();
+  void refresh();
+});
 </script>
 
 <template>
@@ -78,6 +144,43 @@ onMounted(refresh);
     <div class="page-sub">建班后把邀请码发给学生；名单导入在班级页的“名单”标签。</div>
 
     <t-alert v-if="error" theme="error" :message="error" />
+
+    <section v-if="showChecklist" class="first-run" data-testid="first-run">
+      <div class="first-run__head">
+        <Mascot :expr="nextStep ? 'think' : 'cheer'" :size="72" />
+        <div class="first-run__title">
+          <b>{{ nextStep ? '第一次用？四步走通' : '都走通了，接下来就看学生怎么写' }}</b>
+          <span class="first-run__sub">建班 → 导名单 → 发邀请码 → 看看板 · 已完成 {{ progress.done }} / {{ progress.total }}</span>
+        </div>
+        <t-button v-if="classes.length > 0" variant="text" size="small" data-testid="first-run-dismiss" @click="saveLocal({ dismissed: true })">
+          {{ nextStep ? '先不看了' : '收起' }}
+        </t-button>
+      </div>
+      <ol class="first-run__steps">
+        <li
+          v-for="(item, i) in items"
+          :key="item.key"
+          class="first-run__step"
+          :class="{ 'first-run__step--done': item.done, 'first-run__step--next': nextStep?.key === item.key }"
+          :data-testid="`first-run-step-${item.key}`"
+        >
+          <span class="first-run__dot"><Icon v-if="item.done" name="check" :size="16" /><template v-else>{{ i + 1 }}</template></span>
+          <span class="first-run__text">
+            <b>{{ item.title }}</b>
+            <span>{{ item.hint }}</span>
+          </span>
+          <t-button
+            v-if="nextStep?.key === item.key"
+            theme="primary"
+            size="small"
+            :data-testid="`first-run-action-${item.key}`"
+            @click="runStep(item.key)"
+          >
+            {{ STEP_ACTION[item.key] }}
+          </t-button>
+        </li>
+      </ol>
+    </section>
 
     <div v-if="classes.length > 0" class="class-grid" data-testid="class-grid">
       <button
@@ -116,8 +219,7 @@ onMounted(refresh);
         </span>
       </button>
     </div>
-    <div v-else-if="!loading" class="empty">还没有班级。点右上角“建班”，10 分钟走通“建班 → 导名单 → 布置”。</div>
-    <t-loading v-else />
+    <t-loading v-else-if="loading" />
 
     <t-dialog
       v-model:visible="dialogVisible"
@@ -138,6 +240,22 @@ onMounted(refresh);
 </template>
 
 <style scoped>
+.first-run { margin: 8px 0 16px; padding: 16px 18px; background: var(--pg-surface); border: 2px solid var(--pg-border); border-bottom-width: 5px; border-radius: 20px; animation: first-run-in 0.32s ease-out both; }
+.first-run__head { display: flex; align-items: center; gap: 14px; }
+.first-run__title { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.first-run__title b { font-size: 18px; font-weight: 900; }
+.first-run__sub { color: var(--pg-text-secondary); font-size: 13px; }
+.first-run__steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.first-run__step { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 12px; background: var(--pg-soft); border: 2px solid transparent; border-radius: 14px; }
+.first-run__step--next { background: var(--pg-sea-soft); border-color: var(--pg-sea); }
+.first-run__dot { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--pg-surface); border: 2px solid var(--pg-border); font-size: 13px; font-weight: 900; }
+.first-run__step--done .first-run__dot { background: var(--pg-grass); border-color: var(--pg-grass-lip); color: var(--on-ok); }
+.first-run__step--next .first-run__dot { border-color: var(--pg-sea); color: var(--pg-sea-text); }
+.first-run__text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; font-size: 12px; color: var(--pg-text-secondary); line-height: 1.4; }
+.first-run__text b { color: var(--pg-text); font-size: 15px; font-weight: 900; }
+@keyframes first-run-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .first-run { animation: none; } }
+
 .class-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; margin-top: 16px; }
 .class-card {
   --c: var(--pg-sea); --c-lip: var(--pg-sea-lip);
