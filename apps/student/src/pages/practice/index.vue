@@ -43,7 +43,7 @@ import { checkLesson } from '@/api/client'
 import { initIntegrity } from '@/integrity/sdk'
 import { setFeedbackTestMode } from '@/motion/useFeedbackPrefs'
 import type { MockKey } from '@/mocks/attemptStates'
-import type { LayerId, LessonView } from '@/types/attempt'
+import type { LessonView } from '@/types/attempt'
 
 const toast = useToast()
 const { mode } = useViewport()
@@ -123,9 +123,9 @@ function onSwitchMock(k: MockKey) {
   void drafts.restoreDrafts()
 }
 
-function switchLayer(_layer: LayerId) {
+/** 层列表只用来看进度：层的推进由服务端决定，点已完成或当前层只收起列表。 */
+function closeLayers(): void {
   layersOpen.value = false
-  toast.show('这一层现在还不能跳过去')
 }
 
 /**
@@ -199,11 +199,11 @@ function backHome() {
       <PgButton variant="ghost" size="sm" @tap="backHome">回首页</PgButton>
     </view>
 
-    <LayerNav v-if="mode === 'tablet'" :layers="state.layers" :current="currentLayer" @select="switchLayer" />
+    <LayerNav v-if="mode === 'tablet'" :layers="state.layers" :current="currentLayer" @select="closeLayers" />
 
     <view class="pg-practice__shell">
       <view v-if="mode === 'desktop'" class="pg-practice__rail">
-        <LayerNav :layers="state.layers" :current="currentLayer" vertical @select="switchLayer" />
+        <LayerNav :layers="state.layers" :current="currentLayer" vertical @select="closeLayers" />
         <BudgetBar :budget="state.budget" />
       </view>
 
@@ -333,7 +333,7 @@ function backHome() {
       />
     </view>
 
-    <LayerSheet v-if="mode === 'mobile'" :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="switchLayer" />
+    <LayerSheet v-if="mode === 'mobile'" :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="closeLayers" />
     <view v-else-if="layersOpen" class="pg-practice__mask" @tap="layersOpen = false" />
 
     <HelpDrawer

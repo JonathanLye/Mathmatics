@@ -162,6 +162,23 @@ async function main() {
   const base = 'http://127.0.0.1:' + port
   const browser = await chromium.launch({ executablePath: exe, headless: true })
 
+  const scenarioLayerList = async (page) => {
+    // ---- 层列表：点已完成或当前层只收起列表，不出开发提示 ----
+    await page.goto('about:blank')
+    await page.goto(base + '/#/pages/practice/index?mock=l3-active', { waitUntil: 'networkidle' })
+    await page.locator('.pg-topbar__progress').click()
+    const sheet = page.locator('.pg-layersheet')
+    await sheet.waitFor({ state: 'visible', timeout: 5000 })
+    await sheet.locator('.pg-layersheet__row--current').click()
+    await sheet.waitFor({ state: 'detached', timeout: 5000 })
+    check('点当前层：列表收起，不弹提示', !(await bodyText(page)).includes('还不能跳过去'))
+    await page.locator('.pg-topbar__progress').click()
+    await sheet.waitFor({ state: 'visible', timeout: 5000 })
+    await sheet.locator('.pg-layersheet__row').first().click()
+    await sheet.waitFor({ state: 'detached', timeout: 5000 })
+    check('点已完成的层：列表收起，不弹提示', !(await bodyText(page)).includes('还不能跳过去'))
+  }
+
   const scenarioFill = async (page) => {
     // ---- 场景 1：L1 填写 → 核对 → L2 → 看通用骨架 → 核对 → L3 ----
     await openMock(page, base, 'l1-active')
@@ -260,6 +277,7 @@ async function main() {
     })
 
     for (const [name, scenario] of [
+      ['层列表不出开发提示', scenarioLayerList],
       ['填写并核对 L1→L2→L3', scenarioFill],
       ['跳层 L1→L2→L3', scenarioSkip],
     ]) {
