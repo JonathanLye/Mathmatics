@@ -32,6 +32,8 @@ fs.mkdirSync(OUT, { recursive: true });
 
 const WRITE = { 'x-requested-with': 'proof-gym' };
 const REQUIRED = { service: true, crossBorderHosting: true, crossBorderModel: false, monitoring: true, research: false };
+// 学号每次运行不同：同一台服务上重复跑时，学生账号和年龄段已存在（年龄段记录后不可改），固定学号会在第二次运行时 409。
+const STUDENT_NO = String(3_000_000 + Math.floor(Math.random() * 6_000_000));
 const failures = [];
 const assert = (ok, message) => {
   if (!ok) failures.push(message);
@@ -89,7 +91,7 @@ async function main() {
   );
   await must(
     await api.post(`${BASE}/api/v1/teacher/classes/${cls.classId}/roster`, {
-      data: '2026999,测试学生\n',
+      data: `${STUDENT_NO},测试学生\n`,
       headers: { ...WRITE, 'content-type': 'text/csv' },
     }),
     'roster',
@@ -104,7 +106,7 @@ async function main() {
 
   // 3) 学生作答（独立 request context，不共享教师 Cookie）
   const studentCtx = await request.newContext({ baseURL: BASE });
-  await must(await studentCtx.post(`${BASE}/api/v1/auth/student/login`, { data: { inviteCode: cls.inviteCode, studentNo: '2026999', deviceId: '00000000-0000-4000-8000-0000000000e2' }, headers: WRITE }), 'student login');
+  await must(await studentCtx.post(`${BASE}/api/v1/auth/student/login`, { data: { inviteCode: cls.inviteCode, studentNo: STUDENT_NO, deviceId: '00000000-0000-4000-8000-0000000000e2' }, headers: WRITE }), 'student login');
   // #64/#152：学生写接口前先选年龄段（<14 关闭）。
   await must(await studentCtx.post('/api/v1/auth/student/age-band', { data: { ageBand: 'ge18' }, headers: WRITE }), 'age band');
   await must(await studentCtx.post(`${BASE}/api/v1/consents`, { data: { version: 'p0-v1', items: REQUIRED }, headers: WRITE }), 'consent');
@@ -150,19 +152,19 @@ async function main() {
   // #166：按布置筛选看板
   await page.locator('.live-toolbar .t-select').first().waitFor({ timeout: 10000 });
   await shot('02a-live-switcher-1280');
-  // #48 C 侧：看板 SSE 应已连接（页面底部提示）
-  await page.getByText(/SSE 已连接/).waitFor({ timeout: 8000 });
+  // #48 C 侧：看板实时连接应已建立（页面底部提示；文案去掉了 SSE 这类开发术语）
+  await page.getByText(/实时连接正常/).waitFor({ timeout: 8000 });
   await page.locator('.live-tile:not([disabled])').first().click();
   await page.getByText('学生作答详情').waitFor({ timeout: 10000 });
   await shot('03-student-detail-1280');
   // 引擎状态级回放（#143）：打开回放并断言 engine 卡片
   await page.getByRole('button', { name: '回放' }).click();
-  await page.getByText('回放（引擎状态级）').waitFor({ timeout: 15000 });
+  await page.getByText('作答回放', { exact: true }).waitFor({ timeout: 15000 });
   await page.getByText('已提交行').first().waitFor({ timeout: 15000 });
   const replayText = await page.locator('body').innerText();
-  assert(!replayText.includes('题目包加载失败'), '引擎回放回退到事件级（题目包加载失败）');
-  assert(replayText.includes('engine replay'), '回放弹窗缺少引擎状态级说明');
-  assert(replayText.includes('已提交行'), '回放弹窗缺少 engine 卡片');
+  assert(!replayText.includes('现在只能按操作记录回放'), '回放回退到只按操作记录回放（题目信息没能加载）');
+  assert(replayText.includes('按作答状态回放'), '回放弹窗缺少按作答状态回放的说明');
+  assert(replayText.includes('已提交行'), '回放弹窗缺少作答状态卡片');
   await shot('03b-replay-engine-1280');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
@@ -171,14 +173,14 @@ async function main() {
   await page.getByText('完成率').waitFor({ timeout: 10000 });
   await shot('04-metrics-1280');
   await page.getByText('导出', { exact: true }).click();
-  await page.getByText('字段字典（08 §5）').waitFor({ timeout: 10000 });
+  await page.getByText('字段字典', { exact: true }).waitFor({ timeout: 10000 });
   await page.getByRole('button', { name: '创建导出任务' }).click();
   await page.getByText('任务', { exact: false }).first().waitFor({ timeout: 10000 });
   await page.getByRole('link', { name: '下载' }).waitFor({ timeout: 15000 });
   await shot('05-export-1280');
   // #176：班级默认设置页签
   await page.locator('.t-tabs__nav-item').filter({ hasText: /^设置$/ }).click();
-  await page.getByText('默认透露预算').waitFor({ timeout: 10000 });
+  await page.getByText('默认提示额度').waitFor({ timeout: 10000 });
   await shot('05c-class-settings-1280');
   // #165：布置列表来自 GET /teacher/assignments（不再只显示会话内创建）
   await page.getByText('布置', { exact: true }).first().click();
@@ -186,21 +188,21 @@ async function main() {
   await shot('05b-assignments-1280');
 
   await page.goto(`${BASE}/t/problems`, { waitUntil: 'networkidle' });
-  await page.getByText('题库与审核').waitFor({ timeout: 10000 });
+  await page.getByRole('heading', { name: '题库' }).waitFor({ timeout: 10000 });
   await shot('06-problems-1280');
   // #182：学生视角预览四种典型状态
   // 全新 seed 只有已发布题目，用第一行（harness 不依赖环境里恰好有草稿）。
-  await page.locator('tbody tr').first().locator('.t-link').last().click();
-  await page.getByText('题目详情（含 secret，仅教师可见）').waitFor({ timeout: 10000 });
+  await page.locator('tbody tr').first().locator('.t-link').filter({ hasText: '审核' }).click();
+  await page.getByText('题目详情（含参考答案信息，仅老师可见）').waitFor({ timeout: 10000 });
   await page.getByText('学生视角预览', { exact: false }).first().click();
-  await page.getByText('L1 定义').first().waitFor({ timeout: 10000 });
+  await page.getByText('回忆定义').first().waitFor({ timeout: 10000 });
   // 逐个点开，断言各自内容；预览区只能出现 public 字段，不得出现 secret.keys 的文本（#183 A 复审）。
   const preview = page.locator('details').filter({ hasText: '学生视角预览' });
   const previewChecks = [
-    ['L1 定义', null],
-    ['L3 构造与推导', 'L3：'],
-    ['额度用完', '透露上限（题目包配置）'],
-    ['L6 总结', 'L6：'],
+    ['回忆定义', null],
+    ['写证明', '写证明：'],
+    ['提示额度用完', '提示额度上限（题目设置）'],
+    ['总结', '总结：'],
   ];
   for (const [label, text] of previewChecks) {
     await preview.locator('.t-tabs__nav-item').filter({ hasText: label }).click();
@@ -221,7 +223,7 @@ async function main() {
   // #171：题库状态筛选（已发布）：选中后每一行都应是已发布
   await page.locator('.problem-filters .t-select').first().click();
   await page.locator('.t-select__dropdown').getByText('已发布', { exact: true }).click();
-  await page.getByText(/共 \d+ 行/).waitFor({ timeout: 10000 });
+  await page.getByText(/已显示 \d+ 道题/).waitFor({ timeout: 10000 });
   await page.waitForTimeout(500);
   const filteredRows = await page.locator('tbody tr').count();
   assert(filteredRows >= 1, '题库筛选已发布应至少 1 行');
@@ -229,7 +231,7 @@ async function main() {
   assert(filteredPublished === filteredRows, `筛选后应全是已发布：${filteredPublished}/${filteredRows}`);
   await shot('06a-problems-filter-1280');
   await page.goto(`${BASE}/t/settings`, { waitUntil: 'networkidle' });
-  await page.getByText('默认策略（04 §7）').waitFor({ timeout: 10000 });
+  await page.getByText('布置作业的默认做法').waitFor({ timeout: 10000 });
   await shot('06b-settings-1280');
 
   // 5) 三档 + 深色
