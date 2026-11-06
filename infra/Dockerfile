@@ -27,7 +27,10 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
-RUN pnpm install --frozen-lockfile --prod
+# 只安装 server / worker 及其工作区依赖的生产依赖：全量 --prod 会把学生端/教师端（uni-app、TDesign 等）的运行时依赖
+# 也装进来（约 717MB），而它们的静态产物已在 web 阶段构建，运行时不需要。
+RUN pnpm install --frozen-lockfile --prod --filter @proof-gym/server... --filter @proof-gym/worker... \
+ && rm -rf /pnpm/store
 
 ENV NODE_ENV=production
 EXPOSE 3000
