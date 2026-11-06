@@ -29,6 +29,7 @@ import { nextLineNoOf } from '@/components/layers/proofLines'
 import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
 import { useToast } from '@/components/ui/useToast'
+import { uuidv7 } from '@/integrity/ids'
 import { layerName } from '@/copy'
 import type { AttemptState, InputProvenance, LayerId, LessonView, LineDraft } from '@/types/attempt'
 import type { DraftsHandle } from './useDrafts'
@@ -65,7 +66,7 @@ function toLineDraft(draft: TransferDraft): LineDraft {
   return {
     statement: draft.statement,
     justification: draft.justification,
-    input: { provenance: draft.provenance, draftId: 'mock-' + Date.now() },
+    input: { provenance: draft.provenance, draftId: uuidv7() },
   }
 }
 

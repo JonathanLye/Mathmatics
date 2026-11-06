@@ -73,8 +73,8 @@ async function logout(): Promise<void> {
         <router-link class="app-nav-item" to="/settings"><Icon name="me" :size="20" />设置</router-link>
       </nav>
       <div class="app-me">
-        <span class="pg-avatar" style="width: 30px; height: 30px; font-size: 13px">{{ (session.me?.displayName ?? session.me?.anonCode ?? '师').slice(0, 1) }}</span>
-        <span>{{ session.me?.displayName ?? session.me?.anonCode }}</span>
+        <span class="pg-avatar" style="width: 30px; height: 30px; font-size: 13px">{{ (session.me?.displayName ?? '师').slice(0, 1) }}</span>
+        <span>{{ session.me?.displayName ?? '老师' }}</span>
       </div>
     </aside>
     <div class="app-main">
@@ -82,7 +82,7 @@ async function logout(): Promise<void> {
         <div class="app-header__left">
           <span class="app-header__brand"><span class="app-logo"><Icon name="qed" :size="18" color="currentColor" /></span>证明陪练场</span>
           <span class="app-header__tag" data-testid="app-role-tag">教师端</span>
-          <span class="app-user">{{ session.me?.displayName ?? session.me?.anonCode }}</span>
+          <span class="app-user">{{ session.me?.displayName ?? '老师' }}</span>
         </div>
         <div class="app-actions">
           <t-button variant="text" theme="default" size="small" @click="toggleTheme">{{ dark ? '浅色' : '深色' }}</t-button>

@@ -2,6 +2,7 @@ import { serializeState } from '@proof-gym/engine';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { loadProblem } from '../src/attempts/problem.ts';
+import { SUMMARY_FOLLOWUP_FALLBACK, summaryFollowup } from '../src/attempts/view.ts';
 import { loadContract } from '../src/contract.ts';
 import { Runner } from '../../../packages/engine/test/support/runner.ts';
 import { DEF_OK, DEF_WRONG_ORDER, FRAME_TEXT, K1, K2, K3, K4, SCENARIOS, SUMMARY_MISSING_POINT } from '../../../packages/engine/test/support/scenarios.ts';
@@ -186,5 +187,27 @@ describe('AttemptState 的作答内容视图', () => {
     expect(events.map((e) => e.type)).toEqual(['layer.done']);
     const parent = (await h.db.query<{ last_event_seq: string }>(`select last_event_seq from app.attempts where id = $1`, [h.attemptId])).rows[0];
     expect(Number(parent?.last_event_seq)).toBe(events[events.length - 1]?.seq);
+  });
+});
+
+describe('总结追问', () => {
+  const secret = {
+    keys: [{ id: 'K1', leak: ['N=5/ε'] }],
+    summaryPoints: [
+      { id: 'S1', patterns: [], question: '你的总结提到 $N$ 的取法了吗？' },
+      { id: 'S2', patterns: [], question: '取 N=5/ε 就够了吗？' },
+    ],
+  } as unknown as Parameters<typeof summaryFollowup>[0];
+
+  it('取缺的第一个要点预写的追问', () => {
+    expect(summaryFollowup(secret, [], ['S1', 'S2'])).toBe('你的总结提到 $N$ 的取法了吗？');
+  });
+
+  it('预写追问含未透露的片段时，换成通用的一句，不让学生干等', () => {
+    expect(summaryFollowup(secret, [], ['S2'])).toBe(SUMMARY_FOLLOWUP_FALLBACK);
+  });
+
+  it('那一步已经写出来了，预写追问就可以用', () => {
+    expect(summaryFollowup(secret, ['K1'], ['S2'])).toBe('取 N=5/ε 就够了吗？');
   });
 });

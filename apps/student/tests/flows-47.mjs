@@ -181,12 +181,15 @@ async function main() {
   const base = 'http://127.0.0.1:' + port
   const browser = await chromium.launch({ executablePath: exe, headless: true })
 
-  /** A：完成页 → 再做迁移题 → 完整作答（2 行 + 依据 + 批注 + 改写/删除）→ 写完了 → 完成页 → 证明本。 */
+  /** A：第 5 层开始换题 → 完整作答（2 行 + 依据 + 批注 + 改写/删除）→ 写完了 → 回本题第 6 层；完成页 → 证明本。 */
   const scenarioMigration = async (page) => {
     await openMock(page, base, 'completed')
     await waitTestId(page, 'completion-card')
-    check('完成页有「再做一道迁移题」入口', (await countTestId(page, 'make-transfer')) === 1)
-    await tap(page, 'make-transfer', '再做一道迁移题')
+    // 服务端只在第 5 层开放 POST /attempts/{id}/transfer，已完成的作答开不了，完成页不给这个入口。
+    check('完成页没有开不了的「换题」入口', (await countTestId(page, 'make-transfer')) === 0)
+    await openMock(page, base, 'l5-active')
+    await waitTestId(page, 'transfer-start')
+    await tap(page, 'transfer-start', '开始换题')
     await waitTestId(page, 'transfer-attempt')
 
     const text = await bodyText(page)
@@ -245,13 +248,19 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.waitForTimeout(200)
 
+    // 改写后的反馈面板（F1）要先点继续，才轮到「写完了」。
+    const panel = page.getByTestId('feedback-continue').first()
+    if (await panel.isVisible().catch(() => false)) await tap(page, 'feedback-continue', '继续')
     await tap(page, 'transfer-finish', '写完了')
     await waitTestId(page, 'transfer-complete-card')
     check('迁移题写完 → 子作答完成页', (await bodyText(page)).includes('这道题也完成了'))
     await page.screenshot({ path: path.join(outDir, '4-transfer-done.png'), fullPage: true })
-    await tap(page, 'back-to-parent', '回到本题完成页')
+    await tap(page, 'back-to-parent', '回到本题')
+    await waitTestId(page, 'summary-input-0')
+    check('回到本题：父作答推进到第 6 层总结', (await countTestId(page, 'summary-input-0')) === 1)
+    await openMock(page, base, 'completed')
     await waitTestId(page, 'completion-card')
-    check('回到本题完成页（父作答 state）', (await bodyText(page)).includes('本题完成'))
+    check('完成页显示本题完成', (await bodyText(page)).includes('本题完成'))
     await tap(page, 'add-to-notebook', '加入证明本')
     await page.waitForSelector('[data-testid="notebook-card"]', { state: 'visible', timeout: 10000 })
     check('完成页可进入证明本', (await countTestId(page, 'notebook-card')) >= 1)

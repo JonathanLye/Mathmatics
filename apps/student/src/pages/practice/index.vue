@@ -193,7 +193,6 @@ function onSwitchMock(k: MockKey) {
             :busy="busy || nextBusy"
             @back-to-parent="session.backToParent"
             @proofbook="nav.goProofbook"
-            @make-transfer="session.beginTransfer"
             @next="nav.goNext"
             @home="nav.backHome"
           />

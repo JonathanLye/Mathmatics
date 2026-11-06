@@ -192,12 +192,24 @@ function transferView(state: AttemptState, extras: ViewExtras): Record<string, u
   };
 }
 
-// 总结五问 + 已交的回答；第一次缺要点时给追问（取缺的第一个要点预写的追问，过闸门，被拦就不给）。
+// 预写追问过不了闸门时用这句：引擎这时已经要学生再交一次，不能什么都不说。
+export const SUMMARY_FOLLOWUP_FALLBACK = '再看看你的总结：这道题最关键的那一步写进去了吗？补一句再提交。';
+
+// 第一次缺要点时的追问：取缺的第一个要点预写的追问，过闸门；被拦就换通用的一句。
+export function summaryFollowup(
+  secret: LoadedProblem['ctx']['pkg']['secret'],
+  matched: Iterable<string>,
+  missing: readonly string[],
+): string {
+  const point = secret.summaryPoints.find((p) => missing.includes(p.id));
+  if (point !== undefined && gateRule(secret, point.question, new Set(matched), []).ok) return point.question;
+  return SUMMARY_FOLLOWUP_FALLBACK;
+}
+
+// 总结五问 + 已交的回答 + 追问。
 function summaryView(state: AttemptState, problem: LoadedProblem, extras: ViewExtras): Record<string, unknown> {
   const secret = problem.ctx.pkg.secret;
-  const missing = extras.summaryMissing ?? [];
-  const point = state.summary.asked && !state.done ? secret.summaryPoints.find((p) => missing.includes(p.id)) : undefined;
-  const followup = point !== undefined && gateRule(secret, point.question, new Set(state.hint.matched), []).ok ? point.question : null;
+  const followup = state.summary.asked && !state.done ? summaryFollowup(secret, state.hint.matched, extras.summaryMissing ?? []) : null;
   return { questions: SUMMARY_QUESTIONS, answers: extras.summaryAnswers, followup };
 }
 

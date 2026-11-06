@@ -117,6 +117,17 @@ describe('学生登录：邀请码激活与密码登录', () => {
     expect(String(res.headers['set-cookie'])).toMatch(/^pg_sid_s=/);
   });
 
+  it('不带有效邀请码不透露学号是否设过密码', async () => {
+    await activateAndSetPassword();
+    const body = loginBody({ deviceId: DEVICE_B }) as Record<string, unknown>;
+    const noInvite = await login({ studentNo: body['studentNo'], deviceId: DEVICE_B });
+    expect(noInvite.statusCode).toBe(401);
+    expect(errorOf(noInvite)).toMatchObject({ code: 'INVALID_CREDENTIALS', message: '学号或密码不对' });
+    const badInvite = await login({ ...body, inviteCode: 'ZZZZZZ' });
+    expect(badInvite.statusCode).toBe(401);
+    expect(errorOf(badInvite)).toMatchObject({ code: 'INVALID_INVITE' });
+  });
+
   it('已设密码的学号只凭邀请码不能登录：401 PASSWORD_REQUIRED_LOGIN（堵住同学冒登）', async () => {
     await activateAndSetPassword();
     const res = await login(loginBody({ deviceId: DEVICE_B }));

@@ -3,6 +3,9 @@ import {
   buttonClasses,
   buttonDisabled,
   canDismiss,
+  isTopSheet,
+  sheetClosed,
+  sheetOpened,
   clampProgress,
   coachmarkBubble,
   coachmarkNext,
@@ -93,6 +96,20 @@ describe('PgSegmented', () => {
 })
 
 describe('PgSwitch / PgSheet', () => {
+  it('叠起来的弹层只有最上面一层算顶层，关掉后下一层接上', () => {
+    const lower = {}
+    const upper = {}
+    sheetOpened(lower)
+    expect(isTopSheet(lower)).toBe(true)
+    sheetOpened(upper)
+    expect(isTopSheet(upper)).toBe(true)
+    expect(isTopSheet(lower)).toBe(false)
+    sheetClosed(upper)
+    expect(isTopSheet(lower)).toBe(true)
+    sheetClosed(lower)
+    expect(isTopSheet(lower)).toBe(false)
+  })
+
   it('禁用的开关不翻转', () => {
     expect(switchNextValue(true, false)).toBe(false)
     expect(switchNextValue(false, false)).toBe(true)

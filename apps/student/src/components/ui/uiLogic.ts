@@ -90,6 +90,20 @@ export function canDismiss(persistent: boolean | undefined): boolean {
   return !persistent
 }
 
+/** 打开着的弹层，后开的在最上面。叠起来时 Esc 只关最上面一层。 */
+const openSheets: object[] = []
+export function sheetOpened(sheet: object): void {
+  sheetClosed(sheet)
+  openSheets.push(sheet)
+}
+export function sheetClosed(sheet: object): void {
+  const at = openSheets.indexOf(sheet)
+  if (at >= 0) openSheets.splice(at, 1)
+}
+export function isTopSheet(sheet: object): boolean {
+  return openSheets[openSheets.length - 1] === sheet
+}
+
 // ---- PgTabBar ----
 export type TabKey = 'path' | 'practice' | 'mistakes' | 'proofbook' | 'me'
 

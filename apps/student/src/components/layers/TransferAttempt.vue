@@ -88,11 +88,16 @@ function label(provenanceValue?: InputProvenance): string {
   return PROVENANCE_LABEL[provenanceValue ?? 'keyboard'] ?? '键盘'
 }
 
+const linesAtSave = ref(-1)
+
 function openAdd() {
   if (props.busy) return
   editingId.value = null
-  statement.value = ''
-  justification.value = ''
+  // 上一次保存失败（行数没变）时留着没存上的内容，不让学生重写。
+  if (linesAtSave.value !== props.lines.length) {
+    statement.value = ''
+    justification.value = ''
+  }
   provenance.value = 'keyboard'
   editorOpen.value = true
 }
@@ -119,7 +124,10 @@ function save() {
     provenance: provenance.value,
   }
   if (editingId.value) emit('edit-line', editingId.value, draft)
-  else emit('add-line', draft)
+  else {
+    linesAtSave.value = props.lines.length
+    emit('add-line', draft)
+  }
   editorOpen.value = false
   editingId.value = null
 }

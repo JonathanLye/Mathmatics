@@ -18,7 +18,7 @@ import TeacherPins from '@/components/path/TeacherPins.vue'
 import UnitBanner from '@/components/path/UnitBanner.vue'
 import UnitNotesSheet from '@/components/path/UnitNotesSheet.vue'
 import { openPractice } from '@/components/path/openPractice'
-import { currentIndex, doneIds, newlyDone, readSeen, writeSeen } from '@/components/path/pathLogic'
+import { currentIndex, doneIds, newlyDone, readSeen, unitOrdinalInChapter, writeSeen } from '@/components/path/pathLogic'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgDialog from '@/components/ui/PgDialog.vue'
 import PgEmpty from '@/components/ui/PgEmpty.vue'
@@ -146,6 +146,7 @@ const chapterName = computed(() => {
   return path.value?.chapters.find((c) => c.chapterNo === current.chapterNo)?.chapter ?? `第 ${current.chapterNo} 章`
 })
 const unitIndex = computed(() => path.value?.units.findIndex((u) => u.id === unit.value?.id) ?? -1)
+const unitOrdinal = computed(() => unitOrdinalInChapter(path.value?.units ?? [], unit.value?.id))
 const nextUnit = computed(() => (unitIndex.value === -1 ? null : (path.value?.units[unitIndex.value + 1] ?? null)))
 const prevUnit = computed(() => (unitIndex.value <= 0 ? null : (path.value?.units[unitIndex.value - 1] ?? null)))
 const teacherCards = computed(() => path.value?.teacherAssignments ?? [])
@@ -292,7 +293,7 @@ function goZone(): void {
         </view>
 
         <template v-else-if="unit">
-          <UnitBanner :unit="unit" :chapter="chapterName" class="pg-home__banner" @notes="notesOpen = true" @chapters="chaptersOpen = true" />
+          <UnitBanner :unit="unit" :chapter="chapterName" :ordinal="unitOrdinal" class="pg-home__banner" @notes="notesOpen = true" @chapters="chaptersOpen = true" />
 
           <view v-if="unit.items.length === 0" data-testid="home-empty-unit">
             <PgEmpty :title="PATH_COPY.emptyUnitTitle" :body="PATH_COPY.emptyUnitBody" expr="sleepy" :motion="null" :size="88" />
@@ -323,7 +324,7 @@ function goZone(): void {
     </view>
 
     <PathNodeSheet v-model:open="sheetOpen" :item="sheetItem" :busy="sheetBusy" :error="sheetError" @act="sheetItem && actOn(sheetItem)" @review="sheetItem && goDetail(sheetItem, 'review')" @stay="backToCurrent" />
-    <UnitNotesSheet v-model:open="notesOpen" :unit="unit" :chapter="chapterName" />
+    <UnitNotesSheet v-model:open="notesOpen" :unit="unit" :chapter="chapterName" :ordinal="unitOrdinal" />
     <ChapterSheet v-model:open="chaptersOpen" :chapters="path?.chapters ?? []" :units="path?.units ?? []" :current-id="unit?.id ?? null" @pick="pickUnit" />
     <PgDialog
       :open="lockedUnit !== null"

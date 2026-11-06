@@ -36,6 +36,8 @@ await scenario('证明本打开详情（mock）', async () => {
   await visible(page, 'proof-detail-page')
   await visible(page, 'proof-detail-lines')
   check('详情显示证明行和总结', (await page.getByTestId('proof-line').count()) >= 1 && (await page.getByTestId('proof-detail-summary').isVisible()))
+  // 讲评是证明行之后单独请求的，要等它回来。
+  await visible(page, 'proof-detail-note')
   check('详情显示讲评', await page.getByTestId('proof-detail-note').isVisible())
   check('详情有诚实说明', (await bodyText(page)).includes('系统核对关键步骤是否齐全'))
   await tap(page, 'proof-detail-back')

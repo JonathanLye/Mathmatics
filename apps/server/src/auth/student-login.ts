@@ -62,6 +62,12 @@ export async function studentLogin(
 
   if (profile?.password_hash) {
     if (input.password === undefined) {
+      // 只告诉持有效邀请码、且学号在该班名单上的人“这个学号已设密码”；其余回答和学号不存在时一样，不能拿来探测学号。
+      if (inviteCode === undefined) {
+        await verifyAgainstDummy('');
+        throw new AppError('INVALID_CREDENTIALS', 401, STUDENT_INVALID_CREDENTIALS);
+      }
+      await findRosterEntry(db, inviteCode, hash);
       throw new AppError('PASSWORD_REQUIRED_LOGIN', 401, PASSWORD_REQUIRED_LOGIN_MESSAGE);
     }
     if (!(await verifyPassword(profile.password_hash, input.password))) {
@@ -86,15 +92,13 @@ export async function studentLogin(
   });
 }
 
-// 邀请码 → 班级，学号 → 名单行，认领并入班。resolveUser 在确认“名单里有这个学号”之后才调用
-// （首次激活时才创建账号，不会因为邀请码对、名单里没有而留下孤儿账号）。
-async function joinClassByInvite(
-  tx: Queryable,
+// 邀请码 → 班级，学号 → 名单行；邀请码不对或名单里没有都抛错。
+async function findRosterEntry(
+  q: Queryable,
   inviteCode: string,
   studentNoHashValue: string,
-  resolveUser: () => Promise<string>,
-): Promise<string> {
-  const classRow = await tx.query<{ id: string }>(
+): Promise<{ classId: string; entry: { id: string; claimed_by: string | null } }> {
+  const classRow = await q.query<{ id: string }>(
     `select id from app.classes
       where invite_code = $1
         and archived_at is null
@@ -104,12 +108,24 @@ async function joinClassByInvite(
   const classId = classRow.rows[0]?.id;
   if (!classId) throw new AppError('INVALID_INVITE', 401, '邀请码不对，请向老师确认');
 
-  const rosterRow = await tx.query<{ id: string; claimed_by: string | null }>(
+  const rosterRow = await q.query<{ id: string; claimed_by: string | null }>(
     `select id, claimed_by from app.roster_entries where class_id = $1 and student_no_hash = $2`,
     [classId, studentNoHashValue],
   );
   const entry = rosterRow.rows[0];
   if (!entry) throw new AppError('NOT_IN_ROSTER', 403, '名单里没有这个学号，请联系老师');
+  return { classId, entry };
+}
+
+// 认领名单行并入班。resolveUser 在确认“名单里有这个学号”之后才调用
+// （首次激活时才创建账号，不会因为邀请码对、名单里没有而留下孤儿账号）。
+async function joinClassByInvite(
+  tx: Queryable,
+  inviteCode: string,
+  studentNoHashValue: string,
+  resolveUser: () => Promise<string>,
+): Promise<string> {
+  const { classId, entry } = await findRosterEntry(tx, inviteCode, studentNoHashValue);
 
   const userId = await resolveUser();
   if (entry.claimed_by !== null && entry.claimed_by !== userId) {

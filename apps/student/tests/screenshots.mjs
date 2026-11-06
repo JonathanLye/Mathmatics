@@ -163,7 +163,7 @@ const PAGES = [
     // #26 第 5 层：迁移题（已开始态）→ 断言迁移题表单。
     name: 'practice-l5',
     hash: '#/pages/practice/index?mock=l5-active',
-    marker: { selector: '[data-testid="transfer-form"]', text: '换题试试' },
+    marker: { selector: '[data-testid="transfer-form"]', text: '开始换题' },
   },
   {
     // #26 第 6 层：总结五问 → 断言总结表单。

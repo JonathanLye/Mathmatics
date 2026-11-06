@@ -183,3 +183,10 @@ export function writeSeen(unitId: string, ids: readonly string[]): void {
     /* 隐私模式写不进去：下次不播动画而已 */
   }
 }
+
+/** 这个单元是本章第几个（从 1 数）。库里的 unitNo 是排序键（如 101、102），不能直接给人看。 */
+export function unitOrdinalInChapter(units: ReadonlyArray<{ id: string; chapterNo: number }>, unitId: string | undefined): number {
+  const unit = units.find((u) => u.id === unitId)
+  if (!unit) return 1
+  return units.filter((u) => u.chapterNo === unit.chapterNo).findIndex((u) => u.id === unitId) + 1
+}

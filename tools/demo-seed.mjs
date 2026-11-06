@@ -334,6 +334,8 @@ async function runSelfStudy(me, student) {
     return '自学路径里在做「交错级数」，写出 1 个关键步骤';
   }
   const lines = student.plan === 'self_study_done' ? SERIES.k : SERIES.k.slice(0, 3);
+  // 服务端只记做题途中主动看的解答（做完本来就能看全部），所以要在写完之前看。
+  const reveal = await me.send('POST', '/student/practice/series/solution/reveal', { level: 'approach' });
   for (const line of lines) await step.line(...line);
   let finished = false;
   if (student.plan === 'self_study_done') {
@@ -347,7 +349,6 @@ async function runSelfStudy(me, student) {
       console.warn(`  （${student.no} 没能走完自学题：${error instanceof Error ? error.message.slice(0, 120) : error}）`);
     }
   }
-  const reveal = await me.send('POST', '/student/practice/series/solution/reveal', { level: 'approach' });
   return `自学路径里做「交错级数」${finished ? '，做完' : `，写出 ${lines.length} 个关键步骤`}${reveal.ok ? '，看过解题思路' : ''}`;
 }
 

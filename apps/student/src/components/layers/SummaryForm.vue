@@ -19,6 +19,7 @@ const emit = defineEmits<{ (e: 'submit', answers: string[]): void }>()
 
 const drafts = reactive<string[]>([])
 const questions = computed(() => props.view?.questions ?? [])
+const followup = computed(() => props.view?.followup ?? '')
 
 // 断点回填：服务端 state 里带上次答案时填回草稿。
 watch(
@@ -46,6 +47,7 @@ function submit() {
     </view>
     <text class="pg-layer__hint pg-small">每问一句话即可。提交后进入完成页；总结会进入你的证明本。</text>
 
+
     <view
       v-for="(question, index) in questions"
       :key="index"
@@ -66,15 +68,23 @@ function submit() {
       />
     </view>
 
+    <view v-if="followup" class="pg-summary__followup" role="status" data-testid="summary-followup">
+      <text class="pg-summary__followuptitle">再补一句</text>
+      <MathText :text="followup" block />
+      <text class="pg-small">想补就补一句；觉得已经写够了，直接再提交也可以。</text>
+    </view>
+
     <view class="pg-pin">
       <PgButton block size="lg" data-testid="summary-submit" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
-        {{ props.busy ? '提交中…' : '提交总结' }}
+        {{ props.busy ? '提交中…' : followup ? '再次提交' : '提交总结' }}
       </PgButton>
     </view>
   </view>
 </template>
 
 <style scoped>
+.pg-summary__followup { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); border-radius: var(--radius-12); background: var(--sea-soft); color: var(--ink); }
+.pg-summary__followuptitle { color: var(--sea-text); font-size: var(--fs-13); font-weight: var(--fw-black); }
 .pg-summary__item { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
 .pg-summary__qhead { display: flex; gap: var(--sp-2); align-items: baseline; color: var(--ink); font-family: var(--font-serif); font-size: var(--fs-15); }
 .pg-summary__qno { flex: none; color: var(--ink-2); font-family: var(--font-sans); font-size: var(--fs-13); font-weight: var(--fw-black); }

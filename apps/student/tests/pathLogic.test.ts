@@ -19,6 +19,7 @@ import {
   readSeen,
   segmentPath,
   stepsFor,
+  unitOrdinalInChapter,
   writeSeen,
 } from '@/components/path/pathLogic'
 import type { PathItem } from '@/types/path'
@@ -196,5 +197,23 @@ describe('路径动画的判断', () => {
     vi.stubGlobal('localStorage', undefined)
     expect(readSeen('u1')).toBeNull()
     expect(() => writeSeen('u1', ['a'])).not.toThrow()
+  })
+})
+
+describe('unitOrdinalInChapter', () => {
+  const units = [
+    { id: 'a', chapterNo: 1 },
+    { id: 'b', chapterNo: 1 },
+    { id: 'c', chapterNo: 2 },
+    { id: 'd', chapterNo: 2 },
+  ]
+  it('按本章里的位置从 1 数，不看库里的排序键', () => {
+    expect(unitOrdinalInChapter(units, 'a')).toBe(1)
+    expect(unitOrdinalInChapter(units, 'b')).toBe(2)
+    expect(unitOrdinalInChapter(units, 'd')).toBe(2)
+  })
+  it('找不到时显示第 1 单元', () => {
+    expect(unitOrdinalInChapter(units, 'x')).toBe(1)
+    expect(unitOrdinalInChapter([], undefined)).toBe(1)
   })
 })

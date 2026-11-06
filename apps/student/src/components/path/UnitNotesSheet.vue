@@ -8,14 +8,14 @@ import PgSheet from '@/components/ui/PgSheet.vue'
 import { PATH_COPY } from '@/copy'
 import type { PathUnitDetail } from '@/types/path'
 
-defineProps<{ open: boolean; unit: PathUnitDetail | null; chapter: string }>()
+defineProps<{ open: boolean; unit: PathUnitDetail | null; chapter: string; ordinal: number }>()
 defineEmits<{ (e: 'update:open', value: boolean): void }>()
 </script>
 
 <template>
   <PgSheet :open="open" data-testid="unit-notes-sheet" :aria-label="PATH_COPY.notes" @update:open="$emit('update:open', $event)">
     <template v-if="unit">
-      <text class="pg-notes__kicker">{{ PATH_COPY.unitKicker(chapter, unit.unitNo) }}</text>
+      <text class="pg-notes__kicker">{{ PATH_COPY.unitKicker(chapter, ordinal) }}</text>
       <text class="pg-notes__title">{{ unit.title }}</text>
       <MathText v-if="unit.summary" class="pg-notes__summary" :text="unit.summary" block data-testid="unit-notes-summary" />
       <view class="pg-notes__progress">

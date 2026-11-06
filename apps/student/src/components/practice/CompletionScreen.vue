@@ -29,7 +29,6 @@ const props = withDefaults(
 defineEmits<{
   (e: 'back-to-parent'): void
   (e: 'proofbook'): void
-  (e: 'make-transfer'): void
   (e: 'next'): void
   (e: 'home'): void
 }>()
@@ -47,8 +46,6 @@ const stepChips = computed(() => {
 })
 const theorems = computed(() => props.state.completion?.leanCard?.theorems ?? [])
 const nextLabel = computed(() => (props.origin === 'mistakes' ? '回错题本' : props.origin === 'redo' ? '回证明本' : '下一题'))
-/** 换题只有带迁移题的主作答才有；重做和测验没有。 */
-const canTransfer = computed(() => props.state.kind === 'main' && !testMode.value && !props.origin)
 const reviewAvailable = computed(() => props.state.completion?.reviewAvailable === true)
 const reviewOpen = ref(false)
 </script>
@@ -111,7 +108,6 @@ const reviewOpen = ref(false)
 
     <template #actions>
       <PgButton v-if="!testMode" block size="lg" data-testid="completion-next" :loading="busy" @tap="$emit('next')">{{ nextLabel }}</PgButton>
-      <PgButton v-if="canTransfer" block variant="secondary" data-testid="make-transfer" :disabled="busy" @tap="$emit('make-transfer')">换题试试</PgButton>
       <PgButton v-if="reviewAvailable" block variant="secondary" data-testid="completion-review" :disabled="busy" @tap="reviewOpen = true">看讲评</PgButton>
       <PgButton block variant="ghost" data-testid="add-to-notebook" :disabled="busy" @tap="$emit('proofbook')">看我的证明</PgButton>
       <PgButton block variant="ghost" data-testid="back-home" :disabled="busy" @tap="$emit('home')">回首页</PgButton>

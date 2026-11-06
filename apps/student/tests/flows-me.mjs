@@ -106,6 +106,15 @@ await scenario('入口都能到', async () => {
   await page.keyboard.press('Escape')
   await tap(page, 'me-sub-back')
   await visible(page, 'me-page')
+  await context.close()
+})
+
+// 欢迎页要已签同意书的账号；mock 会话没签过，会被同意门挡回同意页，所以这条走接口。
+await scenario('重看引导', async () => {
+  const { context, page } = await newPage()
+  await routeApi(page, {})
+  await goto(page, '/pages/me/index?api=real')
+  await visible(page, 'me-page')
   await tap(page, 'me-replay-onboarding')
   await visible(page, 'welcome-page')
   check('重看引导去欢迎页', page.url().includes('replay=1'), page.url())
@@ -123,7 +132,11 @@ await scenario('改密码', async () => {
   })
   await goto(page, '/pages/me/account?api=real')
   await visible(page, 'account-page')
-  const fill = (id, value) => page.getByTestId(id).locator('input').fill(value)
+  // uni-app 的 input 把输入事件延后约 100ms 才写回 v-model，紧接着点保存会读到旧值。
+  const fill = async (id, value) => {
+    await page.getByTestId(id).locator('input').fill(value)
+    await page.waitForTimeout(200)
+  }
 
   await tap(page, 'account-save')
   await page.getByText('请先输入当前密码').waitFor({ state: 'visible', timeout: 3000 })

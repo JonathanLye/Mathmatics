@@ -6,7 +6,7 @@ import PgIcon from '@/components/ui/PgIcon.vue'
 import { PATH_COPY } from '@/copy'
 import type { PathUnitDetail } from '@/types/path'
 
-const props = defineProps<{ unit: PathUnitDetail; chapter: string }>()
+const props = defineProps<{ unit: PathUnitDetail; chapter: string; ordinal: number }>()
 defineEmits<{ (e: 'notes'): void; (e: 'chapters'): void }>()
 
 const done = computed(() => props.unit.total > 0 && props.unit.done >= props.unit.total)
@@ -16,7 +16,7 @@ const done = computed(() => props.unit.total > 0 && props.unit.done >= props.uni
   <view class="pg-banner" :class="{ 'pg-banner--done': done }" data-testid="home-unit-banner">
     <view class="pg-banner__main">
       <view class="pg-banner__chapter" role="button" tabindex="0" data-testid="home-chapter-picker" :aria-label="PATH_COPY.chapterSheet" @tap="$emit('chapters')" @keydown.enter.prevent="$emit('chapters')">
-        <text class="pg-banner__kicker">{{ PATH_COPY.unitKicker(chapter, unit.unitNo) }}</text>
+        <text class="pg-banner__kicker">{{ PATH_COPY.unitKicker(chapter, ordinal) }}</text>
         <PgIcon name="chevron" :size="14" class="pg-banner__chevron" />
       </view>
       <text class="pg-banner__title">{{ unit.title }}</text>

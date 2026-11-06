@@ -5,7 +5,7 @@
  * data-testid、class、aria-* 透传到面板；遮罩的 class / testid 用 mask-class、mask-testid。
  */
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { canDismiss } from './uiLogic'
+import { canDismiss, isTopSheet, sheetClosed, sheetOpened } from './uiLogic'
 
 defineOptions({ inheritAttrs: false })
 
@@ -28,6 +28,7 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void; (e: 'close'): void }>()
 
 const panelRef = ref<unknown>(null)
+const sheetToken = {}
 let previouslyFocused: HTMLElement | null = null
 
 function panelElement(): HTMLElement | null {
@@ -44,8 +45,8 @@ function dismiss(): void {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return
-  event.stopPropagation()
+  if (event.key !== 'Escape' || !isTopSheet(sheetToken)) return
+  event.stopImmediatePropagation()
   dismiss()
 }
 
@@ -55,9 +56,11 @@ watch(
     if (typeof document === 'undefined') return
     if (open) {
       previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      sheetOpened(sheetToken)
       document.addEventListener('keydown', onKeydown)
       void nextTick(() => panelElement()?.focus?.())
     } else {
+      sheetClosed(sheetToken)
       document.removeEventListener('keydown', onKeydown)
       try {
         previouslyFocused?.focus?.()
@@ -71,6 +74,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  sheetClosed(sheetToken)
   if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeydown)
 })
 </script>
