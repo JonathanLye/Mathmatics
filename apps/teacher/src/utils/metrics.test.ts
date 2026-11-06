@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { formatCount, formatRate, formatSeconds, independenceBand, keyHeatRows, layerFunnelData } from './metrics.ts';
 
-describe('指标展示（08 §4 / 04 §3）', () => {
+describe('指标展示', () => {
   it('比例与 null', () => {
     expect(formatRate(0.5)).toBe('50%');
     expect(formatRate(0.3333)).toBe('33.3%');
@@ -25,14 +25,14 @@ describe('指标展示（08 §4 / 04 §3）', () => {
     expect(independenceBand(null)).toBe('—');
   });
 
-  it('层漏斗固定 L1–L6 顺序，缺省为 0', () => {
+  it('层漏斗按六层固定顺序、用中文层名，缺省为 0', () => {
     expect(layerFunnelData({ L3: 3, L1: 1 })).toEqual([
-      { name: 'L1', value: 1 },
-      { name: 'L2', value: 0 },
-      { name: 'L3', value: 3 },
-      { name: 'L4', value: 0 },
-      { name: 'L5', value: 0 },
-      { name: 'L6', value: 0 },
+      { name: '回忆定义', value: 1 },
+      { name: '搭骨架', value: 0 },
+      { name: '写证明', value: 3 },
+      { name: '自检', value: 0 },
+      { name: '换题试试', value: 0 },
+      { name: '总结', value: 0 },
     ]);
   });
 

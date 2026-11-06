@@ -11,7 +11,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
-describe('api client（06 §1）', () => {
+describe('api client', () => {
   it('POST 带 JSON content-type、CSRF 头与 credentials', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
     vi.stubGlobal('fetch', fetchMock);
@@ -34,6 +34,15 @@ describe('api client（06 §1）', () => {
     const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
     const init = calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)['x-requested-with']).toBeUndefined();
+  });
+
+  it('getPage：数组响应体 + 响应头里的下一页游标；最后一页没有游标', async () => {
+    const withCursor = new Response(JSON.stringify([{ problemId: 'a' }]), { status: 200, headers: { 'x-next-cursor': 'abc' } });
+    const last = new Response(JSON.stringify([]), { status: 200 });
+    const fetchMock = vi.fn().mockResolvedValueOnce(withCursor).mockResolvedValueOnce(last);
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await api.getPage('/api/v1/teacher/problems?limit=1')).toEqual({ data: [{ problemId: 'a' }], nextCursor: 'abc' });
+    expect(await api.getPage('/api/v1/teacher/problems?limit=1&cursor=abc')).toEqual({ data: [], nextCursor: null });
   });
 
   it('错误 envelope 解析为 ApiError（code/status/message/detail）', async () => {

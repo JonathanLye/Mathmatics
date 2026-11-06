@@ -1,6 +1,6 @@
 import type { components } from '@proof-gym/contracts/gen/api.ts';
 
-// 前端类型一律来自契约生成物（06 §7），不手写第二份 DTO。
+// 前端类型一律来自契约生成物，不手写第二份。
 export type Me = components['schemas']['Me'];
 export type ClassSummary = components['schemas']['ClassSummary'];
 export type ClassSettings = components['schemas']['ClassSettings'];
@@ -12,16 +12,18 @@ export type AttemptDetail = components['schemas']['AttemptDetail'];
 export type MetricsView = components['schemas']['MetricsView'];
 export type ExportJob = components['schemas']['ExportJob'];
 export type RosterEntry = components['schemas']['RosterEntry'];
+export type SelfStudyView = components['schemas']['SelfStudyView'];
+export type ProblemListItem = components['schemas']['ProblemListItem'];
 
-// 04 §10：名单导入结果（openapi 里的内联响应，不是命名 schema）
+// 名单导入结果（openapi 里的内联响应，不是命名 schema）
 export interface RosterImportResult {
   added: number;
   duplicates: number;
   invalid: Array<{ row: number; reason: string }>;
 }
 
-// —— #35：教师端详情/指标/导出用到的扩展类型 ——
-// 服务端额外返回 helpFlags 与 integrity[].flagId（契约缺命名 schema，见 #102 的缺口清单）。
+// —— 学生详情、指标、导出用到的扩展类型 ——
+// 服务端额外返回 helpFlags 与 integrity[].flagId。
 export interface HelpFlagItem {
   flagId: string;
   kind: string;
@@ -91,7 +93,7 @@ export interface TeacherAttemptDetail {
 export type ExportFormat = 'csv' | 'xlsx' | 'jsonl';
 export type ExportTable = 'attempts' | 'lines' | 'hints' | 'help' | 'recognitions' | 'integrity' | 'events';
 
-// GET /teacher/attempts/{id}/events 的一页（08 §2/§6）；回放只用 seq/type/layer/payload。
+// 作答事件的一页；回放只用 seq/type/layer/payload。
 export interface StoredEvent {
   id: string;
   seq: number;

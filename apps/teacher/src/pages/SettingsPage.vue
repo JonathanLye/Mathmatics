@@ -68,44 +68,68 @@ async function logout(): Promise<void> {
 </script>
 
 <template>
-  <div>
+  <div class="page settings">
     <div class="page-head"><h1>设置</h1></div>
-    <div class="page-sub">账号信息与默认策略说明（04 §1）。默认策略目前按班级设置，在「布置」时随作业提交。</div>
+    <div class="page-sub">账号信息、登录密码，以及布置作业时的默认做法。</div>
 
-    <h4 style="margin-top: 18px">账号</h4>
-    <t-table
-      :data="me ? [{ key: '角色', value: me.role === 'admin' ? '管理员' : me.role === 'teacher' ? '教师' : me.role }, { key: '匿名码', value: me.anonCode }, { key: '显示名', value: me.displayName ?? '—' }] : []"
-      :columns="[{ colKey: 'key', title: '项' }, { colKey: 'value', title: '值' }]"
-      row-key="key"
-      size="small"
-    />
+    <section class="surface settings__card">
+      <h2 class="settings__h">账号</h2>
+      <dl class="settings__dl">
+        <div><dt>身份</dt><dd>{{ me ? (me.role === 'admin' ? '管理员' : me.role === 'teacher' ? '老师' : me.role) : '—' }}</dd></div>
+        <div><dt>显示名</dt><dd>{{ me?.displayName ?? '—' }}</dd></div>
+        <div><dt>匿名码</dt><dd class="mono">{{ me?.anonCode ?? '—' }}</dd></div>
+      </dl>
+    </section>
 
-    <h4 style="margin-top: 18px">修改密码</h4>
-    <t-form :data="{}" label-width="100px" style="max-width: 420px" @submit="changePassword">
-      <t-form-item label="当前密码">
-        <t-input v-model="currentPassword" type="password" autocomplete="current-password" data-testid="pw-current" />
-      </t-form-item>
-      <t-form-item label="新密码">
-        <t-input v-model="newPassword" type="password" autocomplete="new-password" placeholder="至少 8 个字符" data-testid="pw-new" />
-      </t-form-item>
-      <t-form-item label="确认新密码">
-        <t-input v-model="confirmPassword" type="password" autocomplete="new-password" data-testid="pw-confirm" />
-      </t-form-item>
-      <t-alert v-if="pwError" theme="warning" :message="pwError" style="margin-bottom: 12px" data-testid="pw-error" />
-      <t-button theme="primary" :loading="pwSaving" data-testid="pw-submit" @click="changePassword">修改密码</t-button>
-    </t-form>
+    <section class="surface settings__card">
+      <h2 class="settings__h">修改密码</h2>
+      <p class="settings__note">改好后，其他设备上的登录会退出，这一台保持登录。</p>
+      <t-form :data="{}" label-align="top" class="settings__form" @submit="changePassword">
+        <t-form-item label="当前密码">
+          <t-input v-model="currentPassword" type="password" autocomplete="current-password" data-testid="pw-current" />
+        </t-form-item>
+        <t-form-item label="新密码">
+          <t-input v-model="newPassword" type="password" autocomplete="new-password" placeholder="至少 8 个字符" data-testid="pw-new" />
+        </t-form-item>
+        <t-form-item label="再输入一次新密码">
+          <t-input v-model="confirmPassword" type="password" autocomplete="new-password" data-testid="pw-confirm" />
+        </t-form-item>
+        <t-alert v-if="pwError" theme="warning" :message="pwError" style="margin-bottom: 12px" data-testid="pw-error" />
+        <t-button theme="primary" :loading="pwSaving" data-testid="pw-submit" @click="changePassword">修改密码</t-button>
+      </t-form>
+    </section>
 
-    <h4 style="margin-top: 18px">默认策略（04 §7）</h4>
-    <t-alert
-      theme="info"
-      message="练习：求助开、拍照开、记录切出；测验：只 L3、求助关、拍照关、切出 3 次锁定、可设限时。当前在布置表单中逐次设置，不做全局默认。"
-    />
+    <section class="surface settings__card">
+      <h2 class="settings__h">布置作业的默认做法</h2>
+      <ul class="settings__list">
+        <li><b>练习：</b>允许求助和拍照，记录学生切出页面的次数。</li>
+        <li><b>测验：</b>只能写证明，关闭求助和拍照，切出页面达到设定次数就锁定作答，可以设时限。</li>
+      </ul>
+      <p class="settings__note">每次布置时可以单独调整；每个班的默认值在班级页的“设置”里改。</p>
+    </section>
 
-    <div style="margin-top: 20px">
-      <t-button theme="danger" variant="outline" :loading="loggingOut" @click="logout">退出登录</t-button>
-      <t-popconfirm content="所有设备（包括这一台）上的教师登录都会退出，确定？" @confirm="logoutAll">
-        <t-button theme="danger" variant="text" :loading="loggingOutAll" data-testid="logout-all" style="margin-left: 8px">退出所有设备</t-button>
-      </t-popconfirm>
-    </div>
+    <section class="surface settings__card">
+      <h2 class="settings__h">退出登录</h2>
+      <div class="inline-actions">
+        <t-button theme="default" variant="outline" :loading="loggingOut" @click="logout">退出登录</t-button>
+        <t-popconfirm content="所有设备（包括这一台）上的老师登录都会退出，确定？" @confirm="logoutAll">
+          <t-button theme="danger" variant="text" :loading="loggingOutAll" data-testid="logout-all">退出所有设备</t-button>
+        </t-popconfirm>
+      </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+.settings { max-width: 640px; }
+.settings__card { padding: 16px 18px; margin-bottom: 14px; }
+.settings__h { font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+.settings__note { color: var(--pg-text-secondary); margin: 0 0 12px; }
+.settings__dl { margin: 0; display: grid; gap: 8px; }
+.settings__dl > div { display: flex; gap: 12px; }
+.settings__dl dt { width: 72px; flex: none; color: var(--pg-text-secondary); }
+.settings__dl dd { margin: 0; }
+.settings__form { max-width: 380px; }
+.settings__list { margin: 0 0 8px; padding-left: 18px; }
+.settings__list li { margin-bottom: 4px; }
+</style>

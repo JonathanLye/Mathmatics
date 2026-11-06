@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LiveRow } from '../api/types.ts';
-import { boardStats, filterRows, footText, layerIndex, sortRows, toneOf } from './liveBoard.ts';
+import { boardStats, filterRows, flagChips, footText, layerIndex, sortRows, statusLabel, toneOf } from './liveBoard.ts';
 
 const row = (patch: Partial<LiveRow>): LiveRow => ({ anonCode: 'S-A', attemptId: 'a1', status: 'active', layer: 'L3', ...patch }) as LiveRow;
 
@@ -44,9 +44,38 @@ describe('liveBoard', () => {
   });
 
   it('footText 只陈述事实', () => {
-    expect(footText(row({ flags: ['budget_exhausted'], currentKeyLabel: '取 N', stuckSec: 540 }))).toBe('额度已用尽 · 卡在「取 N」 · 9 分钟');
+    expect(footText(row({ flags: ['budget_exhausted'], currentKeyLabel: '取 N', stuckSec: 540 }))).toBe('提示额度已用完 · 卡在「取 N」 · 9 分钟');
     expect(footText(row({ stuckSec: 360, currentKeyLabel: '放缩' }))).toBe('卡在「放缩」 · 6 分钟没有进展');
     expect(footText(row({ status: 'away', awayCount: 2 }))).toBe('现在不在页面 · 已离开 2 次');
     expect(footText(row({ status: 'not_started', attemptId: null }))).toBe('还没有打开');
+  });
+
+  it('求助老师的标记：有 help 时才叫“求助老师”，额度用完单独说，两者同时出现时各占一处', () => {
+    const helped = row({ flags: ['help'], currentKeyLabel: '取 N', stuckSec: 120 });
+    expect(toneOf(helped)).toBe('help');
+    expect(statusLabel(helped)).toBe('求助老师');
+    expect(footText(helped)).toBe('点了「求助老师」 · 卡在「取 N」 · 2 分钟');
+    expect(flagChips(helped)).toEqual([]);
+
+    const budgetOnly = row({ flags: ['budget_exhausted'] });
+    expect(statusLabel(budgetOnly)).toBe('提示额度用完');
+    expect(flagChips(budgetOnly)).toEqual([]);
+
+    const both = row({ flags: ['help', 'budget_exhausted'] });
+    expect(statusLabel(both)).toBe('求助老师');
+    expect(footText(both)).toBe('提示额度已用完，点了「求助老师」');
+    expect(flagChips(both)).toEqual([{ text: '提示额度用完', tone: 'bee' }]);
+
+    expect(statusLabel(row({ status: 'locked' }))).toBe('已锁定');
+    expect(flagChips(row({ flags: ['integrity'] }))).toEqual([{ text: '有诚信提醒', tone: 'fox' }]);
+    // 没有 flags 字段（旧服务或未带）时不报错、不显示
+    expect(flagChips(row({}))).toEqual([]);
+    expect(statusLabel(row({}))).toBe('在写');
+  });
+
+  it('卡住的状态词带分钟数；完成后不再显示任何标记', () => {
+    expect(statusLabel(row({ stuckSec: 400 }))).toBe('卡住 6 分钟');
+    expect(flagChips(row({ status: 'completed', flags: ['help', 'integrity'] }))).toEqual([]);
+    expect(footText(row({ layer: 'L3' }))).toBe('写证明');
   });
 });

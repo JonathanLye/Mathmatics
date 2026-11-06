@@ -1,7 +1,8 @@
 import type { StoredEvent } from '../api/types.ts';
+import { eventTypeLabel, hintLevelLabel } from './labels.ts';
+import { layerName } from './layers.ts';
 
-// 04 §5.2 的事件级回放：不依赖 secret 也能重建“当时看到的过程”。
-// 引擎 AttemptState 级重放需要 /teacher/problems 或服务端回放接口（契约缺口，见 PR #115 后续）。
+// 事件级回放：不依赖题目的关键步骤答案，也能重建“当时看到的过程”。
 export type ReplayTone = 'layer' | 'line' | 'hint' | 'note' | 'away' | 'other';
 
 export interface ReplayFrame {
@@ -35,29 +36,23 @@ function toneOf(type: string): ReplayTone {
 export function eventLabel(type: string, layer: string | null | undefined, payload: Record<string, unknown>): string {
   switch (type) {
     case 'layer.enter':
-      return `进入 ${layer ?? '下一层'}`;
+      return `进入「${layerName(layer) || '下一层'}」`;
     case 'line.submit':
       return `提交第 ${String(payload.n ?? '?')} 行`;
     case 'hint.deliver':
-      return `提示 ${String(payload.level ?? '')}`;
+      return `领取 ${hintLevelLabel(String(payload.level ?? ''))}`.replace('领取 提示', '领取提示');
     case 'annotation':
-      return `批注 ${String(payload.kind ?? '')}`;
+      return '收到批注';
     case 'integ.visibility':
       return payload.state === 'hidden' ? '离开页面' : '回到页面';
     case 'attempt.start':
       return '开始作答';
     case 'layer.skip':
-      return `跳过 ${layer ?? '本层'}`;
+      return `跳过「${layerName(layer) || '本层'}」`;
     case 'layer.done':
-      return `完成 ${layer ?? '本层'}`;
-    case 'finish.try':
-      return '尝试提交完成';
-    case 'selfcheck.submit':
-      return '提交自检';
-    case 'summary.submit':
-      return '提交总结';
+      return `完成「${layerName(layer) || '本层'}」`;
     default:
-      return type;
+      return eventTypeLabel(type);
   }
 }
 
