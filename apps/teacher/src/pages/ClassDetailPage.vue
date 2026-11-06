@@ -67,6 +67,7 @@ const rosterEntries = ref<RosterEntry[]>([]);
 const rosterLoading = ref(false);
 const rosterError = ref('');
 const unclaiming = ref<string | null>(null);
+const resetting = ref<string | null>(null);
 
 // 布置（04 §7）
 const createdAssignments = ref<AssignmentCard[]>([]);
@@ -321,6 +322,21 @@ async function unclaim(rosterId: string): Promise<void> {
     MessagePlugin.error(messageOf(caught));
   } finally {
     unclaiming.value = null;
+  }
+}
+
+// 04 §10：重置学生密码。学生之后用邀请码 + 学号重新激活并设新密码；该生所有设备上的登录立即失效。
+async function resetPassword(rosterId: string): Promise<void> {
+  if (resetting.value !== null) return;
+  resetting.value = rosterId;
+  try {
+    await api.post(`/api/v1/teacher/classes/${classId.value}/roster/${rosterId}/reset-password`);
+    MessagePlugin.success('已重置密码：请告诉学生用邀请码重新激活，并设一个新密码');
+    await loadRoster();
+  } catch (caught) {
+    MessagePlugin.error(messageOf(caught));
+  } finally {
+    resetting.value = null;
   }
 }
 
@@ -633,7 +649,8 @@ onBeforeUnmount(() => {
             { colKey: 'claimed', title: '认领' },
             { colKey: 'claimedAt', title: '认领时间' },
             { colKey: 'claimedByAnon', title: '学生匿名码' },
-            { colKey: 'actions', title: '操作', width: 120 },
+            { colKey: 'passwordSet', title: '已设密码', width: 100 },
+            { colKey: 'actions', title: '操作', width: 200 },
           ]"
           :loading="rosterLoading"
           row-key="rosterId"
@@ -645,9 +662,20 @@ onBeforeUnmount(() => {
           </template>
           <template #claimedAt="{ row }">{{ row.claimedAt ? new Date(row.claimedAt).toLocaleString('zh-CN') : '—' }}</template>
           <template #claimedByAnon="{ row }">{{ row.claimedByAnon ?? '—' }}</template>
+          <template #passwordSet="{ row }">
+            <t-tag v-if="!row.claimed" theme="default" variant="light">—</t-tag>
+            <t-tag v-else :theme="row.passwordSet ? 'success' : 'warning'" variant="light" data-testid="roster-password-set">{{ row.passwordSet ? '已设置' : '未设置' }}</t-tag>
+          </template>
           <template #actions="{ row }">
+            <t-popconfirm
+              v-if="row.claimed && row.passwordSet"
+              content="重置后该学生所有设备上的登录会失效，需要用邀请码重新激活并设新密码。确定重置？"
+              @confirm="resetPassword(row.rosterId)"
+            >
+              <t-link theme="primary" data-testid="roster-reset-password" :disabled="resetting !== null">重置密码</t-link>
+            </t-popconfirm>
             <t-popconfirm v-if="row.claimed" content="解除后学生需重新用邀请码认领，确定？" @confirm="unclaim(row.rosterId)">
-              <t-link theme="danger" :disabled="unclaiming !== null">解除认领</t-link>
+              <t-link theme="danger" style="margin-left: 8px" :disabled="unclaiming !== null">解除认领</t-link>
             </t-popconfirm>
             <span v-else class="page-sub">—</span>
           </template>

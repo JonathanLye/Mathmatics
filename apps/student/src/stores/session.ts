@@ -17,11 +17,14 @@ import {
   isMockMode,
   login as apiLogin,
   logout as apiLogout,
+  logoutAll as apiLogoutAll,
+  type LoginCredentials,
   mockConsentDoc,
   setStudentAgeBand,
+  setStudentPassword,
   submitConsents,
 } from '@/api/client'
-import { setAuthLostHandler } from '@/api/http'
+import { setAuthLostHandler, setPasswordSetupHandler } from '@/api/http'
 import { ageGateFor, isReadOnlyConsentSection, type AgeGateDecision } from '@/auth/ageBand'
 import type { AgeBand, ConsentChoices, ConsentDoc, ConsentKey, ConsentSectionKey, MeAgeBand, MeView } from '@/types/attempt'
 
@@ -97,6 +100,7 @@ export const AUTH_EXPIRED_TOAST = '登录已过期，请重新登录'
 const LOGIN_PAGE = 'pages/login/index'
 /** 登录页与镜像页（令牌访问，没有会话）不跳。 */
 const NO_REDIRECT_PAGES = [LOGIN_PAGE, 'pages/mirror/index']
+export const SET_PASSWORD_PAGE = 'pages/set-password/index'
 let lastAuthRedirectAt = 0
 
 function currentPageRoute(): string {
@@ -124,6 +128,20 @@ export function handleAuthLost(): void {
 }
 
 setAuthLostHandler(handleAuthLost)
+
+/**
+ * 服务端 403 PASSWORD_SETUP_REQUIRED：这个账号还没设密码，其余接口都被挡住。
+ * 不是错误也不是登录失效：记下 needsPassword，把学生带去设置密码页（已经在该页或登录页就不动）。
+ */
+export function handlePasswordSetupRequired(): void {
+  if (me.value) me.value = { ...me.value, needsPassword: true }
+  const route = currentPageRoute().replace(/^\//, '')
+  if (route === SET_PASSWORD_PAGE || route === LOGIN_PAGE) return
+  if (typeof uni === 'undefined') return
+  uni.reLaunch({ url: `/${SET_PASSWORD_PAGE}` })
+}
+
+setPasswordSetupHandler(handlePasswordSetupRequired)
 
 export function useSession() {
   /** GET /consents：加载服务端同意书文本；mock 模式回落到内置占位（正文只从 GET /consents 取）。 */
@@ -234,23 +252,49 @@ export function useSession() {
     }
   }
 
-  /** POST /auth/student/login。返回是否登录成功；错误文案放在 error。 */
-  async function login(invite: string, no: string): Promise<boolean> {
-    inviteCode.value = invite
-    studentNo.value = no
-    if (!invite || !no) {
+  /**
+   * POST /auth/student/login。返回是否登录成功；错误文案放在 error。
+   * 学号 + 密码（已设密码）或 邀请码 + 学号（首次 / 被老师重置后）；第二个班：学号 + 密码 + 邀请码。
+   */
+  async function login(credentials: LoginCredentials): Promise<boolean> {
+    inviteCode.value = credentials.inviteCode ?? ''
+    studentNo.value = credentials.studentNo
+    if (!credentials.studentNo || (!credentials.inviteCode && !credentials.password)) {
       loggedIn.value = false
       return false
     }
     loading.value = true
     error.value = null
     try {
-      me.value = await apiLogin(invite, no)
+      me.value = await apiLogin(credentials)
       loggedIn.value = true
       consented.value = !me.value.consentRequired
       return true
     } catch (e) {
       loggedIn.value = false
+      error.value = errorMessage(e)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** 登录后是否要先去设置密码（Me.needsPassword，以服务端为准）。 */
+  const needsPassword = computed(() => me.value?.needsPassword === true)
+
+  /**
+   * POST /auth/student/password：首次设置不传 current；修改要传。成功返回 true 并刷新 Me（needsPassword 变 false）；
+   * 失败返回 false，服务端文案（策略不通过、当前密码不对……）放在 error。
+   */
+  async function setPassword(newPassword: string, currentPassword?: string): Promise<boolean> {
+    loading.value = true
+    error.value = null
+    try {
+      await setStudentPassword(newPassword, currentPassword)
+      if (me.value) me.value = { ...me.value, needsPassword: false }
+      await refreshMe()
+      return true
+    } catch (e) {
       error.value = errorMessage(e)
       return false
     } finally {
@@ -289,6 +333,17 @@ export function useSession() {
     }
   }
 
+  /** POST /auth/logout-all：退出所有设备（含当前），本地状态一并清掉。 */
+  async function logoutAll(): Promise<void> {
+    try {
+      await apiLogoutAll()
+    } finally {
+      me.value = null
+      loggedIn.value = false
+      consented.value = false
+    }
+  }
+
   return {
     items,
     docVersion,
@@ -309,8 +364,11 @@ export function useSession() {
     loadConsentDoc,
     restore,
     login,
+    needsPassword,
+    setPassword,
     submitConsent,
     logout,
+    logoutAll,
     // #145：Me 刷新 / 年龄守卫 / 提交年龄分档 / 原目标交接
     refreshMe,
     ensureAgeBand,

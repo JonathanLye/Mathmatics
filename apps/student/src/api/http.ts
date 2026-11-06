@@ -91,8 +91,20 @@ export function setAuthLostHandler(handler: AuthLostHandler | null): void {
   authLostHandler = handler
 }
 
+/** 服务端开启“必须设密码”且本账号还没设：除 /me、退出、设密码本身外的学生接口都会 403 PASSWORD_SETUP_REQUIRED。 */
+export const PASSWORD_SETUP_REQUIRED_CODE = 'PASSWORD_SETUP_REQUIRED'
+export type PasswordSetupHandler = (info: { path: string }) => void
+
+let passwordSetupHandler: PasswordSetupHandler | null = null
+
+export function setPasswordSetupHandler(handler: PasswordSetupHandler | null): void {
+  passwordSetupHandler = handler
+}
+
 /** 这些接口自己处理 401：登录页的恢复会话（/me）、登录失败、退出，不触发统一跳登录。 */
-const AUTH_LOST_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/me', '/auth/student/login', '/auth/logout'])
+const AUTH_LOST_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/me', '/auth/student/login', '/auth/logout', '/auth/logout-all'])
+/** 这些接口不会触发“去设密码页”（它们本来就是设密码流程的一部分）。 */
+const PASSWORD_SETUP_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/me', '/auth/student/login', '/auth/student/password', '/auth/logout', '/auth/logout-all'])
 
 /** 401，或 403 且服务端标明 wrong_app。其余 403（同意书、年龄门……）是业务提示，由页面处理。 */
 export function isAuthLostResponse(status: number, detail: Record<string, unknown> | null): boolean {
@@ -354,6 +366,19 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
       if (authLostHandler !== null && isAuthLostResponse(response.status, parsed.detail) && !AUTH_LOST_EXEMPT_PATHS.has(bare)) {
         try {
           authLostHandler({ status: response.status, code: parsed.code, path: bare })
+        } catch {
+          // 通知失败不能掩盖原始错误
+        }
+      }
+      // 403 PASSWORD_SETUP_REQUIRED 不是出错也不是会话失效：把学生带去设密码页（不在页面里显示错误）。
+      if (
+        passwordSetupHandler !== null &&
+        response.status === 403 &&
+        parsed.code === PASSWORD_SETUP_REQUIRED_CODE &&
+        !PASSWORD_SETUP_EXEMPT_PATHS.has(bare)
+      ) {
+        try {
+          passwordSetupHandler({ path: bare })
         } catch {
           // 通知失败不能掩盖原始错误
         }

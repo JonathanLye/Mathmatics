@@ -518,14 +518,48 @@ export function mockConsentDocForAgeBand(ageBand: AgeBand | null): ConsentDoc {
   return doc
 }
 
-/** POST /auth/student/login：邀请码 + 学号 + deviceId，返回 Me（响应设置 HttpOnly Cookie）。 */
-export async function login(inviteCode: string, studentNo: string, deviceId = getDeviceId()): Promise<MeView> {
+/** 登录凭据：已设密码用 学号 + 密码；首次激活 / 密码被老师重置后用 邀请码 + 学号；第二个班 = 学号 + 密码 + 新班邀请码。 */
+export interface LoginCredentials {
+  studentNo: string
+  password?: string
+  inviteCode?: string
+}
+
+/** POST /auth/student/login：返回 Me（响应设置 HttpOnly Cookie；Me.needsPassword=true 表示要先设密码）。 */
+export async function login(credentials: LoginCredentials, deviceId = getDeviceId()): Promise<MeView> {
   if (USE_MOCK) {
     await sleep()
     return mockMeView()
   }
-  const result = await activeHttp.post<MeView>('/auth/student/login', { inviteCode, studentNo, deviceId })
+  const body: Record<string, unknown> = { studentNo: credentials.studentNo, deviceId }
+  if (credentials.inviteCode) body.inviteCode = credentials.inviteCode
+  if (credentials.password) body.password = credentials.password
+  const result = await activeHttp.post<MeView>('/auth/student/login', body)
   return result.data
+}
+
+/**
+ * POST /auth/student/password：首次设置不带 currentPassword；修改必须带。
+ * 成功后服务端作废该学生的其他会话（当前会话保留）。策略不通过 422（message 可直接展示）；当前密码不对 403 INVALID_CREDENTIALS。
+ */
+export async function setStudentPassword(newPassword: string, currentPassword?: string): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await activeHttp.post<{ ok: boolean }>('/auth/student/password', {
+    newPassword,
+    ...(currentPassword ? { currentPassword } : {}),
+  }, { idempotencyKey: newIdempotencyKey() })
+}
+
+/** POST /auth/logout-all：退出所有设备（含当前）。 */
+export async function logoutAll(): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await activeHttp.post<void>('/auth/logout-all')
 }
 
 /** POST /auth/logout：作废服务端会话（204）。 */

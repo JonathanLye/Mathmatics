@@ -103,7 +103,7 @@ describe('真实接口客户端（issue #24）', () => {
     })
     configureClientForTests({ fetchImpl, mock: false })
 
-    const meView = await login('ABC123', '2026001')
+    const meView = await login({ inviteCode: 'ABC123', studentNo: '2026001' })
     expect(meView.consentRequired).toBe(true)
     expect(calls[0]?.url).toBe('/api/v1/auth/student/login')
     const loginBody = calls[0]?.body as { inviteCode: string; studentNo: string; deviceId: string }
@@ -159,7 +159,7 @@ describe('真实接口客户端（issue #24）', () => {
     const { fetchImpl } = captureFetch(() => jsonResponse(ME))
     configureClientForTests({ fetchImpl, mock: false })
     const session = useSession()
-    expect(await session.login('ABC123', '2026001')).toBe(true)
+    expect(await session.login({ inviteCode: 'ABC123', studentNo: '2026001' })).toBe(true)
     expect(session.loggedIn.value).toBe(true)
     expect(session.consented.value).toBe(false)
     expect(session.me.value?.anonCode).toBe('S-TEST')

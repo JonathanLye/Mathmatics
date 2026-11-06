@@ -178,7 +178,7 @@ describe('session store（真实模式）', () => {
     const { fetchImpl } = captureFetch(() => jsonResponse({ ...ME, ageBand: null }))
     configureClientForTests({ fetchImpl, mock: false })
     const session = useSession()
-    expect(await session.login('ABC123', '2026001')).toBe(true)
+    expect(await session.login({ inviteCode: 'ABC123', studentNo: '2026001' })).toBe(true)
     expect(session.ageBand.value).toBeNull()
     expect(await session.ensureAgeBand()).toBe('need-age')
   })
@@ -275,7 +275,7 @@ describe('mock 客户端（#145）', () => {
     configureClientForTests({ mock: true })
     __setMockAgeBandForTests(null)
     expect((await getMe()).ageBand).toBeNull()
-    expect(ageGateFor((await login('ABC123', '2026001')).ageBand)).toBe('need-age')
+    expect(ageGateFor((await login({ inviteCode: 'ABC123', studentNo: '2026001' })).ageBand)).toBe('need-age')
   })
 
   it('年龄只能设置一次：首次成功、再次 409 AGE_BAND_LOCKED', async () => {

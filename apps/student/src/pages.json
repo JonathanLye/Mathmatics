@@ -8,6 +8,13 @@
       }
     },
     {
+      "path": "pages/set-password/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "设置密码"
+      }
+    },
+    {
       "path": "pages/age/index",
       "style": {
         "navigationStyle": "custom",

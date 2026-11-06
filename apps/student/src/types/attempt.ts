@@ -364,6 +364,8 @@ export interface MeView {
   consentRequired: boolean
   /** 年龄分档（#131）：学生必返；null=尚未选择（前端路由到年龄选择页）。 */
   ageBand: MeAgeBand
+  /** 仅学生：账号还没设密码，登录后要先去设置密码页。 */
+  needsPassword?: boolean
   features: Record<string, boolean>
 }
 
