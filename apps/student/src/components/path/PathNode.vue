@@ -130,6 +130,14 @@ const ariaLabel = computed(() => `第 ${props.index + 1} 道：${plainTitle.valu
 .pg-node--active { --_size: 76px; }
 .pg-node--active .pg-node__ring { left: -48px; top: -45px; transform: scale(0.92); }
 
+/* 最窄的手机（320 左右）：路等比缩小了，节点和气泡也收一点，气泡不压上一个节点。节点仍然大于 44px。 */
+@container (max-width: 310px) {
+  .pg-node { --_size: 62px; }
+  .pg-node--current { --_size: 72px; }
+  .pg-node--active { --_size: 66px; }
+  .pg-node__bubble { top: calc(var(--_size) / -2 - 58px); }
+}
+
 /* 气泡：小尾巴指向节点，外观轻轻上下动；按钮本身不动，手指点得准。 */
 .pg-node__bubble {
   position: absolute;

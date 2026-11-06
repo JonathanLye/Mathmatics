@@ -81,4 +81,9 @@ const lit = computed(() => (props.progress?.streak.current ?? 0) > 0)
 .pg-stats__value { font-size: var(--fs-16); font-weight: var(--fw-black); line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pg-stats__label { color: var(--ink-2); font-size: var(--fs-12); font-weight: var(--fw-heavy); line-height: 1.2; white-space: nowrap; }
 .pg-stats--pending .pg-stats__item { --_ink: var(--ink-2); }
+@media (max-width: 340px) {
+  .pg-stats { gap: var(--sp-1); }
+  .pg-stats__item { gap: 4px; padding: var(--sp-1) 6px; }
+  .pg-stats__label { font-size: 11px; }
+}
 </style>
