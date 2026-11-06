@@ -29,11 +29,13 @@ import LayerProof from '@/components/practice/LayerProof.vue'
 import LayerSelfcheck from '@/components/practice/LayerSelfcheck.vue'
 import LayerSummary from '@/components/practice/LayerSummary.vue'
 import LayerTransfer from '@/components/practice/LayerTransfer.vue'
+import PracticeCoach from '@/components/practice/PracticeCoach.vue'
 import PracticeFeedback from '@/components/practice/PracticeFeedback.vue'
 import PracticeLoadState from '@/components/practice/PracticeLoadState.vue'
 import PracticeMargin from '@/components/practice/PracticeMargin.vue'
 import PracticeThinking from '@/components/practice/PracticeThinking.vue'
 import StemPeek from '@/components/practice/StemPeek.vue'
+import SolutionSheet from '@/components/practice-zone/SolutionSheet.vue'
 import { mockEnabled, useAttemptSession } from '@/composables/practice/useAttemptSession'
 import { useComposer } from '@/composables/practice/useComposer'
 import { useDrafts } from '@/composables/practice/useDrafts'
@@ -73,6 +75,13 @@ const { matchedLineIds } = useKeyLines(session)
 const { restoredDraft, l1Initial } = drafts
 
 const offlineRetrying = ref(false)
+const solutionOpen = ref(false)
+/** 从路径或练习区进来的自学题才有“看解题思路”；老师布置的题没有。 */
+const selfStudy = ref(false)
+function openSolution(): void {
+  help.setHelpOpen(false)
+  solutionOpen.value = true
+}
 
 const modeClass = computed(() => 'pg-practice--' + mode.value)
 const strictClass = computed(() => ({ 'pg-practice--strict': strictExamActive.value }))
@@ -116,6 +125,7 @@ onUnload(() => {
 
 onLoad(async (q) => {
   nav.setOrigin(q?.from)
+  selfStudy.value = q?.from === 'path' || q?.from === 'zone'
   drafts.startBackup()
   if (mockEnabled) exam.ensureExamMockHook()
   session.applyApiFlag(q)
@@ -291,8 +301,12 @@ function onSwitchMock(k: MockKey) {
       @claim="help.claim"
       @decline="help.decline"
       @soft-landing="help.softLanding"
+      :solution-available="selfStudy && !strictExam"
       @feedback="help.noteFeedback"
+      @solution="openSolution"
     />
+
+    <SolutionSheet v-model:open="solutionOpen" :problem-id="state.problem.problemId" :exam-mode="strictExam" />
 
     <HintPreviewCard
       v-if="hintPreview"
@@ -310,6 +324,16 @@ function onSwitchMock(k: MockKey) {
     <PracticeThinking :busy="busy" />
     <PracticeFeedback :view="feedback" @continue="loop.dismissFeedback" />
     <LayerInterstitial :view="interstitial" :layers="state.layers" @continue="loop.dismissInterstitial" />
+    <PracticeCoach
+      :layer="currentLayer"
+      :completed="isCompleted"
+      :composer-open="composer.editorOpen.value"
+      :composer-tab="composer.tab.value"
+      :help-open="helpOpen"
+      :hint-cost="hintPreview?.cost ?? 0"
+      :question-shown="feedback?.tone === 'sea' && Boolean(feedback?.lineId)"
+      :overlay-open="Boolean(feedback || interstitial)"
+    />
 
     <MicroCourse :open="microOpen" :lesson="microLesson" :check="lesson.checkMicro" @close="microOpen = false" />
 

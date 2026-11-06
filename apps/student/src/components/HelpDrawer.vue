@@ -23,8 +23,10 @@ const props = withDefaults(
     busy?: boolean
     /** 可选：/help 返回的概念说明，显示在抽屉里 */
     note?: Note | null
+    /** 自学题可以看解题思路（老师布置的题和测验没有这个入口）。 */
+    solutionAvailable?: boolean
   }>(),
-  { busy: false, note: null },
+  { busy: false, note: null, solutionAvailable: false },
 )
 const emit = defineEmits<{
   (e: 'update:open', v: boolean): void
@@ -33,6 +35,7 @@ const emit = defineEmits<{
   (e: 'claim'): void
   (e: 'decline'): void
   (e: 'soft-landing', a: string): void
+  (e: 'solution'): void
   (e: 'feedback', noteId: string, useful: boolean): void
 }>()
 
@@ -157,6 +160,23 @@ function softLanding(action: string) {
         <view class="pg-help__intenttext">
           <text class="pg-help__intenttitle">帮我看看这一行</text>
           <text class="pg-help__intentdesc">对最新一行给一条批注，不占提示额度。</text>
+        </view>
+      </PgButton>
+
+      <PgButton
+        v-if="props.solutionAvailable && !testMode"
+        class="pg-help__intent pg-help__intent--solution"
+        variant="secondary"
+        block
+        sound="tap"
+        data-testid="help-solution"
+        :disabled="props.busy"
+        @tap="emit('solution')"
+      >
+        <PgIcon class="pg-help__intenticon" name="bulb" :size="32" color="var(--accent-text)" />
+        <view class="pg-help__intenttext">
+          <text class="pg-help__intenttitle">看解题思路</text>
+          <text class="pg-help__intentdesc">先看思路和关键点，再决定要不要看完整解答。</text>
         </view>
       </PgButton>
     </view>

@@ -107,6 +107,7 @@ function next(): void {
           <text v-if="step.body" class="pg-coach__body">{{ step.body }}</text>
         </view>
       </view>
+      <slot name="media" />
       <view class="pg-coach__actions">
         <text class="pg-coach__count">{{ index + 1 }} / {{ steps.length }}</text>
         <PgButton v-if="!isLast" variant="ghost" size="sm" data-testid="coachmark-skip" @tap="emit('skip')">{{ skipText }}</PgButton>

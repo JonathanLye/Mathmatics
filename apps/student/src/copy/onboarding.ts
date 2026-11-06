@@ -157,3 +157,37 @@ export const REPLAY_COPY = {
   title: '重看新手引导',
   sub: '再看一遍开场动画和首页导览',
 } as const
+
+export const SANDBOX_COPY = {
+  label: '试玩 · 不会记录任何内容',
+  close: '回到登录',
+  help: '求助',
+  composerTitle: '写下第 {n} 行',
+  composerFixTitle: '改写第 2 行',
+  justification: '依据',
+  scripted: '试玩时这一行已替你写好。真正做题时由你自己写，可以手写、键盘或拍照。',
+  submit: '写好了，提交',
+  finish: '写完了',
+  xp: '经验',
+  doneTitle: '试玩完成',
+  doneBody: '这就是一道题的样子：自己写，卡住了问一句，每一步都看得见。',
+  login: '登录开始我的证明',
+  again: '再玩一次',
+} as const
+
+/** 做题页就地提示：target 按顺序找，找到第一个就用；都找不到时气泡居中。 */
+export const COACH_COPY: Record<string, { target: string; title: string; body: string }> = {
+  'layer.L1': { target: '.pg-practice__content', title: '先回忆定义', body: '用自己的话写就行。系统只告诉你缺了哪一块，不替你写。' },
+  'layer.L2': { target: '.pg-practice__content', title: '搭骨架', body: '先写开头、结尾和要构造什么，中间的计算留到下一步。' },
+  'layer.L3': { target: '[data-testid="write-next"]', title: '一行一行写', body: '每次写一行：结论加依据。写不下去就点右上角的灯泡。' },
+  'layer.L4': { target: '.pg-practice__content', title: '自检', body: '回答几个小问题，确认每一步你都说得清。' },
+  'layer.L5': { target: '.pg-practice__content', title: '换题试试', body: '同样的想法换一道题，可以做，也可以跳过。' },
+  'layer.L6': { target: '.pg-practice__content', title: '总结', body: '用自己的话说说这个证明，下次才记得住。' },
+  'input.hand': { target: '[data-testid="ink-sheet"]', title: '手写一行', body: '用手指或手写笔写，写完确认识别结果再提交。' },
+  'input.keyboard': { target: '[data-testid="editor-statement"]', title: '键盘写公式', body: '下面的符号键能打 ε、≤ 这些符号，上方实时显示排版效果。' },
+  'input.photo': { target: '[data-testid="composer-tab-photo"]', title: '拍纸上写的', body: '拍一行就好，识别后由你确认。认不出来也没关系，可以换手写或键盘。' },
+  'help.open': { target: '.pg-help__intents', title: '三种求助', body: '卡住了、概念不懂、想让人看看这一行，都可以问。它只引导，不替你写。' },
+  'hint.costed': { target: '.pg-preview__cost', title: '这条提示要用额度', body: '提示额度每道题有限，用了不会退回。看清说明，再决定领不领。' },
+  'note.first': { target: '[data-feedback-tone]', title: '这是一个问题', body: '助教不判对错，只提问。想一想，再决定要不要改这一行。' },
+  'done.first': { target: '[data-testid="completion-card"]', title: '这一题做完了', body: '证明已经收进证明本。接下来可以换题试试，也可以做下一题。' },
+}

@@ -113,6 +113,13 @@
       }
     },
     {
+      "path": "pages/tour/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "先试一道"
+      }
+    },
+    {
       "path": "pages/mirror/index",
       "style": {
         "navigationStyle": "custom",
