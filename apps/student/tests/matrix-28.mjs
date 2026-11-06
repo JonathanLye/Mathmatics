@@ -238,14 +238,9 @@ async function runProfile(browser, base, profile) {
     check('首页无横向溢出', !(await hasOverflow(page)))
     await page.screenshot({ path: path.join(outDir, profile.id + '-1-home.png'), fullPage: true })
 
-    let entered = false
-    if ((await countTestId(page, 'home-continue-0')) > 0) {
-      await tap(page, 'home-continue-0', '继续（进行中）')
-      entered = true
-    } else {
-      const start = page.locator('[data-testid^="home-todo-start-"]').first()
-      if ((await start.count()) > 0) { await start.scrollIntoViewIfNeeded(); await start.click(); entered = true }
-    }
+    await waitTestId(page, 'home-continue')
+    const entered = (await countTestId(page, 'home-continue')) === 1
+    if (entered) await tap(page, 'home-continue', '继续 / 开始（路径上的当前节点）')
     check('首页有可点「继续/开始」入口', entered)
     await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 12000 })
     check('首页 → 做题页跳转成功', true)

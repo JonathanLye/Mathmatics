@@ -3,7 +3,7 @@
  *
  * 前置：npm run build:mock（默认构建即 mock；页面加 ?api=real 可在运行时切真实接口，供路由拦截）。
  * 覆盖：
- *  A. mock 首页渲染 todo/inProgress/done + scheduled/closed 禁用说明 + 讲评入口；点「继续」进入做题页；
+ *  A. mock 首页渲染学习路径 + 老师布置 + 讲评入口；点「继续」进入做题页；未开放的布置不能点（B 里用真实接口验证）；
  *  B. 弱网（路由首次 500）→ 客户端自动重试成功（首页仍渲染，不丢数据）；
  *  C. 弱网两次 500 → 页面错误态 +「重试」→ 成功（手动重试）；
  *  D. 真实模式下一题：POST /definition 首次 500 → 自动重试复用同一 Idempotency-Key、If-Match=stateVersion，
@@ -172,31 +172,38 @@ const L2_STATE = attemptFixture({
   serverTime: '2026-11-04T00:01:00.000Z',
 })
 
-const HOME_STATE = {
-  inProgress: [
-    {
-      assignmentId: ASSIGNMENT_ID,
-      title: '数列极限 · ε-N',
-      chapter: '第二章 数列极限',
-      mode: 'practice',
-      status: 'open',
-      attemptId: ATTEMPT_ID,
-      attemptStatus: 'active',
-      currentLayer: 'L3',
-      reviewPublished: false,
-    },
+const pathItem = (id, state, title) => ({
+  problemId: id,
+  title,
+  stemPreview: '证明' + title,
+  difficulty: 'easy',
+  state,
+  currentLayer: state === 'active' ? 'L3' : null,
+  layersDone: state === 'done' ? 6 : state === 'active' ? 2 : 0,
+  layersTotal: 6,
+  attemptId: state === 'todo' ? null : ATTEMPT_ID,
+  reviewPublished: state === 'done',
+  autoImported: false,
+  softLocked: false,
+  lessonAvailable: false,
+})
+
+const UNIT = { id: 'u1', chapterNo: 2, unitNo: 1, title: 'ε-N 定义', summary: '', total: 3, done: 1, state: 'active', locked: false }
+
+const PATH_STATE = {
+  course: { id: 'c', title: '数学分析' },
+  units: [UNIT],
+  current: {
+    ...UNIT,
+    items: [pathItem('p1', 'done', '常数列的极限'), pathItem('p2', 'active', '数列极限 · ε-N'), pathItem('p3', 'todo', '几何数列的极限')],
+    conceptIds: [],
+    concepts: [],
+  },
+  teacherAssignments: [
+    { assignmentId: ASSIGNMENT_ID, title: '数列极限 · ε-N', chapter: '第二章 数列极限', mode: 'practice', status: 'open', closeAt: '2030-01-02T00:00:00.000Z', attemptId: null, currentLayer: null, reviewPublished: false },
+    { assignmentId: '55555555-5555-4555-8555-555555555555', title: '函数极限 · ε-δ', chapter: '第二章 数列极限', mode: 'practice', status: 'scheduled', openAt: '2030-01-01T00:00:00.000Z', attemptId: null, currentLayer: null, reviewPublished: false },
   ],
-  todo: [
-    { assignmentId: '44444444-4444-4444-8444-444444444444', title: '交错级数 · 收敛性', chapter: '第三章 级数', mode: 'practice', status: 'open', reviewPublished: false },
-    { assignmentId: '55555555-5555-4555-8555-555555555555', title: '函数极限 · ε-δ', chapter: '第二章 数列极限', mode: 'practice', status: 'scheduled', openAt: '2026-11-05T01:00:00.000Z', reviewPublished: false },
-    { assignmentId: '66666666-6666-4666-8666-666666666666', title: '单调有界 · 数列', chapter: '第二章 数列极限', mode: 'test', status: 'closed', reviewPublished: false },
-  ],
-  done: [
-    { assignmentId: '77777777-7777-4777-8777-777777777777', title: '数列极限 · ε-N（练习）', chapter: '第二章 数列极限', mode: 'practice', status: 'closed', attemptId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', attemptStatus: 'completed', currentLayer: 'L6', reviewPublished: true },
-    { assignmentId: '88888888-8888-4888-8888-888888888888', title: '无穷小比较 · 练习', chapter: '第二章 数列极限', mode: 'practice', status: 'open', attemptId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', attemptStatus: 'completed', currentLayer: 'L6', reviewPublished: false },
-  ],
-  week: { keysOwn: 2, keysTotal: 4, problemsDone: 1 },
-  notebook: { cards: 2, toRedo: 1 },
+  chapters: [{ chapterNo: 2, chapter: '第二章 数列极限', firstUnitId: 'u1', unitCount: 1, total: 3, done: 1 }],
 }
 
 const ME = {
@@ -235,23 +242,19 @@ async function main() {
     try {
       await gotoApp(page, base, 'pages/home/index')
       await waitTestId(page, 'home-page')
-      check('mock 首页渲染 todo/inProgress/done 三段', (await countTestId(page, 'home-inprogress-card')) === 1 && (await countTestId(page, 'home-todo-card')) === 3 && (await countTestId(page, 'home-done-card')) === 2)
-      const text = await bodyText(page)
-      check('scheduled / closed 待完成项禁用并说明原因', text.includes('未开始') && text.includes('已关闭') && text.includes('已关闭，不能再作答'))
-      const disabledFlags = await page.evaluate(() => {
-        const scheduled = document.querySelector('[data-testid="home-todo-disabled-1"]')
-        const closed = document.querySelector('[data-testid="home-todo-disabled-2"]')
-        return { scheduled: Boolean(scheduled?.hasAttribute('disabled')), closed: Boolean(closed?.hasAttribute('disabled')) }
-      })
-      check('scheduled / closed 项按钮 disabled', disabledFlags.scheduled && disabledFlags.closed, JSON.stringify(disabledFlags))
-      check('reviewPublished=true 显示「讲评已发布」与入口，另一份不显示', (await countTestId(page, 'home-done-review-0')) === 1 && (await countTestId(page, 'home-done-review-1')) === 0)
+      await waitTestId(page, 'home-path')
+      check('mock 首页渲染学习路径和老师布置', (await countTestId(page, 'home-path-node')) >= 3 && (await countTestId(page, 'home-teacher-card')) === 1)
+      check('路径上有做完的、当前的、没解锁的节点', (await page.locator('[data-testid="home-path-node"][data-visual="done"]').count()) >= 1 && (await page.locator('[data-testid="home-path-node"][data-current="true"]').count()) === 1 && (await page.locator('[data-testid="home-path-node"][data-visual="locked"]').count()) >= 1)
       await page.screenshot({ path: path.join(outDir, '1-home-mock.png'), fullPage: true })
 
-      await tap(page, 'home-done-review-0', '看讲评')
-      await waitTestId(page, 'home-notice')
-      check('点「看讲评」给出讲评入口提示（#102 提供讲评页）', (await page.getByTestId('home-notice').innerText()).includes('讲评已发布'))
+      await page.locator('[data-testid="home-path-node"][data-visual="done"]').first().click()
+      await tap(page, 'node-sheet-review', '看讲评')
+      await waitTestId(page, 'proof-detail-page')
+      check('点「看讲评」打开证明详情', page.url().includes('/pages/proof-detail/index') && page.url().includes('section=review'))
+      await gotoApp(page, base, 'pages/home/index')
+      await waitTestId(page, 'home-path')
 
-      await tap(page, 'home-continue-0', '继续进行中的题')
+      await tap(page, 'home-continue', '继续进行中的题')
       await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 12000 })
       check('点「继续」进入做题页', (await page.locator('.pg-practice').count()) === 1)
       check('390 宽首页/做题页无横向溢出', await page.evaluate(() => {
@@ -270,20 +273,22 @@ async function main() {
     try {
       await page.route('**/api/v1/**', (route) => {
         const pathname = new URL(route.request().url()).pathname
-        if (pathname.endsWith('/student/home')) {
+        if (pathname.endsWith('/student/path')) {
           homeAttempts += 1
           if (homeAttempts === 1) return route.fulfill(jsonResponse({ error: { code: 'INTERNAL', message: '服务暂时不可用' } }, 500))
-          return route.fulfill(jsonResponse(HOME_STATE))
+          return route.fulfill(jsonResponse(PATH_STATE))
         }
         if (pathname.endsWith('/me')) return route.fulfill(jsonResponse(ME))
         return route.fulfill(jsonResponse({ error: { code: 'NOT_FOUND', message: 'no route' } }, 404))
       })
       await gotoApp(page, base, 'pages/home/index?api=real')
       await waitTestId(page, 'home-page')
-      await waitTestId(page, 'home-todo-card')
-      check('弱网首页：首次 500 后自动重试并渲染数据', homeAttempts === 2, 'home 请求次数=' + homeAttempts)
+      await waitTestId(page, 'home-path')
+      check('弱网首页：首次 500 后自动重试并渲染数据', homeAttempts === 2, 'path 请求次数=' + homeAttempts)
       check('弱网自动重试后无错误态', (await countTestId(page, 'home-error')) === 0)
       check('真实数据问候语来自 GET /me', (await page.getByTestId('home-greeting').innerText()).includes('E2E 同学'))
+      check('未开放的老师布置按钮 disabled', await page.getByTestId('home-teacher-start-1').evaluate((el) => el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true'))
+      check('未开放的老师布置说明原因', (await page.getByTestId('home-teacher-card').nth(1).innerText()).includes('开放'))
       await page.screenshot({ path: path.join(outDir, '3-home-weaknet-auto.png'), fullPage: true })
     } finally {
       await context.close()
@@ -296,21 +301,21 @@ async function main() {
     try {
       await page.route('**/api/v1/**', (route) => {
         const pathname = new URL(route.request().url()).pathname
-        if (pathname.endsWith('/student/home')) {
+        if (pathname.endsWith('/student/path')) {
           homeAttempts += 1
           if (homeAttempts <= 2) return route.fulfill(jsonResponse({ error: { code: 'INTERNAL', message: '服务暂时不可用' } }, 500))
-          return route.fulfill(jsonResponse(HOME_STATE))
+          return route.fulfill(jsonResponse(PATH_STATE))
         }
         if (pathname.endsWith('/me')) return route.fulfill(jsonResponse(ME))
         return route.fulfill(jsonResponse({ error: { code: 'NOT_FOUND', message: 'no route' } }, 404))
       })
       await gotoApp(page, base, 'pages/home/index?api=real')
       await waitTestId(page, 'home-error')
-      check('两次 500 后显示错误态（不静默回退假数据）', (await page.getByTestId('home-error').innerText()).includes('首页加载失败'))
+      check('两次 500 后显示错误态（不静默回退假数据）', (await page.getByTestId('home-error').innerText()).includes('路径没加载出来'))
       await page.screenshot({ path: path.join(outDir, '4-home-error.png'), fullPage: true })
 
       await tap(page, 'home-retry', '重试')
-      await waitTestId(page, 'home-todo-card')
+      await waitTestId(page, 'home-path')
       check('手动重试后成功渲染（请求数=' + homeAttempts + '）', homeAttempts === 3 && (await countTestId(page, 'home-error')) === 0)
       await page.screenshot({ path: path.join(outDir, '5-home-manual-retry.png'), fullPage: true })
     } finally {
@@ -369,7 +374,7 @@ async function main() {
 
   try {
     for (const [name, scenario] of [
-      ['mock 首页（三段/禁用/讲评/进入做题）', scenarioMockHome],
+      ['mock 首页（路径/讲评/进入做题）', scenarioMockHome],
       ['弱网首页：自动重试', scenarioHomeAutoRetry],
       ['弱网首页：手动重试', scenarioHomeManualRetry],
       ['弱网写请求自动重试（L1 定义提交→L2，首次 500 后成功）', scenarioWeakNetWriteRetry],

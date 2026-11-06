@@ -94,8 +94,8 @@ async function run(theme) {
     await page.getByTestId('home-page').waitFor({ timeout: 10000 });
     await page.waitForTimeout(1200);
     await shot(page, 'home-busy');
-    const go = page.getByTestId('home-inprogress-card').first();
-    await go.click().catch(() => problems.push(`${theme}: 首页没有进行中的卡片`));
+    const go = page.getByTestId('home-continue').first();
+    await go.click().catch(() => problems.push(`${theme}: 路径上没有继续按钮`));
     await page.waitForTimeout(2500);
     await shot(page, 'practice-l3');
     await page.getByTestId('dock-help').click().catch(() => {});

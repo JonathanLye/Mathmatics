@@ -30,6 +30,10 @@
     "e2e:flows:43": "node tests/flows-43.mjs",
     "e2e:flows:25": "node tests/flows-25.mjs",
     "e2e:flows:wechat": "node tests/flows-wechat.mjs",
+    "e2e:flows:path": "node tests/flows-path.mjs",
+    "e2e:flows:zone": "node tests/flows-zone.mjs",
+    "e2e:flows:me": "node tests/flows-me.mjs",
+    "e2e:flows:notebook": "node tests/flows-notebook.mjs",
     "e2e:matrix:28": "node tests/matrix-28.mjs"
   },
   "dependencies": {

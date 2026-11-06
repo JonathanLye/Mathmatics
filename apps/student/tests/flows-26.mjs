@@ -336,9 +336,9 @@ async function main() {
     check('证明本显示已完成作业列表（含本题）', (await countTestId(page, 'notebook-card')) >= 1 && notebookText.includes('数列极限'))
     await page.screenshot({ path: path.join(outDir, '8-证明本.png'), fullPage: true })
 
-    await tap(page, 'notebook-open', '回到该题', 0)
-    await waitTestId(page, 'completion-card')
-    check('证明本「回到该题」重新打开该题（完成页）', (await countTestId(page, 'completion-card')) === 1)
+    await tap(page, 'notebook-open', '看这份证明', 0)
+    await waitTestId(page, 'proof-detail-page')
+    check('证明本打开证明详情（只读）', (await countTestId(page, 'proof-detail-lines')) === 1)
   }
 
   try {
