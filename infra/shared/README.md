@@ -69,6 +69,39 @@
 8. **冒烟**：`infra/smoke.sh https://<SUB>`，再用 `tools/model-ping.mjs` 探活模型密钥。
 9. **对比基线**（只读）：`md5sum -c /root/nginx-conf-baseline.md5` 应只有新增文件；`docker ps` 里原有容器的状态没变。
 
+## 后续更新（推荐：GHCR，不从本机上传）
+
+本机上行带宽窄，`ship-images.sh` 只作为兜底（首次上线或 GitHub 不可用时）。日常更新走云端构建：合并到 `main` 后，工作流 `.github/workflows/publish-images.yml` 在 GitHub 上构建 server 与 web 镜像并推到 GHCR（`ghcr.io/<owner>/proofgym-server`、`proofgym-web`，标签 `sha-<提交前 8 位>` 与 `latest`），服务器自己拉取，几十秒完成。
+
+**一次性准备**
+
+1. 在 GitHub 创建只读令牌：Settings → Developer settings → Personal access tokens (classic)，只勾选 `read:packages`。
+2. 在服务器上登录 GHCR。凭据放在独立目录，**不要**写进主站在用的 `/root/.docker/config.json`（里面有主站的阿里云镜像仓库凭据）。令牌在提示处粘贴，不要写进命令行参数：
+
+   ```bash
+   export DOCKER_CONFIG=/var/www/proofgym/.docker && mkdir -p "$DOCKER_CONFIG" && chmod 700 "$DOCKER_CONFIG"
+   docker login ghcr.io -u <你的 GitHub 用户名>
+   ```
+
+3. 在 `/var/www/proofgym/.env` 里取消注释并设置 `SERVER_IMAGE`、`WEB_IMAGE`（和可选的 `POSTGRES_IMAGE`）。
+
+**每次更新**
+
+1. 合并到 `main`，等 Actions 里 “Publish images” 跑完，在运行摘要里看 `TAG`。
+2. 在服务器上（只重建镜像变了的服务；迁移容器会先跑）：
+
+   ```bash
+   cd /var/www/proofgym && export TAG=sha-xxxxxxxx
+   DOCKER_CONFIG=/var/www/proofgym/.docker docker pull ghcr.io/<owner小写>/proofgym-server:$TAG
+   DOCKER_CONFIG=/var/www/proofgym/.docker docker pull ghcr.io/<owner小写>/proofgym-web:$TAG
+   docker compose -p proofgym up -d
+   ```
+
+3. 回滚：用上一个 `TAG` 重复第 2 步。
+4. 清理旧镜像只能按名字删：`docker image rm ghcr.io/<owner小写>/proofgym-server:<旧 TAG>`。不要 prune。
+
+只改前端时，服务器只需拉 web 镜像；server 镜像的依赖层没变时，拉取也只下载变化的层。
+
 ## 资源与监控
 
 ```bash

@@ -25,7 +25,7 @@ x-common: &common
 services:
   postgres:
     <<: *common
-    image: postgres:16
+    image: ${POSTGRES_IMAGE:-postgres:16}
     # 小内存调优：max_connections 40 ≥ server 池 10 + 迁移/运维余量（worker 未部署）。
     command:
       - postgres
@@ -64,7 +64,7 @@ services:
   # 一次性迁移（幂等）。种子题目不在这里导入，见 README。
   migrate:
     <<: *common
-    image: proofgym-server:${TAG:?TAG 必须设置}
+    image: ${SERVER_IMAGE:-proofgym-server}:${TAG:?TAG 必须设置}
     command: ["node", "apps/server/src/db/cli.ts", "migrate"]
     restart: "no"
     env_file: [.env]
@@ -81,7 +81,7 @@ services:
 
   server:
     <<: *common
-    image: proofgym-server:${TAG:?}
+    image: ${SERVER_IMAGE:-proofgym-server}:${TAG:?}
     env_file: [.env]
     environment:
       NODE_ENV: production
@@ -116,7 +116,7 @@ services:
   # 只托管静态文件（学生端 /、教师端 /t/）。/api 与 /health 由主机 nginx 直接反代到 server。
   web:
     <<: *common
-    image: proofgym-web:${TAG:?}
+    image: ${WEB_IMAGE:-proofgym-web}:${TAG:?}
     ports:
       - "127.0.0.1:${GYM_WEB_PORT:-18080}:8080"
     mem_limit: 48m
