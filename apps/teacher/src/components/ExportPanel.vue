@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { api, ApiError } from '../api/client.ts';
+import { session } from '../stores/session.ts';
 import type { AssignmentCard, ExportFormat, ExportJob, ExportTable } from '../api/types.ts';
 
 const props = defineProps<{ classId: string }>();
@@ -12,6 +13,7 @@ const anonymized = ref(true);
 const assignments = ref<AssignmentCard[]>([]);
 const selectedAssignmentIds = ref<string[]>([]);
 const assignmentsLoading = ref(false);
+const approving = ref(false);
 const submitting = ref(false);
 const job = ref<ExportJob | null>(null);
 const error = ref('');
@@ -84,6 +86,32 @@ async function submit(): Promise<void> {
   }
 }
 
+async function approveJob(): Promise<void> {
+  const current = job.value;
+  if (current === null || approving.value) return;
+  approving.value = true;
+  try {
+    job.value = await api.post<ExportJob>(`/api/v1/teacher/exports/${current.exportId}/approve`);
+    MessagePlugin.success('已审批，正在生成实名导出');
+    startPolling();
+  } catch (caught) {
+    MessagePlugin.error(caught instanceof ApiError ? caught.message : '审批失败');
+  } finally {
+    approving.value = false;
+  }
+}
+
+async function refreshJob(): Promise<void> {
+  const current = job.value;
+  if (current === null) return;
+  try {
+    job.value = await api.get<ExportJob>(`/api/v1/teacher/exports/${current.exportId}`);
+    if (job.value.status === 'done') startPolling();
+  } catch (caught) {
+    MessagePlugin.error(caught instanceof ApiError ? caught.message : '刷新失败');
+  }
+}
+
 function startPolling(): void {
   stopPolling();
   timer = window.setInterval(async () => {
@@ -151,7 +179,11 @@ onBeforeUnmount(stopPolling);
       <div>任务 <span class="mono">{{ job.exportId }}</span>：状态 <b>{{ job.status }}</b></div>
       <div v-if="job.rows !== null && job.rows !== undefined">行数：{{ job.rows }}</div>
       <t-link v-if="job.url" theme="primary" :href="job.url" target="_blank">下载</t-link>
-      <div v-else-if="job.status === 'pending_approval'" class="page-sub">实名导出需管理员审批；审批功能尚未上线，这个任务目前不会生成文件，请先用匿名导出。</div>
+      <div v-else-if="job.status === 'pending_approval'" class="page-sub">
+        实名导出等待管理员审批。
+        <t-button v-if="session.me?.role === 'admin'" size="small" theme="primary" :loading="approving" @click="approveJob">审批并生成</t-button>
+        <t-button size="small" variant="outline" @click="refreshJob">刷新</t-button>
+      </div>
     </div>
     <div class="page-sub">说明：导出字段字典随文件提供（Excel 第二工作表 / CSV 同名 .dictionary.csv）。文件 24 小时后删除，过期请重新导出。</div>
     <h4 style="margin: 18px 0 6px">字段字典（08 §5）</h4>

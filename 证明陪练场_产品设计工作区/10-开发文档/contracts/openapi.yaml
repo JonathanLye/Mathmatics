@@ -1173,6 +1173,22 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ExportJob' }
 
+  /teacher/exports/{exportId}/approve:
+    post:
+      tags: [teacher]
+      summary: 管理员审批实名导出（pending_approval → queued 并生成）
+      operationId: approveExport
+      parameters: [{ name: exportId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 已审批
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
   /teacher/exports/{exportId}/download:
     get:
       tags: [teacher]
