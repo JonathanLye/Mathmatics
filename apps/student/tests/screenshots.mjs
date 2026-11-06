@@ -121,7 +121,7 @@ const PAGES = [
   { name: 'age', hash: '#/pages/age/index?ageBand=null', marker: { selector: '[data-testid="age-submit"]', text: '确认分档' } },
   { name: 'consent', hash: '#/pages/consent/index' },
   { name: 'home', hash: '#/pages/home/index' },
-  { name: 'practice-zone', hash: '#/pages/practice-zone/index', marker: { selector: '[data-testid="practice-zone-page"]', text: '练习' } },
+  { name: 'zone', hash: '#/pages/practice-zone/index', marker: { selector: '[data-testid="practice-zone-page"]', text: '练习' } },
   { name: 'mistakes', hash: '#/pages/mistakes/index', marker: { selector: '[data-testid="mistakes-page"]', text: '错题' } },
   { name: 'me', hash: '#/pages/me/index', marker: { selector: '[data-testid="me-page"]', text: '退出登录' } },
   { name: 'not-found', hash: '#/pages/not-found/index', marker: { selector: '[data-testid="not-found-page"]', text: '回到路径' } },

@@ -167,7 +167,7 @@ async function main() {
     await openMock(page, base, 'l1-active')
     await waitTestId(page, 'layer1-form')
     let text = await bodyText(page)
-    check('打开 mock=l1-active 渲染第 1 层表单', text.includes('第 1 层 · 记忆核验'))
+    check('打开 mock=l1-active 渲染第 1 层表单', text.includes('第 1 层') && text.includes('回忆定义'))
     check('L1 任务说明由 MathText 渲染（KaTeX）', (await katexCount(page, 'layer1-task')) > 0)
     check('L1 任务说明没有把 LaTeX 源码当纯文本裸露', !text.includes('$\\{a_n\\}$'))
     check(

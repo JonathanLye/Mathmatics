@@ -124,7 +124,7 @@ function next(): void {
 .pg-coach__hole {
   position: absolute;
   border-radius: var(--radius-16);
-  box-shadow: 0 0 0 100vmax var(--mask-strong);
+  box-shadow: 0 0 0 200vmax var(--mask-strong);
   transition: top var(--dur-slow) var(--ease-out), left var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out), height var(--dur-slow) var(--ease-out);
   pointer-events: none;
 }

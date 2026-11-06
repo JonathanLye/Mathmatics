@@ -15,6 +15,7 @@ import PgFold from '@/components/ui/PgFold.vue'
 import PgMascot from '@/components/ui/PgMascot.vue'
 import PgSkeleton from '@/components/ui/PgSkeleton.vue'
 import PgSwitch from '@/components/ui/PgSwitch.vue'
+import { consentVersionLabel } from '@/copy'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
@@ -76,7 +77,7 @@ async function submit() {
       <PgButton block size="lg" data-testid="consent-submit" :loading="loading && items.length > 0" :disabled="loading" @tap="submit">
         {{ loading ? '提交中…' : '同意并开始' }}
       </PgButton>
-      <text class="pg-consent__hint">版本 {{ version }} · 你可以随时联系老师了解这些安排。</text>
+      <text class="pg-consent__hint">版本 {{ consentVersionLabel(version) }} · 你可以随时联系老师了解这些安排。</text>
     </view>
   </view>
 </template>

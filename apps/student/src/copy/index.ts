@@ -75,3 +75,8 @@ export function noteWhoLabel(who: string | null | undefined): string {
   if (/^H\d$/.test(value)) return '提示'
   return value
 }
+
+/** 同意书版本号的显示形式：去掉内部阶段前缀（p0-v1 → v1）。提交给服务端的仍是原值。 */
+export function consentVersionLabel(version: string | null | undefined): string {
+  return String(version ?? '').replace(/^p\d+-/i, '')
+}

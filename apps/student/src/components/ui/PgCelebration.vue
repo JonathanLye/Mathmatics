@@ -17,30 +17,43 @@ const props = withDefaults(defineProps<{ open: boolean; title?: string; expr?: M
   size: 144,
 })
 
-const canvas = ref<HTMLCanvasElement | null>(null)
+const host = ref<unknown>(null)
+let canvas: HTMLCanvasElement | null = null
+
+/** 模板里的 <canvas> 会变成 uni-canvas 组件，不是 confetti 要的原生元素，所以手动建。 */
+function mountCanvas(): HTMLCanvasElement | null {
+  const value = host.value as { $el?: unknown } | null
+  const node = value?.$el ?? value
+  if (!(node instanceof HTMLElement)) return null
+  canvas = document.createElement('canvas')
+  canvas.style.cssText = 'display:block;width:100%;height:100%'
+  node.appendChild(canvas)
+  return canvas
+}
 
 watch(
   () => props.open,
   (open, wasOpen) => {
     if (open) {
       void nextTick(() => {
-        if (props.confetti) void fireConfetti(canvas.value)
+        if (props.confetti) void fireConfetti(mountCanvas())
         playSfx('celebrate')
         vibrate('celebrate')
       })
     } else if (wasOpen) {
-      clearConfetti(canvas.value)
+      clearConfetti(canvas)
+      canvas = null
     }
   },
   { immediate: true },
 )
-onBeforeUnmount(() => clearConfetti(canvas.value))
+onBeforeUnmount(() => clearConfetti(canvas))
 </script>
 
 <template>
   <Transition name="pg-celebrate">
     <view v-if="open" class="pg-celebrate" role="dialog" aria-modal="true" :aria-label="title" data-testid="celebration">
-      <canvas ref="canvas" class="pg-celebrate__canvas" aria-hidden="true" />
+      <view ref="host" class="pg-celebrate__canvas" aria-hidden="true" />
       <view class="pg-celebrate__body">
         <PgMascot :expr="expr" motion="cheer" :size="size" />
         <text v-if="title" class="pg-celebrate__title">{{ title }}</text>
@@ -63,7 +76,7 @@ onBeforeUnmount(() => clearConfetti(canvas.value))
   background: var(--paper);
   overflow-y: auto;
 }
-.pg-celebrate__canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pg-celebrate__canvas { position: fixed; inset: 0; pointer-events: none; }
 .pg-celebrate__body {
   position: relative;
   display: flex;

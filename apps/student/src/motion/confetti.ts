@@ -41,7 +41,8 @@ export async function fireConfetti(canvas: HTMLCanvasElement | null): Promise<bo
     void fire({ ...shared, particleCount: 70, angle: 60, origin: { x: 0, y: 0.72 } })
     void fire({ ...shared, particleCount: 70, angle: 120, origin: { x: 1, y: 0.72 } })
     return true
-  } catch {
+  } catch (error) {
+    console.warn('[confetti] 没有撒成', error)
     return false
   }
 }

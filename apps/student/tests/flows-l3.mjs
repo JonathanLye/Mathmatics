@@ -216,8 +216,8 @@ async function main() {
     const { context, page, pageErrors } = await openPractice(browser, url, { width: 390, height: 844 })
 
     const text0 = await bodyText(page)
-    if (text0.includes('构造与推导')) pass('进入第 3 层（mock=l3-active）')
-    else fail('进入第 3 层', '页面没有「构造与推导」：' + text0.slice(0, 200))
+    if (text0.includes('写证明')) pass('进入第 3 层（mock=l3-active）')
+    else fail('进入第 3 层', '页面没有「写证明」：' + text0.slice(0, 200))
 
     const lines = page.locator('[data-testid="proof-line"]')
     const initialLines = await lines.count()
@@ -281,7 +281,8 @@ async function main() {
     const emptyState = await disabledInfo(submit)
     if (emptyState.disabled) pass('「这一行」为空时「加入证明」禁用', emptyState.signals.join('+'))
     else fail('空提交禁用态', '既没有 disabled 也没有 aria-disabled：' + emptyState.outer)
-    await submit.click()
+    // 真禁用的按钮 Playwright 默认不点；force 照样把点击发过去，验证点了也不会加行。
+    await submit.click({ force: true })
     await page.waitForTimeout(400)
     const afterEmptyClick = await lines.count()
     if (afterEmptyClick === initialLines) pass('空提交点击不会加行（行数不变）')

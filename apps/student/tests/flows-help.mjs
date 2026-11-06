@@ -121,7 +121,7 @@ async function openHelpDrawer(page) {
 /** 预算条文本；选择器失效时先断言可见，避免 '' === '' 假 PASS（审计指出） */
 async function readBudget(page) {
   const text = await innerText(page, '.pg-budget__bar')
-  ok(text.includes('透露'), '预算条可见（避免空串假 PASS）', JSON.stringify(text))
+  ok(text.includes('提示额度'), '预算条可见（避免空串假 PASS）', JSON.stringify(text))
   return text
 }
 
@@ -146,8 +146,8 @@ async function mobileFlows(browser, baseURL) {
     await page.locator('.pg-help__intent--stuck').click()
     await page.locator('.pg-preview').waitFor({ state: 'visible', timeout: 8000 })
     const previewText = await innerText(page, '.pg-preview')
-    includes('stuck 出现预览卡标题', previewText, '下一条：方向提示（H2）')
-    includes('预览卡告知代价', previewText, '这条会计入透露 0.5')
+    includes('stuck 出现预览卡标题', previewText, '下一条：方向提示')
+    includes('预览卡告知代价', previewText, '这条会用掉提示额度 0.5')
     includes('预览卡显示已用与剩余', previewText, '剩余 1')
     includes('预览卡有领取', previewText, '领取')
     includes('预览卡有先不要', previewText, '先不要')
@@ -166,8 +166,8 @@ async function mobileFlows(browser, baseURL) {
     await page.locator('.pg-preview').waitFor({ state: 'visible', timeout: 8000 })
     await page.locator('.pg-preview__claim').click()
     await waitGone(page, '.pg-preview')
-    await waitBody(page, '透露 1 / 2')
-    includes('领取后预算条 透露 1 / 2', await innerText(page, '.pg-budget__bar'), '透露 1 / 2')
+    await waitBody(page, '提示额度 1 / 2')
+    includes('领取后预算条 提示额度 1 / 2', await innerText(page, '.pg-budget__bar'), '提示额度 1 / 2')
     await waitBody(page, '单独算出来')
     ok(true, '领取后提示写入行内（H2 批注出现）')
 
@@ -223,7 +223,7 @@ async function mobileFlows(browser, baseURL) {
     await page.locator('.pg-help__intent--stuck').click()
     await page.locator('.pg-help__note').waitFor({ state: 'visible', timeout: 8000 })
     const h0Text = await innerText(page, '.pg-help__note')
-    includes('H0 免费提示在抽屉里显示', h0Text, 'H0')
+    ok(!h0Text.includes('H0'), 'H0 免费提示在抽屉里显示，不露内部层级', h0Text)
     includes('H0 提示署名/内容到位', h0Text, '追问')
     ok((await page.locator('.pg-preview').count()) === 0, 'H0 不弹预览卡（没有 preview）')
     await page.locator('.pg-help__close').click()
@@ -233,7 +233,7 @@ async function mobileFlows(browser, baseURL) {
     await openMock(page, baseURL, 'l3-exhausted')
     await openHelpDrawer(page)
     await page.locator('.pg-help__soft--exhausted').waitFor({ state: 'visible', timeout: 5000 })
-    includes('额度用完提示', await innerText(page, '.pg-help__soft--exhausted'), '透露额度已用完')
+    includes('额度用完提示', await innerText(page, '.pg-help__soft--exhausted'), '提示额度已用完')
     const softCount = await page.locator('.pg-help__softbtn').count()
     ok(softCount === 4, '额度用完有四个软着陆出路', '实际 ' + softCount + ' 个')
     includes('已标记求助老师', await innerText(page, '.pg-help'), '已标记求助老师')

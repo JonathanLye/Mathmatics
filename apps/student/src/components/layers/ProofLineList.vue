@@ -281,7 +281,7 @@ function onDismissNote(note: Note): void {
 /* 关闭批注（#151）：触控目标 ≥44px；不额外撑高卡片（用负外边距抵消）。 */
 .pg-lines__notedismiss.pg-button { margin: calc(-1 * var(--sp-2)) calc(-1 * var(--sp-2)) calc(-1 * var(--sp-2)) auto; color: var(--ink-2); }
 .pg-lines__notetext { color: var(--ink); line-height: 1.5; }
-.pg-lines__note--annotation { background: var(--sea-soft); }
+.pg-lines__note--annotation { background: var(--sea-soft); border-left: var(--bw) solid var(--margin); }
 .pg-lines__note--annotation .pg-lines__notewho { color: var(--sea-text); }
 .pg-lines__note--hint { background: var(--bee-soft); }
 .pg-lines__note--hint .pg-lines__notewho { color: var(--bee-text); }

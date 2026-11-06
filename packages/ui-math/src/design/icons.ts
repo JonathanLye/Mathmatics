@@ -143,7 +143,7 @@ function mascotParts(expr: MascotExpr, lip: string): MascotParts {
       return {
         eyes: openEye(44, 0, 3, 5, 6) + openEye(76, 0, 3, 5, 6),
         mouth: `<path d="M50 84q5-6 10 0t10 0" fill="none" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`,
-        extra: `<path d="M34 33l18 5M86 33l-18 5" stroke="${INK}" stroke-width="4" stroke-linecap="round"/><path d="M99 22q7 10 0 15.5t-7-5.5q0-4 7-10z" fill="${DROP}"/>`,
+        extra: `<path d="M34 38l18-5M86 38l-18-5" stroke="${INK}" stroke-width="4" stroke-linecap="round"/><path d="M99 22q7 10 0 15.5t-7-5.5q0-4 7-10z" fill="${DROP}"/>`,
         arms: rest,
         cheeks: false,
       }

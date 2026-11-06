@@ -192,7 +192,7 @@ async function main() {
   try {
     const { context, page, pageErrors } = await openPractice(browser, url, { width: 390, height: 844 })
     try {
-      includes('进入第 3 层（mock=l3-active）', await page.evaluate(() => document.body.innerText), '构造与推导')
+      includes('进入第 3 层（mock=l3-active）', await page.evaluate(() => document.body.innerText), '写证明')
 
       const lines = page.locator('[data-testid="proof-line"]')
       const initialLines = await lines.count()

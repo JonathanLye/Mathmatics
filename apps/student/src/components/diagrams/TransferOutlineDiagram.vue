@@ -41,7 +41,7 @@ const rightX = computed(() => props.width / 2 + 16)
 const centerX = computed(() => props.width / 2 - 2)
 const ariaLabel = computed(
   () =>
-    '迁移题思路对照：数列 ε-N 与函数 ε-δ。ε=' +
+    '换题思路对照：数列 ε-N 与函数 ε-δ。ε=' +
     fmt(props.epsilon) +
     ' 时，N=' +
     fmt(quantities.value.seqN) +

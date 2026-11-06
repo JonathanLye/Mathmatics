@@ -184,7 +184,7 @@ async function main() {
     await waitTestId(page, 'transfer-attempt')
 
     const text = await bodyText(page)
-    check('进入迁移题子作答（kind=transfer、独立作答页）', text.includes('迁移题 · 完整作答') && text.includes('函数极限'))
+    check('进入迁移题子作答（kind=transfer、独立作答页）', text.includes('换题试试 · 完整作答') && text.includes('函数极限'))
     check('迁移题任务卡用 MathText 渲染', (await katexCount(page, 'transfer-attempt-task')) > 0)
     check('#47 迁移题思路对照图已接线（SVG）', (await page.getByTestId('transfer-outline').locator('svg').count()) === 1)
     check(
@@ -240,7 +240,7 @@ async function main() {
 
     await tap(page, 'transfer-finish', '写完了')
     await waitTestId(page, 'transfer-complete-card')
-    check('迁移题写完 → 子作答完成页', (await bodyText(page)).includes('迁移题完成'))
+    check('迁移题写完 → 子作答完成页', (await bodyText(page)).includes('这道题也完成了'))
     await page.screenshot({ path: path.join(outDir, '4-transfer-done.png'), fullPage: true })
     await tap(page, 'back-to-parent', '回到本题完成页')
     await waitTestId(page, 'completion-card')
@@ -258,12 +258,12 @@ async function main() {
     const firstRedo = await page.getByTestId('redo-item-0').innerText()
     check('教师标记的题排最前（排序接线）', firstRedo.includes('老师/系统标记') && firstRedo.includes('交错级数'))
     check('近期完成进入冷却期（不推荐）', (await countTestId(page, 'redo-skipped')) === 1)
-    check('依赖档题进入稍后重做（独立度分档）', redoText.includes('依赖'))
+    check('依赖档题进入稍后重做（独立度分档）', redoText.includes('步靠自己'))
     await page.screenshot({ path: path.join(outDir, '5-proofbook-redo.png'), fullPage: true })
 
     await tap(page, 'redo-start-0', '开始重做')
     await waitTestId(page, 'layer1-form')
-    check('「开始重做」发起新作答（回到第 1 层）', (await bodyText(page)).includes('第 1 层 · 记忆核验'))
+    check('「开始重做」发起新作答（回到第 1 层）', (await bodyText(page)).includes('回忆定义'))
     await page.screenshot({ path: path.join(outDir, '6-redo-new-attempt.png'), fullPage: true })
   }
 
@@ -292,7 +292,7 @@ async function main() {
     await waitTestId(page, 'selfcheck-item-SC5')
     await answerSelfcheck(page, 'SC5', '用到了 n 是正整数（n+2>n>0）。')
     await waitTestId(page, 'transfer-form')
-    check('自检结束 → 第 5 层迁移题', (await bodyText(page)).includes('第 5 层 · 迁移题'))
+    check('自检结束 → 第 5 层迁移题', (await bodyText(page)).includes('换题试试'))
   }
 
   /** D：图解接线：微课 seq-band（#47 收敛版）+ abs-triangle。 */
