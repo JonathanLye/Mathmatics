@@ -4,6 +4,7 @@
  * 只从服务端下发的 AttemptState 里挑学生端会看到的字段，供页面渲染；
  * 不产生任何输入/提交动作，也不做判定。纯函数，可直接单测。
  */
+import { layerLabel } from '@/copy'
 import type {
   AttemptState,
   AttemptStatus,
@@ -18,15 +19,6 @@ import type {
 
 export const MIRROR_BANNER = '教师镜像预览 · 只读'
 export const MIRROR_PLAYBACK_NOTE = '回放由教师端提供：本页只展示服务端推送的最新状态，不伪造历史事件。'
-
-const LAYER_LABELS: Record<LayerId, string> = {
-  L1: '第 1 层 · 记忆核验',
-  L2: '第 2 层 · 证明骨架',
-  L3: '第 3 层 · 构造与推导',
-  L4: '第 4 层 · 自检',
-  L5: '第 5 层 · 迁移题',
-  L6: '第 6 层 · 总结',
-}
 
 const STATUS_LABELS: Record<AttemptStatus, string> = {
   active: '进行中',
@@ -61,7 +53,7 @@ const TRANSFER_STATUS_LABELS: Record<TransferView['status'], string> = {
 }
 
 export function mirrorLayerLabel(layer: LayerId): string {
-  return LAYER_LABELS[layer] ?? layer
+  return layerLabel(layer) || layer
 }
 
 export function mirrorStatusLabel(status: AttemptStatus): string {

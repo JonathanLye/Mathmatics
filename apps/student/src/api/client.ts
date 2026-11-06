@@ -38,6 +38,7 @@ import {
   mockTransferStem,
 } from '@/mocks/laterLayers'
 import { SELFCHECK_ADAPTIVE_CONFIG } from '@/components/selfcheck/adaptView'
+import { COPY, layerLabel, studentName } from '@/copy'
 import type {
   AgeBand,
   AttemptState,
@@ -405,19 +406,10 @@ export const mockHome: StudentHomeView = {
   week: { keysOwn: 3, keysTotal: 4, problemsDone: 1 },
 }
 
-const LAYER_LABELS: Record<LayerId, string> = {
-  L1: '第 1 层 · 记忆核验',
-  L2: '第 2 层 · 证明骨架',
-  L3: '第 3 层 · 构造与推导',
-  L4: '第 4 层 · 自检',
-  L5: '第 5 层 · 迁移题',
-  L6: '第 6 层 · 总结',
-}
-
 /** 首页卡片副标题：层 / 状态（scheduled/closed 由页面禁用并解释）。 */
 export function cardLayerLabel(card: AssignmentCardView): string {
-  if (card.attemptStatus === 'completed') return card.currentLayer ? `已完成 · ${LAYER_LABELS[card.currentLayer]}` : '已完成'
-  if (card.currentLayer) return LAYER_LABELS[card.currentLayer]
+  if (card.attemptStatus === 'completed') return card.currentLayer ? `已完成 · ${layerLabel(card.currentLayer)}` : '已完成'
+  if (card.currentLayer) return layerLabel(card.currentLayer)
   if (card.status === 'scheduled') return '未开始'
   if (card.status === 'closed' || card.status === 'cancelled') return '已关闭'
   return '待开始'
@@ -446,12 +438,12 @@ function toNotebook(view: StudentHomeView['notebook']): HomeNotebookSummary | nu
 /**
  * StudentHome + Me → 首页视图。
  * - week / notebook 缺省（B #74 的 home.ts 未提供时）用 null，页面降级显示「暂不可用」；
- * - greeting 优先 Me.displayName → anonCode；/me 失败时由页面自行降级（fetchHome 不因 /me 失败而整体失败）。
+ * - greeting 只用 Me.displayName，没有昵称就叫“同学”，不显示匿名码；/me 失败时同样降级（fetchHome 不因 /me 失败而整体失败）。
  */
 export function toHomeData(home: StudentHomeView, meView: MeView | null): HomeData {
-  const displayName = meView?.displayName ?? meView?.anonCode ?? ''
+  const name = studentName(meView?.displayName)
   return {
-    greeting: displayName ? `你好，${displayName}` : '同学，你好',
+    greeting: name === COPY.studentFallbackName ? '同学，你好' : `你好，${name}`,
     inProgress: validArray(home?.inProgress),
     todo: validArray(home?.todo),
     done: validArray(home?.done),

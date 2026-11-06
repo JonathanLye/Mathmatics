@@ -21,6 +21,14 @@
     }
   })
 
+  // 首屏前恢复外观选择，避免闪一下错误的主题（key 与 composables/useTheme.ts 一致）。
+  try {
+    var theme = window.localStorage.getItem('pg.theme')
+    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme)
+  } catch (e) {
+    /* 隐私模式：跟随系统 */
+  }
+
   // 允许缩放（不写 user-scalable=no —— 见 02 §6）；输入框用 16px 防 iOS 聚焦缩放。
   var coverSupport = 'CSS' in window && typeof CSS.supports === 'function' &&
     (CSS.supports('top: env(a)') || CSS.supports('top: constant(a)'))

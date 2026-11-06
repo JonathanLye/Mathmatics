@@ -6,8 +6,6 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 export type LayoutMode = 'mobile' | 'tablet' | 'desktop'
 
-const width = ref(390)
-
 function readWidth(): number {
   // #ifdef H5
   if (typeof window !== 'undefined') return window.innerWidth
@@ -19,6 +17,9 @@ function readWidth(): number {
     return 390
   }
 }
+
+/** 模块加载时就读一次，首帧不会先按手机布局再跳到桌面布局。 */
+const width = ref(typeof window === 'undefined' ? 390 : readWidth())
 
 export function layoutModeOf(px: number): LayoutMode {
   return px >= 1024 ? 'desktop' : px >= 600 ? 'tablet' : 'mobile'

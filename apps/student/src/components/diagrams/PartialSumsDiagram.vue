@@ -191,26 +191,26 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
 .pg-svg__label {
   position: absolute;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-svg);
   line-height: 1.2;
   white-space: nowrap;
   color: var(--ink);
 }
-.pg-svg__label--muted { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--muted { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-svg__label--ink { color: var(--ink); }
-.pg-svg__label--tick { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--tick { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-ps__axis { stroke: var(--rule); stroke-width: 1; }
 .pg-ps__line { stroke-width: 1.6; }
 .pg-ps__line--accent { stroke: var(--accent); }
-.pg-ps__line--margin { stroke: var(--margin); }
+.pg-ps__line--margin { stroke: var(--sea); }
 .pg-ps__line--ok { stroke: var(--ok); }
 .pg-ps__dot--accent { fill: var(--accent); }
-.pg-ps__dot--margin { fill: var(--margin); }
+.pg-ps__dot--margin { fill: var(--sea); }
 .pg-ps__dot--ok { fill: var(--ok); }
 .pg-ps__slider { width: 100%; }
 .pg-ps__readout { display: flex; flex-direction: column; gap: var(--sp-1); }
 .pg-ps__legend { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
-.pg-ps__legendlabel { color: var(--ink-2); font-size: var(--fs-small); }
+.pg-ps__legendlabel { color: var(--ink-2); font-size: var(--fs-13); }
 .pg-ps__mono { font-family: var(--font-mono); color: var(--ink); white-space: nowrap; }
 .pg-ps__note { color: var(--ink-2); }
 </style>

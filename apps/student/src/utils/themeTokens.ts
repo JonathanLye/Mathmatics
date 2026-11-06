@@ -9,9 +9,9 @@
 
 /** 浅色 token 兜底值（tokens.css :root 的静态值；无 DOM 时使用）。 */
 export const FALLBACK_TOKEN = {
-  accent: '#58cc02',
-  rule: '#e5e5e5',
-  ink: '#3c3c3c',
+  accent: '#0fb5a6',
+  rule: '#e3e8ec',
+  ink: '#23303a',
   paper: '#ffffff',
 } as const
 

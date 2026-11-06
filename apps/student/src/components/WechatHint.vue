@@ -150,13 +150,13 @@ function dismiss(): void {
   gap: var(--sp-1) var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: var(--accent-soft);
-  border-bottom: 1px solid var(--accent);
+  border-bottom: var(--bw) solid var(--accent);
   color: var(--ink);
 }
 .pg-wechat__text {
   flex: 1 1 100%;
   min-width: 0;
-  font-size: var(--fs-small);
+  font-size: var(--fs-13);
   line-height: 1.5;
 }
 .pg-wechat__actions {
@@ -168,11 +168,11 @@ function dismiss(): void {
 .pg-wechat__btn {
   min-height: 44px;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
+  border: var(--bw) solid var(--accent);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--accent-text);
-  font-size: var(--fs-small);
+  font-size: var(--fs-13);
   line-height: 1.2;
 }
 .pg-wechat__btn::after {

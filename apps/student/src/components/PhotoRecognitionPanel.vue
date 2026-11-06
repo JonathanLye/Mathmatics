@@ -9,6 +9,9 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import PgButton from '@/components/ui/PgButton.vue'
+import PgIcon from '@/components/ui/PgIcon.vue'
+import PgSheet from '@/components/ui/PgSheet.vue'
 import type { Recognition } from '@/types/attempt'
 
 interface PhotoLine {
@@ -108,14 +111,13 @@ function ignore(): void {
 </script>
 
 <template>
-  <view class="pg-photo" data-testid="photo-recognition-panel" role="dialog" aria-modal="true" aria-label="拍照识别逐行确认">
-    <view class="pg-photo__sheet">
+  <PgSheet open :persistent="props.busy" :z-index="68" :width="560" class="pg-photo__sheet" mask-class="pg-photo" data-testid="photo-recognition-panel" aria-label="拍照识别逐行确认" @update:open="ignore">
       <view class="pg-photo__head">
         <view class="pg-photo__headtext">
           <text class="pg-photo__title">拍照识别 · 逐行确认</text>
           <text class="pg-photo__summary pg-small" data-testid="photo-lines-summary">{{ summary }}</text>
         </view>
-        <button class="pg-photo__close" :disabled="props.busy" @tap="ignore">关闭</button>
+        <PgButton class="pg-photo__close" variant="ghost" size="sm" :disabled="props.busy" @tap="ignore">关闭</PgButton>
       </view>
 
       <text v-if="statusHint" class="pg-photo__hint pg-small">{{ statusHint }}</text>
@@ -128,39 +130,46 @@ function ignore(): void {
           :data-testid="'photo-line-' + index"
         >
           <view class="pg-photo__linehead">
-            <button
+            <PgButton
               class="pg-photo__check"
+              :class="{ 'pg-photo__check--on': line.checked }"
+              variant="ghost"
+              size="icon"
               role="checkbox"
               :aria-checked="line.checked"
               :aria-label="'第 ' + (index + 1) + ' 行，' + (line.checked ? '已选中' : '未选中')"
               :data-testid="'photo-line-check-' + index"
               :disabled="props.busy"
               @tap="toggle(index)"
-            >{{ line.checked ? '☑' : '☐' }}</button>
+            ><PgIcon v-if="line.checked" name="check" :size="20" /></PgButton>
             <text class="pg-photo__lineno pg-small">第 {{ index + 1 }} 行</text>
             <text v-if="bboxText(line.bbox)" class="pg-photo__meta pg-small" :data-testid="'photo-line-bbox-' + index">{{ bboxText(line.bbox) }}</text>
             <text v-if="confidenceText(line.confidence)" class="pg-photo__meta pg-small">{{ confidenceText(line.confidence) }}</text>
-            <button
+            <PgButton
               v-if="!line.editing"
-              class="pg-photo__editbtn pg-small"
+              class="pg-photo__editbtn"
+              variant="ghost"
+              size="sm"
               :data-testid="'photo-line-edit-' + index"
               :disabled="props.busy"
               @tap="startEdit(index)"
-            >编辑</button>
-            <button
+            >编辑</PgButton>
+            <PgButton
               v-else
-              class="pg-photo__editbtn pg-small"
+              class="pg-photo__editbtn"
+              variant="ghost"
+              size="sm"
               :data-testid="'photo-line-edit-done-' + index"
               :disabled="props.busy"
               @tap="finishEdit(index)"
-            >完成</button>
+            >完成</PgButton>
           </view>
 
           <view class="pg-photo__linebody">
             <textarea
               v-if="line.editing"
               v-model="line.text"
-              class="pg-photo__input"
+              class="pg-input-area pg-input-area--xs"
               :data-testid="'photo-line-input-' + index"
               :disabled="props.busy"
             />
@@ -168,119 +177,51 @@ function ignore(): void {
           </view>
 
           <view class="pg-photo__lineactions">
-            <button
-              class="pg-photo__addone pg-small"
-              role="button"
-              :data-testid="'photo-line-add-' + index"
-              :disabled="props.busy"
-              @tap="addOne(index)"
-            >加入这行</button>
+            <PgButton variant="secondary" size="sm" :data-testid="'photo-line-add-' + index" :disabled="props.busy" @tap="addOne(index)">加入这行</PgButton>
           </view>
         </view>
       </scroll-view>
 
-      <view class="pg-photo__actions">
-        <button class="pg-photo__btn pg-photo__ignore" role="button" data-testid="photo-ignore" :disabled="props.busy" @tap="ignore">忽略</button>
-        <button
-          class="pg-photo__btn pg-photo__btn--primary"
-          role="button"
-          data-testid="photo-add-selected"
-          :disabled="props.busy || selectedCount === 0"
-          @tap="addSelected"
-        >全部加入（{{ selectedCount }} 行）</button>
+      <view class="pg-layer__row">
+        <PgButton class="pg-photo__ignore" variant="secondary" data-testid="photo-ignore" :disabled="props.busy" @tap="ignore">忽略</PgButton>
+        <PgButton data-testid="photo-add-selected" :disabled="props.busy || selectedCount === 0" @tap="addSelected">全部加入（{{ selectedCount }} 行）</PgButton>
       </view>
-    </view>
-  </view>
+  </PgSheet>
 </template>
 
 <style scoped>
-.pg-photo {
-  position: fixed;
-  inset: 0;
-  z-index: 68;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.48);
-}
-.pg-photo__sheet {
-  width: 100%;
-  max-width: 560px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
-  background: var(--sheet);
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  box-shadow: var(--shadow-sheet);
-}
 .pg-photo__head { display: flex; align-items: flex-start; gap: var(--sp-2); }
 .pg-photo__headtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.pg-photo__title { font-size: var(--fs-stem); font-weight: 900; color: var(--ink); }
+.pg-photo__title { color: var(--ink); font-size: var(--fs-18); font-weight: var(--fw-black); }
 .pg-photo__summary { color: var(--ink-2); }
-.pg-photo__close {
-  margin-left: auto;
-  min-width: 44px;
-  min-height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-2);
-  font-size: var(--fs-small);
-}
-.pg-photo__hint { color: var(--hint); }
-.pg-photo__list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.pg-photo__close { margin-left: auto; }
+.pg-photo__hint { color: var(--bee-text); }
+.pg-photo__list { flex: 1; min-height: 0; max-height: 52vh; display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-photo__line {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  padding: var(--sp-2);
-  border: 2px solid var(--rule);
-  border-radius: var(--radius-card);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-16);
   background: var(--paper);
 }
 .pg-photo__linehead { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.pg-photo__check {
-  min-width: 44px;
-  min-height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--accent-text);
-  font-size: 20px;
+.pg-photo__check.pg-button {
+  --_ink: var(--on-accent);
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  margin: var(--sp-2);
+  border: var(--bw) solid var(--rule-2);
+  border-radius: var(--radius-12);
 }
+.pg-photo__check--on.pg-button { border-color: var(--accent); background: var(--accent); }
 .pg-photo__lineno { color: var(--ink-2); }
 .pg-photo__meta { color: var(--ink-2); }
-.pg-photo__editbtn { margin-left: auto; color: var(--accent-text); background: transparent; border: 2px solid var(--rule); border-radius: var(--radius-input); min-height: 32px; padding: 0 var(--sp-2); }
+.pg-photo__editbtn { margin-left: auto; color: var(--accent-text); }
 .pg-photo__linebody { color: var(--ink); }
-.pg-photo__input {
-  width: 100%;
-  min-height: 64px;
-  padding: var(--sp-2);
-  border: 2px solid var(--rule);
-  border-radius: var(--radius-input);
-  background: var(--sheet);
-  color: var(--ink);
-  font-size: var(--fs-body);
-}
 .pg-photo__lineactions { display: flex; justify-content: flex-end; }
-.pg-photo__addone {
-  min-height: 36px;
-  border: 1px solid var(--accent);
-  background: transparent;
-  color: var(--accent-text);
-  border-radius: var(--radius-input);
-  padding: 0 var(--sp-3);
-}
-.pg-photo__actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
-.pg-photo__btn {
-  flex: 1;
-  min-height: 44px;
-  border-radius: var(--radius-input);
-  border: 2px solid var(--rule);
-  background: var(--sheet);
-  color: var(--ink);
-  font-size: 15px;
-}
-.pg-photo__btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-.pg-photo__btn:disabled { opacity: 0.45; }
 </style>

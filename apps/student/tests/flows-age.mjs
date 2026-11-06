@@ -134,13 +134,13 @@ async function main() {
       && (await countTestId(page, 'age-option-14to17')) === 1
       && (await countTestId(page, 'age-option-lt14')) === 1)
     check('<14 风险说明可见', (await page.getByTestId('age-risk-note').first().innerText()).includes('暂不开通'))
-    check('未选年龄时看不到做题页', !(await bodyText(page)).includes('构造与推导'))
+    check('未选年龄时看不到做题页', !(await bodyText(page)).includes('写下一行'))
     await page.screenshot({ path: path.join(outDir, '1-age-choose.png'), fullPage: true })
 
     await tap(page, 'age-option-ge18', '选「18 岁及以上」')
     await tap(page, 'age-submit', '确认分档')
     await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 10000 })
-    check('选 ge18 后继续原目标（回到做题页）', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('构造与推导'))
+    check('选 ge18 后继续原目标（回到做题页）', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('写下一行'))
     await page.screenshot({ path: path.join(outDir, '2-back-to-practice.png'), fullPage: true })
 
     // ---------------- 场景 2：lt14 阻止进入 ----------------
@@ -152,7 +152,7 @@ async function main() {
     check('ageBand=lt14：年龄页显示「暂不开通」', blockedText.includes('暂不开通'))
     check('lt14 风险说明可见', blockedText.includes('监护人'))
     check('lt14 没有「确认分档」/「继续」入口', (await countTestId(page, 'age-submit')) === 0 && (await countTestId(page, 'age-continue')) === 0)
-    check('lt14 进不了做题页', !(await bodyText(page)).includes('构造与推导'))
+    check('lt14 进不了做题页', !(await bodyText(page)).includes('写下一行'))
     await page.screenshot({ path: path.join(outDir, '3-lt14-blocked.png'), fullPage: true })
 
     await gotoRoute(page, base, '/pages/practice/index?mock=l3-active&ageBand=null')
@@ -160,7 +160,7 @@ async function main() {
     await tap(page, 'age-option-lt14', '选「未满 14 岁」')
     await tap(page, 'age-submit', '确认分档（lt14）')
     await waitTestId(page, 'age-blocked')
-    check('在年龄页主动选 lt14：提交后展示暂不开通，不继续', (await countTestId(page, 'age-continue')) === 0 && !(await bodyText(page)).includes('构造与推导'))
+    check('在年龄页主动选 lt14：提交后展示暂不开通，不继续', (await countTestId(page, 'age-continue')) === 0 && !(await bodyText(page)).includes('写下一行'))
 
     // ---------------- 场景 3：14to17 → guardianNotice 只读 ----------------
     console.log('--- 场景 3：14–17 同意页 guardianNotice 只读、不签署 ---')
@@ -185,7 +185,7 @@ async function main() {
     console.log('--- 场景 4：默认 ge18 直接进做题页 ---')
     await gotoRoute(page, base, '/pages/practice/index?mock=l3-active')
     await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 10000 })
-    check('默认 ge18：不弹年龄页、直接进入做题页', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('构造与推导'))
+    check('默认 ge18：不弹年龄页、直接进入做题页', (await countTestId(page, 'age-page')) === 0 && (await bodyText(page)).includes('写下一行'))
 
     // ---------------- 场景 5：登录（null）→ 年龄页 → 原目标（同意页） ----------------
     console.log('--- 场景 5：登录后先去年龄页，选档后继续原目标 ---')

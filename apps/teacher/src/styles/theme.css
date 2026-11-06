@@ -1,41 +1,42 @@
-/* 教师端 v2「厚边积木」：保留 TDesign，用 --td-* 把品牌色/圆角/字体映射到 v2 调色（与学生端 tokens.css 同源同值，改一处记得改另一处）。
-   信息密度高于学生端：正文 14px。暗色由 [theme-mode="dark"] 切换（TDesign 官方变量方案）。 */
+/* 教师端主题：调色来自共用的 packages/ui-tokens，这里只把它映射成 --pg-* 和 TDesign 的 --td-*。
+   信息密度高于学生端：正文 14px。暗色由 App.vue 同时切 theme-mode（TDesign）和 data-theme（共用 token）。 */
 @import '@fontsource/nunito/latin-700.css';
 @import '@fontsource/nunito/latin-800.css';
 @import '@fontsource/nunito/latin-900.css';
+@import '@proof-gym/ui-tokens/tokens.css';
 
 :root {
-  /* v2 调色：绿=主操作/完成；蓝=助教/品牌；黄=提示/额度；红=求助/答错；橙=卡住 */
-  --pg-ink: #3c3c3c;
-  --pg-ink-2: #6b6b6b;
-  --pg-ink-3: #afafaf;
-  --pg-rule: #e5e5e5;
-  --pg-soft: #f7f7f7;
-  --pg-grass: #58cc02;
-  --pg-grass-lip: #58a700;
-  --pg-grass-text: #3c8400;
-  --pg-grass-soft: #d7ffb8;
-  --pg-sea: #1cb0f6;
-  --pg-sea-lip: #1899d6;
-  --pg-sea-text: #1274a8;
-  --pg-sea-soft: #ddf4ff;
-  --pg-bee: #ffc800;
-  --pg-bee-lip: #e5b400;
-  --pg-bee-text: #7a5c00;
-  --pg-bee-soft: #fff3c2;
-  --pg-fox: #ff9600;
-  --pg-fox-lip: #e08600;
-  --pg-fox-text: #a85f00;
-  --pg-fox-soft: #ffe9cc;
-  --pg-chili: #ff4b4b;
-  --pg-chili-face: #d93030;
-  --pg-chili-lip: #b02424;
-  --pg-chili-text: #c42828;
-  --pg-chili-soft: #ffdfe0;
-  --pg-font: 'Nunito', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  /* 绿=完成；蓝=助教/品牌；金=提示/额度；红=求助；橙=卡住 */
+  --pg-ink: var(--ink);
+  --pg-ink-2: var(--ink-2);
+  --pg-ink-3: var(--ink-3);
+  --pg-rule: var(--rule);
+  --pg-soft: var(--paper-2);
+  --pg-grass: var(--ok);
+  --pg-grass-lip: var(--ok-lip);
+  --pg-grass-text: var(--ok-text);
+  --pg-grass-soft: var(--ok-soft);
+  --pg-sea: var(--sea);
+  --pg-sea-lip: var(--sea-lip);
+  --pg-sea-text: var(--sea-text);
+  --pg-sea-soft: var(--sea-soft);
+  --pg-bee: var(--bee);
+  --pg-bee-lip: var(--bee-lip);
+  --pg-bee-text: var(--bee-text);
+  --pg-bee-soft: var(--bee-soft);
+  --pg-fox: var(--fox);
+  --pg-fox-lip: var(--fox-lip);
+  --pg-fox-text: var(--fox-text);
+  --pg-fox-soft: var(--fox-soft);
+  --pg-chili: var(--chili);
+  --pg-chili-face: var(--danger-face);
+  --pg-chili-lip: var(--danger-lip);
+  --pg-chili-text: var(--chili-text);
+  --pg-chili-soft: var(--chili-soft);
+  --pg-font: var(--font-sans);
 
-  --pg-bg: #ffffff;
-  --pg-surface: #ffffff;
+  --pg-bg: var(--paper);
+  --pg-surface: var(--sheet);
   --pg-text: var(--pg-ink);
   --pg-text-secondary: var(--pg-ink-2);
   --pg-border: var(--pg-rule);
@@ -43,10 +44,10 @@
   --pg-danger: var(--pg-chili-text);
   --pg-success: var(--pg-grass-text);
 
-  /* TDesign 映射 */
-  --td-brand-color: #127ab0;
-  --td-brand-color-hover: #0f6a9a;
-  --td-brand-color-active: #0c5a85;
+  /* TDesign 映射。主按钮是白字，所以品牌色用够深的 --sea-text，不用 --sea */
+  --td-brand-color: var(--sea-text);
+  --td-brand-color-hover: var(--sea-lip);
+  --td-brand-color-active: var(--sea-lip);
   --td-brand-color-light: var(--pg-sea-soft);
   --td-brand-color-focus: var(--pg-sea-soft);
   --td-success-color: var(--pg-grass-text);
@@ -57,45 +58,30 @@
   --td-text-color-primary: var(--pg-ink);
   --td-text-color-secondary: var(--pg-ink-2);
   --td-component-border: var(--pg-rule);
-  --td-radius-default: 12px;
-  --td-radius-medium: 16px;
-  --td-radius-large: 16px;
+  --td-radius-default: var(--radius-12);
+  --td-radius-medium: var(--radius-16);
+  --td-radius-large: var(--radius-16);
   --td-font-family: var(--pg-font);
 }
 
 :root[theme-mode='dark'] {
-  --pg-ink: #f1f7fb;
-  --pg-ink-2: #afc0c9;
-  --pg-ink-3: #6f838e;
-  --pg-rule: #37464f;
-  --pg-soft: #202f36;
-  --pg-grass-text: #89e219;
-  --pg-grass-soft: #1f3a12;
-  --pg-sea-text: #49c0f8;
-  --pg-sea-soft: #10344a;
-  --pg-bee-text: #ffc800;
-  --pg-bee-soft: #3d3410;
-  --pg-fox-text: #ffb340;
-  --pg-fox-soft: #402a0c;
-  --pg-chili-text: #ff7878;
-  --pg-chili-soft: #4a1e24;
-  --pg-bg: #131f24;
-  --pg-surface: #131f24;
-  --td-brand-color: #1c9ad6;
+  --td-brand-color: var(--sea-lip);
+  --td-brand-color-hover: var(--sea);
+  --td-brand-color-active: var(--sea);
   /* TDesign 自带的深色变量优先级与此相同，必须在这里再写一遍，抽屉/标签面板/弹窗才跟我们的调色板走 */
-  --td-bg-color-page: #131f24;
-  --td-bg-color-container: #131f24;
-  --td-bg-color-container-hover: #1b2b32;
-  --td-bg-color-container-active: #202f36;
-  --td-bg-color-secondarycontainer: #1b2b32;
-  --td-bg-color-secondarycontainer-hover: #202f36;
-  --td-bg-color-component: #202f36;
-  --td-bg-color-specialcomponent: #202f36;
-  --td-text-color-primary: #f1f7fb;
-  --td-text-color-secondary: #afc0c9;
-  --td-text-color-placeholder: #6f838e;
-  --td-component-border: #37464f;
-  --td-component-stroke: #37464f;
+  --td-bg-color-page: var(--paper);
+  --td-bg-color-container: var(--sheet);
+  --td-bg-color-container-hover: var(--paper-2);
+  --td-bg-color-container-active: var(--paper-2);
+  --td-bg-color-secondarycontainer: var(--paper-2);
+  --td-bg-color-secondarycontainer-hover: var(--rule);
+  --td-bg-color-component: var(--paper-2);
+  --td-bg-color-specialcomponent: var(--paper-2);
+  --td-text-color-primary: var(--ink);
+  --td-text-color-secondary: var(--ink-2);
+  --td-text-color-placeholder: var(--ink-3);
+  --td-component-border: var(--rule);
+  --td-component-stroke: var(--rule);
 }
 
 * {
@@ -364,7 +350,7 @@ h3 + .page-sub { margin-top: -8px; margin-bottom: 16px; }
 .t-button { font-weight: 900; letter-spacing: 0.3px; }
 .t-button--theme-primary:not(.t-button--variant-text):not(.t-is-disabled) {
   border: 0;
-  border-bottom: 3px solid #0c5a85;
+  border-bottom: 3px solid color-mix(in srgb, var(--td-brand-color) 72%, #000);
   border-radius: 12px;
 }
 .t-button--theme-primary.t-button--variant-base:not(.t-is-disabled):active { transform: translateY(2px); border-bottom-width: 1px; }

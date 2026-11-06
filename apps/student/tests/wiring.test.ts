@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { adaptiveHint, selfcheckAdaptiveInput, selfcheckProgress, SELFCHECK_ADAPTIVE_CONFIG } from '@/components/selfcheck/adaptView'
 import { nextSelfcheck } from '@/components/selfcheck/adaptive'
-import { buildRedoList, levelLabel, REDO_OPTIONS, toCompletedAttemptView } from '@/components/proofbook/redoInput'
+import { buildRedoList, levelLabel, redoIndependenceText, REDO_OPTIONS, toCompletedAttemptView } from '@/components/proofbook/redoInput'
 import { minN } from '@/components/diagrams/seqBand'
 import { mockLesson } from '@/mocks/laterLayers'
 import type { NotebookCard, SelfcheckView } from '@/types/attempt'
@@ -127,10 +127,13 @@ describe('证明本「稍后重做」接线（redoInput）', () => {
     const list = buildRedoList(CARDS, { ...REDO_OPTIONS, now: NOW })
     expect(list.next?.title).toBe('老师标记题')
     expect(list.next?.reason).toContain('老师/系统标记')
-    expect(levelLabel(0.4)).toBe('依赖')
-    expect(levelLabel(0.62)).toBe('有提示')
-    expect(levelLabel(0.9)).toBe('独立')
-    expect(levelLabel(null)).toBe('未知')
+    expect(levelLabel(0.4)).toBe('多靠提示')
+    expect(levelLabel(0.62)).toBe('用了提示')
+    expect(levelLabel(0.9)).toBe('靠自己')
+    expect(levelLabel(null)).toBe('还没有记录')
+    expect(redoIndependenceText({ independence: 0.5, keysTotal: 4 })).toBe('4 步里 2 步靠自己')
+    expect(redoIndependenceText({ independence: 0.4, keysTotal: null })).toBe('多靠提示')
+    expect(redoIndependenceText({ independence: null, keysTotal: 4 })).toBe('还没有记录')
   })
 
   it('toCompletedAttemptView：无 problemId 用 attemptId 兜底、缺 completedAt 有兜底', () => {

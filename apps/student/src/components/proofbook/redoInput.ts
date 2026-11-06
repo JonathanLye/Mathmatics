@@ -5,7 +5,8 @@
  * 契约 Notebook.cards 没有独立度/教师标记等字段；mock 在 cards 上补了这些字段（#24 由服务端下发）。
  */
 import type { NotebookCard } from '@/types/attempt'
-import type { CompletedAttemptView, RedoList, RedoOptions } from './redo'
+import { independenceCopy } from '@/copy'
+import type { CompletedAttemptView, RedoEntry, RedoList, RedoOptions } from './redo'
 import { independenceLevel, listRedoable, type IndependenceLevel } from './redo'
 
 export const REDO_OPTIONS: RedoOptions = { threshold: 0.5, includeHinted: false, cooldownDays: 2, limit: 5 }
@@ -33,13 +34,19 @@ export function buildRedoList(cards: readonly NotebookCard[], options: RedoOptio
 }
 
 export const LEVEL_LABEL: Record<IndependenceLevel, string> = {
-  independent: '独立',
-  hinted: '有提示',
-  dependent: '依赖',
-  unknown: '未知',
+  independent: '靠自己',
+  hinted: '用了提示',
+  dependent: '多靠提示',
+  unknown: '还没有记录',
 }
 
-/** 分档中文标签（04 独立度分档：≥0.85 独立 / 0.5–0.85 有提示 / <0.5 依赖）。 */
+/** 分档的学生说法（04 独立度分档：≥0.85 / 0.5–0.85 / <0.5）。不评判，只说事实。 */
 export function levelLabel(value: number | null, threshold = 0.5): string {
   return LEVEL_LABEL[independenceLevel(value, threshold)]
+}
+
+/** 证明本一行：“4 步里 1 步靠自己”；不知道关键步骤数时退回分档的说法。 */
+export function redoIndependenceText(entry: Pick<RedoEntry, 'independence' | 'keysTotal'>): string {
+  if (entry.independence === null || !entry.keysTotal) return levelLabel(entry.independence)
+  return independenceCopy(Math.round(entry.independence * entry.keysTotal), entry.keysTotal)
 }

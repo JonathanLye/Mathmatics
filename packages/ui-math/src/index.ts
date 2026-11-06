@@ -4,7 +4,8 @@
  * - 纯逻辑（无 DOM）：mathText / keyboard / ink → 可被小程序端与单测直接复用；
  * - Vue 组件：MathText / MathTextEditor / ProofKeyboard / InkCanvas / RecognitionConfirm。
  */
-export { parseMathText, extractMath, toPlainText } from './mathText'
+export { parseMathText, extractMath, normalizeBareLatex, toPlainText } from './mathText'
+export { MATH_RENDER_FAILED_HINT, isLongInlineMath, renderMath } from './mathRender'
 export type { MathSegment } from './mathText'
 
 // #13：证明键盘纯逻辑（布局归一化/校验、插入、占位符跳转、光标动作、预览）

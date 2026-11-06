@@ -1,5 +1,6 @@
 <script setup lang="ts">
 /** 平板/桌面层导航（02 §3.2/§3.3）：六层横排/竖排，显示状态。 */
+import { LAYER_STATUS_TEXT, layerName, layerNumber } from '@/copy'
 import type { LayerId, LayerStatus } from '@/types/attempt'
 
 const props = withDefaults(defineProps<{ layers?: LayerStatus[]; current?: LayerId | null; vertical?: boolean }>(), {
@@ -8,8 +9,6 @@ const props = withDefaults(defineProps<{ layers?: LayerStatus[]; current?: Layer
   vertical: false,
 })
 const emit = defineEmits<{ (e: 'select', layer: LayerId): void }>()
-
-const STATUS_TEXT: Record<string, string> = { locked: '未解锁', active: '进行中', done: '已完成', skipped: '已跳过', disabled: '不启用' }
 </script>
 
 <template>
@@ -20,11 +19,16 @@ const STATUS_TEXT: Record<string, string> = { locked: '未解锁', active: '进�
       class="pg-layernav__item"
       :class="['pg-layernav__item--' + l.status, current === l.layer ? 'pg-layernav__item--current' : '']"
       role="button"
+      tabindex="0"
+      :aria-current="current === l.layer ? 'step' : undefined"
       @tap="emit('select', l.layer)"
+      @keydown.enter.prevent="emit('select', l.layer)"
     >
-      <text class="pg-layernav__index pg-mono">{{ l.layer }}</text>
-      <text class="pg-layernav__title">{{ l.title }}</text>
-      <text class="pg-layernav__status pg-small">{{ STATUS_TEXT[l.status] }}</text>
+      <text class="pg-layernav__index">{{ layerNumber(l.layer) }}</text>
+      <view class="pg-layernav__text">
+        <text class="pg-layernav__title">{{ layerName(l.layer) }}</text>
+        <text class="pg-layernav__status">{{ LAYER_STATUS_TEXT[l.status] }}</text>
+      </view>
     </view>
   </view>
 </template>
@@ -34,8 +38,8 @@ const STATUS_TEXT: Record<string, string> = { locked: '未解锁', active: '进�
   display: flex;
   gap: var(--sp-1);
   overflow-x: auto;
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--rule);
+  padding: var(--sp-2) 0;
+  border-bottom: var(--bw) solid var(--rule);
   scrollbar-width: none;
 }
 .pg-layernav::-webkit-scrollbar { display: none; }
@@ -43,29 +47,41 @@ const STATUS_TEXT: Record<string, string> = { locked: '未解锁', active: '进�
   flex-direction: column;
   overflow: visible;
   border-bottom: 0;
-  border-right: 1px solid var(--rule);
-  padding: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
 }
 .pg-layernav__item {
   flex: 0 0 auto;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 4px 10px;
-  border-radius: var(--radius-input);
-  border: 1px solid transparent;
+  gap: var(--sp-2);
+  min-height: var(--touch);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-12);
+  border: var(--bw) solid transparent;
   color: var(--ink-2);
-  background: transparent;
+  cursor: pointer;
 }
 .pg-layernav__item--current {
   color: var(--accent-text);
   background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-color: var(--accent);
 }
-.pg-layernav__item--done .pg-layernav__index { color: var(--ok); }
 .pg-layernav__item--locked { opacity: 0.55; }
-.pg-layernav__index { font-size: 12px; }
-.pg-layernav__title { font-size: 14px; color: inherit; white-space: nowrap; }
-.pg-layernav__status { color: var(--ink-2); white-space: nowrap; }
+.pg-layernav__item--disabled { opacity: 0.55; }
+.pg-layernav__index {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-12);
+  background: var(--paper-2);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-black);
+}
+.pg-layernav__item--done .pg-layernav__index { background: var(--ok); color: var(--on-ok); }
+.pg-layernav__text { min-width: 0; display: flex; flex-direction: column; }
+.pg-layernav__title { font-size: var(--fs-13); font-weight: var(--fw-black); line-height: 1.3; white-space: nowrap; }
+.pg-layernav__status { color: var(--ink-2); font-size: var(--fs-12); line-height: 1.3; white-space: nowrap; }
 </style>

@@ -266,7 +266,7 @@ async function main() {
     await tap(page, 'finish-steps', '写完了')
     await waitTestId(page, 'selfcheck-form')
 
-    check('进入第 4 层自检（自适应出题）', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('第 4 层 · 自检'))
+    check('进入第 4 层自检（自适应出题）', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('第 4 层'))
     check('自检页只读展示自己写的证明', (await countTestId(page, 'selfcheck-proof')) === 1)
 
     // 第 1 题答太短 → 服务端记录 failed；自适应提示「先做下一题」并换题（retryGap）
@@ -300,7 +300,7 @@ async function main() {
     await waitTestId(page, 'transfer-form')
     await page.screenshot({ path: path.join(outDir, '4-自检通过.png'), fullPage: true })
     check('四道自检完成（含一次重试）后自动进入第 5 层', (await countTestId(page, 'selfcheck-form')) === 0)
-    check('进入第 5 层迁移题入口', (await bodyText(page)).includes('第 5 层 · 迁移题'))
+    check('进入第 5 层迁移题入口', (await bodyText(page)).includes('换题试试'))
     check('迁移题入口含 #47 思路对照图', (await countTestId(page, 'transfer-outline-preview')) === 1)
 
     // #47 的迁移题「完整作答」流程由 flows-47 覆盖；本流程验证 L5 → L6 跳层后继续总结 → 完成页
@@ -325,7 +325,9 @@ async function main() {
     await waitTestId(page, 'completion-card')
     const doneText = await page.getByTestId('completion-card').innerText()
     check('提交总结后进入完成页（本题完成）', doneText.includes('本题完成'))
-    check('完成页显示 mathlib4 对照与未校验逻辑顺序提示', doneText.includes('mathlib4') && doneText.includes('未校验逻辑顺序'))
+    check('完成页有诚实说明，mathlib4 对照默认收起', doneText.includes('系统核对关键步骤是否齐全') && doneText.includes('延伸') && !doneText.includes('mathlib4'))
+    await page.getByTestId('completion-card').locator('.pg-fold__head').first().click()
+    check('展开“延伸”后看到 mathlib4 对照', (await page.getByTestId('completion-card').innerText()).includes('mathlib4'))
     await page.screenshot({ path: path.join(outDir, '7-完成页.png'), fullPage: true })
 
     await tap(page, 'add-to-notebook', '加入证明本')

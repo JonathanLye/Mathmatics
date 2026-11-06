@@ -120,7 +120,7 @@ async function main() {
   try {
     await page.goto('about:blank')
     await page.goto(base + '/#/pages/practice/index?mock=l3-active', { waitUntil: 'networkidle' })
-    await page.waitForFunction(() => document.body.innerText.includes('构造与推导'), { timeout: 15000 })
+    await page.waitForFunction(() => document.body.innerText.includes('写证明'), { timeout: 15000 })
     await page.waitForTimeout(200)
     const before = await count(page, '[data-testid="proof-line"]')
 

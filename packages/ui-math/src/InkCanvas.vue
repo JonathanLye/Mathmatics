@@ -856,8 +856,8 @@ defineExpose({
   width: 100%;
   min-height: 160px;
   background: var(--sheet);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-card);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-16);
   overflow: hidden;
   box-sizing: border-box;
 }
@@ -888,7 +888,7 @@ defineExpose({
 }
 .ui-ink-canvas__hinttext {
   color: var(--ink-2);
-  font-size: var(--fs-small);
+  font-size: var(--fs-13);
   line-height: 1.6;
 }
 .ui-ink-canvas__status {
@@ -898,12 +898,12 @@ defineExpose({
   z-index: 3;
   padding: 2px var(--sp-2);
   background: var(--accent-soft);
-  border-radius: var(--radius-input);
+  border-radius: var(--radius-12);
   pointer-events: none;
 }
 .ui-ink-canvas__statustext {
   color: var(--ink);
-  font-size: 12px;
+  font-size: var(--fs-12);
   line-height: 1.5;
 }
 .ui-ink-canvas__bar {
@@ -915,18 +915,18 @@ defineExpose({
   padding: var(--sp-1) var(--sp-2);
   overflow-x: auto;
   background: var(--sheet);
-  border-top: 1px solid var(--rule);
+  border-top: var(--bw) solid var(--rule);
 }
 .ui-ink-canvas__tool {
   flex: 0 0 auto;
   min-width: 44px;
   min-height: 44px;
   padding: 0 var(--sp-2);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-input);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-12);
   background: transparent;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--fs-13);
   line-height: 1.2;
 }
 .ui-ink-canvas__tool::after {

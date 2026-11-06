@@ -8,6 +8,7 @@
  */
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useNetwork } from '@/composables/useNetwork'
+import PgButton from '@/components/ui/PgButton.vue'
 
 const props = withDefaults(defineProps<{ retrying?: boolean }>(), { retrying: false })
 const emit = defineEmits<{ (e: 'retry'): void }>()
@@ -45,16 +46,9 @@ onBeforeUnmount(() => {
     <text class="pg-offline__text">
       {{ online ? '网络已恢复，正在同步…' : '网络断开，你写的内容已保存在本机，恢复后自动同步' }}
     </text>
-    <button
-      v-if="!online"
-      class="pg-offline__retry"
-      role="button"
-      data-testid="offline-retry"
-      :disabled="props.retrying"
-      @tap="emit('retry')"
-    >
+    <PgButton v-if="!online" class="pg-offline__retry" variant="ghost" size="sm" data-testid="offline-retry" :disabled="props.retrying" @tap="emit('retry')">
       {{ props.retrying ? '正在重试…' : '重试' }}
-    </button>
+    </PgButton>
   </view>
 </template>
 
@@ -66,32 +60,14 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  min-height: 34px;
-  padding: 0 var(--sp-3);
-  font-size: 13px;
-  line-height: 1.35;
-}
-.pg-offline--off {
-  background: var(--hint-soft, #fff4e0);
+  min-height: var(--touch);
+  padding: var(--sp-1) var(--sp-4);
   color: var(--ink);
-  border-bottom: 1px solid var(--hint, #d99a2b);
+  font-size: var(--fs-13);
+  line-height: 1.4;
 }
-.pg-offline--recovered {
-  background: var(--accent-soft);
-  color: var(--ink);
-  border-bottom: 1px solid var(--accent);
-}
+.pg-offline--off { background: var(--bee-soft); border-bottom: var(--bw) solid var(--bee); }
+.pg-offline--recovered { background: var(--accent-soft); border-bottom: var(--bw) solid var(--accent); }
 .pg-offline__text { flex: 1; min-width: 0; }
-.pg-offline__retry {
-  flex: 0 0 auto;
-  min-height: 26px;
-  padding: 0 var(--sp-2);
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font-size: 12px;
-  line-height: 1;
-}
-.pg-offline__retry[disabled] { opacity: 0.6; }
+.pg-offline__retry.pg-button { flex: none; color: var(--bee-text); }
 </style>

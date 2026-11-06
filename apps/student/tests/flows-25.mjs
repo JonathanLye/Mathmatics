@@ -176,7 +176,7 @@ async function main() {
   try {
     await pageA.goto('about:blank')
     await pageA.goto(base + '/#/pages/practice/index?mock=l3-active', { waitUntil: 'networkidle' })
-    await pageA.waitForFunction(() => document.body.innerText.includes('构造与推导'), { timeout: 15000 })
+    await pageA.waitForFunction(() => document.body.innerText.includes('写证明'), { timeout: 15000 })
     const beforeLines = await countTestId(pageA, 'proof-line')
     check('mock：做题页初始行列表可见', beforeLines >= 2, 'lines=' + beforeLines)
 
@@ -221,7 +221,7 @@ async function main() {
     )
     await pageB.goto('about:blank')
     await pageB.goto(base + '/#/pages/practice/index?api=real&attemptId=' + REAL_ATTEMPT, { waitUntil: 'networkidle' })
-    await pageB.waitForFunction(() => document.body.innerText.includes('构造与推导'), { timeout: 20000 })
+    await pageB.waitForFunction(() => document.body.innerText.includes('写证明'), { timeout: 20000 })
     await clickPhotoWithFile(pageB, fixturePath)
     await pageB.waitForFunction(() => document.body.innerText.includes('识别记录或作答不存在，请重新拍照/确认，或用键盘'), { timeout: 20000 })
     check('404：提示「识别记录或作答不存在，请重新拍照/确认，或用键盘」', true)

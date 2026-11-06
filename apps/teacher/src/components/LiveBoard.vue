@@ -8,6 +8,7 @@ import { computed } from 'vue';
 
 import type { LiveRow } from '../api/types.ts';
 import { boardStats, filterRows, footText, layerIndex, minutes, sortRows, toneOf, type BoardFilter, type Tone } from '../utils/liveBoard.ts';
+import MathTextView from './MathTextView.vue';
 import Icon from './ui/Icon.vue';
 
 const props = withDefaults(defineProps<{ rows: LiveRow[]; revealMax?: number; filter: BoardFilter }>(), { revealMax: 2 });
@@ -108,7 +109,7 @@ function toggle(key: Tone): void {
             <span class="lb__pips" aria-label="自己写出的关键步骤"><i v-for="(p, i) in keyPips(row)" :key="i" :class="p"><Icon v-if="p === 'own'" name="check" :size="12" /></i></span>
             <span class="lb__bulbs" aria-label="透露额度"><Icon v-for="i in Math.max(1, revealMax)" :key="i" name="bulb" :size="16" :tone="bulbOff(row, i - 1) ? 'off' : 'on'" /></span>
           </span>
-          <span class="lb__foot">{{ footText(row) }}</span>
+          <span class="lb__foot"><MathTextView :text="footText(row)" /></span>
         </button>
       </div>
     </div>
@@ -123,7 +124,7 @@ function toggle(key: Tone): void {
           <b>{{ nameOf(row) }}</b>
           <span class="pg-pill lb__qtag" :class="'lb__qtag--' + toneOf(row)">{{ TAG[toneOf(row)] }}</span>
         </span>
-        <span class="lb__qtext">{{ footText(row) }}</span>
+        <span class="lb__qtext"><MathTextView :text="footText(row)" /></span>
         <span class="lb__qgo">打开详情，补发提示或发一句话 <Icon name="fwd" :size="16" /></span>
       </button>
       <div class="pg-card lb__funnel">

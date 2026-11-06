@@ -210,20 +210,20 @@ function onSlider(event: { detail?: { value?: number } } | Event): void {
 .pg-svg__label {
   position: absolute;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-svg);
   line-height: 1.2;
   white-space: nowrap;
   color: var(--ink);
 }
-.pg-svg__label--muted { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--muted { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-svg__label--ink { color: var(--ink); }
-.pg-svg__label--margin { color: var(--margin-text); font-size: 9px; }
-.pg-svg__label--tick { color: var(--ink-2); font-size: 9px; }
+.pg-svg__label--margin { color: var(--sea-text); font-size: var(--fs-svg-small); }
+.pg-svg__label--tick { color: var(--ink-2); font-size: var(--fs-svg-small); }
 .pg-fb__hband { fill: var(--accent-soft); }
 .pg-fb__vband { fill: var(--ok); opacity: 0.14; }
 .pg-fb__axis { stroke: var(--rule); stroke-width: 1; }
 .pg-fb__center { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 4 3; }
-.pg-fb__xzero { stroke: var(--margin); stroke-width: 1; stroke-dasharray: 2 3; }
+.pg-fb__xzero { stroke: var(--sea); stroke-width: 1; stroke-dasharray: 2 3; }
 .pg-fb__curve { stroke: var(--accent); stroke-width: 1.8; }
 .pg-fb__slider { width: 100%; }
 .pg-fb__readout { display: flex; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
