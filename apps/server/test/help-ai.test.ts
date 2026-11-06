@@ -10,7 +10,7 @@ import { assertHelpResult, leakHits, postHelp, secretsOf, setState, startHelpHar
 // 模型回答 + 三重闸门（U15、09 §7）。所有模型调用都走脚本化 fetch：不出网、不读 infra/.env。
 // 脚本按请求里的系统提示分辨是哪一类调用：回答 / 复核 / 软规则复核 / 其它。
 
-const KEYED = loadConfig({ NODE_ENV: 'test', DASHSCOPE_API_KEY: 'test-dashscope-key', DEEPSEEK_API_KEY: 'test-deepseek-key' });
+const KEYED = loadConfig({ NODE_ENV: 'test', DEEPSEEK_API_KEY: 'test-deepseek-key' });
 
 type Reply = string | 'timeout' | { status: number };
 interface Script {
@@ -205,7 +205,7 @@ describe('对抗桩：任何情况都不泄题，且仍给出有用的模板回�
     const { calls } = await start({}, { 'help.llm': true }, { dailyBudgetCny: 0.001 });
     // 先造一笔已花费的费用
     await h!.db.query(
-      `insert into app.model_calls (attempt_id, purpose, provider, model, input_hash, status, cost_cny) values ($1, 'help_answer', 'dashscope', 'qwen3.8-flash', 'x', 'ok', 0.5)`,
+      `insert into app.model_calls (attempt_id, purpose, provider, model, input_hash, status, cost_cny) values ($1, 'help_answer', 'deepseek', 'deepseek-flash', 'x', 'ok', 0.5)`,
       [h!.attemptId],
     );
     await expectTemplateAnswer(await ask());

@@ -4,9 +4,8 @@
 // 题目是仓库里的种子题包：不读也不写任何已有数据库，所以可以在生产镜像里安全地跑。
 //
 // 用法（密钥只从环境变量读，本脚本不打印任何密钥或原始响应里的密钥）：
-//   node --env-file=infra/.env tools/help-eval.mjs                       # 默认模型 qwen3.8-flash
-//   node --env-file=infra/.env tools/help-eval.mjs --provider deepseek   # 生成用 DeepSeek（复核仍用通义千问，保持独立）
-//   --review-provider deepseek   通义千问不可用时，复核也走 DeepSeek（独立性变弱，结果要注明）
+//   node --env-file=infra/.env tools/help-eval.mjs                       # 默认 deepseek-flash（只需 DEEPSEEK_API_KEY）
+//   node --env-file=infra/.env tools/help-eval.mjs --provider qwen       # 生成与复核都用通义千问（qwen_fast；账号恢复后）
 //   node tools/help-eval.mjs --stub                                      # 桩模型，CI 里验证评测脚本本身
 //   生产镜像：docker compose run --rm server node tools/help-eval.mjs
 // 选项：--points L3,L3K1（红队的进度点）  --out 文件.json（逐条记录，供人工复核）  --limit N（每类只跑前 N 条）
@@ -105,13 +104,12 @@ export function stubFetch() {
 // ---- 主流程 --------------------------------------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { stub: false, provider: 'dashscope', points: ['L3', 'L3K1'], out: null, limit: Infinity };
+  const args = { stub: false, provider: 'deepseek', points: ['L3', 'L3K1'], out: null, limit: Infinity };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--stub') args.stub = true;
     else if (a === '--provider') args.provider = argv[++i];
     else if (a === '--points') args.points = argv[++i].split(',');
-    else if (a === '--review-provider') args.reviewProvider = argv[++i];
     else if (a === '--only') args.only = argv[++i].split(',');
     else if (a === '--out') args.out = argv[++i];
     else if (a === '--limit') args.limit = Number(argv[++i]);
@@ -140,14 +138,15 @@ async function main() {
       provider.values.apiKey = 'stub';
     }
   }
-  if (args.provider === 'deepseek') models.models.fast = { ...models.models.deepseek_fast, role: 'fast' };
-  // 通义千问账号不可用时的应急：复核也走 DeepSeek（独立性变弱：生成与复核同一模型家族，结果需注明）。
-  if (args.reviewProvider === 'deepseek') models.models.review = { ...models.models.deepseek_fast, role: 'review' };
+  // 默认全部走 deepseek-flash（models.yaml）；--provider qwen 时生成与复核都改用通义千问（qwen_fast）。
+  if (args.provider === 'qwen') {
+    models.models.fast = { ...models.models.qwen_fast, role: 'fast' };
+    models.models.review = { ...models.models.qwen_fast, role: 'review' };
+  }
   models.flags = { ...models.flags, 'help.llm': true, 'help.llm.shadow': false, 'llm.fallbackClassify': true };
-  const dashscopeOk = models.providers.dashscope?.configured;
   const generatorOk = models.providers[models.models.fast.provider]?.configured && models.providers[models.models.review.provider]?.configured;
-  if (!args.stub && (!(dashscopeOk || args.reviewProvider === 'deepseek') || !generatorOk)) {
-    console.error('模型未配置：缺少密钥环境变量（DASHSCOPE_API_KEY / DEEPSEEK_API_KEY）。用 --stub 可以先验证脚本。');
+  if (!args.stub && !generatorOk) {
+    console.error('模型未配置：缺少密钥环境变量（默认 DEEPSEEK_API_KEY；--provider qwen 时 DASHSCOPE_API_KEY）。用 --stub 可以先验证脚本。');
     process.exit(2);
   }
 

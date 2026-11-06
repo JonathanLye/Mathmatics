@@ -26,33 +26,35 @@ models:
   decide:
     provider: typesafe
     model: jev-1.13
-  # 求助回答与语义判定（U15）。默认都指向通义千问；配好 DEEPSEEK_API_KEY 后，把 provider 改成 deepseek 或设 MODEL_FAST 即可切换。
+  # 求助回答与语义判定（U15）。默认全部走 DeepSeek V4.1 Flash（API 名 deepseek-flash）：只需配 DEEPSEEK_API_KEY。
+  # 通义千问账号恢复后，把下面 fast / strong / review 的 provider 改回 dashscope（模型 qwen3.8-flash），
+  # 或用 MODEL_FAST / MODEL_REVIEW 只覆盖模型名；qwen_fast 是现成的备用条目。
   # 单价为估算（元 / 百万 token），只用于 app.model_calls.cost_cny 与每日预算。
   fast:
-    provider: dashscope
-    model: qwen3.8-flash
-    thinking: false
-    inputCnyPerM: 0.3
-    outputCnyPerM: 3
-  strong:
-    provider: dashscope
-    model: qwen3.8-flash
-    thinking: false
-    inputCnyPerM: 0.3
-    outputCnyPerM: 3
-  # 闸门第三层的独立复核（看得到未透露的步骤，和生成不是同一次调用）。
-  review:
-    provider: dashscope
-    model: qwen3.8-flash
-    thinking: false
-    inputCnyPerM: 0.3
-    outputCnyPerM: 3
-  deepseek_fast:
     provider: deepseek
     model: deepseek-flash
     thinking: false
     inputCnyPerM: 2
     outputCnyPerM: 8
+  strong:
+    provider: deepseek
+    model: deepseek-flash
+    thinking: false
+    inputCnyPerM: 2
+    outputCnyPerM: 8
+  # 闸门第三层的独立复核（看得到未透露的步骤，和生成不是同一次调用）。
+  review:
+    provider: deepseek
+    model: deepseek-flash
+    thinking: false
+    inputCnyPerM: 2
+    outputCnyPerM: 8
+  qwen_fast:
+    provider: dashscope
+    model: qwen3.8-flash
+    thinking: false
+    inputCnyPerM: 0.3
+    outputCnyPerM: 3
   cross:
     provider: dashscope
     model: qwen3.8-flash

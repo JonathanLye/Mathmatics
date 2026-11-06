@@ -9,7 +9,7 @@ import { WRITE_HEADERS } from './support/fixtures.ts';
 import { setState, startHelpHarness, stateOf, type HelpHarness } from './support/help.ts';
 
 // 模型参与的结构化判定：第 3 层兜底归类（matchedBy:model）和 L1/L2 语义判定。模型全部走脚本化 fetch。
-const KEYED = loadConfig({ NODE_ENV: 'test', DASHSCOPE_API_KEY: 'test-dashscope-key' });
+const KEYED = loadConfig({ NODE_ENV: 'test', DEEPSEEK_API_KEY: 'test-deepseek-key' });
 
 function scripted(reply: string | 'timeout' | { status: number }) {
   const state = { calls: 0 };
