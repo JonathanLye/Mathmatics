@@ -124,12 +124,50 @@ function resolveMockAgeBand(): AgeBand | null {
     if (fromUrl !== undefined) mockAgeBandOverride = fromUrl
   }
   if (mockAgeBandOverride !== MOCK_AGE_BAND_UNSET) return mockAgeBandOverride
+  // 引导演示场景里的新学生还没选过年龄。
+  if (isMockOnboardingScenario()) return null
   return DEFAULT_MOCK_AGE_BAND
+}
+
+/**
+ * 新手引导演示场景（?onboarding=new）：模拟一个刚拿到邀请码的新学生——要设密码、要选年龄、要签同意书、
+ * 引导进度为空。默认（没有这个参数）演示数据当作老用户，登录页开场动画、欢迎页和首页导览都不出现，既有流程不受影响。
+ * 和 ?ageBand= 一样，第一次读到就固定下来：页面跳转后地址栏不再带参数。
+ */
+let mockOnboardingScenario: boolean | undefined
+let mockPasswordSet = false
+let mockConsentSigned = false
+
+export function isMockOnboardingScenario(): boolean {
+  if (mockOnboardingScenario === undefined) {
+    let fromUrl = false
+    if (typeof window !== 'undefined' && window.location) {
+      const hash = window.location.hash || ''
+      const queryIndex = hash.indexOf('?')
+      if (queryIndex !== -1) fromUrl = new URLSearchParams(hash.slice(queryIndex + 1)).get('onboarding') === 'new'
+    }
+    mockOnboardingScenario = fromUrl
+  }
+  return mockOnboardingScenario
+}
+
+/** 测试用：直接开关引导演示场景，并清掉场景里的进度。 */
+export function __setMockOnboardingScenarioForTests(value: boolean | undefined): void {
+  mockOnboardingScenario = value
+  mockPasswordSet = false
+  mockConsentSigned = false
+  mockSettings = freshMockSettings()
 }
 
 /** mock Me（带当前年龄分档）。login/getMe 在 mock 模式都走这里，保证年龄守卫能读到 ageBand。 */
 export function mockMeView(): MeView {
-  return { ...clone(mockMe), ageBand: resolveMockAgeBand() }
+  const me: MeView = { ...clone(mockMe), ageBand: resolveMockAgeBand() }
+  if (isMockOnboardingScenario()) {
+    me.needsPassword = !mockPasswordSet
+    me.consentRequired = !mockConsentSigned
+    me.displayName = mockSettings.nickname
+  }
+  return me
 }
 
 /** 测试隔离：把 mock 年龄分档恢复为「未 override」（读取 URL/默认 ge18）。 */
@@ -181,6 +219,10 @@ export function __resetClientForTests(): void {
   cachedDeviceId = null
   lastStateStaleAt = 0
   mockAgeBandOverride = MOCK_AGE_BAND_UNSET
+  mockOnboardingScenario = undefined
+  mockPasswordSet = false
+  mockConsentSigned = false
+  mockSettings = freshMockSettings()
 }
 
 /**
@@ -573,6 +615,7 @@ export async function login(credentials: LoginCredentials, deviceId = getDeviceI
 export async function setStudentPassword(newPassword: string, currentPassword?: string): Promise<void> {
   if (USE_MOCK) {
     await sleep()
+    mockPasswordSet = true
     return
   }
   await activeHttp.post<{ ok: boolean }>('/auth/student/password', {
@@ -645,6 +688,10 @@ export async function getConsents(): Promise<ConsentDoc> {
 export async function submitConsents(version: string, items: ConsentChoices): Promise<MeView> {
   if (USE_MOCK) {
     await sleep()
+    if (isMockOnboardingScenario()) {
+      mockConsentSigned = true
+      return mockMeView()
+    }
     return clone(mockMe)
   }
   const result = await activeHttp.post<MeView>('/consents', { version, items })
@@ -1859,7 +1906,7 @@ export const mockProgress: ProgressView = {
   daysLearned: 3,
 }
 
-let mockSettings: SettingsView = {
+const freshMockSettings = (): SettingsView => ({
   nickname: null,
   dailyGoal: 3,
   defaultInput: 'hand',
@@ -1868,7 +1915,8 @@ let mockSettings: SettingsView = {
   motion: true,
   haptics: true,
   onboarding: {},
-}
+})
+let mockSettings: SettingsView = freshMockSettings()
 
 /** 学习进度（GET /student/progress）：经验、连胜、本周每日、徽章。 */
 export async function fetchProgress(): Promise<ProgressView> {
@@ -1888,7 +1936,11 @@ export async function fetchSettings(): Promise<SettingsView> {
 export async function updateSettings(patch: SettingsPatch): Promise<SettingsView> {
   if (!USE_MOCK) return (await activeHttp.patch<SettingsView>('/student/settings', patch)).data
   await sleep()
-  mockSettings = { ...mockSettings, ...clone(patch), nickname: patch.nickname?.trim() ?? mockSettings.nickname }
+  const nickname = patch.nickname?.trim()
+  if (nickname !== undefined && (nickname.length < 1 || nickname.length > 16)) {
+    throw new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: '昵称要 1 到 16 个字' })
+  }
+  mockSettings = { ...mockSettings, ...clone(patch), nickname: nickname ?? mockSettings.nickname }
   return clone(mockSettings)
 }
 

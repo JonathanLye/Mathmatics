@@ -15,10 +15,14 @@ import PgFold from '@/components/ui/PgFold.vue'
 import PgMascot from '@/components/ui/PgMascot.vue'
 import PgSkeleton from '@/components/ui/PgSkeleton.vue'
 import PgSwitch from '@/components/ui/PgSwitch.vue'
+import { shouldGoWelcome } from '@/composables/useOnboarding'
 import { consentVersionLabel } from '@/copy'
+import { CONSENT_COPY } from '@/copy/onboarding'
+import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
+useFeedbackPrefs() // 读出本机的动效开关：登录前的页面也要尊重“关闭动效”
 const items = session.items
 const version = session.docVersion
 const requiredOk = session.requiredOk
@@ -30,7 +34,7 @@ onLoad(async () => {
   // #145：年龄门（登录后、同意前）；被重定向时不继续加载/签署。
   if (!ageGatePassed(await enforceAgeGate())) return
   await session.loadConsentDoc()
-  if (session.consented.value) uni.redirectTo({ url: '/pages/home/index' })
+  if (session.consented.value) uni.redirectTo({ url: (await shouldGoWelcome()) ? '/pages/welcome/index' : '/pages/home/index' })
 })
 
 function toggle(id: string) {
@@ -44,7 +48,8 @@ async function submit() {
   if (!requiredOk.value) { error.value = '必选三项都要同意才能开始练习；有疑问请联系老师。'; return }
   const ok = await session.submitConsent()
   if (!ok) { error.value = session.error.value || '提交失败，请重试'; return }
-  uni.redirectTo({ url: '/pages/home/index' })
+  // 第一次进来先去欢迎页（昵称、每日目标、默认输入）；读不到设置或已走过就直接首页。
+  uni.redirectTo({ url: (await shouldGoWelcome()) ? '/pages/welcome/index' : '/pages/home/index' })
 }
 </script>
 
@@ -52,14 +57,14 @@ async function submit() {
   <view class="pg-page pg-form-page pg-consent" data-testid="consent-page">
     <view class="pg-form-column pg-consent__column pg-enter">
       <view class="pg-consent__hero">
-        <PgMascot expr="idle" :motion="['breathe', 'blink']" :size="88" />
-        <text class="pg-consent__title">开始前，请读一下</text>
-        <text class="pg-consent__sub">这是校内的练习工具。下面说明我们要用哪些数据、存在哪里、你能怎么选。</text>
+        <PgMascot expr="idle" :motion="['breathe', 'blink']" :size="96" />
+        <text class="pg-consent__title">{{ CONSENT_COPY.title }}</text>
+        <text class="pg-consent__sub">{{ CONSENT_COPY.sub }}</text>
       </view>
 
       <PgCard v-if="loading && !items.length"><PgSkeleton :count="3" /></PgCard>
 
-      <PgCard v-for="item in items" :key="item.id" class="pg-consent__item" :data-testid="'consent-item-' + item.id">
+      <PgCard v-for="item in items" :key="item.id" class="pg-consent__item pg-consent__enter" :data-testid="'consent-item-' + item.id">
         <view class="pg-consent__head">
           <text class="pg-consent__name">{{ item.title }}</text>
           <!-- guardianNotice（14–17 岁）只读说明：没有开关、不参与签署 -->
@@ -87,6 +92,7 @@ async function submit() {
 .pg-consent__hero { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); text-align: center; }
 .pg-consent__title { color: var(--ink); font-size: var(--fs-22); font-weight: var(--fw-black); line-height: var(--lh-tight); }
 .pg-consent__sub { color: var(--ink-2); font-size: var(--fs-13); line-height: var(--lh-body); }
+.pg-consent__enter { animation: pg-item-in var(--dur-slow) var(--ease-out) both; }
 .pg-consent__head { display: flex; align-items: center; gap: var(--sp-2); }
 .pg-consent__name { flex: 1; min-width: 0; color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); line-height: 1.35; }
 .pg-consent__tag {

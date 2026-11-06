@@ -14,6 +14,12 @@ export function initialLoginMode(options: { mock: boolean; inviteFromLink: strin
   return options.mock || options.inviteFromLink !== '' ? 'invite' : 'password'
 }
 
+/** 服务端给了中文原因就直接用；拿到的是英文或技术性的话（断网、超时）就换成学生看得懂的一句。 */
+export function friendlyLoginError(raw: string | null | undefined, fallback: string): string {
+  const text = String(raw ?? '').trim()
+  return /[一-鿿]/.test(text) ? text : fallback
+}
+
 export interface LoginFields {
   invite: string
   studentNo: string

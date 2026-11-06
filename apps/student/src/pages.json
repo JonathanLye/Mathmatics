@@ -29,6 +29,13 @@
       }
     },
     {
+      "path": "pages/welcome/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "欢迎"
+      }
+    },
+    {
       "path": "pages/home/index",
       "style": {
         "navigationStyle": "custom",

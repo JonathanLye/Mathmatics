@@ -16,6 +16,7 @@ import { cardLayerLabel, errorMessage, fetchHome, isMockMode, setMockMode, type 
 import type { AssignmentCardView } from '@/types/attempt'
 import AppShell from '@/components/AppShell.vue'
 import HomeNotebookCard from '@/components/home/HomeNotebookCard.vue'
+import HomeOnboarding from '@/components/onboarding/HomeOnboarding.vue'
 import HomeStats from '@/components/home/HomeStats.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgEmpty from '@/components/ui/PgEmpty.vue'
@@ -288,6 +289,7 @@ function addToNotebook(card: AssignmentCardView): void {
       <HomeNotebookCard :home="home" />
     </template>
   </AppShell>
+  <HomeOnboarding :ready="!loading && !!home" />
 </template>
 
 <style scoped>
