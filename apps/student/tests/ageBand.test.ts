@@ -302,7 +302,8 @@ describe('mock 客户端（#145）', () => {
 
     __resetMockAgeBandForTests()
     const adultDoc = await getConsents()
-    expect(adultDoc.sections.map((section) => section.key)).toEqual(CONSENT_KEYS)
+    // 境外模型不再展示（U22）
+    expect(adultDoc.sections.map((section) => section.key)).toEqual(CONSENT_KEYS.filter((key) => key !== 'crossBorderModel'))
   })
 
   it('非法档位直接拒绝（不发请求、不伪造成功）', async () => {

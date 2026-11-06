@@ -2852,9 +2852,9 @@ export interface components {
             items: {
                 /** @description 服务所需处理（必选） */
                 service?: boolean;
-                /** @description 数据存储于中国香港服务器（P0 必选） */
+                /** @description AI 模型和识别服务（必选；历史键名，见 13 §2） */
                 crossBorderHosting?: boolean;
-                /** @description 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev） */
+                /** @description 已停用（U22）：v2 起恒为 false，网关跳过境外 provider */
                 crossBorderModel?: boolean;
                 /** @description 作答过程监测与切屏记录（必选） */
                 monitoring?: boolean;
@@ -3801,9 +3801,9 @@ export interface components {
                     items: {
                         /** @description 服务所需处理（必选） */
                         service?: boolean;
-                        /** @description 数据存储于中国香港服务器（P0 必选） */
+                        /** @description AI 模型和识别服务（必选；历史键名，见 13 §2） */
                         crossBorderHosting?: boolean;
-                        /** @description 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev） */
+                        /** @description 已停用（U22）：v2 起恒为 false，网关跳过境外 provider */
                         crossBorderModel?: boolean;
                         /** @description 作答过程监测与切屏记录（必选） */
                         monitoring?: boolean;
