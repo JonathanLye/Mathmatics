@@ -13,7 +13,7 @@ import PgCard from '@/components/ui/PgCard.vue'
 import TransferOutlineDiagram from '@/components/diagrams/TransferOutlineDiagram.vue'
 import type { TransferView } from '@/types/attempt'
 
-const props = withDefaults(defineProps<{ hideSkip?: boolean; view?: TransferView | null; busy?: boolean }>(), {
+const props = withDefaults(defineProps<{ reviewing?: boolean; view?: TransferView | null; busy?: boolean }>(), {
   view: null,
   busy: false,
 })
@@ -44,7 +44,7 @@ const status = computed(() => props.view?.status ?? 'not_started')
       <view data-testid="transfer-outline-preview">
         <TransferOutlineDiagram />
       </view>
-      <PgButton v-if="!props.hideSkip" variant="secondary" block data-testid="transfer-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
+      <PgButton v-if="!props.reviewing" variant="secondary" block data-testid="transfer-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
       <view class="pg-pin">
         <PgButton block size="lg" data-testid="transfer-start" sound="tap" :loading="props.busy" @tap="emit('start')">{{ props.busy ? '准备中…' : '开始换题' }}</PgButton>
       </view>

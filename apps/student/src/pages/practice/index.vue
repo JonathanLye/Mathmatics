@@ -63,7 +63,7 @@ const nav = usePracticeNav(session)
 const { origin, nextBusy, layersOpen, frontier, reviewing, selectLayer } = nav
 const lesson = useLessonPanel(session)
 const { microOpen, microLesson } = lesson
-const help = useHelp(session, exam, { openLesson: () => void lesson.openLesson(), parkAndLeave: nav.backHome })
+const help = useHelp(session, exam, { openLesson: () => void lesson.openLesson(), parkAndLeave: () => void nav.parkAndNext() })
 const { helpOpen, hintPreview, helpNote, visibleNotes, asideNotes } = help
 const composer = useComposer(session, drafts)
 const composerView = reactive(composer)
@@ -138,7 +138,7 @@ function onSwitchMock(k: MockKey) {
 
 <template>
   <PracticeLoadState v-if="phase !== 'ready'" :phase="phase" :message="loadError" @retry="session.retryLoad" @home="nav.backHome" />
-  <view v-else class="pg-page pg-practice" :class="[modeClass, strictClass, { 'pg-practice--feedback': feedback }]">
+  <view v-else class="pg-page pg-practice" :class="[modeClass, strictClass, { 'pg-practice--feedback': feedback, 'pg-practice--reviewing': reviewing }]">
     <TopBar
       :layers="state.layers"
       :completed="isCompleted"
@@ -207,7 +207,7 @@ function onSwitchMock(k: MockKey) {
             :view="state.def"
             :busy="busy"
             :initial-text="l1Initial"
-            :hide-skip="reviewing"
+            :reviewing="reviewing"
             @submit="session.submitText"
             @update:text="drafts.saveDefinition"
             @lesson="lesson.handleLesson"
@@ -218,7 +218,7 @@ function onSwitchMock(k: MockKey) {
             v-else-if="currentLayer === 'L2'"
             :view="state.frame"
             :busy="busy"
-            :hide-skip="reviewing"
+            :reviewing="reviewing"
             @submit="session.submitText"
             @lesson="lesson.handleLesson"
             @skip="session.skipCurrentLayer"
@@ -226,6 +226,7 @@ function onSwitchMock(k: MockKey) {
 
           <LayerProof
             v-else-if="currentLayer === 'L3'"
+            :reviewing="reviewing"
             :lines="lines"
             :notes="visibleNotes"
             :busy="busy"
@@ -243,7 +244,7 @@ function onSwitchMock(k: MockKey) {
             :view="state.selfcheck ?? null"
             :lines="lines"
             :busy="busy"
-            :hide-skip="reviewing"
+            :reviewing="reviewing"
             @submit="session.answerSelfcheckItem"
             @skip="session.skipCurrentLayer"
           />
@@ -252,7 +253,7 @@ function onSwitchMock(k: MockKey) {
             v-else-if="currentLayer === 'L5'"
             :view="state.transfer ?? null"
             :busy="busy"
-            :hide-skip="reviewing"
+            :reviewing="reviewing"
             @start="session.beginTransfer"
             @skip="session.skipCurrentLayer"
           />
@@ -362,6 +363,8 @@ function onSwitchMock(k: MockKey) {
   padding-bottom: var(--sp-10);
 }
 /* 反馈面板开着时还能把证明滚到面板上方。 */
+/* 回看已完成的层只读：引擎不会因为重新提交再推进一次，这里不给主按钮。 */
+.pg-practice--reviewing :deep(.pg-pin) { display: none; }
 .pg-practice--feedback .pg-practice__main {
   padding-bottom: calc(260px + var(--safe-bottom));
 }

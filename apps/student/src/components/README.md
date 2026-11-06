@@ -151,7 +151,7 @@ emits: { claim: []; decline: []; retry: []; 'soft-landing': [action: string] }
 - `LayerInterstitial`：层间过场。测验模式跳过。
 - `CompletionScreen`：全屏庆祝；经验/连胜/徽章来自 `rewards`，步骤来自 `completion`。
 - `ReviewSheet`：完成页的「看讲评」（`GET /attempts/{id}/review`），只在 `completion.reviewAvailable` 时有入口。
-- `LayerSheet` + `ReviewingBar`：点已完成的层走 `POST /layers/{layer}/enter` 回去看，回看时有一键回到正在做的层；`frontierLayer` 只决定显示，能不能去由服务端决定。
+- `LayerSheet` + `ReviewingBar`：点已完成的层走 `POST /layers/{layer}/enter` 回去看，回看时只读（没有主按钮和「跳过」），有一键回到正在做的层；`frontierLayer` 只决定显示，能不能去由服务端决定。
 - `useDrafts`：本机 IndexedDB 是主存储；`PUT /attempts/{id}/draft` 最多 15 秒备份一次，切后台和离开页面时各补一次，失败不打断。
 - `TutorBubble` + `tutorTyping.ts`：助教气泡的打字效果，切点不落在公式中间。
 - `PracticeThinking`：请求超过 300 毫秒才出现的小方。失败走 `guarded()`（`useAttemptSession`）：带「重试」的轻提示，不会空白。

@@ -315,6 +315,32 @@ async function main() {
     check('测验模式：没有过场', (await countTestId(page, 'layer-interstitial')) === 0)
   }
 
+  /** 第 3 层回看：行不能改，也不能接着写。 */
+  const reviewingProof = async (page) => {
+    await open(page, base, 'mock=l4-active')
+    await waitTestId(page, 'selfcheck-form')
+    await page.locator('.pg-topbar__progress').click()
+    await page.locator('.pg-layersheet__row').nth(2).click()
+    await waitTestId(page, 'reviewing-bar')
+    check('回看第 3 层：轨道还在', (await countTestId(page, 'practice-rail')) === 1)
+    check('回看第 3 层：不能写、不能改、不能删', (await countTestId(page, 'write-next')) === 0 && (await countTestId(page, 'line-edit')) === 0 && (await countTestId(page, 'line-delete')) === 0)
+    await tap(page, 'reviewing-return')
+    await waitTestId(page, 'selfcheck-form')
+    check('一键回到自检', (await countTestId(page, 'layer-interstitial')) === 0)
+  }
+
+  /** 额度用完后的「先做下一题」：离开这道题，不停在原地。 */
+  const parkAndNext = async (page) => {
+    await open(page, base, 'mock=l3-exhausted')
+    await tap(page, 'dock-help')
+    await page.locator('.pg-help__softbtn--park_and_next').click()
+    await page.waitForFunction(() => {
+      const hash = window.location.hash
+      return !hash.includes('mock=l3-exhausted')
+    }, undefined, { timeout: 8000 })
+    check('先做下一题：离开了这道题', true)
+  }
+
   /** 正常做题时不会误显示回看条。 */
   const notReviewing = async (page) => {
     for (const mock of ['l1-active', 'l3-active', 'l3-ready', 'l3-exhausted', 'l4-active', 'l5-active', 'l6-active']) {
@@ -364,6 +390,8 @@ async function main() {
       ['输入器', composer],
       ['测验模式', exam],
       ['不误显示回看条', notReviewing],
+      ['回看第 3 层', reviewingProof],
+      ['先做下一题', parkAndNext],
     ]) {
       try {
         await scenario(page)

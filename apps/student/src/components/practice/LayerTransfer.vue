@@ -8,7 +8,7 @@ import type { TransferDraft } from '@/composables/practice/useAttemptSession'
 defineProps<{
   /** 子作答（kind=transfer）时为 true。 */
   child?: boolean
-  hideSkip?: boolean
+  reviewing?: boolean
   view?: TransferView | null
   lines?: ProofLine[]
   notes?: Note[]
@@ -39,5 +39,5 @@ defineEmits<{
     @finish="$emit('finish')"
     @dismiss-note="$emit('dismiss-note', $event)"
   />
-  <TransferForm v-else :view="view ?? null" :busy="busy" :hide-skip="hideSkip" @start="$emit('start')" @skip="$emit('skip')" />
+  <TransferForm v-else :view="view ?? null" :busy="busy" :reviewing="reviewing" @start="$emit('start')" @skip="$emit('skip')" />
 </template>

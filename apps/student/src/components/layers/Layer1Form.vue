@@ -15,7 +15,7 @@ import type { DefView } from '@/types/attempt'
 /** 单条 MathText 上限，对齐 openapi.yaml 的 `MathText.maxLength: 4000`；最终以服务端校验为准（#24）。 */
 const MAX_MATH_TEXT = 4000
 
-const props = withDefaults(defineProps<{ hideSkip?: boolean; layer?: string; view?: DefView; busy?: boolean; initialText?: string }>(), {
+const props = withDefaults(defineProps<{ reviewing?: boolean; layer?: string; view?: DefView; busy?: boolean; initialText?: string }>(), {
   layer: 'L1',
   view: () => ({}),
   busy: false,
@@ -71,7 +71,7 @@ function submit() {
       data-testid="layer1-input"
       data-pg-target="def"
       :maxlength="MAX_MATH_TEXT"
-      :disabled="props.busy"
+      :disabled="props.busy || props.reviewing"
       placeholder="在这里写出定义……"
     >
       <template #tools>
@@ -97,7 +97,7 @@ function submit() {
 
     <view class="pg-layer__row">
       <PgButton variant="secondary" data-testid="layer1-lesson" :disabled="props.busy" @tap="emit('lesson')">看不懂</PgButton>
-      <PgButton v-if="!props.hideSkip" variant="secondary" data-testid="layer1-skip" :disabled="props.busy" @tap="emit('skip')">已掌握，跳过</PgButton>
+      <PgButton v-if="!props.reviewing" variant="secondary" data-testid="layer1-skip" :disabled="props.busy" @tap="emit('skip')">已掌握，跳过</PgButton>
     </view>
     <view class="pg-pin">
       <PgButton block size="lg" data-testid="layer1-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">

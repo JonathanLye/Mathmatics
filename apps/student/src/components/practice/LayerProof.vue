@@ -12,6 +12,8 @@ const props = defineProps<{
   busy?: boolean
   canFinish?: boolean
   matchedLineIds?: string[]
+  /** 回看已完成的这一层：只看，不写不改。 */
+  reviewing?: boolean
 }>()
 defineEmits<{
   (e: 'write-next'): void
@@ -42,7 +44,8 @@ watch(
 <template>
   <ProofLineList
     rail
-    editable
+    :editable="!reviewing"
+    :readonly="reviewing"
     animate
     :lines="lines"
     :notes="notes"

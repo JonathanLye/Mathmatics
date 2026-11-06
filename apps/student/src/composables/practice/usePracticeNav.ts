@@ -1,6 +1,6 @@
 /** 做题页的去向：返回、回首页、证明本、层列表，以及完成页主按钮要去哪里。 */
 import { computed, ref } from 'vue'
-import { getStudentPath, startPathItem } from '@/api/client'
+import { getStudentPath, parkAttempt, startPathItem } from '@/api/client'
 import { nextItemInUnit, nextUnitId } from '@/components/practice/nextProblem'
 import { frontierLayer } from '@/components/practice/practiceProgress'
 import { setPendingAttempt } from '@/stores/attempt'
@@ -42,7 +42,6 @@ export function usePracticeNav(session: Pick<AttemptSession, 'state' | 'currentL
     uni.navigateTo({ url: '/pages/proofbook/index' })
   }
 
-  /** 看讲评：讲评在证明本的这道题详情里。 */
   /** 完成页主按钮：回错题本、回证明本，或者学习路径上的下一题；没有下一题或取不到就回首页。 */
   async function goNext(): Promise<void> {
     if (origin.value === 'mistakes') {
@@ -69,10 +68,16 @@ export function usePracticeNav(session: Pick<AttemptSession, 'state' | 'currentL
     }
   }
 
+  /** 「先做下一题」：把这题搁置（POST /park）再去下一题。搁置失败也照走：作答还在，下次还能接着做。 */
+  async function parkAndNext(): Promise<void> {
+    await parkAttempt(session.state.value).catch(() => undefined)
+    await goNext()
+  }
+
   /** 层列表：点已完成的层回去看，点还在做的层回来（POST /layers/{layer}/enter）。 */
   const layersOpen = ref(false)
   const frontier = computed(() => frontierLayer(session.state.value.layers))
-  /** 回看已完成的层：显示回去的入口，藏掉「跳过」（服务端不让跳已完成的层）。 */
+  /** 回看已完成的层：显示回去的入口；只读，因为引擎不会因为重新提交再推进一次，也不让跳已完成的层。 */
   const reviewing = computed(
     () => !session.isCompleted.value && !session.isTransferAttempt.value && Boolean(frontier.value) && session.currentLayer.value !== frontier.value,
   )
@@ -81,5 +86,5 @@ export function usePracticeNav(session: Pick<AttemptSession, 'state' | 'currentL
     void session.goToLayer(layer)
   }
 
-  return { layersOpen, frontier, reviewing, selectLayer, origin, nextBusy, setOrigin, backHome, handleBack, goProofbook, goNext }
+  return { parkAndNext, layersOpen, frontier, reviewing, selectLayer, origin, nextBusy, setOrigin, backHome, handleBack, goProofbook, goNext }
 }

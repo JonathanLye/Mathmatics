@@ -15,7 +15,7 @@ import type { FrameView } from '@/types/attempt'
 /** 单条 MathText 上限，对齐 openapi.yaml 的 `MathText.maxLength: 4000`；最终以服务端校验为准（#24）。 */
 const MAX_MATH_TEXT = 4000
 
-const props = withDefaults(defineProps<{ hideSkip?: boolean; layer?: string; view?: FrameView; busy?: boolean }>(), {
+const props = withDefaults(defineProps<{ reviewing?: boolean; layer?: string; view?: FrameView; busy?: boolean }>(), {
   layer: 'L2',
   view: () => ({}),
   busy: false,
@@ -73,7 +73,7 @@ function showTemplate() {
       v-model="draft"
       data-testid="layer2-input"
       :maxlength="MAX_MATH_TEXT"
-      :disabled="props.busy"
+      :disabled="props.busy || props.reviewing"
       placeholder="按骨架写：任取 ε>0。取 N=＿（待构造）。则当 n>N 时，⋯<ε。"
     >
       <template #tools>
@@ -98,7 +98,7 @@ function showTemplate() {
 
     <view class="pg-layer__row">
       <PgButton variant="secondary" data-testid="layer2-template-btn" :disabled="props.busy" @tap="showTemplate">看通用骨架</PgButton>
-      <PgButton v-if="!props.hideSkip" variant="secondary" data-testid="layer2-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
+      <PgButton v-if="!props.reviewing" variant="secondary" data-testid="layer2-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
     </view>
     <view class="pg-pin">
       <PgButton block size="lg" data-testid="layer2-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">

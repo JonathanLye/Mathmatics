@@ -189,6 +189,8 @@ async function main() {
     check('点已完成的层：回到那一层', (await testIdCount(page, 'reviewing-bar')) === 1)
     check('回看时没有「跳过」（服务端不让跳已完成的层）', (await testIdCount(page, 'layer1-skip')) === 0)
     check('回看时没有过场', (await testIdCount(page, 'layer-interstitial')) === 0)
+    check('回看时只读：主按钮藏起来', !(await page.getByTestId('layer1-check').isVisible()))
+    check('回看时只读：输入框不能改', await page.getByRole('textbox').isDisabled())
     await tap(page, 'reviewing-return', '回到正在做的层')
     await waitTestId(page, 'write-next')
     check('一键回到正在做的层，不出过场', (await testIdCount(page, 'layer-interstitial')) === 0 && (await testIdCount(page, 'reviewing-bar')) === 0)
