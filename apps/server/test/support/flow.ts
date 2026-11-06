@@ -1,3 +1,4 @@
+import { CONSENT_VERSION } from '../../src/auth/consent.ts';
 import { randomUUID } from 'node:crypto';
 
 import { gateRule, type Secret } from '@proof-gym/engine';
@@ -58,7 +59,7 @@ export async function login(env: Env, body = loginBody(), consent: Partial<typeo
     method: 'POST',
     url: '/api/v1/consents',
     headers: { cookie, ...WRITE_HEADERS },
-    payload: { version: 'p0-v1', items: { ...ALL_REQUIRED, ...consent } },
+    payload: { version: CONSENT_VERSION, items: { ...ALL_REQUIRED, ...consent } },
   });
   if (signed.statusCode !== 200) throw new Error(`consent ${signed.statusCode} ${signed.body}`);
   return cookie;

@@ -107,7 +107,7 @@ async function main() {
   await must(await studentCtx.post(`${BASE}/api/v1/auth/student/login`, { data: { inviteCode: cls.inviteCode, studentNo: '2026999', deviceId: '00000000-0000-4000-8000-0000000000e2' }, headers: WRITE }), 'student login');
   // #64/#152：学生写接口前先选年龄段（<14 关闭）。
   await must(await studentCtx.post('/api/v1/auth/student/age-band', { data: { ageBand: 'ge18' }, headers: WRITE }), 'age band');
-  await must(await studentCtx.post(`${BASE}/api/v1/consents`, { data: { version: 'p0-v1', items: REQUIRED }, headers: WRITE }), 'consent');
+  await must(await studentCtx.post(`${BASE}/api/v1/consents`, { data: { version: 'v2', items: REQUIRED }, headers: WRITE }), 'consent');
   const started = await must(await studentCtx.post(`${BASE}/api/v1/student/assignments/${assignment.assignmentId}/attempt`, { headers: WRITE }), 'start');
   await must(await studentCtx.post(`/api/v1/attempts/${started.state.attemptId}/layers/L1/skip`, { data: {}, headers: WRITE }), 'skip L1');
   await must(await studentCtx.post(`/api/v1/attempts/${started.state.attemptId}/layers/L2/skip`, { data: {}, headers: WRITE }), 'skip L2');

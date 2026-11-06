@@ -56,7 +56,7 @@ async function student(studentNo = '2026001'): Promise<{ cookie: string; attempt
   });
   const cookie = cookieFrom(login.headers['set-cookie']);
   await setStudentAgeBand(app, cookie);
-  await post(cookie, '/consents', { version: 'p0-v1', items: CONSENT });
+  await post(cookie, '/consents', { version: 'v2', items: CONSENT });
   const start = await post(cookie, `/student/assignments/${assignmentId}/attempt`);
   return { cookie, attemptId: start.json().state.attemptId as string };
 }
@@ -227,7 +227,7 @@ describe('Idempotency-Key（06 §1）', () => {
     });
     const cookie = cookieFrom(login.headers['set-cookie']);
     await setStudentAgeBand(app, cookie);
-    await post(cookie, '/consents', { version: 'p0-v1', items: CONSENT });
+    await post(cookie, '/consents', { version: 'v2', items: CONSENT });
     const first = await post(cookie, `/student/assignments/${assignmentId}/attempt`, undefined, { 'idempotency-key': KEY_A });
     const attemptId = first.json().state.attemptId as string;
     await post(cookie, `/attempts/${attemptId}/layers/L1/skip`);

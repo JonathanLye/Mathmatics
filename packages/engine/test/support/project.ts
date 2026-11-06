@@ -47,6 +47,10 @@ export function project(events: readonly EngineEvent[]): V3Event[] {
       case 'hint.rapid_lock':
         out.push({ type: 'rapid_hint' });
         break;
+      case 'hint.deny':
+        // U15：v3 的"连点锁定"改为温和提示（不加锁）。事件换了名字，投影回 v3 的 rapid_hint，golden 仍可逐步比对。
+        if (p.reason === 'rapid_soft') out.push({ type: 'rapid_hint' });
+        break;
       case 'budget.exhausted':
         out.push({ type: 'budget_exhausted', key: p.key });
         break;
@@ -85,7 +89,6 @@ export function project(events: readonly EngineEvent[]): V3Event[] {
         out.push({ type: 'layer_skip', layer: layerNo(p.layer) });
         break;
       case 'selfcheck.assign':
-      case 'hint.deny':
       case 'hint.request':
         break;
       default:

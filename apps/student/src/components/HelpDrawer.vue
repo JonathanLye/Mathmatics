@@ -30,6 +30,7 @@ const emit = defineEmits<{
   (e: 'intent', i: HelpIntent): void
   (e: 'send', t: string): void
   (e: 'claim'): void
+  (e: 'feedback', noteId: string, useful: boolean): void
   (e: 'decline'): void
   (e: 'soft-landing', a: string): void
 }>()
@@ -50,12 +51,17 @@ const stuckReason = computed(() => {
   return '给一条提示；从第二级起会用掉提示额度。'
 })
 
-/** 额度用完的软着陆出路（01 §4.4）：文案与预览卡共用一份（hintPreviewCopy），flag_teacher 后端未实现先禁用。 */
+/** 额度用完的软着陆出路（01 §4.4）：文案与预览卡共用一份（hintPreviewCopy），flag_teacher 已接通后端，是否可点由 help.canFlag 决定。 */
 const softLandingItems = SOFT_LANDING_ORDER.map((id) => ({
   id,
   label: softLandingLabel(id),
   disabled: !softLandingAvailable(id),
 }))
+
+/** 「求助老师」只在服务端说可以时可点（额度用完，或卡住满一段时间），且没找过。 */
+function softDisabled(id: string, disabled: boolean): boolean {
+  return disabled || (id === 'flag_teacher' && props.help.canFlag !== true)
+}
 
 /** 常见问句（01 §4 线框里的两条示例；点一下填进输入框，学生再确认发送）。 */
 const COMMON_QUESTIONS = ['这一行在做什么？', '什么是充分条件？']
@@ -104,7 +110,7 @@ function softLanding(action: string) {
           :class="'pg-help__softbtn--' + s.id"
           variant="secondary"
           size="sm"
-          :disabled="props.busy || s.disabled"
+          :disabled="props.busy || softDisabled(s.id, s.disabled)"
           @tap="softLanding(s.id)"
         >
           {{ s.label }}<text v-if="s.disabled" class="pg-help__soon">（即将上线）</text>
@@ -150,6 +156,11 @@ function softLanding(action: string) {
     <view v-if="props.note" class="pg-help__note" :class="noteClass" aria-live="polite">
       <text class="pg-help__notewho">{{ noteWhoLabel(props.note.who) }}</text>
       <MathText :text="props.note.text" block />
+      <view v-if="props.note.aiGenerated" class="pg-help__ai">
+        <text class="pg-help__aitext">AI 生成 · 仅作学习提示</text>
+        <PgButton class="pg-help__aibtn" variant="ghost" size="sm" @tap="emit('feedback', props.note.noteId, true)">有用</PgButton>
+        <PgButton class="pg-help__aibtn" variant="ghost" size="sm" @tap="emit('feedback', props.note.noteId, false)">没用</PgButton>
+      </view>
     </view>
 
     <view v-if="!testMode" class="pg-help__free">
@@ -215,6 +226,17 @@ function softLanding(action: string) {
 .pg-help__note--refusal { background: var(--sea-soft); }
 .pg-help__note--hint { background: var(--bee-soft); }
 .pg-help__notewho { display: block; margin-bottom: 2px; color: var(--ink-2); font-size: var(--fs-13); }
+.pg-help__ai {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+.pg-help__aitext {
+  color: var(--ink-2);
+  font-size: var(--fs-small);
+}
 .pg-help__free { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-help__freetitle { color: var(--ink-2); font-size: var(--fs-13); }
 .pg-help__freerow { display: flex; gap: var(--sp-2); }

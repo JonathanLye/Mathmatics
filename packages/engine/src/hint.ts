@@ -34,6 +34,8 @@ export type HintDecision =
   | { type: 'complete' }
   | { type: 'blocked'; waitSec: number }
   | { type: 'rapid_lock'; waitSec: number }
+  // 30 秒内第 3 次起：温和提示，不加锁、不改状态、不扣额度（U15；旧事件流里的 hint.rapid_lock 仍按原样回放）。
+  | { type: 'rapid_soft' }
   | { type: 'needs_submit' }
   | { type: 'dwell'; waitSec: number }
   | { type: 'budget_exhausted'; key: string };
@@ -60,11 +62,13 @@ function policyOf(budget: Budget): HintPolicy {
 const waitSecOf = (ms: number): number => Math.ceil(ms / 1000);
 
 // 返回本次决定与请求之后的状态。每个通过"锁"检查的请求都会记入 hintTimes（与 v3 一致，包括被拒绝的请求）。
+// opts.stuck：学生已卡住满 stuckMs（machine.ts 判定）。此时收费提示不再要求先写一行。
 export function selectHint(
   secret: Secret,
   budget: Budget,
   state: HintState,
   now: number,
+  opts: { stuck?: boolean } = {},
 ): { decision: HintDecision; state: HintState } {
   const policy = policyOf(budget);
 
@@ -76,8 +80,7 @@ export function selectHint(
   const after: HintState = { ...state, hintTimes };
 
   if (hintTimes.length >= policy.rapidCount) {
-    const locked = { ...after, blockedUntil: now + policy.rapidLockMs };
-    return { decision: { type: 'rapid_lock', waitSec: policy.rapidLockMs / 1000 }, state: locked };
+    return { decision: { type: 'rapid_soft' }, state };
   }
 
   const key = nextKey(secret, state.matched);
@@ -89,7 +92,7 @@ export function selectHint(
   const revealDelta = Math.max(0, hint.cost - prevCost);
 
   if (hint.cost > 0) {
-    if (state.submitsSinceHint < 1) return { decision: { type: 'needs_submit' }, state: after };
+    if (state.submitsSinceHint < 1 && opts.stuck !== true) return { decision: { type: 'needs_submit' }, state: after };
     if (state.lastHintAt !== null && now - state.lastHintAt < policy.dwellMs) {
       const waitSec = waitSecOf(policy.dwellMs - (now - state.lastHintAt));
       return { decision: { type: 'dwell', waitSec }, state: after };

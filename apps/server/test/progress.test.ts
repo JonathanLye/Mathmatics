@@ -1,3 +1,4 @@
+import { CONSENT_VERSION } from '../src/auth/consent.ts';
 import { randomUUID } from 'node:crypto';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -276,11 +277,11 @@ describe('撤回教研同意：导出过滤', () => {
     expect(await exported()).toBe(1);
 
     // 撤回：重新提交同意书，research=false
-    const withdraw = await post(env, cookie, '/consents', { version: 'p0-v1', items: { ...ALL_REQUIRED, research: false } });
+    const withdraw = await post(env, cookie, '/consents', { version: CONSENT_VERSION, items: { ...ALL_REQUIRED, research: false } });
     expect(withdraw.statusCode).toBe(200);
     expect(await exported()).toBe(0);
 
-    const again = await post(env, cookie, '/consents', { version: 'p0-v1', items: { ...ALL_REQUIRED, research: true } });
+    const again = await post(env, cookie, '/consents', { version: CONSENT_VERSION, items: { ...ALL_REQUIRED, research: true } });
     expect(again.statusCode).toBe(200);
     expect(await exported()).toBe(1);
 
