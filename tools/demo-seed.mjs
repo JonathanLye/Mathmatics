@@ -123,6 +123,16 @@ const SERIES = {
     ['$\\frac{1}{\\sqrt{n+1}}<\\frac{1}{\\sqrt n}$，所以 $u_n$ 单调递减', '分母变大，分数变小'],
     ['$\\lim_{n\\to\\infty}\\frac{1}{\\sqrt n}=0$', '$u_n$ 趋于 0'],
     ['由莱布尼茨判别法，原级数收敛', '交错级数，通项单调递减且趋于 0'],
+    ['$\\sum\\frac{1}{\\sqrt n}$ 是 $p=\\frac12$ 的 $p$ 级数，发散', '$p=\\frac12\\le 1$'],
+    ['综上，原级数条件收敛', '收敛，但绝对值级数发散'],
+  ],
+  selfcheck: ['第3行由第1、2行推出，用了莱布尼茨判别法', '第1行：通项单调递减这条性质用在这里', '去掉极限为 0 这一条，第2行和第3行就断了'],
+  summary: [
+    '原级数条件收敛',
+    '分两部分：交错级数收敛，绝对值级数发散',
+    '莱布尼茨判别法的三个条件要逐个验证',
+    '绝对值级数用 p 级数判别',
+    '换成 1/n² 时绝对值级数会收敛，结论就变成绝对收敛',
   ],
 };
 
@@ -171,8 +181,6 @@ async function seed() {
     version: epsN.version,
     mode: 'practice',
     openAt: new Date(Date.now() - 60_000).toISOString(),
-    // 提示额度调成 1：让「额度用完 + 求助老师」的学生能在几十秒内走到，现场不必干等。
-    settings: { revealBudget: 1, photoEnabled: true, hintsEnabled: true, maxSwitches: 3 },
   });
   console.log(`已建「${CLASS_NAME}」，邀请码 ${cls.inviteCode}；布置：${epsN.title}`);
 
@@ -320,9 +328,22 @@ async function runSelfStudy(me, student) {
     await step.line(...SERIES.k[0]);
     return '自学路径里在做「交错级数」，写出 1 个关键步骤';
   }
-  for (const line of SERIES.k) await step.line(...line);
+  const lines = student.plan === 'self_study_done' ? SERIES.k : SERIES.k.slice(0, 3);
+  for (const line of lines) await step.line(...line);
+  let finished = false;
+  if (student.plan === 'self_study_done') {
+    try {
+      await step.finish();
+      await step.selfcheck(SERIES.selfcheck);
+      await step.skip('L5').catch(() => undefined);
+      await step.summary(SERIES.summary);
+      finished = true;
+    } catch (error) {
+      console.warn(`  （${student.no} 没能走完自学题：${error instanceof Error ? error.message.slice(0, 120) : error}）`);
+    }
+  }
   const reveal = await me.send('POST', '/student/practice/series/solution/reveal', { level: 'approach' });
-  return `自学路径里做「交错级数」到第三层，写出 ${SERIES.k.length} 个关键步骤${reveal.ok ? '，看过解题思路' : ''}`;
+  return `自学路径里做「交错级数」${finished ? '，做完' : `，写出 ${lines.length} 个关键步骤`}${reveal.ok ? '，看过解题思路' : ''}`;
 }
 
 class Steps {
@@ -371,25 +392,33 @@ class Steps {
     const res = await this.post('/help', { intent: 'stuck' });
     return res;
   }
-  /** 把提示额度用完，再点“求助老师”。每条计额度的提示之间要等 20 秒并多写一行，所以最多尝试 100 秒。 */
+  /**
+   * 把提示额度用完，再点“求助老师”。照引擎测试里的“吃力的学生”走：每个关键步骤先领 2 级、3 级提示，再写出这一步。
+   * 每条计额度的提示之间要多写一行、停留 20 秒，所以整个过程要一两分钟（最多等 150 秒）。
+   */
   async exhaustAndFlag() {
-    const deadline = Date.now() + 100_000;
+    const deadline = Date.now() + 150_000;
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let written = 1; // 第一个关键步骤在 plan 里已经写出
     let exhausted = false;
     while (Date.now() < deadline && !exhausted) {
       const res = await this.actor.send('POST', `/attempts/${this.id}/help`, { intent: 'stuck' });
+      if (!res.ok) break;
       const preview = res.body?.preview;
-      if (!res.ok || preview === undefined) break;
-      if (preview.reason === 'budget' || preview.softLanding?.includes('flag_teacher')) {
+      if (preview === undefined) {
+        await sleep(1500); // 不计额度的提示已经下发，稍等再要下一条
+      } else if (preview.reason === 'budget' || preview.softLanding?.includes('flag_teacher')) {
         exhausted = true;
       } else if (preview.allowed && preview.previewToken) {
         const claim = await this.actor.send('POST', `/attempts/${this.id}/hints/claim`, { previewToken: preview.previewToken });
         if (!claim.ok) break;
-        const used = claim.body?.state?.budget;
-        exhausted = used !== undefined && used.revealUsed >= used.revealMax;
+        const budget = claim.body?.state?.budget;
+        exhausted = budget !== undefined && budget.revealUsed >= budget.revealMax;
+        if (!exhausted && preview.level === 'H3' && written < EPSN.k.length) await this.line(...EPSN.k[written++]);
       } else if (preview.reason === 'need_attempt') {
         await this.line(...EPSN.vague);
       } else {
-        await new Promise((resolve) => setTimeout(resolve, (preview.waitSec ?? 5) * 1000 + 300));
+        await sleep((preview.waitSec ?? 5) * 1000 + 300);
       }
     }
     const flagged = await this.actor.send('POST', `/attempts/${this.id}/flag-teacher`);
