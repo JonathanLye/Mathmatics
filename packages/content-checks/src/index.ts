@@ -184,3 +184,6 @@ export function checkPackage(pkg: ProblemPackage, options: CheckOptions = {}): C
   const result = checkCategories(pkg, options);
   return { ok: result.ok, issues: result.issues };
 }
+
+export * from './replay.ts';
+export * from './import-gates.ts';
