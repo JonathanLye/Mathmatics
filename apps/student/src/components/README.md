@@ -3,7 +3,7 @@
 > 口径：`10-开发文档/02-学生端设计规范.md`、`03-手写键盘与识别.md`、`contracts/openapi.yaml`。
 > 三条硬规则：
 > 1. **前端只渲染 `AttemptState`**，不实现层/预算/门槛/归类/闸门（08 §8 AI 规则第 3 条）。
-> 2. 所有颜色/间距/字号用 `src/styles/tokens.css` 的 CSS 变量，禁止硬编码色值。
+> 2. 所有颜色/间距/字号/圆角用 `packages/ui-tokens/tokens.css` 的 CSS 变量（`src/styles/tokens.css` 引入它），禁止硬编码色值。学生可见的说法从 `src/copy` 取，`tests/copy-lint.test.ts` 把关。
 > 3. 事件命名 `update:*` 走 v-model，其余动词过去式/名词；不 emit 任何"判定结果"，判定只来自服务端 state。
 
 ## ui-math（packages/ui-math）
@@ -122,7 +122,7 @@ emits: {
 props: { preview: HintPreview; busy?: boolean; budget?: BudgetView | null }
 emits: { claim: []; decline: []; retry: []; 'soft-landing': [action: string] }
 ```
-- 琥珀色边框；文案「这条会计入透露 0.5（你已用 0.5 / 2），剩余 1。」（剩余 = 预算上限 − 已用 − 本条；不传 budget 时只显示成本）。
+- 琥珀色边框；文案「这条会用掉提示额度 0.5（你已用 0.5 / 2），剩余 1。」（剩余 = 预算上限 − 已用 − 本条；不传 budget 时只显示成本）。
 - `HintPreview` 字段全部可选（契约无 required）：blocked preview 只有 `{ allowed:false, reason, waitSec }`，此时**只渲染原因行**（无标题/成本），`fmt` 对 undefined 不崩；`revealAfter` 是领取后的累计透露量，不是秒数。
 - 不能领取时显示原因并置灰「领取」；dwell 倒计时到 0 emit `retry`（也可手动「重新获取预览」）；`softLanding` 渲染成四个出路按钮（`flag_teacher` 后端未实现，置灰并注「即将上线」）。
 
@@ -151,6 +151,29 @@ emits: {
 - 「这一行」默认手写/键盘，「依据」默认键盘（02 §4.4）；依据可空。
 - 本轮输入区是 textarea + 常用符号条；#13 的 `<MathTextEditor>`/`<ProofKeyboard>` 落地后替换输入区，提交契约不变。
 - 模态：`role="dialog"` + `aria-modal` + Esc 关闭 + 关闭后焦点归还；输入框有 aria-label（a11y 建议）。
+
+## apps/student/src/components/ui（设计系统）
+
+纯逻辑在 `ui/uiLogic.ts`（`tests/ui-logic.test.ts`）。属性和 `data-testid` 都透传到根节点。
+
+| 组件 | 用途 | 主要 props |
+|---|---|---|
+| `PgButton` | 所有按钮；一屏一个 primary | `variant`（primary/secondary/ghost/danger/hint/sea）、`size`（sm/md/lg/icon）、`block`、`stack`、`loading`、`disabled`、`sound` |
+| `PgCard` | 卡片 | `tone`（plain/soft/accent/sea/bee/ok/fox）、`lip`、`flush` |
+| `PgField` | 表单项外壳 | `label`、`hint`、`error`、`optional` |
+| `PgSheet` / `PgDialog` | 底部弹层（≥768 居中）/ 确认框 | `open`、`persistent`；`title`、`body`、`confirmText`、`danger`、`busy` |
+| `PgToast` + `useToast()` | 全局轻提示；`main.ts` 挂一个 | `show(msg, { tone, duration })` |
+| `PgEmpty` / `PgSkeleton` | 空状态（带小方）/ 加载占位 | `title`、`body`、`expr`、`action` |
+| `PgProgress` | 分段或连续进度，前进时闪光 | `segments` 或 `value`、`tone`、`label` |
+| `PgSegmented` / `PgSwitch` | 分段选择 / 开关 | `options`、`v-model` |
+| `PgListRow` / `PgStatChip` / `PgFold` | 列表行 / 数字徽章 / 折叠块（mathlib 收在“延伸”下） | |
+| `PgTabBar` | 五个主标签，手机底栏、平板图标栏、桌面侧栏 | `active` |
+| `PgCoachmark` / `PgFeedbackPanel` / `PgCelebration` | 新手引导 / 答题反馈面板 / 全屏庆祝 + 撒花 | |
+| `PgMascot` / `PgIcon` | 小方 / 图标（`packages/ui-math/src/design/icons.ts`） | `expr`、`motion`、`size` |
+
+- `AppShell`：主标签页的外壳（标签栏、离线条、主栏 + `#rail` 右栏）。做题页不用它。
+- `src/motion/`：动效 token、`sfx`、`haptics`、`confetti`、`useCountUp`、`useMascot`、`useFeedbackPrefs`。都是调用点主动触发，测验模式和教师镜像保持安静。
+- 陈列页：`pages/dev/gallery`（只在开发和 mock 构建可进），改组件时在这里看全部状态。
 
 ## 自测约定
 - 纯逻辑放 `apps/student/tests/*.test.ts`（vitest，node 环境，不依赖 DOM）。
