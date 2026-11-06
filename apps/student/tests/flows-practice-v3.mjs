@@ -147,6 +147,12 @@ async function main() {
     await tap(page, 'layer1-check')
     await waitTestId(page, 'layer1-feedback')
     check('L1 没通过：留在这一层，不进过场', (await countTestId(page, 'layer-interstitial')) === 0)
+    await waitTestId(page, 'feedback-panel')
+    const askText = await page.getByTestId('feedback-panel').innerText()
+    check('L1 没通过：面板问问题（蓝），不说错', (await page.getByTestId('feedback-panel').getAttribute('data-feedback-tone')) === 'sea' && !/答错|错误|不对/.test(askText), askText.slice(0, 50))
+    await tap(page, 'feedback-continue')
+    await goneTestId(page, 'feedback-panel')
+    check('收起面板后问题还留在表单下面', (await countTestId(page, 'layer1-feedback')) === 1)
 
     // L1 通过 → 过场
     await fillIn(page, 'layer1-form', '任取 $\\varepsilon>0$，存在 $N$，当 $n>N$ 时 $|a_n-A|<\\varepsilon$。')
@@ -212,7 +218,7 @@ async function main() {
 
     await waitTestId(page, 'completion-card')
     const done = await page.getByTestId('completion-card').innerText()
-    check('完成页全屏', await page.getByTestId('completion-card').evaluate((el) => {
+    check('完成页全屏', await page.locator('.pg-celebrate').first().evaluate((el) => {
       const r = el.getBoundingClientRect()
       return r.width >= window.innerWidth - 1 && r.height >= window.innerHeight - 1
     }))
@@ -222,7 +228,8 @@ async function main() {
     check('完成页：新徽章', (await countTestId(page, 'completion-badges')) === 1)
     check('完成页：诚实说明', done.includes('系统核对关键步骤是否齐全') && done.includes('老师讲评'))
     check('完成页：mathlib 收在延伸里', done.includes('延伸') && !done.includes('mathlib4'))
-    check('完成页：下一题 / 换题试试 / 看我的证明', done.includes('下一题') && done.includes('换题试试') && done.includes('看我的证明'))
+    const actions = await page.locator('.pg-celebrate__actions').first().innerText()
+    check('完成页：下一题 / 换题试试 / 看我的证明', actions.includes('下一题') && actions.includes('换题试试') && actions.includes('看我的证明'))
     await shot(page, 'completion')
     check('完成页：reviewAvailable=false 时没有看讲评', (await countTestId(page, 'completion-review')) === 0)
 
@@ -248,7 +255,7 @@ async function main() {
 
     await tap(page, 'line-edit', before - 1)
     await waitTestId(page, 'editor-sheet')
-    await tap(page, 'composer-tab-keyboard')
+    check('改写：直接是键盘，没有手写/拍照分段', (await countTestId(page, 'composer-tab-photo')) === 0)
     const editing = page.getByTestId('editor-statement').locator('textarea').first()
     check('改写：打开时带着原来的内容', (await editing.inputValue()).length > 0)
     await editing.fill('改过的这一行')
@@ -293,6 +300,9 @@ async function main() {
   const exam = async (page) => {
     await page.goto('about:blank')
     await page.goto(base + '/#/pages/practice/index?exam=1', { waitUntil: 'networkidle' })
+    await waitTestId(page, 'exam-intro')
+    await tap(page, 'exam-start')
+    await goneTestId(page, 'exam-intro')
     await waitTestId(page, 'exam-bar')
     check('测验模式：顶部计时', true)
     const text = await bodyText(page)

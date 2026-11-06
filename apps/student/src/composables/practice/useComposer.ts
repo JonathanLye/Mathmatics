@@ -460,6 +460,7 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
     recogSeq += 1
     recognition.value = null
     photoFailure.value = null
+    toast.show('已忽略这次拍照识别')
   }
 
   /** 确认手写结果：填进「这一行」，补上依据后加入证明；文字不改就按手写来源提交。 */

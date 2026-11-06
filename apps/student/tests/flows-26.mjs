@@ -171,6 +171,16 @@ async function clickSliderAt(page, testId, ratio) {
   await loc.click({ position: { x: Math.max(2, Math.round(box.width * ratio)), y: Math.round(box.height / 2) } })
 }
 
+/** 提交一题自检。提交后的反馈面板盖着下面：点继续收起。最后一题直接到过场，没有面板。 */
+async function submitSelfcheck(page, testId, label) {
+  await tap(page, testId, label)
+  const panelContinue = page.getByTestId('feedback-continue')
+  if (await panelContinue.waitFor({ state: 'visible', timeout: 1200 }).then(() => true, () => false)) {
+    await panelContinue.click()
+    await page.getByTestId('feedback-panel').waitFor({ state: 'detached', timeout: 5000 })
+  }
+}
+
 async function main() {
   if (!fs.existsSync(distDir)) {
     console.error('[flows-26] 缺少构建产物：' + distDir + '，先运行 npm run build:mock')
@@ -274,7 +284,7 @@ async function main() {
     // 第 1 题答太短 → 服务端记录 failed；自适应提示「先做下一题」并换题（retryGap）
     await fillTestId(page, 'selfcheck-input-SC1', '不知道')
     await waitEnabled(page, 'selfcheck-submit-SC1')
-    await tap(page, 'selfcheck-submit-SC1', '提交 SC1（太短）')
+    await submitSelfcheck(page, 'selfcheck-submit-SC1', '提交 SC1（太短）')
     await waitTestId(page, 'selfcheck-item-SC2')
     await page.waitForFunction(() => (document.querySelector('[data-testid="selfcheck-hint"]')?.textContent || '').includes('先做下一题'))
     check('自检答错：提示先做下一题（retryGap）', true)
@@ -283,22 +293,22 @@ async function main() {
     // SC2 通过 → 隔一道题后回来重试 SC1
     await fillTestId(page, 'selfcheck-input-SC2', 'N 只依赖 ε，与 n 无关。')
     await waitEnabled(page, 'selfcheck-submit-SC2')
-    await tap(page, 'selfcheck-submit-SC2', '提交 SC2')
+    await submitSelfcheck(page, 'selfcheck-submit-SC2', '提交 SC2')
     await page.waitForFunction(() => Boolean(document.querySelector('[data-testid="selfcheck-retry-SC1"]')))
     check('隔一道题后回来重试答错题', (await page.getByTestId('selfcheck-hint').innerText()).includes('再试一次'))
     await fillTestId(page, 'selfcheck-input-SC1', '第 1 行通分以后得到的。')
     await waitEnabled(page, 'selfcheck-submit-SC1')
-    await tap(page, 'selfcheck-submit-SC1', '重试提交 SC1')
+    await submitSelfcheck(page, 'selfcheck-submit-SC1', '重试提交 SC1')
     await waitTestId(page, 'selfcheck-item-SC3')
     check('重试通过后继续下一题', (await countTestId(page, 'selfcheck-item-SC3')) === 1)
 
     await fillTestId(page, 'selfcheck-input-SC3', '第 2 行会因为 n>N 换成 n≥1 而断。')
     await waitEnabled(page, 'selfcheck-submit-SC3')
-    await tap(page, 'selfcheck-submit-SC3', '提交 SC3')
+    await submitSelfcheck(page, 'selfcheck-submit-SC3', '提交 SC3')
     await waitTestId(page, 'selfcheck-item-SC5')
     await fillTestId(page, 'selfcheck-input-SC5', '用到了 n 是正整数（n+2>n>0）。')
     await waitEnabled(page, 'selfcheck-submit-SC5')
-    await tap(page, 'selfcheck-submit-SC5', '提交 SC5')
+    await submitSelfcheck(page, 'selfcheck-submit-SC5', '提交 SC5')
     await tap(page, 'interstitial-continue', '过场·继续')
     await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'transfer-form')

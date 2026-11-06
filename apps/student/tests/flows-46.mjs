@@ -135,7 +135,8 @@ async function runViewport(browser, base, name, contextOptions) {
       await page.getByTestId('write-next').click()
       await page.getByTestId('composer-tab-photo').waitFor({ state: 'visible', timeout: 5000 })
       check(name + ' · 拍照按钮禁用', (await page.getByTestId('composer-tab-photo').getAttribute('aria-disabled')) === 'true')
-      await page.getByTestId('composer-tab-photo').click()
+      // 分段是 aria-disabled，Playwright 默认不点；force 把点击发过去，验证点了也不切。
+      await page.getByTestId('composer-tab-photo').click({ force: true })
       check(name + ' · 点拍照分段不会切过去', (await page.getByTestId('photo-take').count()) === 0)
       await page.getByTestId('editor-cancel').click()
       await page.getByTestId('editor-sheet').waitFor({ state: 'detached', timeout: 5000 })

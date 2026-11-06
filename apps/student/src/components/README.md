@@ -123,7 +123,7 @@ emits: {
   claim: []                                     // 领取预览卡提示
   decline: []                                   // 先不要
   'soft-landing': [action: string]              // 额度用尽四出路
-  'note-feedback': [noteId: string, useful: boolean]  // 只有 note.aiGenerated 时才显示
+  feedback: [noteId: string, useful: boolean]   // 只有 note.aiGenerated 时才显示
 }
 ```
 - 只渲染 `HelpState`/`Note`，不判门槛；请求在途（busy）时遮罩/关闭按钮/Esc 都不关抽屉；有 role=dialog/aria-modal，Esc 可关（busy 除外）。
@@ -150,6 +150,9 @@ emits: { claim: []; decline: []; retry: []; 'soft-landing': [action: string] }
 - `PracticeFeedback` + `feedback.ts`：提交后的面板，只比较前后两份服务端 state，不读学生内容。测验模式不出现。
 - `LayerInterstitial`：层间过场。测验模式跳过。
 - `CompletionScreen`：全屏庆祝；经验/连胜/徽章来自 `rewards`，步骤来自 `completion`。
+- `ReviewSheet`：完成页的「看讲评」（`GET /attempts/{id}/review`），只在 `completion.reviewAvailable` 时有入口。
+- `LayerSheet` + `ReviewingBar`：点已完成的层走 `POST /layers/{layer}/enter` 回去看，回看时有一键回到正在做的层；`frontierLayer` 只决定显示，能不能去由服务端决定。
+- `useDrafts`：本机 IndexedDB 是主存储；`PUT /attempts/{id}/draft` 最多 15 秒备份一次，切后台和离开页面时各补一次，失败不打断。
 - `TutorBubble` + `tutorTyping.ts`：助教气泡的打字效果，切点不落在公式中间。
 - `PracticeThinking`：请求超过 300 毫秒才出现的小方。失败走 `guarded()`（`useAttemptSession`）：带「重试」的轻提示，不会空白。
 

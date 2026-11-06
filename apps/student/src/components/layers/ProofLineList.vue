@@ -111,6 +111,11 @@ const tailNotes = computed(() => selectTailNotes(props.lines, props.notes))
 function provenanceLabel(provenance?: InputProvenance | null): string {
   return provenance ? PROVENANCE_LABEL[provenance] : ''
 }
+/** 轨道上不标键盘（大多数行都是键盘，标了只是噪音）；手写和拍照来的行还是标出来。 */
+function showBadge(provenance?: InputProvenance | null): boolean {
+  if (props.rail) return provenance === 'ink' || provenance === 'photo'
+  return Boolean(provenanceLabel(provenance))
+}
 
 function noteClass(note: Note): (string | false)[] {
   // 教师镜像是静态回放，批注不做进入动画。
@@ -167,7 +172,7 @@ function onDismissNote(note: Note): void {
             <PgButton variant="ghost" size="sm" data-testid="line-edit" :aria-label="'改第 ' + line.n + ' 行'" :disabled="props.busy" @tap="emit('edit-line', line)">改</PgButton>
             <PgButton variant="ghost" size="sm" data-testid="line-delete" :aria-label="'删第 ' + line.n + ' 行'" :disabled="props.busy" @tap="askDelete(line)">删</PgButton>
           </view>
-          <view v-if="!props.rail && provenanceLabel(line.provenance)" class="pg-lines__badge">
+          <view v-if="showBadge(line.provenance)" class="pg-lines__badge">
             <PgIcon v-if="line.provenance && PROVENANCE_ICON[line.provenance]" :name="PROVENANCE_ICON[line.provenance]!" :size="14" />
             <text>{{ provenanceLabel(line.provenance) }}</text>
           </view>

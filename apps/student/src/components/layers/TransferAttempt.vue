@@ -135,7 +135,7 @@ function remove(line: ProofLine) {
   <view class="pg-layer pg-attempt" data-testid="transfer-attempt">
     <view class="pg-layer__head">
       <text class="pg-layer__title">换题试试 · 完整作答</text>
-      <text class="pg-layer__step pg-small">{{ props.lines.length }} 行 · {{ props.canFinish ? '可以写完了' : '未达标' }}</text>
+      <text class="pg-layer__step pg-small">{{ props.lines.length }} 行 · {{ props.canFinish ? '可以写完了' : '接着写' }}</text>
     </view>
 
     <view class="pg-attempt__task pg-sheet" data-testid="transfer-attempt-task">

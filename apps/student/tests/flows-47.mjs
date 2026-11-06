@@ -159,6 +159,12 @@ async function answerSelfcheck(page, itemId, text) {
   await fillTestId(page, 'selfcheck-input-' + itemId, text)
   await waitEnabled(page, 'selfcheck-submit-' + itemId)
   await tap(page, 'selfcheck-submit-' + itemId, '提交 ' + itemId)
+  // 提交后的反馈面板盖着下面：点继续收起。最后一题直接到过场，没有面板。
+  const panelContinue = page.getByTestId('feedback-continue')
+  if (await panelContinue.waitFor({ state: 'visible', timeout: 1200 }).then(() => true, () => false)) {
+    await panelContinue.click()
+    await page.getByTestId('feedback-panel').waitFor({ state: 'detached', timeout: 5000 })
+  }
 }
 
 async function main() {
