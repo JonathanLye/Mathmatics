@@ -106,9 +106,9 @@ await scenario('入口都能到', async () => {
   await page.keyboard.press('Escape')
   await tap(page, 'me-sub-back')
   await visible(page, 'me-page')
-  await tap(page, 'me-row-replay')
-  await page.getByText('下次回到路径时').waitFor({ state: 'visible', timeout: 5000 })
-  check('重看引导有回应', true)
+  await tap(page, 'me-replay-onboarding')
+  await visible(page, 'welcome-page')
+  check('重看引导去欢迎页', page.url().includes('replay=1'), page.url())
   await context.close()
 })
 

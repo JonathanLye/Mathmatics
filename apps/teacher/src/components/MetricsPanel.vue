@@ -70,14 +70,14 @@ defineExpose({ load });
 <template>
   <div>
     <div class="page-head" style="margin-top: 12px">
-      <h3 style="margin: 0">指标</h3>
+      <h3 style="margin: 0">班级指标</h3>
       <t-button size="small" :loading="loading" @click="load">刷新</t-button>
     </div>
     <t-alert v-if="error" theme="error" :message="error" style="margin: 8px 0" />
     <t-alert
       v-if="lowSample"
       theme="info"
-      :message="`样本 n=${sample} < 10：按 08 §4.2 只显示人数与计数，比例/中位数不展示。`"
+      :message="`目前只有 ${sample} 份作答，不足 10 份：只显示人数和计数，不显示比例和中位数，以免被个别学生带偏。`"
       style="margin: 8px 0"
     />
 
@@ -105,7 +105,7 @@ defineExpose({ load });
     <div class="chart-grid">
       <div class="chart-card">
         <div class="chart-title">
-          层漏斗（L1–L6 当前人数）
+          各层现在有多少人
           <t-tooltip :content="METRIC_EXPLAIN.layerFunnel"><span class="info-icon">ⓘ</span></t-tooltip>
         </div>
         <LayerSteps v-if="sample > 0" :data="funnel" />
@@ -121,14 +121,14 @@ defineExpose({ load });
       </div>
     </div>
 
-    <div class="page-sub">口径以 08-事件与数据字典.md §4 为准；教师端只展示、不重算（04 §3）。</div>
+    <div class="page-sub">指标由服务端统一计算，这里只展示，不会在浏览器里重新计算。</div>
   </div>
 </template>
 
 <style scoped>
 .info-icon {
   cursor: help;
-  color: var(--td-text-color-placeholder, #999);
+  color: var(--pg-ink-3);
   margin-left: 2px;
 }
 </style>

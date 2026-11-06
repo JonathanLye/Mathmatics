@@ -49,7 +49,7 @@ export const ME = {
   features: {},
 }
 
-export const SETTINGS = { nickname: '小明', dailyGoal: 3, defaultInput: 'hand', theme: 'system', sound: true, motion: true, haptics: true, onboarding: {} }
+export const SETTINGS = { nickname: '小明', dailyGoal: 3, defaultInput: 'hand', theme: 'system', sound: true, motion: true, haptics: true, onboarding: { seen: { welcome: true, tour: true } } }
 
 export const PROGRESS = {
   xpTotal: 40,

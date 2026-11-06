@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-// 层漏斗：L1–L6 当前人数。纯 HTML/CSS，粗圆角条 + 下沿厚边；不依赖图表库。
+// 层漏斗：六层当前人数。纯 HTML/CSS 的细条，不依赖图表库。
 const props = defineProps<{ data: Array<{ name: string; value: number }> }>();
 const max = computed(() => Math.max(1, ...props.data.map((d) => d.value)));
 const total = computed(() => props.data.reduce((sum, d) => sum + d.value, 0));
@@ -21,10 +21,10 @@ const total = computed(() => props.data.reduce((sum, d) => sum + d.value, 0));
 
 <style scoped>
 .ls { display: grid; gap: 10px; padding: 6px 0 2px; }
-.ls__row { display: grid; grid-template-columns: 28px 1fr 32px; align-items: center; gap: 10px; }
-.ls__name { font-weight: 900; font-size: 13px; color: var(--pg-text-secondary); }
-.ls__track { height: 22px; border-radius: 11px; background: rgba(127, 127, 127, 0.16); overflow: hidden; }
-.ls__bar { display: block; height: 100%; border-radius: 11px; background: #1cb0f6; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.14); transition: width 0.35s ease-out; }
-.ls__val { text-align: right; font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums; }
+.ls__row { display: grid; grid-template-columns: 64px 1fr 32px; align-items: center; gap: 10px; }
+.ls__name { font-weight: 700; font-size: 13px; color: var(--pg-text-secondary); }
+.ls__track { height: 14px; border-radius: 4px; background: var(--pg-rule); overflow: hidden; }
+.ls__bar { display: block; height: 100%; border-radius: 4px; background: var(--pg-accent); transition: width 0.35s ease-out; }
+.ls__val { text-align: right; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .ls__bar { transition: none; } }
 </style>

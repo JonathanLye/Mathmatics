@@ -6,6 +6,7 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import MathText from '@ui-math/MathText.vue'
+import ReplayOnboarding from '@/components/onboarding/ReplayOnboarding.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgCard from '@/components/ui/PgCard.vue'
 import PgCelebration from '@/components/ui/PgCelebration.vue'
@@ -151,6 +152,7 @@ function crash(): never {
     <PgCard flush>
       <PgListRow title="音效" sub="答对和提示时的短音" icon="sound"><template #right><PgSwitch v-model="sw" /></template></PgListRow>
       <PgListRow title="可点的行" sub="带箭头" icon="book" clickable />
+      <ReplayOnboarding />
     </PgCard>
     <PgFold title="延伸"><text>折叠内容</text></PgFold>
 

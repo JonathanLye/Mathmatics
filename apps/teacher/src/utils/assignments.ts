@@ -1,4 +1,4 @@
-// 04 §7：布置表单 → 契约 settings 的归一化（mode 决定默认与暴露字段）。
+// 布置表单 → 契约 settings 的归一化（mode 决定默认与暴露字段）。
 export interface AssignmentForm {
   mode: 'practice' | 'test';
   revealBudget: number;
@@ -17,7 +17,7 @@ export interface AssignmentSettings {
 }
 
 export function normalizeAssignmentSettings(form: AssignmentForm): AssignmentSettings {
-  // 默认值由 defaultsForMode 决定（04 §7 测验默认关求助/拍照）；这里只负责归一化，教师显式打开也不阻止。
+  // 默认值由 defaultsForMode 决定（测验默认关求助和拍照）；这里只负责归一化，教师显式打开也不阻止。
   const test = form.mode === 'test';
   return {
     revealBudget: Number(form.revealBudget),

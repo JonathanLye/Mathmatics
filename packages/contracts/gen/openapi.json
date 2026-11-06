@@ -3907,6 +3907,30 @@
             }
           },
           {
+            "name": "reviewSource",
+            "in": "query",
+            "description": "老师审核 = teacher；AI 整理（批量导入）= auto",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "teacher",
+                "auto"
+              ]
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "主题 = main；迁移题 = transfer",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "main",
+                "transfer"
+              ]
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "description": "给了才分页（1–100）；不给 = 返回全部，兼容旧调用",
@@ -3950,6 +3974,74 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/teacher/problems/{problemId}/visibility": {
+      "patch": {
+        "tags": [
+          "content"
+        ],
+        "summary": "下架 / 恢复上架一道题（设置或清除 hidden_at）",
+        "description": "下架后这道题不再出现在学生的学习路径与练习区；已有作答和老师已布置的题不受影响。写一条审计记录。",
+        "operationId": "setProblemVisibility",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "problemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "hidden"
+                ],
+                "properties": {
+                  "hidden": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "当前状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemVisibility"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           },
           "422": {
@@ -7300,6 +7392,30 @@
             "description": "最近一次审核人（display_name/anon_code）"
           },
           "reviewedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "hiddenAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "老师下架的时间；没下架时不出现"
+          }
+        }
+      },
+      "ProblemVisibility": {
+        "type": "object",
+        "required": [
+          "problemId",
+          "hiddenAt"
+        ],
+        "properties": {
+          "problemId": {
+            "type": "string"
+          },
+          "hiddenAt": {
             "type": [
               "string",
               "null"

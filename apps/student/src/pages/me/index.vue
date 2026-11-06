@@ -8,6 +8,7 @@ import { computed, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import AppShell from '@/components/AppShell.vue'
 import { nicknameError, goalChoices, NICKNAME_MAX } from '@/components/me/meLogic'
+import ReplayOnboarding from '@/components/onboarding/ReplayOnboarding.vue'
 import { applyApiOverride } from '@/components/path/openPractice'
 import { badgeIcon, earnedBadges } from '@/components/progressLogic'
 import PgButton from '@/components/ui/PgButton.vue'
@@ -128,17 +129,6 @@ async function saveName(): Promise<void> {
   }
 }
 
-async function replayOnboarding(): Promise<void> {
-  // F3-CONNECT：引导由 F3 负责。合并时把下面这段换成 F3 导出的“重看引导”函数。
-  // 在那之前先把账号里的引导进度清空，路径页下次打开时重新带一遍。
-  try {
-    await patchSettings({ onboarding: {} })
-    toast.show(ME_COPY.replayDone, { tone: 'ok' })
-  } catch (e) {
-    toast.show(errorMessage(e), { tone: 'warn' })
-  }
-}
-
 async function logout(): Promise<void> {
   if (loggingOut.value) return
   loggingOut.value = true
@@ -226,8 +216,8 @@ async function logout(): Promise<void> {
       <PgCard flush>
         <PgListRow :title="ME_COPY.accountRow" :sub="ME_COPY.accountSub" icon="keys" clickable data-testid="me-row-account" @tap="goPage('/pages/me/account')" />
         <PgListRow :title="ME_COPY.privacyRow" :sub="ME_COPY.privacySub" icon="lock" clickable data-testid="me-row-privacy" @tap="goPage('/pages/me/privacy')" />
-        <PgListRow :title="ME_COPY.replayRow" :sub="ME_COPY.replaySub" icon="path" clickable data-testid="me-row-replay" @tap="replayOnboarding" />
-        <PgListRow :title="ME_COPY.feedbackRow" :sub="ME_COPY.feedbackSub" icon="help" clickable data-testid="me-row-feedback" @tap="goPage('/pages/me/about?feedback=1')" />
+        <ReplayOnboarding />
+        <PgListRow :title="ME_COPY.feedbackRow" :sub="ME_COPY.feedbackSub" icon="flag" clickable data-testid="me-row-feedback" @tap="goPage('/pages/me/about?feedback=1')" />
         <PgListRow :title="ME_COPY.aboutRow" :sub="ME_COPY.aboutSub" icon="book" clickable data-testid="me-row-about" @tap="goPage('/pages/me/about')" />
       </PgCard>
 

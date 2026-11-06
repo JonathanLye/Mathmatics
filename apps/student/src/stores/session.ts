@@ -93,8 +93,6 @@ function choices(): ConsentChoices {
 
 const requiredOk = computed(() => items.value.filter((item) => item.required).every((item) => item.value))
 
-const mockSleep = (ms = 80) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
 /** 登录已失效的统一提示文案（401 / wrong_app 403）。 */
 export const AUTH_EXPIRED_TOAST = '登录已过期，请重新登录'
 const LOGIN_PAGE = 'pages/login/index'
@@ -309,7 +307,8 @@ export function useSession() {
     error.value = null
     try {
       if (isMockMode()) {
-        await mockSleep()
+        // 演示数据：让客户端记下“已签”，引导演示场景里再次登录才不会又回到同意页；返回的 Me 不采用（默认演示数据里它是未签）。
+        await submitConsents(docVersion.value, choices())
         consented.value = true
       } else {
         applyMe(await submitConsents(docVersion.value, choices()))

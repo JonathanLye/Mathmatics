@@ -1,4 +1,5 @@
 import type { LiveRow } from '../api/types.ts';
+import { layerName } from './layers.ts';
 
 /** 看板瓦片的状态色（紧急度从高到低）。口径：help=需要你；stuck=卡住≥3 分钟；away=离开；write=在写；done=已完成；idle=未开始。 */
 export type Tone = 'help' | 'stuck' | 'away' | 'write' | 'done' | 'idle';
@@ -36,6 +37,38 @@ export function minutes(sec: number | undefined): number {
   return Math.max(0, Math.floor((sec ?? 0) / 60));
 }
 
+/** 瓦片右上角的状态词。“求助老师”只在学生真的点了求助时出现；额度用完单独说明。 */
+export function statusLabel(row: LiveRow): string {
+  const tone = toneOf(row);
+  const flags = row.flags ?? [];
+  if (tone === 'done') return '已完成';
+  if (tone === 'idle') return '未开始';
+  if (tone === 'help') {
+    if (row.status === 'locked') return '已锁定';
+    return flags.includes('help') ? '求助老师' : '提示额度用完';
+  }
+  if (tone === 'stuck') return `卡住 ${minutes(row.stuckSec)} 分钟`;
+  if (tone === 'away') return row.awayCount ? `离开 ${row.awayCount} 次` : '离开中';
+  return '在写';
+}
+
+export interface FlagChip {
+  text: string;
+  tone: 'chili' | 'bee' | 'fox';
+}
+
+/** 状态词之外的补充标记：提示额度用完、有诚信提醒；锁定的作答同时求助了老师时也补一枚。 */
+export function flagChips(row: LiveRow): FlagChip[] {
+  if (toneOf(row) === 'done') return [];
+  const flags = row.flags ?? [];
+  const chips: FlagChip[] = [];
+  // 状态词已经是“求助老师”/“提示额度用完”时不重复；两者同时存在时，状态词给“求助老师”，这里补“提示额度用完”。
+  if (flags.includes('budget_exhausted') && flags.includes('help')) chips.push({ text: '提示额度用完', tone: 'bee' });
+  if (flags.includes('help') && row.status === 'locked') chips.push({ text: '求助老师', tone: 'chili' });
+  if (flags.includes('integrity')) chips.push({ text: '有诚信提醒', tone: 'fox' });
+  return chips;
+}
+
 /** 瓦片底部一句话：只陈述事实（卡在哪、多久、离开几次），不下结论。 */
 export function footText(row: LiveRow): string {
   const tone = toneOf(row);
@@ -43,15 +76,19 @@ export function footText(row: LiveRow): string {
   const where = row.currentKeyLabel ? `卡在「${row.currentKeyLabel}」` : '';
   if (tone === 'help') {
     if (row.status === 'locked') return '作答已锁定，等你处理';
-    const head = flags.includes('budget_exhausted') ? '额度已用尽' : '发出了求助';
+    const head =
+      flags.includes('help') && flags.includes('budget_exhausted')
+        ? '提示额度已用完，点了「求助老师」'
+        : flags.includes('help')
+          ? '点了「求助老师」'
+          : '提示额度已用完';
     return [head, where, minutes(row.stuckSec) > 0 ? `${minutes(row.stuckSec)} 分钟` : ''].filter(Boolean).join(' · ');
   }
   if (tone === 'stuck') return [where || '没有新的关键步骤', `${minutes(row.stuckSec)} 分钟没有进展`].join(' · ');
   if (tone === 'away') return `现在不在页面${row.awayCount ? ` · 已离开 ${row.awayCount} 次` : ''}`;
-  if (tone === 'done') return `已完成 · 自己写出 ${row.keysOwn ?? 0} / ${row.keysTotal ?? 0}`;
+  if (tone === 'done') return `已完成 · 自己写出 ${row.keysOwn ?? 0} / ${row.keysTotal ?? 0} 个关键步骤`;
   if (tone === 'idle') return '还没有打开';
-  const flagged = flags.includes('integrity') ? ' · 有诚信提醒' : '';
-  return `${row.layer ?? ''} 在写${flagged}`.trim();
+  return `${layerName(row.layer)}${flags.includes('integrity') ? ' · 有诚信提醒' : ''}`;
 }
 
 export interface BoardStats {

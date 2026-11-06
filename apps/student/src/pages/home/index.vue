@@ -9,6 +9,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { consumeRewards, errorMessage, getMe, getStudentPath, isMockMode, setMockMode, startAttempt, startPathItem } from '@/api/client'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import AppShell from '@/components/AppShell.vue'
+import HomeOnboarding from '@/components/onboarding/HomeOnboarding.vue'
 import ProgressStats from '@/components/ProgressStats.vue'
 import ChapterSheet from '@/components/path/ChapterSheet.vue'
 import PathMap from '@/components/path/PathMap.vue'
@@ -337,6 +338,7 @@ function goZone(): void {
       @confirm="lockedUnit && goUnit(lockedUnit)"
     />
   </AppShell>
+  <HomeOnboarding :ready="!loading && !!path" />
 </template>
 
 <style scoped>

@@ -1371,6 +1371,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/problems/{problemId}/visibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 下架 / 恢复上架一道题（设置或清除 hidden_at）
+         * @description 下架后这道题不再出现在学生的学习路径与练习区；已有作答和老师已布置的题不受影响。写一条审计记录。
+         */
+        patch: operations["setProblemVisibility"];
+        trace?: never;
+    };
     "/teacher/problems/{problemId}/versions/{version}": {
         parameters: {
             query?: never;
@@ -2264,6 +2284,16 @@ export interface components {
             reviewedBy?: string | null;
             /** Format: date-time */
             reviewedAt?: string | null;
+            /**
+             * Format: date-time
+             * @description 老师下架的时间；没下架时不出现
+             */
+            hiddenAt?: string;
+        };
+        ProblemVisibility: {
+            problemId: string;
+            /** Format: date-time */
+            hiddenAt: string | null;
         };
         ImportJob: {
             /** Format: uuid */
@@ -7573,6 +7603,10 @@ export interface operations {
                 chapter?: string;
                 /** @description 标题、章节或题号关键词 */
                 q?: string;
+                /** @description 老师审核 = teacher；AI 整理（批量导入）= auto */
+                reviewSource?: "teacher" | "auto";
+                /** @description 主题 = main；迁移题 = transfer */
+                kind?: "main" | "transfer";
                 /** @description 给了才分页（1–100）；不给 = 返回全部，兼容旧调用 */
                 limit?: number;
                 /** @description 上一页响应头 X-Next-Cursor */
@@ -7596,6 +7630,38 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    setProblemVisibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                problemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    hidden: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 当前状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemVisibility"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

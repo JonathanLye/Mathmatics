@@ -4,7 +4,7 @@
  * 扫 .vue 模板（文本节点、可见属性）和 <script> 里的中文字符串。
  * - mock：开发门控（v-if="isDev / mockEnabled / mockMode"）里面允许；
  * - mathlib：只能出现在 PgFold（“延伸”）里面；
- * - 登录页归登录任务，开发陈列页不进生产，都不扫。
+ * - 开发陈列页不进生产，不扫。登录页自 v3 起和其他页面一样要扫。
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -13,7 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 const SRC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src')
-const EXEMPT = new Set(['pages/login/index.vue', 'pages/dev/gallery.vue'])
+const EXEMPT = new Set(['pages/dev/gallery.vue'])
 
 /** 模板 AST 的最小形状（@vue/compiler-sfc）。 */
 interface TemplateNode {

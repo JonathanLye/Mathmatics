@@ -175,6 +175,14 @@ emits: {
 - `src/motion/`：动效 token、`sfx`、`haptics`、`confetti`、`useCountUp`、`useMascot`、`useFeedbackPrefs`。都是调用点主动触发，测验模式和教师镜像保持安静。
 - 陈列页：`pages/dev/gallery`（只在开发和 mock 构建可进），改组件时在这里看全部状态。
 
+## apps/student/src/components/onboarding（新手引导）
+- `useOnboarding()`（`composables/useOnboarding.ts`）：看过哪些提示（`settings.onboarding.seen.*`）。`canShow(key)` 在读到设置、引导启用、不在测验、没看过时才为真；`markSeen(...keys)` 立即生效并排队写回（服务端整体替换，所以每次带完整对象）。键表在 `onboarding/logic.ts`（`ONBOARDING_KEYS`，做题页的就地提示也用这里的名字）。
+- 同意书之前的页面不要调它（设置要求已签同意书）；登录页只用本机标记 `deviceIntroSeen()`。
+- 演示数据默认关闭引导；`?onboarding=new` 打开“新学生”场景，“重看引导”也会打开。
+- `IntroStory`：4 幕开场动画，发出 `done({ skipped })`。`PathIllustration`：六站路径插画（`once` 走一趟 / `loop` 循环）。动画全是 CSS，减少动态效果时停在最后一帧。
+- `HomeOnboarding`：首页挂载点（欢迎页拦截 + 3 步导览），放在 `AppShell` 之外。导览目标按 `data-testid` 找，选择器列表在 `copy/onboarding.ts` 的 `TOUR_STEPS`。
+- `ReplayOnboarding`：“重看新手引导”一行，放进“我的”页的列表里；也可直接调 `replayOnboarding()`。
+
 ## 自测约定
 - 纯逻辑放 `apps/student/tests/*.test.ts`（vitest，node 环境，不依赖 DOM）。
 - 组件至少保证 `npm run build:h5` 通过 + 390/768/1280 截图（tests/screenshots.mjs，由 Lead 汇总）。
