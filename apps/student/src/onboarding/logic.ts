@@ -109,3 +109,6 @@ export function parseLocalSeen(raw: string | null | undefined): SeenMap {
 
 /** 登录前（没有账号）的本机标记：这台设备看过开场动画吗。 */
 export const DEVICE_INTRO_KEY = 'pg.intro.v1'
+
+/** 登录前“先试一道”的沙盒页（pages/tour）做好之后改成 true，登录页的入口就会出现。 */
+export const SANDBOX_READY = false

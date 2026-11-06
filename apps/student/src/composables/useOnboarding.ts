@@ -223,6 +223,12 @@ export async function shouldGoWelcome(): Promise<boolean> {
   return useOnboarding().welcomeNeeded()
 }
 
+/** 重看引导的入口（“我的”页调用）：清标记，再去欢迎页放开场动画。 */
+export async function replayOnboarding(): Promise<void> {
+  await useOnboarding().replay()
+  if (typeof uni !== 'undefined') uni.reLaunch({ url: REPLAY_ROUTE })
+}
+
 /** 测试隔离。 */
 export function __resetOnboardingForTests(): void {
   resetState('')
