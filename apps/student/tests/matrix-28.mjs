@@ -260,6 +260,8 @@ async function runProfile(browser, base, profile) {
     await waitEnabled(page, 'layer1-check')
     await page.screenshot({ path: path.join(outDir, profile.id + '-2-l1.png'), fullPage: true })
     await tap(page, 'layer1-check', '核对（L1 定义）')
+    await waitTestId(page, 'layer-interstitial')
+    await tap(page, 'interstitial-continue', '过场·继续')
     await waitTestId(page, 'layer2-form')
     check('L1 提交后进入 L2', true)
 
@@ -269,6 +271,8 @@ async function runProfile(browser, base, profile) {
     await fillTestId(page, 'layer2-input', FRAME)
     await waitEnabled(page, 'layer2-check')
     await tap(page, 'layer2-check', '核对（L2 骨架）')
+    await waitTestId(page, 'layer-interstitial')
+    await tap(page, 'interstitial-continue', '过场·继续')
     await waitTestId(page, 'write-next')
     check('L2 提交后进入 L3（写下一行）', true)
     check('L3 无横向溢出', !(await hasOverflow(page)))
@@ -278,11 +282,16 @@ async function runProfile(browser, base, profile) {
     await waitTestId(page, 'editor-sheet')
     const submitHeight = await controlHeight(page, 'editor-submit')
     if (touchProfile) check('行编辑器「加入证明」触摸目标 ≥44px', submitHeight >= 44, submitHeight + 'px')
+    // 输入器默认手写（来自设置），这里要打字，先切到键盘。
+    await tap(page, 'composer-tab-keyboard', '键盘')
     await fillTestId(page, 'editor-statement', LINE_STATEMENT)
     await fillTestId(page, 'editor-justification', LINE_JUSTIFICATION)
     await tap(page, 'editor-submit', '加入证明（L3 行）')
     await page.waitForSelector('[data-testid="proof-line"]', { state: 'visible', timeout: 12000 })
     check('L3 行提交成功并出现在行列表', (await countTestId(page, 'proof-line')) >= 1)
+    // 提交后的反馈面板盖在下面：点继续收起。
+    await waitTestId(page, 'feedback-panel')
+    await tap(page, 'feedback-continue', '反馈面板·继续')
     await page.screenshot({ path: path.join(outDir, profile.id + '-3-l3.png'), fullPage: true })
 
     // ---------- 5. 求助（三种意图之一：stuck → 预览卡） ----------

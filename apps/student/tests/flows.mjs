@@ -148,6 +148,13 @@ async function openMock(page, base, mock) {
   await page.waitForSelector('textarea', { state: 'visible', timeout: 10000 })
 }
 
+/** 完成一层后有过场：点继续才到下一层。 */
+async function passInterstitial(page) {
+  await waitTestId(page, 'layer-interstitial')
+  await tap(page, 'interstitial-continue', '过场·继续')
+  await waitGoneTestId(page, 'layer-interstitial')
+}
+
 async function main() {
   if (!fs.existsSync(distDir)) {
     console.error('[flows] 缺少构建产物：' + distDir + '，先运行 npm run build:mock')
@@ -199,7 +206,7 @@ async function main() {
     await openMock(page, base, 'l1-active')
     await waitTestId(page, 'layer1-form')
     let text = await bodyText(page)
-    check('打开 mock=l1-active 渲染第 1 层表单', text.includes('第 1 层') && text.includes('回忆定义'))
+    check('打开 mock=l1-active 渲染第 1 层表单', (await testIdCount(page, 'layer1-form')) === 1 && text.includes('回忆定义'))
     check('L1 任务说明由 MathText 渲染（KaTeX）', (await katexCount(page, 'layer1-task')) > 0)
     check('L1 任务说明没有把 LaTeX 源码当纯文本裸露', !text.includes('$\\{a_n\\}$'))
     check(
@@ -230,10 +237,11 @@ async function main() {
     await page.screenshot({ path: path.join(outDir, '1-l1.png'), fullPage: true })
 
     await tap(page, 'layer1-check', '核对')
+    await passInterstitial(page)
     await waitTestId(page, 'layer2-form')
     await waitGoneTestId(page, 'layer1-form')
     text = await bodyText(page)
-    check('点「核对」后从 L1 进入 L2（出现「第 2 层」）', text.includes('第 2 层'))
+    check('点「核对」后从 L1 进入 L2（出现「搭骨架」）', text.includes('搭骨架'))
     check(
       'L2 有「核对」「看通用骨架」「跳过」三个 role=button 按钮',
       (await hasRoleButton(page, '核对')) &&
@@ -258,10 +266,22 @@ async function main() {
     )
     await waitEnabled(page, 'layer2-check')
     await tap(page, 'layer2-check', '核对')
+    await passInterstitial(page)
     await page.waitForSelector('.pg-lines__add', { state: 'visible', timeout: 8000 })
     text = await bodyText(page)
     check('L2 点「核对」后进入 L3（出现「写下一行」）', text.includes('写下一行'))
-    check('第 3 层才出现操作坞', (await testIdCount(page, 'dock-ink')) === 1)
+    check(
+      '第 3 层只有一个写行入口，手写/键盘/拍照都在输入器里',
+      (await testIdCount(page, 'write-next')) === 1 && (await testIdCount(page, 'dock-ink')) === 0,
+    )
+    await tap(page, 'write-next', '写下一行')
+    check(
+      '输入器里有手写/键盘/拍照三个分段',
+      (await testIdCount(page, 'composer-tab-hand')) === 1 &&
+        (await testIdCount(page, 'composer-tab-keyboard')) === 1 &&
+        (await testIdCount(page, 'composer-tab-photo')) === 1,
+    )
+    await tap(page, 'editor-cancel', '取消')
     await page.screenshot({ path: path.join(outDir, '4-l3.png'), fullPage: true })
   }
 
@@ -270,15 +290,17 @@ async function main() {
     await openMock(page, base, 'l1-active')
     await waitTestId(page, 'layer1-form')
     await tap(page, 'layer1-skip', '已掌握，跳过')
+    await passInterstitial(page)
     await waitTestId(page, 'layer2-form')
     await waitGoneTestId(page, 'layer1-form')
     check(
       '跳层（L1 skip）后进入第 2 层，且第 1 层表单已卸载',
-      (await bodyText(page)).includes('第 2 层') && (await testIdCount(page, 'layer1-form')) === 0,
+      (await bodyText(page)).includes('搭骨架') && (await testIdCount(page, 'layer1-form')) === 0,
     )
     await page.screenshot({ path: path.join(outDir, '5-l1-skip.png'), fullPage: true })
 
     await tap(page, 'layer2-skip', '跳过')
+    await passInterstitial(page)
     await page.waitForSelector('.pg-lines__add', { state: 'visible', timeout: 8000 })
     check('跳层（L2 skip）后进入第 3 层', (await bodyText(page)).includes('写下一行'))
     await page.screenshot({ path: path.join(outDir, '6-l2-skip.png'), fullPage: true })

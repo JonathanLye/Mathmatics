@@ -94,6 +94,11 @@ async function innerText(page, selector) {
     return ''
   }
 }
+/** 助教气泡是逐段显示的：等打完再读，读到的才是全文。 */
+async function typedNote(page) {
+  await page.locator('.pg-help__note[data-typing="done"]').first().waitFor({ state: 'visible', timeout: 8000 })
+  return innerText(page, '.pg-help__note')
+}
 async function waitBody(page, needle, timeout = 10000) {
   await page.waitForFunction((n) => document.body.innerText.includes(n), needle, { timeout })
 }
@@ -187,7 +192,7 @@ async function mobileFlows(browser, baseURL) {
     await openHelpDrawer(page)
     await page.locator('.pg-help__intent--concept').click()
     await page.locator('.pg-help__note').waitFor({ state: 'visible', timeout: 8000 })
-    const conceptText = await innerText(page, '.pg-help__note')
+    const conceptText = await typedNote(page)
     includes('concept 抽屉内出现助教卡', conceptText, '助教')
     includes('concept 卡片内容到位', conceptText, '数列极限')
     ok((await page.locator('.pg-help__note--concept').count()) > 0, 'concept 卡使用概念卡样式')
@@ -209,7 +214,7 @@ async function mobileFlows(browser, baseURL) {
     await page.locator('.pg-help__input input').fill(askedText)
     await page.locator('.pg-help__send').click()
     await page.locator('.pg-help__note').waitFor({ state: 'visible', timeout: 8000 })
-    const pressureText = await innerText(page, '.pg-help__note')
+    const pressureText = await typedNote(page)
     includes('自由提问路由到施压拒绝', pressureText, '不提供完整证明')
     includes('自由提问原话被回显', pressureText, askedText)
     ok((await page.locator('.pg-help__note--refusal').count()) > 0, '施压拒绝使用 refusal note 样式')
@@ -222,7 +227,7 @@ async function mobileFlows(browser, baseURL) {
     await openHelpDrawer(page)
     await page.locator('.pg-help__intent--stuck').click()
     await page.locator('.pg-help__note').waitFor({ state: 'visible', timeout: 8000 })
-    const h0Text = await innerText(page, '.pg-help__note')
+    const h0Text = await typedNote(page)
     ok(!h0Text.includes('H0'), 'H0 免费提示在抽屉里显示，不露内部层级', h0Text)
     includes('H0 提示署名/内容到位', h0Text, '追问')
     ok((await page.locator('.pg-preview').count()) === 0, 'H0 不弹预览卡（没有 preview）')
@@ -241,8 +246,9 @@ async function mobileFlows(browser, baseURL) {
     ok(stuckClass.includes('pg-help__intent--disabled'), '额度用完时「卡住了」置灰', stuckClass)
     await page.locator('.pg-help__softbtn').first().click()
     await waitGone(page, '.pg-help')
-    await waitBody(page, '回到定义')
-    includes('软着陆回到定义 toast', await innerText(page, '.pg-toast'), '回到定义')
+    // 「回到定义」不再只弹一句提示：直接打开定义的微课，学生真的回到了定义。
+    await page.locator('[data-testid="micro-course"]').waitFor({ state: 'visible', timeout: 8000 })
+    ok(true, '软着陆回到定义：打开微课')
 
     ok(pageErrors.length === 0, '页面无 JS 异常（含 blocked preview 不崩）', pageErrors.join(' | ').slice(0, 300))
   } catch (e) {
@@ -277,7 +283,7 @@ async function desktopFlows(browser, baseURL) {
     await page.locator('.pg-help__input input').fill('这一行在做什么')
     await page.locator('.pg-help__send').click()
     await page.locator('.pg-help__note').waitFor({ state: 'visible', timeout: 8000 })
-    includes('桌面抽屉内自由提问回复', await innerText(page, '.pg-help__note'), '这一行在做什么')
+    includes('桌面抽屉内自由提问回复', await typedNote(page), '这一行在做什么')
     await page.locator('.pg-help__close').click()
     await waitGone(page, '.pg-help')
     await waitVisible(page, '.pg-practice__note--student')

@@ -93,8 +93,11 @@ const FIXTURE_PNG = Buffer.from(
 )
 
 async function takePhoto(page, fixturePath) {
+  // 拍照是输入器里的一个分段：写下一行 → 拍照 → 拍一张。
+  await page.getByTestId('write-next').click()
+  await page.getByTestId('composer-tab-photo').click()
   const chooserPromise = page.waitForEvent('filechooser', { timeout: 15000 })
-  await page.locator('.pg-dock__btn--photo').first().click()
+  await page.getByTestId('photo-take').click()
   const chooser = await chooserPromise
   await chooser.setFiles(fixturePath)
 }
@@ -130,7 +133,9 @@ async function main() {
     includes('面板标题', await innerText(page, '.pg-photo__title'), '拍照识别 · 逐行确认')
     includes('3 行摘要', await innerText(page, '[data-testid="photo-lines-summary"]'), '识别出 3 行')
     ok((await count(page, '.pg-photo__line')) === 3, '逐行条目渲染（3 行）')
-    includes('bbox 可见', await innerText(page, '[data-testid="photo-line-bbox-0"]'), '位置')
+    // 坐标是给程序用的，学生不用看：不再显示，但每行仍带着服务端给的 bbox。
+    ok(Boolean(await page.getByTestId('photo-line-0').getAttribute('data-bbox')), 'bbox 随行保留（data-bbox）')
+    ok(!(await innerText(page, '[data-testid="photo-line-0"]')).includes('位置'), '学生看不到坐标')
 
     // 2) 取消勾选第 2 行 → 已选变 2
     await page.getByTestId('photo-line-check-1').click()

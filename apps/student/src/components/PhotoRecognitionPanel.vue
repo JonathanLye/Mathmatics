@@ -122,6 +122,7 @@ function ignore(): void {
           :key="index"
           class="pg-photo__line"
           :data-testid="'photo-line-' + index"
+          :data-bbox="line.bbox ? line.bbox.map(Math.round).join(',') : undefined"
         >
           <view class="pg-photo__linehead">
             <PgButton

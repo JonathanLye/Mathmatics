@@ -344,7 +344,7 @@ async function main() {
       await gotoApp(page, base, 'pages/practice/index?assignmentId=' + ASSIGNMENT_ID + '&api=real')
       await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 12000 })
       await waitTestId(page, 'layer1-form')
-      check('真实模式用 ?assignmentId= 开始作答（POST /attempt 返回 L1 state）', (await bodyText(page)).includes('第 1 层'))
+      check('真实模式用 ?assignmentId= 开始作答（POST /attempt 返回 L1 state）', (await bodyText(page)).includes('回忆定义'))
       await page.getByTestId('layer1-input').locator('textarea').fill('任取 ε>0，存在 N，当 n>N 时 |a_n-A|<ε。')
       await page.waitForFunction(() => {
         const el = document.querySelector('[data-testid="layer1-check"]')
@@ -353,8 +353,10 @@ async function main() {
       await page.screenshot({ path: path.join(outDir, '6-weaknet-l1.png'), fullPage: true })
 
       await tap(page, 'layer1-check', '核对（提交定义，首次 500）')
+      await waitTestId(page, 'layer-interstitial', 15000)
+      await tap(page, 'interstitial-continue', '过场·继续')
       await waitTestId(page, 'layer2-form', 15000)
-      check('弱网写请求：首次 500 自动重试成功，页面进入第 2 层（进度不丢）', (await bodyText(page)).includes('第 2 层'))
+      check('弱网写请求：首次 500 自动重试成功，页面进入第 2 层（进度不丢）', (await bodyText(page)).includes('搭骨架'))
       check('重试幂等：2 次写请求使用同一 Idempotency-Key', definitionAttempts === 2 && Boolean(writeHeaders[0]?.['idempotency-key']) && writeHeaders[0]?.['idempotency-key'] === writeHeaders[1]?.['idempotency-key'], JSON.stringify(writeHeaders.map((h) => h['idempotency-key'])))
       check('If-Match = 当前 stateVersion（7），重试时未丢版本', writeHeaders[0]?.['if-match'] === '7' && writeHeaders[1]?.['if-match'] === '7', JSON.stringify(writeHeaders.map((h) => h['if-match'])))
       check('390 宽弱网做题页无横向溢出', await page.evaluate(() => {

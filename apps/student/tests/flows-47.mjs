@@ -291,6 +291,8 @@ async function main() {
     await answerSelfcheck(page, 'SC3', '把 n>N 换成 n≥1，第 2 行会断。')
     await waitTestId(page, 'selfcheck-item-SC5')
     await answerSelfcheck(page, 'SC5', '用到了 n 是正整数（n+2>n>0）。')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'transfer-form')
     check('自检结束 → 第 5 层迁移题', (await bodyText(page)).includes('换题试试'))
   }

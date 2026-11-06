@@ -147,7 +147,7 @@ function onSwitchMock(k: MockKey) {
       @help="help.openHelp"
     />
 
-    <!-- #27 离线提示条：正常文档流 + sticky，不覆盖 44px 操作区/BottomDock -->
+    <!-- #27 离线提示条：正常文档流 + sticky，不覆盖 44px 操作区 -->
     <OfflineBar :retrying="offlineRetrying" @retry="handleOfflineRetry" />
     <!-- #37 微信内打开提示：非阻塞横条，非微信 UA 不渲染 -->
     <WechatHint />

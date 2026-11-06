@@ -264,9 +264,11 @@ async function main() {
     await page.waitForSelector('.pg-lines__add', { state: 'visible', timeout: 10000 })
     check('mock=l3-ready 打开第 3 层且「写完了」可点', (await isDisabled(page, 'finish-steps')) === false)
     await tap(page, 'finish-steps', '写完了')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'selfcheck-form')
 
-    check('进入第 4 层自检（自适应出题）', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('第 4 层'))
+    check('进入第 4 层自检（自适应出题）', (await countTestId(page, 'selfcheck-item-SC1')) === 1 && (await bodyText(page)).includes('自检'))
     check('自检页只读展示自己写的证明', (await countTestId(page, 'selfcheck-proof')) === 1)
 
     // 第 1 题答太短 → 服务端记录 failed；自适应提示「先做下一题」并换题（retryGap）
@@ -297,6 +299,8 @@ async function main() {
     await fillTestId(page, 'selfcheck-input-SC5', '用到了 n 是正整数（n+2>n>0）。')
     await waitEnabled(page, 'selfcheck-submit-SC5')
     await tap(page, 'selfcheck-submit-SC5', '提交 SC5')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'transfer-form')
     await page.screenshot({ path: path.join(outDir, '4-自检通过.png'), fullPage: true })
     check('四道自检完成（含一次重试）后自动进入第 5 层', (await countTestId(page, 'selfcheck-form')) === 0)
@@ -305,6 +309,8 @@ async function main() {
 
     // #47 的迁移题「完整作答」流程由 flows-47 覆盖；本流程验证 L5 → L6 跳层后继续总结 → 完成页
     await tap(page, 'transfer-skip', '跳过迁移题')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
 
     await waitTestId(page, 'summary-form')
     check('进入第 6 层总结：五问', (await countTestId(page, 'summary-item-4')) === 1)

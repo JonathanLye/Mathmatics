@@ -3,7 +3,7 @@
  *
  * - 依据是独立输入落点（03 §1）：依据非空时必须带 justificationInput（自己的 provenance/draftId），
  *   否则服务端诚信/no_provenance 判定拿不到依据的输入来源；
- * - draftId 由调用方（EditorSheet 打开编辑器时生成一次、重试复用）传入，这里不生成任何 id；
+ * - draftId 由调用方（useComposer 打开输入器时生成一次、重试复用）传入，这里不生成任何 id；
  *   每次 submit 重新生成 uuid 会破坏 #19 的幂等（服务端会当成新草稿）。
  */
 import type { InputMeta, InputProvenance, LineDraft } from '@/types/attempt'

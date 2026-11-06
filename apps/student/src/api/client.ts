@@ -1102,6 +1102,7 @@ export async function requestHelp(
       level: 'H0',
       cost: null,
       lessonConceptId: 'seq-limit',
+      aiGenerated: true,
       at: new Date().toISOString(),
     }
     next.notes = [...next.notes, echo, note]
