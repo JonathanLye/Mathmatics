@@ -32,6 +32,7 @@
         "attempt.complete",
         "attempt.abandon",
         "attempt.lock",
+        "solution.revealed",
         "attempt.unlock",
         "layer.enter",
         "layer.done",
@@ -394,6 +395,22 @@
         "properties": {
           "payload": {
             "$ref": "#/$defs/p_attempt_lock"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "solution.revealed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/p_solution_revealed"
           }
         }
       }
@@ -2249,6 +2266,27 @@
       },
       "required": [
         "reason"
+      ],
+      "additionalProperties": true
+    },
+    "p_solution_revealed": {
+      "type": "object",
+      "description": "练习区：学生在自学作答里主动查看思路或完整解答",
+      "properties": {
+        "level": {
+          "enum": [
+            "approach",
+            "full"
+          ],
+          "description": "查看到哪一级"
+        },
+        "problemId": {
+          "type": "string",
+          "description": "题"
+        }
+      },
+      "required": [
+        "level"
       ],
       "additionalProperties": true
     },

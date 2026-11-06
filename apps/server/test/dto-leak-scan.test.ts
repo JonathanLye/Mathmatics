@@ -429,6 +429,15 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   const attemptId = started.json.state.attemptId as string;
   const params = { attemptId };
   const inProgress = (await call(ctx, 'GET /student/home', main)).json;
+
+  // —— 学习路径与练习区（Task 11 / 16）：此刻作答未完成、没有任何查看记录，这些响应里不得出现题目机密。
+  // 解题思路（secret.walkthrough）在未查看前同样不能出现在任何一个响应里。
+  await call(ctx, 'GET /student/path', main);
+  await call(ctx, 'POST /student/path/items/{problemId}/start', main, { params: { problemId: main } });
+  await call(ctx, 'GET /student/practice', main);
+  await call(ctx, 'POST /student/practice/random', main, { payload: {} });
+  await call(ctx, 'POST /student/practice/{problemId}/start', main, { params: { problemId: main } });
+  await call(ctx, 'GET /student/practice/{problemId}/solution', main, { params: { problemId: main } });
   await call(ctx, 'GET /attempts/{attemptId}', main, { params });
 
   // —— 同意后的事件：带作答 ID 接受、不存在的作答被拒、同批重发算重复。
@@ -761,7 +770,11 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
     const ops = contractStudentOps();
     expect(ops).toContain('GET /student/home');
     const scanned = new Set<string>(walk.records.filter(ok).map((r) => r.op));
-    const unscanned = ops.filter((op) => implemented(walk.app, op)).filter((op) => !scanned.has(op));
+    // 这两个接口的响应按设计就含参考证明 / 解题思路，由 path-practice.test.ts 专门验证它们的放行条件，不适用“0 命中”。
+    const BY_DESIGN_SECRET = new Set(['POST /student/practice/{problemId}/solution/reveal', 'GET /attempts/{attemptId}/review']);
+    const unscanned = ops
+      .filter((op) => implemented(walk.app, op) && !BY_DESIGN_SECRET.has(op))
+      .filter((op) => !scanned.has(op));
     expect(unscanned, '这些学生接口已实现但没有泄露扫描：加进 walkProblem 与 MAIN_OPS').toEqual([]);
   });
 });

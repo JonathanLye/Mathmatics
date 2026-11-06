@@ -23,8 +23,17 @@ export async function loadProblem(db: Queryable, problemId: string, version: num
   ).rows[0];
   if (!row) throw new AppError('INTERNAL', 500, `题目版本缺失：${problemId} v${version}`);
 
+  // 只读这道题用到的概念（引擎只按 def.conceptId 查边界答案；微课另走 /lesson）：题库上千题时不必每次读全部概念。
+  const wanted = [
+    ...new Set(
+      [row.public.def?.conceptId, row.public.frame?.lessonId, ...(row.public.concepts ?? [])].filter(
+        (id): id is string => typeof id === 'string' && id !== '',
+      ),
+    ),
+  ];
   const concepts = await db.query<{ body: unknown }>(
-    `select distinct on (id) body from content.concepts order by id, version desc`,
+    `select distinct on (id) body from content.concepts where id = any($1::text[]) order by id, version desc`,
+    [wanted],
   );
   return {
     ctx: {

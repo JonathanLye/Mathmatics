@@ -31,6 +31,7 @@ export const CATALOG = [
   ['attempt.complete', V, '本题完成', { reveal: num('累计透露量'), independence: num('独立度 0–1'), keysOwn: int('自己写出的关键步骤数'), keysTotal: int('关键步骤总数'), durationMs: ms('开始到完成'), activeMs: ms('前台有效时长'), teacherOverrides: arr(str(''), '经教师授权补发的 H4 关键步骤') }, ['reveal', 'independence', 'keysOwn', 'keysTotal', 'durationMs']],
   ['attempt.abandon', V, '布置关闭时仍未完成', { reason: en(['closed', 'teacher', 'timeout'], '原因'), layer: LAYER }, ['reason']],
   ['attempt.lock', V, '作答被锁（测验模式切出过多等）', { reason: str('原因'), count: int('触发次数') }, ['reason']],
+  ['solution.revealed', V, '练习区：学生在自学作答里主动查看思路或完整解答', { level: en(['approach', 'full'], '查看到哪一级'), problemId: str('题') }, ['level']],
   ['attempt.unlock', V, '作答解锁', { by: str('解锁人匿名 ID'), grantH4: str('解锁时补发 H4 的关键步骤 ID（可选）') }, ['by']],
   ['layer.enter', V, '进入某层', { from: en(['L1', 'L2', 'L3', 'L4', 'L5', 'L6', null], '来自哪层'), via: en(['advance', 'nav', 'resume', 'skip'], '方式') }, ['via']],
   ['layer.done', V, '完成某层', { attempts: int('本层提交次数') }, []],
