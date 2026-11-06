@@ -61,7 +61,7 @@ export async function studentHome(db: Db, contract: ContractValidator, userId: s
          join app.class_members m on m.class_id = a.class_id and m.user_id = $1
          join content.problem_versions pv on pv.problem_id = a.problem_id and pv.version = a.problem_version
          left join app.attempts att on att.assignment_id = a.id and att.user_id = $1 and att.kind = 'main'
-        where a.status <> 'cancelled'
+        where a.status <> 'cancelled' and a.origin = 'teacher'
         order by a.open_at desc, a.id`,
       [userId],
     )

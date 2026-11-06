@@ -136,7 +136,7 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
     join app.assignments asg on asg.id = t.assignment_id
     join app.users u on u.id = t.user_id
     left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id`;
-  const where = `where asg.class_id = $1 ${scopeClause}`;
+  const where = `where asg.class_id = $1 and asg.origin = 'teacher' ${scopeClause}`;
   switch (table) {
     case 'attempts': {
       const rows = (await db.query<Row>(
@@ -152,7 +152,7 @@ async function buildRows(db: Queryable, classId: string, table: ExportTable, ass
            left join app.student_profiles sp on sp.user_id = t.user_id
            left join app.class_members m on m.class_id = asg.class_id and m.user_id = t.user_id
            left join content.problem_versions pv on pv.problem_id = t.problem_id and pv.version = t.problem_version
-          where asg.class_id = $1 ${scopeClause}
+          where asg.class_id = $1 and asg.origin = 'teacher' ${scopeClause}
           order by t.started_at, t.id`,
         params,
       )).rows;
