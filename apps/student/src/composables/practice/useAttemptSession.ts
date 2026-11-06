@@ -66,10 +66,19 @@ function toLineDraft(draft: TransferDraft): LineDraft {
   }
 }
 
+/** 加载阶段：loading 显示骨架，error 显示错误屏（重试 / 回首页），ready 才渲染作答。 */
+export type LoadPhase = 'loading' | 'ready' | 'error'
+
 export function useAttemptSession(drafts: DraftsHandle) {
-  const { state, mockKey, busy, error, setMock, apply, run } = useAttempt()
+  const { state, mockKey, busy, error, setMock, apply, clear, run } = useAttempt()
   /** 真实模式（#24）：页面按服务端 state 渲染；mock 模式保留演示状态切换。 */
   const realMode = ref(!isMockMode())
+  /** 真实模式必须等服务端 state，生产构建也一样：不拿演示数据或上一次的作答顶替。 */
+  const needsServerState = (): boolean => realMode.value || !mockEnabled
+  const phase = ref<LoadPhase>(needsServerState() ? 'loading' : 'ready')
+  const loadError = ref('')
+  let lastQuery: Record<string, unknown> | undefined
+  if (needsServerState()) clear()
   /** 迁移题子作答的父作答 state：子作答完成后用「回到本题完成页」恢复。 */
   const transferParent = ref<AttemptState | null>(null)
 
@@ -95,42 +104,61 @@ export function useAttemptSession(drafts: DraftsHandle) {
     if (q?.api === 'real') {
       setMockMode(false)
       realMode.value = true
+      phase.value = 'loading'
+      clear()
     }
+  }
+
+  function failLoad(message: string): void {
+    loadError.value = message
+    phase.value = 'error'
+  }
+
+  function markReady(): void {
+    loadError.value = ''
+    phase.value = 'ready'
+    void drafts.restoreDrafts()
   }
 
   /** 页面 onLoad：按 URL 决定开始/恢复哪次作答（年龄门由页面先过）。 */
   async function load(q: Record<string, unknown> | undefined): Promise<void> {
-    // 真实模式：?assignmentId= 开始/恢复作答（POST /student/assignments/{id}/attempt）；
-    // ?attemptId= 断线重连（GET /attempts/{id}）。mock 模式继续走下面的演示状态。
-    if (realMode.value) {
-      const assignmentId = q?.assignmentId ? String(q.assignmentId) : ''
-      const attemptId = q?.attemptId ? String(q.attemptId) : ''
-      if (assignmentId || attemptId) {
-        await run(async () => {
-          const next = assignmentId ? await startAttempt(assignmentId) : await getAttempt(attemptId)
-          apply(next)
-          return next
-        })
-        void drafts.restoreDrafts()
-        return
-      }
-    }
-    // 证明本「稍后重做」：服务端返回的新作答 state 通过 store 跨页交接。
+    lastQuery = q
+    // 证明本「重做」等：服务端已返回的新作答 state 通过 store 跨页交接。
     const pending = takePendingAttempt()
     if (pending) {
       transferParent.value = null
       apply(pending)
-      void drafts.restoreDrafts()
+      markReady()
       return
     }
-    if (realMode.value || !mockEnabled) {
-      void drafts.restoreDrafts()
+    if (needsServerState()) {
+      // ?assignmentId= 开始/恢复作答（POST /student/assignments/{id}/attempt）；?attemptId= 断线重连（GET /attempts/{id}）。
+      const assignmentId = q?.assignmentId ? String(q.assignmentId) : ''
+      const attemptId = q?.attemptId ? String(q.attemptId) : ''
+      if (!assignmentId && !attemptId) {
+        failLoad('没有找到要做的题，回首页重新选一道吧。')
+        return
+      }
+      phase.value = 'loading'
+      const next = await run(() => (assignmentId ? startAttempt(assignmentId) : getAttempt(attemptId)))
+      if (!next) {
+        failLoad(error.value || '这道题暂时打不开，请稍后再试。')
+        error.value = null
+        return
+      }
+      apply(next)
+      markReady()
       return
     }
     const k = parseMockKey(q?.mock as string | undefined) ?? initialMock
     if (k) setMock(k)
     else if (String(q?.exam ?? '') === '1' || examFlagFromHash()) setMock('exam-active')
-    void drafts.restoreDrafts()
+    markReady()
+  }
+
+  /** 错误屏「重试」：用同一份 URL 参数再加载一次。 */
+  function retryLoad(): Promise<void> {
+    return load(lastQuery)
   }
 
   /** L1/L2 提交文本。 */
@@ -235,6 +263,9 @@ export function useAttemptSession(drafts: DraftsHandle) {
     apply,
     run,
     realMode,
+    phase,
+    loadError,
+    retryLoad,
     transferParent,
     currentLayer,
     lines,

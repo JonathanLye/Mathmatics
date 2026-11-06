@@ -28,6 +28,7 @@ import LayerProof from '@/components/practice/LayerProof.vue'
 import LayerSelfcheck from '@/components/practice/LayerSelfcheck.vue'
 import LayerSummary from '@/components/practice/LayerSummary.vue'
 import LayerTransfer from '@/components/practice/LayerTransfer.vue'
+import PracticeLoadState from '@/components/practice/PracticeLoadState.vue'
 import PracticeMargin from '@/components/practice/PracticeMargin.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import { useToast } from '@/components/ui/useToast'
@@ -49,7 +50,7 @@ const { mode } = useViewport()
 
 const drafts = useDrafts()
 const session = useAttemptSession(drafts)
-const { state, mockKey, busy, error, realMode, currentLayer, lines, isCompleted, nextLineNo, isTransferAttempt, layerTitle, layerTask } = session
+const { state, mockKey, busy, error, realMode, phase, loadError, currentLayer, lines, isCompleted, nextLineNo, isTransferAttempt, layerTitle, layerTask } = session
 const exam = useExamMode(session)
 const examView = reactive(exam)
 const { strictExam, strictExamActive, examIsLocked, countdownText, timeUp, fullscreenNote, strictHelpOff } = exam
@@ -168,7 +169,8 @@ function backHome() {
 </script>
 
 <template>
-  <view class="pg-page pg-practice" :class="[modeClass, strictClass]">
+  <PracticeLoadState v-if="phase !== 'ready'" :phase="phase" :message="loadError" @retry="session.retryLoad" @home="backHome" />
+  <view v-else class="pg-page pg-practice" :class="[modeClass, strictClass]">
     <TopBar
       :title="state.problem.title"
       :current-layer="currentLayer"
