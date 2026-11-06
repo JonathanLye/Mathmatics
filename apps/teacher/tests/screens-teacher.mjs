@@ -53,8 +53,17 @@ async function run(theme, device, viewport) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     if (overflow > 1) errors.push(`${theme}-${device} ${name}: 横向溢出 ${overflow}px`);
   };
+  // 教师端的主题记在 localStorage 里，启动时按它设置 data-theme 与 theme-mode；这里在页面脚本之前就写好。
+  await context.addInitScript((t) => {
+    try {
+      window.localStorage.setItem('pg_teacher_theme', t);
+    } catch {
+      // ignore
+    }
+  }, theme);
   const setTheme = async () => {
     await page.evaluate((t) => {
+      document.documentElement.setAttribute('data-theme', t);
       if (t === 'dark') document.documentElement.setAttribute('theme-mode', 'dark');
       else document.documentElement.removeAttribute('theme-mode');
     }, theme);
@@ -93,7 +102,7 @@ async function run(theme, device, viewport) {
   await page.locator('.t-drawer__close-btn').first().click().catch(() => {});
   await page.waitForTimeout(700);
 
-  for (const [label, name] of [['名单', 'roster'], ['布置', 'assignments'], ['指标', 'metrics'], ['导出', 'export'], ['设置', 'class-settings']]) {
+  for (const [label, name] of [['名单', 'roster'], ['布置', 'assignments'], ['自学进度', 'self-study'], ['指标', 'metrics'], ['导出', 'export'], ['设置', 'class-settings']]) {
     await page.locator('.t-tabs__nav-item').filter({ hasText: label }).first().click();
     await page.waitForTimeout(1200);
     await shot(name, true);

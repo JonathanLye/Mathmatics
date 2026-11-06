@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 文档结构检查（仓库根运行：node tools/check-docs.mjs）
-// 1. 10-开发文档 00–13 号分册与仓库规则文件都在；
+// 1. 10-开发文档 00–14 号分册与仓库规则文件都在；
 // 2. 这些 Markdown 里的相对链接都指向真实存在的文件/目录（跳过代码块、外链、锚点）。
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -24,7 +24,7 @@ for (const f of required) {
 }
 
 const docFiles = readdirSync(join(root, DOCS)).filter((f) => f.endsWith('.md'));
-for (let i = 0; i <= 13; i++) {
+for (let i = 0; i <= 14; i++) {
   const prefix = String(i).padStart(2, '0') + '-';
   const hits = docFiles.filter((f) => f.startsWith(prefix));
   if (hits.length !== 1) errors.push(`${DOCS}：${prefix}* 分册应恰好 1 个，实际 ${hits.length} 个`);
