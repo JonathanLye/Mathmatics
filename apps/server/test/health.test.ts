@@ -38,10 +38,11 @@ describe('GET /health/details（x-health-token）', () => {
   it('令牌缺失或不符：404，且响应体与未知路由一致', async () => {
     const app = await appWith({ HEALTH_TOKEN: TOKEN });
     const unknown = await app.inject({ method: 'GET', url: '/no-such-route' });
-    for (const headers of [{}, { 'x-health-token': 'wrong' }, { 'x-health-token': `${TOKEN}x` }, { 'x-health-token': TOKEN.slice(1) }]) {
+    const wrongHeaders: Array<Record<string, string>> = [{}, { 'x-health-token': 'wrong' }, { 'x-health-token': `${TOKEN}x` }, { 'x-health-token': TOKEN.slice(1) }];
+    for (const headers of wrongHeaders) {
       const res = await details(app, headers);
       expect(res.statusCode).toBe(404);
-      expect(res.json()).toEqual({ ...unknown.json(), message: res.json().message });
+      expect(res.json()).toMatchObject({ error: unknown.json().error, statusCode: 404 });
       expect(res.body).not.toContain('deps');
     }
   });

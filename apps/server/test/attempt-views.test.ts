@@ -153,8 +153,7 @@ describe('AttemptState 的作答内容视图', () => {
     for (const action of SCENARIOS.pro.slice(0, 9)) action(runner);
     await h.db.query(`update app.attempts set state = $2::jsonb, current_layer = 'L5' where id = $1`, [h.attemptId, JSON.stringify(serializeState(runner.state))]);
     const childId = (await post(h, '/transfer')).json().state.attemptId as string;
-    const lastSeq = async () => Number((await h.db.query<{ n: string }>(`select coalesce(max(seq), 0) as n from ev.events where attempt_id = $1`, [h!.attemptId])).rows[0]?.n);
-    const seqBefore = await lastSeq();
+    const seqBefore = Number((await h.db.query<{ n: string }>(`select coalesce(max(seq), 0) as n from ev.events where attempt_id = $1`, [h.attemptId])).rows[0]?.n);
     expect((await finishChild(h, childId)).statusCode).toBe(200);
     const events = (await h.db.query<{ type: string; seq: number }>(`select type, seq from ev.events where attempt_id = $1 and seq > $2 order by seq`, [h.attemptId, seqBefore])).rows;
     expect(events.map((e) => e.type)).toEqual(['layer.done']);
