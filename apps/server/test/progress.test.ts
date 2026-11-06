@@ -64,6 +64,31 @@ describe('作答响应的 rewards 与台账', () => {
     expect((await ledger()).map((r) => r.source_key)).toEqual(['key:epsN:K1', expect.stringMatching(/^daily:\d{4}-\d{2}-\d{2}$/)]);
   });
 
+  it('看过解答后写出的关键步骤：看思路按借助提示计 +3，看完整解答不计关键步骤经验', async () => {
+    const cookie = await login(env);
+    const id = await startAttempt(env, cookie, await openAssignment(env));
+    await toL3(cookie, id);
+    const revealed = (level: 'approach' | 'full') =>
+      env.db.query(
+        `insert into app.solution_reveals (user_id, attempt_id, problem_id, level)
+         select user_id, id, problem_id, $2 from app.attempts where id = $1`,
+        [id, level],
+      );
+
+    await revealed('approach');
+    const hinted = await post(env, cookie, `/attempts/${id}/lines`, K1_LINE);
+    expect(hinted.statusCode, hinted.body).toBe(200);
+    expect(hinted.json().rewards.items).toContainEqual(expect.objectContaining({ kind: 'key_hinted', amount: 3 }));
+
+    await revealed('full');
+    await env.db.query(`delete from app.xp_ledger where kind = 'key_hinted'`);
+    const line2 = await post(env, cookie, `/attempts/${id}/lines`, { statement: '取 N=⌈5/ε⌉ 即可', justification: '由 Archimedes 性质', input });
+    expect(line2.statusCode, line2.body).toBe(200);
+    const kinds = (await ledger()).map((r) => r.kind);
+    expect(kinds).not.toContain('key_own');
+    expect(kinds).not.toContain('key_hinted');
+  });
+
   it('没有新进展的提交不带 rewards；同一 Idempotency-Key 重放返回首次响应且不重复入账', async () => {
     const cookie = await login(env);
     const id = await startAttempt(env, cookie, await openAssignment(env));

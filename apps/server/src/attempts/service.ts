@@ -21,6 +21,7 @@ import { AppError } from '../errors.ts';
 
 import { nextSeq } from '../integrity/seq.ts';
 import { BLANK_REWARD_STATE, rewardStateOf, type RewardState } from '../progress/rewards.ts';
+import { revealLevelFor } from '../practice/service.ts';
 import { type RewardsDto, settleRewards } from '../progress/service.ts';
 
 import { loadProblem } from './problem.ts';
@@ -274,6 +275,7 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       ...(snap.problem.public.chapter === undefined ? {} : { chapter: snap.problem.public.chapter }),
       before,
       after,
+      solutionRevealLevel: await revealLevelFor(tx, saved.id),
       now: snap.now,
     });
   }

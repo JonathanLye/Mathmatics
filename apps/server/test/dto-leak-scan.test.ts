@@ -442,6 +442,15 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   const attemptId = started.json.state.attemptId as string;
   const params = { attemptId };
   const inProgress = (await call(ctx, 'GET /student/home', main)).json;
+
+  // —— 学习路径与练习区（Task 11 / 16）：此刻作答未完成、没有任何查看记录，这些响应里不得出现题目机密。
+  // 解题思路（secret.walkthrough）在未查看前同样不能出现在任何一个响应里。
+  await call(ctx, 'GET /student/path', main);
+  await call(ctx, 'POST /student/path/items/{problemId}/start', main, { params: { problemId: main } });
+  await call(ctx, 'GET /student/practice', main);
+  await call(ctx, 'POST /student/practice/random', main, { payload: {} });
+  await call(ctx, 'POST /student/practice/{problemId}/start', main, { params: { problemId: main } });
+  await call(ctx, 'GET /student/practice/{problemId}/solution', main, { params: { problemId: main } });
   await call(ctx, 'GET /attempts/{attemptId}', main, { params });
 
   // —— 同意后的事件：带作答 ID 接受、不存在的作答被拒、同批重发算重复。
@@ -673,13 +682,37 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
   });
 
   describe.each(PROBLEMS)('$main：响应确实带着真实内容（防止空响应假绿）', ({ main }) => {
-    it('/student/home：待做 / 进行中 / 已完成三态都下发真实标题与题面', () => {
+    // Task 11：首页卡片不再带整段题面（题多时体积大）；题面预览改由学习路径 / 练习区条目携带，见下一条。
+    it('/student/home：待做 / 进行中 / 已完成三态都下发真实标题，且不带整段题面', () => {
       const walk = walkOf(main);
       const pub = walk.publicOf[main] as Record<string, any>;
-      const card = { title: pub.title, stem: pub.stem };
+      const card = { title: pub.title };
       expect(walk.home.todo.todo).toEqual([expect.objectContaining(card)]);
       expect(walk.home.inProgress.inProgress).toEqual([expect.objectContaining(card)]);
       expect(walk.home.done.done).toEqual([expect.objectContaining(card)]);
+      for (const cards of [walk.home.todo.todo, walk.home.inProgress.inProgress, walk.home.done.done]) {
+        expect((cards as Record<string, unknown>[])[0]).not.toHaveProperty('stem');
+      }
+    });
+
+    it('/student/path 与 /student/practice：条目下发真实标题与截断的题面预览', () => {
+      const walk = walkOf(main);
+      const pub = walk.publicOf[main] as Record<string, any>;
+      const path = walk.records.find((r) => r.owner === main && r.op === 'GET /student/path' && r.status === 200);
+      const practice = walk.records.find((r) => r.owner === main && r.op === 'GET /student/practice' && r.status === 200);
+      expect(path).toBeDefined();
+      expect(practice).toBeDefined();
+      // 路径只展开当前单元（第一个没做完的），另一道主题在别的单元里，只有摘要。
+      const body = JSON.parse(path!.body) as { current: { items: Record<string, any>[] }; units: unknown[] };
+      const item = body.current.items.find((i) => i.problemId === main);
+      if (item) {
+        expect(item).toMatchObject({ title: pub.title });
+        expect(String(pub.stem).startsWith(String(item.stemPreview).replace(/…$/, ''))).toBe(true);
+      } else {
+        expect(body.units).toHaveLength(2);
+      }
+      const listed = (JSON.parse(practice!.body).items as Record<string, any>[]).find((i) => i.problemId === main);
+      expect(listed).toMatchObject({ title: pub.title });
     });
 
     it('/consents：14–17 岁档的全部段落（含监护人告知）都被扫描', () => {
@@ -796,7 +829,11 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
     const ops = contractStudentOps();
     expect(ops).toContain('GET /student/home');
     const scanned = new Set<string>(walk.records.filter(ok).map((r) => r.op));
-    const unscanned = ops.filter((op) => implemented(walk.app, op)).filter((op) => !scanned.has(op));
+    // 这两个接口的响应按设计就含参考证明 / 解题思路，由 path-practice.test.ts 专门验证它们的放行条件，不适用“0 命中”。
+    const BY_DESIGN_SECRET = new Set(['POST /student/practice/{problemId}/solution/reveal', 'GET /attempts/{attemptId}/review']);
+    const unscanned = ops
+      .filter((op) => implemented(walk.app, op) && !BY_DESIGN_SECRET.has(op))
+      .filter((op) => !scanned.has(op));
     expect(unscanned, '这些学生接口已实现但没有泄露扫描：加进 walkProblem 与 MAIN_OPS').toEqual([]);
   });
 });
@@ -987,18 +1024,27 @@ describe('负面对照：扫描真的能报出泄露', { timeout: 60_000 }, () =
     expect(scan([record(other)], vault).length).toBeGreaterThan(0);
   });
 
-  it('/student/home：题面被投毒时，真实路由的响应被报出', async () => {
+  it('/student/home 与 /student/path：标题 / 题面被投毒时，真实路由的响应被报出', async () => {
     const original = (await db.query<{ public: object }>(`select public from content.problem_versions where problem_id = 'epsN'`)).rows[0]?.public;
     const from = ctx.records.length;
     await poisoned(
       'content.problem_versions',
-      () => db.query(`update content.problem_versions set public = jsonb_set(public, '{stem}', to_jsonb($1::text)) where problem_id = 'epsN'`, [`题面 ${fragmentOf('epsN')}`]),
+      () =>
+        db.query(
+          `update content.problem_versions
+              set public = jsonb_set(jsonb_set(public, '{stem}', to_jsonb($1::text)), '{title}', to_jsonb($2::text))
+            where problem_id = 'epsN'`,
+          [`题面 ${fragmentOf('epsN')}`, `标题 ${fragmentOf('epsN')}`],
+        ),
       () => db.query(`update content.problem_versions set public = $1::jsonb where problem_id = 'epsN'`, [JSON.stringify(original)]),
       async () => {
         await call(ctx, 'GET /student/home', 'epsN');
+        await call(ctx, 'GET /student/path', 'epsN');
       },
     );
-    expect(scan(newRecords(from), vault).some((hit) => hit.includes('$.inProgress[0].stem'))).toBe(true);
+    const hits = scan(newRecords(from), vault);
+    expect(hits.some((hit) => hit.includes('$.inProgress[0].title'))).toBe(true);
+    expect(hits.some((hit) => hit.includes('stemPreview'))).toBe(true);
   });
 
   it('/me：显示名被投毒时，真实路由的响应被报出', async () => {

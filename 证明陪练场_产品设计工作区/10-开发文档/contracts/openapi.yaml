@@ -344,6 +344,43 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+  /student/path:
+    get:
+      tags: [student]
+      summary: 学习路径（首页）：只返回当前单元的题目详情，其余单元只有摘要
+      operationId: getStudentPath
+      parameters:
+        - { name: unit, in: query, required: false, description: 单元 ID；缺省 = 第一个没做完的单元, schema: { type: string, format: uuid } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 路径
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudentPath' }
+  /student/path/items/{problemId}/start:
+    post:
+      tags: [attempt]
+      summary: 从路径节点开始或继续一道题（懒创建本班的自学布置；已做完则返回只读回看）
+      operationId: startPathItem
+      description: 班里这道题有没结束的测验 → 409 TEST_IN_PROGRESS；班里有开放的教师练习布置 → 直接复用。
+      parameters: [{ $ref: '#/components/parameters/problemId' }, { $ref: '#/components/parameters/idempotencyKey' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                classId: { type: string, format: uuid, description: 缺省 = 最近加入的班级 }
+      responses:
+        '200': { $ref: '#/components/responses/StateReplay' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
 
   /student/progress:
     get:
@@ -408,6 +445,110 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
+  /student/practice:
+    get:
+      tags: [student]
+      summary: 练习区：在全部已发布题里按章节与难度挑题（分页，章 → 难度 → ID 顺序稳定）
+      operationId: listPractice
+      parameters:
+        - { name: chapter, in: query, schema: { type: string } }
+        - { name: difficulty, in: query, schema: { $ref: '#/components/schemas/DifficultyBand' } }
+        - { name: status, in: query, schema: { type: string, enum: [todo, active, done] } }
+        - { name: q, in: query, description: 题目、章节、题面、标签里的关键词, schema: { type: string, maxLength: 60 } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 一页题目 + 分面
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PracticeList' }
+  /student/practice/random:
+    post:
+      tags: [student]
+      summary: 随机挑一道还没做完的题（范围内都做完了返回 404）
+      operationId: randomPractice
+      parameters: [{ $ref: '#/components/parameters/idempotencyKey' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chapter: { type: string }
+                difficulty: { $ref: '#/components/schemas/DifficultyBand' }
+      responses:
+        '200':
+          description: 一道题（客户端随后调用 start）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PracticeItem' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /student/practice/{problemId}/start:
+    post:
+      tags: [attempt]
+      summary: 从练习区开始一道题（同 /student/path/items/{problemId}/start，同样的测验撞车拒绝）
+      operationId: startPractice
+      parameters: [{ $ref: '#/components/parameters/problemId' }, { $ref: '#/components/parameters/idempotencyKey' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                classId: { type: string, format: uuid }
+      responses:
+        '200': { $ref: '#/components/responses/StateReplay' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /student/practice/{problemId}/solution:
+    get:
+      tags: [student]
+      summary: 解题思路与参考证明：只返回这位学生已经可以看的那一级
+      operationId: getPracticeSolution
+      parameters: [{ $ref: '#/components/parameters/problemId' }]
+      responses:
+        '200':
+          description: 当前可见级别与内容
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PracticeSolution' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /student/practice/{problemId}/solution/reveal:
+    post:
+      tags: [student]
+      summary: 主动查看思路（approach）或完整解答（full）；只限自己的练习模式自学作答
+      operationId: revealPracticeSolution
+      description: 老师布置的作答、测验模式、班里有没结束的测验时 403；还没开始做这道题 409。记 `solution.revealed` 事件，之后写出的关键步骤按有提示计。
+      parameters: [{ $ref: '#/components/parameters/problemId' }, { $ref: '#/components/parameters/idempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [level]
+              properties:
+                level: { type: string, enum: [approach, full] }
+      responses:
+        '200':
+          description: 查看后的内容
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PracticeSolution' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 
   # ------------------------------------------------------------------ attempt
   /attempts/{attemptId}:
@@ -670,7 +811,7 @@ paths:
   /attempts/{attemptId}/review:
     get:
       tags: [attempt]
-      summary: 教师已发布讲评、且本人写完（或布置已结束）后，查看参考证明与讲评（否则 403；读参考证明记审计）
+      summary: 查看参考证明与讲评：教师布置要教师已发布，且本人写完或布置结束；自学作答本人写完后即可看；班里该题有没结束的测验时 403（读参考证明记审计）
       operationId: getPublishedReview
       parameters: [{ $ref: '#/components/parameters/attemptId' }]
       responses:
@@ -1081,6 +1222,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MetricsView' }
+  /teacher/classes/{classId}/self-study:
+    get:
+      tags: [teacher]
+      summary: 自学进度：本班学生在学习路径各单元的完成情况（不进看板、指标与导出）
+      operationId: getSelfStudy
+      parameters: [{ $ref: '#/components/parameters/classId' }]
+      responses:
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '200':
+          description: 自学进度
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SelfStudyView' }
   /teacher/attempts/{attemptId}:
     get:
       tags: [teacher]
@@ -1411,12 +1566,17 @@ paths:
       parameters:
         - { name: status, in: query, schema: { type: string, enum: [draft, pending, returned, published, retired] } }
         - { name: chapter, in: query, schema: { type: string } }
+        - { name: q, in: query, description: 标题、章节或题号关键词, schema: { type: string, maxLength: 60 } }
+        - { name: limit, in: query, description: 给了才分页（1–100）；不给 = 返回全部，兼容旧调用, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: cursor, in: query, description: 上一页响应头 X-Next-Cursor, schema: { type: string } }
       responses:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
         '200':
-          description: 题目
+          description: 题目（分页时下一页游标在响应头 X-Next-Cursor，没有下一页则不返回该头）
+          headers:
+            X-Next-Cursor: { schema: { type: string } }
           content:
             application/json:
               schema:
@@ -1611,6 +1771,7 @@ components:
     assignmentId: { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
     classId: { name: classId, in: path, required: true, schema: { type: string, format: uuid } }
     lineId: { name: lineId, in: path, required: true, schema: { type: string, format: uuid } }
+    problemId: { name: problemId, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
     conceptId: { name: conceptId, in: path, required: true, schema: { type: string } }
     layer: { name: layer, in: path, required: true, schema: { $ref: '#/components/schemas/LayerId' } }
     idempotencyKey:
@@ -1661,7 +1822,7 @@ components:
           properties:
             code:
               type: string
-              enum: [BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, NOT_IN_ROSTER, INVALID_INVITE, CONSENT_REQUIRED, AGE_BAND_REQUIRED, AGE_RESTRICTED, AGE_BAND_LOCKED, INVALID_CREDENTIALS, PASSWORD_REQUIRED_LOGIN, PASSWORD_SETUP_REQUIRED, WRONG_LAYER, LAYER_LOCKED, STATE_STALE, ATTEMPT_LOCKED, ASSIGNMENT_CLOSED, RECOG_NOT_CONFIRMED, HINT_NOT_READY, HINT_PREVIEW_EXPIRED, BUDGET_EXHAUSTED, RATE_LIMITED, PAYLOAD_TOO_LARGE, PHOTO_DISABLED, TEST_MODE_RESTRICTED, UPSTREAM_UNAVAILABLE, VALIDATION_FAILED, INTERNAL]
+              enum: [BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, NOT_IN_ROSTER, INVALID_INVITE, CONSENT_REQUIRED, AGE_BAND_REQUIRED, AGE_RESTRICTED, AGE_BAND_LOCKED, INVALID_CREDENTIALS, PASSWORD_REQUIRED_LOGIN, PASSWORD_SETUP_REQUIRED, WRONG_LAYER, LAYER_LOCKED, STATE_STALE, ATTEMPT_LOCKED, ASSIGNMENT_CLOSED, RECOG_NOT_CONFIRMED, HINT_NOT_READY, HINT_PREVIEW_EXPIRED, BUDGET_EXHAUSTED, RATE_LIMITED, PAYLOAD_TOO_LARGE, PHOTO_DISABLED, TEST_MODE_RESTRICTED, UPSTREAM_UNAVAILABLE, VALIDATION_FAILED, INTERNAL, TEST_IN_PROGRESS]
             message: { type: string, description: 可直接展示给用户的中文 }
             detail: { type: object, description: '如 { waitSec, softLanding: [...], state }' }
     OkResult:
@@ -1736,7 +1897,7 @@ components:
         assignmentId: { type: string, format: uuid }
         title: { type: string }
         chapter: { type: string }
-        stem: { $ref: '#/components/schemas/MathText' }
+        stem: { $ref: '#/components/schemas/MathText', description: 仅在布置详情里返回；首页卡片不再带整段题面 }
         mode: { type: string, enum: [practice, test] }
         status: { type: string, enum: [scheduled, open, closed, cancelled] }
         openAt: { type: string, format: date-time }
@@ -1837,6 +1998,7 @@ components:
         submissions: { type: integer }
         last: { $ref: '#/components/schemas/MathText' }
         lessonSuggested: { type: boolean, description: 两次未过时为 true，界面主动展开"分步讲解" }
+        lessonAvailable: { type: boolean, description: 概念缺失或没有微课步骤时为 false，界面隐藏微课入口（GET lesson 对缺失概念是 404） }
     FrameView:
       type: object
       properties:
@@ -2178,6 +2340,151 @@ components:
         at: { type: string, format: date-time }
         resolved: { type: boolean }
         note: { type: [string, 'null'] }
+    DifficultyBand:
+      type: string
+      enum: [easy, medium, hard]
+      description: 入门 / 进阶 / 挑战。题目包 public.difficulty 1–2 = easy，3 = medium，4–5 = hard。
+    PathItem:
+      type: object
+      required: [problemId, title, stemPreview, difficulty, state, layersDone, layersTotal, reviewPublished, autoImported, softLocked, lessonAvailable]
+      properties:
+        problemId: { type: string }
+        title: { type: string }
+        stemPreview: { $ref: '#/components/schemas/MathText', description: 截断的题面，不会把 $…$ 公式切成两半 }
+        difficulty: { $ref: '#/components/schemas/DifficultyBand' }
+        state: { type: string, enum: [todo, active, done] }
+        currentLayer: { oneOf: [{ $ref: '#/components/schemas/LayerId' }, { type: 'null' }] }
+        layersDone: { type: integer }
+        layersTotal: { type: integer, description: 本题启用的层数（导入题只有写证明与总结两层） }
+        attemptId: { type: [string, 'null'], format: uuid }
+        reviewPublished: { type: boolean, description: 可以看讲评：自学作答完成即可；教师布置要教师发布 }
+        autoImported: { type: boolean, description: 批量导入、AI 整理（界面显示小标签） }
+        softLocked: { type: boolean, description: 排在第一道未完成题之后，只提示、不拦 }
+        lessonAvailable: { type: boolean }
+    PathUnitSummary:
+      type: object
+      required: [id, chapterNo, unitNo, title, summary, total, done, state, locked]
+      properties:
+        id: { type: string, format: uuid }
+        chapterNo: { type: integer }
+        unitNo: { type: integer }
+        title: { type: string }
+        summary: { type: string }
+        total: { type: integer }
+        done: { type: integer }
+        state: { type: string, enum: [todo, active, done] }
+        locked: { type: boolean, description: 上一个单元完成不到 60%。软锁：界面确认后可进入，服务端不拦。 }
+    StudentPath:
+      type: object
+      required: [course, units, current, teacherAssignments, chapters]
+      properties:
+        course: { type: [object, 'null'], required: [id, title], properties: { id: { type: string }, title: { type: string } } }
+        units: { type: array, items: { $ref: '#/components/schemas/PathUnitSummary' } }
+        current:
+          description: 当前单元详情（带题目）；没有任何单元时为 null
+          oneOf:
+            - type: 'null'
+            - allOf:
+                - { $ref: '#/components/schemas/PathUnitSummary' }
+                - type: object
+                  required: [items, conceptIds, concepts]
+                  properties:
+                    items: { type: array, items: { $ref: '#/components/schemas/PathItem' } }
+                    conceptIds: { type: array, items: { type: string } }
+                    concepts: { type: array, items: { type: object, required: [id, title], properties: { id: { type: string }, title: { type: string } } } }
+        teacherAssignments: { type: array, items: { $ref: '#/components/schemas/AssignmentCard' }, description: 置顶：开放中、没做完的老师布置，截止早的在前 }
+        chapters:
+          type: array
+          items:
+            type: object
+            required: [chapterNo, chapter, firstUnitId, unitCount, total, done]
+            properties:
+              chapterNo: { type: integer }
+              chapter: { type: string }
+              firstUnitId: { type: string, format: uuid }
+              unitCount: { type: integer }
+              total: { type: integer }
+              done: { type: integer }
+    PracticeItem:
+      type: object
+      required: [problemId, title, stemPreview, chapter, difficulty, tags, status, attemptId, keyCount, autoImported]
+      properties:
+        problemId: { type: string }
+        title: { type: string }
+        stemPreview: { $ref: '#/components/schemas/MathText' }
+        chapter: { type: string }
+        section: { type: string }
+        difficulty: { $ref: '#/components/schemas/DifficultyBand' }
+        tags: { type: array, items: { type: string } }
+        status: { type: string, enum: [todo, active, done] }
+        attemptId: { type: [string, 'null'], format: uuid }
+        keyCount: { type: integer }
+        autoImported: { type: boolean }
+    PracticeList:
+      type: object
+      required: [items, facets, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/PracticeItem' } }
+        facets:
+          type: object
+          required: [chapters, difficulty]
+          properties:
+            chapters:
+              type: array
+              items:
+                type: object
+                required: [chapter, total, done]
+                properties: { chapter: { type: string }, total: { type: integer }, done: { type: integer } }
+            difficulty:
+              type: object
+              required: [easy, medium, hard]
+              properties: { easy: { type: integer }, medium: { type: integer }, hard: { type: integer } }
+        nextCursor: { type: [string, 'null'] }
+    PracticeSolution:
+      type: object
+      required: [level, canReveal, hasApproach, hasFull]
+      properties:
+        level: { type: string, enum: [none, approach, full], description: 这位学生此刻可以看到哪一级 }
+        canReveal: { type: boolean, description: 他有一份进行中的自学作答，且还可以再看一级 }
+        hasApproach: { type: boolean, description: 本题有整理好的解题思路 }
+        hasFull: { type: boolean, description: 本题有可发布的参考证明 }
+        approach: { $ref: '#/components/schemas/MathText' }
+        keyIdeas: { type: array, items: { $ref: '#/components/schemas/MathText' } }
+        pitfalls: { type: array, items: { $ref: '#/components/schemas/MathText' } }
+        referenceProof: { $ref: '#/components/schemas/MathText' }
+    SelfStudyView:
+      type: object
+      required: [units, students]
+      properties:
+        units:
+          type: array
+          items:
+            type: object
+            required: [id, chapterNo, unitNo, title, total]
+            properties:
+              id: { type: string, format: uuid }
+              chapterNo: { type: integer }
+              unitNo: { type: integer }
+              title: { type: string }
+              total: { type: integer }
+        students:
+          type: array
+          items:
+            type: object
+            required: [anonCode, displayName, doneTotal, active, revealed, byUnit]
+            properties:
+              anonCode: { type: string }
+              displayName: { type: [string, 'null'] }
+              doneTotal: { type: integer }
+              active: { type: integer, description: 进行中的自学题数 }
+              revealed: { type: integer, description: 主动查看过解答的题数 }
+              lastActiveAt: { type: [string, 'null'], format: date-time }
+              byUnit:
+                type: array
+                items:
+                  type: object
+                  required: [unitId, done]
+                  properties: { unitId: { type: string, format: uuid }, done: { type: integer } }
     ProblemListItem:
       type: object
       required: [problemId, title, version, status]
@@ -2190,6 +2497,7 @@ components:
         status: { type: string, enum: [draft, pending, returned, published, retired] }
         autoChecks: { type: object }
         source: { type: string }
+        reviewSource: { type: string, enum: [teacher, auto], description: auto = 批量导入、AI 整理 }
         reviewedBy: { type: [string, 'null'], description: 最近一次审核人（display_name/anon_code） }
         reviewedAt: { type: [string, 'null'], format: date-time }
     ImportJob:

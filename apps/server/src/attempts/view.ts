@@ -78,6 +78,7 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
       submissions: state.def.attempts,
       ...(extras.defLast === null ? {} : { last: extras.defLast }),
       lessonSuggested: false,
+      lessonAvailable: lessonAvailable(problem),
     },
     notes: overrideNotes(row, state, problem),
     help: helpView(help),
@@ -113,7 +114,7 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
     dto.completion = {
       done: true,
       independence: independenceOf(state, keysTotal),
-      reviewAvailable: false,
+      reviewAvailable: extras.reviewAvailable,
       leanCard: null,
     };
   }
@@ -142,6 +143,14 @@ function overrideNotes(row: AttemptRow, state: AttemptState, problem: LoadedProb
       },
     ];
   });
+}
+
+// 概念缺失或没有微课步骤时隐藏微课入口（GET /lesson 对缺失概念是 404）。
+function lessonAvailable(problem: LoadedProblem): boolean {
+  const conceptId = problem.public.def?.conceptId;
+  if (!conceptId) return false;
+  const concept = problem.ctx.concepts.concepts.find((c) => c.id === conceptId) as { lesson?: { steps?: unknown[] } } | undefined;
+  return Array.isArray(concept?.lesson?.steps) && concept.lesson.steps.length > 0;
 }
 
 function transferView(state: AttemptState, extras: ViewExtras): Record<string, unknown> {

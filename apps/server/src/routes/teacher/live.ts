@@ -4,6 +4,7 @@ import { AppError } from '../../errors.ts';
 import { assertClassTeacher, requireTeacher, uuidParam } from '../../services/teacher/auth.ts';
 import { buildLiveSnapshot } from '../../services/teacher/live.ts';
 import { buildClassMetrics } from '../../services/teacher/metrics.ts';
+import { buildSelfStudy } from '../../services/teacher/selfstudy.ts';
 
 import type { AuthRouteOptions } from '../auth.ts';
 
@@ -33,6 +34,15 @@ export const teacherLiveRoutes: FastifyPluginAsync<AuthRouteOptions> = async (ap
     const snapshot = await buildLiveSnapshot(db, config, auth, classId, assignmentId);
     contract.validate('LiveSnapshot', snapshot);
     return snapshot;
+  });
+
+  // 自学进度（学习路径）：单独成视图，不进看板、指标与导出。
+  app.get('/teacher/classes/:classId/self-study', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const classId = uuidParam((request.params as ClassIdParams).classId, '班级');
+    const view = await buildSelfStudy(db, config, auth, classId);
+    contract.validate('SelfStudyView', view);
+    return view;
   });
 
   // 04 §3 / 08 §4：口径以 08 §4 为准；样本 <10 只给人数。

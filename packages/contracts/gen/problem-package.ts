@@ -190,6 +190,31 @@ export interface SecretPart {
    * @minItems 1
    */
   referenceProofs: [ReferenceProof, ...ReferenceProof[]];
+  /**
+   * 练习区的解题思路与关键点（Task 16）。属 secret：不进 public、列表与作答状态；学生主动查看或完成后才经 /student/practice/{problemId}/solution 返回。导入题必须带 approach 与 keyIdeas（由导入工具检查，schema 不强制）。
+   */
+  walkthrough?: {
+    approach: MathText;
+    /**
+     * @minItems 1
+     * @maxItems 5
+     */
+    keyIdeas:
+      | [MathText]
+      | [MathText, MathText]
+      | [MathText, MathText, MathText]
+      | [MathText, MathText, MathText, MathText]
+      | [MathText, MathText, MathText, MathText, MathText];
+    /**
+     * @maxItems 4
+     */
+    pitfalls?:
+      | []
+      | [MathText]
+      | [MathText, MathText]
+      | [MathText, MathText, MathText]
+      | [MathText, MathText, MathText, MathText];
+  };
   lean?: LeanInfo;
 }
 export interface DefComponent {

@@ -142,6 +142,19 @@
     "referenceProofs": [
       { "id": "R1", "route": 0, "publishable": true, "text": "记 $u_n=\\frac{1}{\\sqrt n}$。(1) $\\frac{1}{\\sqrt{n+1}}<\\frac{1}{\\sqrt n}$，$\\{u_n\\}$ 单调递减，且 $\\lim u_n=0$，由莱布尼茨判别法，$\\sum\\frac{(-1)^{n-1}}{\\sqrt n}$ 收敛。(2) $\\sum|a_n|=\\sum\\frac{1}{\\sqrt n}$ 是 $p=\\frac12\\le1$ 的 $p$ 级数，发散。由 (1)(2)，原级数条件收敛。" }
     ],
+    "walkthrough": {
+      "approach": "这是交错级数，分两步看：先用莱布尼茨判别法判断原级数是否收敛；再看取绝对值后的级数是否收敛。收敛但绝对值级数发散，结论就是条件收敛。",
+      "keyIdeas": [
+        "把一般项写成 $(-1)^{n-1}u_n$，其中 $u_n=\\frac{1}{\\sqrt n}$。",
+        "莱布尼茨判别法需要两个条件：$u_n$ 单调递减、$u_n\\to0$。",
+        "绝对值级数 $\\sum\\frac{1}{\\sqrt n}$ 是 $p$ 级数，$p=\\frac12\\le1$，发散。",
+        "收敛而不绝对收敛，才叫条件收敛。"
+      ],
+      "pitfalls": [
+        "只验证了 $u_n\\to0$ 就下结论，漏了单调性。",
+        "把“绝对值级数发散”误当成“原级数发散”。"
+      ]
+    },
     "lean": {
       "file": "Series.lean",
       "status": "proved",
