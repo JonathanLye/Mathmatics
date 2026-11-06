@@ -229,7 +229,9 @@ async function main() {
     check('完成页：诚实说明', done.includes('系统核对关键步骤是否齐全') && done.includes('老师讲评'))
     check('完成页：mathlib 收在延伸里', done.includes('延伸') && !done.includes('mathlib4'))
     const actions = await page.locator('.pg-celebrate__actions').first().innerText()
-    check('完成页：下一题 / 换题试试 / 看我的证明', actions.includes('下一题') && actions.includes('换题试试') && actions.includes('看我的证明'))
+    check('完成页：下一题 / 看我的证明', actions.includes('下一题') && actions.includes('看我的证明'))
+    // 换题只能在第 5 层发起，完成后再放这个按钮点了也走不通（真实走查发现的死按钮）。
+    check('完成页：没有走不通的换题按钮', !actions.includes('换题试试') && (await countTestId(page, 'make-transfer')) === 0)
     await shot(page, 'completion')
     check('完成页：reviewAvailable=false 时没有看讲评', (await countTestId(page, 'completion-review')) === 0)
 

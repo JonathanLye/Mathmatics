@@ -4,8 +4,7 @@ name: Publish images
 # 服务器自己拉取，不再从本机上传（本机上行带宽窄）。用法见 infra/shared/README.md “后续更新”。
 on:
   push:
-    # 临时：首次验证时允许从部署分支构建，合并前删掉 chore/shared-host-deploy 这一项。
-    branches: [main, chore/shared-host-deploy]
+    branches: [main]
     paths:
       - "apps/**"
       - "packages/**"
