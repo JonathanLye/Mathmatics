@@ -126,7 +126,12 @@ const SERIES = {
     ['$\\sum\\frac{1}{\\sqrt n}$ 是 $p=\\frac12$ 的 $p$ 级数，发散', '$p=\\frac12\\le 1$'],
     ['综上，原级数条件收敛', '收敛，但绝对值级数发散'],
   ],
-  selfcheck: ['第3行由第1、2行推出，用了莱布尼茨判别法', '第1行：通项单调递减这条性质用在这里', '去掉极限为 0 这一条，第2行和第3行就断了'],
+  selfcheck: ['第3行由第1、2行推出，用了莱布尼茨判别法', '第1行：通项单调递减这条性质用在这里', '去掉极限为零这一条，第2行和第3行就断了'],
+  transfer: [
+    ['$\\sum|a_n|=\\sum\\frac{1}{n^2}$', '各项取绝对值'],
+    ['$\\sum\\frac{1}{n^2}$ 是 $p=2>1$ 的 $p$ 级数，收敛', 'p 级数收敛性'],
+    ['所以原级数绝对收敛', '绝对值级数收敛'],
+  ],
   summary: [
     '原级数条件收敛',
     '分两部分：交错级数收敛，绝对值级数发散',
@@ -335,7 +340,7 @@ async function runSelfStudy(me, student) {
     try {
       await step.finish();
       await step.selfcheck(SERIES.selfcheck);
-      await step.skip('L5').catch(() => undefined);
+      await step.transfer(SERIES.transfer);
       await step.summary(SERIES.summary);
       finished = true;
     } catch (error) {
