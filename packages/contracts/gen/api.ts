@@ -4381,6 +4381,12 @@ export interface components {
             selfcheckBank: components["schemas"]["SelfcheckItem"][];
             summaryPoints: components["schemas"]["SummaryPoint"][];
             referenceProofs: components["schemas"]["ReferenceProof"][];
+            /** @description 练习区的解题思路与关键点（Task 16）。属 secret：不进 public、列表与作答状态；学生主动查看或完成后才经 /student/practice/{problemId}/solution 返回。导入题必须带 approach 与 keyIdeas（由导入工具检查，schema 不强制）。 */
+            walkthrough?: {
+                approach: components["schemas"]["MathText"];
+                keyIdeas: components["schemas"]["MathText"][];
+                pitfalls?: components["schemas"]["MathText"][];
+            };
             lean?: components["schemas"]["LeanInfo"];
         };
         /**
@@ -4511,6 +4517,12 @@ export interface components {
                     selfcheckBank: components["schemas"]["SelfcheckItem"][];
                     summaryPoints: components["schemas"]["SummaryPoint"][];
                     referenceProofs: components["schemas"]["ReferenceProof"][];
+                    /** @description 练习区的解题思路与关键点（Task 16）。属 secret：不进 public、列表与作答状态；学生主动查看或完成后才经 /student/practice/{problemId}/solution 返回。导入题必须带 approach 与 keyIdeas（由导入工具检查，schema 不强制）。 */
+                    walkthrough?: {
+                        approach: components["schemas"]["MathText"];
+                        keyIdeas: components["schemas"]["MathText"][];
+                        pitfalls?: components["schemas"]["MathText"][];
+                    };
                     lean?: components["schemas"]["LeanInfo"];
                 };
                 DefComponent: {

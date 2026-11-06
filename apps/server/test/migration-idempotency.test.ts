@@ -28,7 +28,8 @@ describe('0001 迁移（07 §8）', () => {
 
     const result = await migrate(db);
     expect(result.baselined).toBe(true);
-    expect(result.applied).toEqual(['0001_idempotency_keys.sql']);
+    // 旧库缺的不止一张表：schema.sql 是最新全量，这里只删了 idempotency_keys，其余迁移都是 IF NOT EXISTS，重跑无害。
+    expect(result.applied).toEqual(['0001_idempotency_keys.sql', '0006_course_path.sql']);
     expect(await hasTable('app.idempotency_keys')).toBe(true);
 
     const rows = (
@@ -36,8 +37,41 @@ describe('0001 迁移（07 §8）', () => {
         'select version, sha256 from public.schema_migrations order by version',
       )
     ).rows;
-    expect(rows.map((row) => row.version)).toEqual(['0000_init', '0001_idempotency_keys.sql']);
+    expect(rows.map((row) => row.version)).toEqual(['0000_init', '0001_idempotency_keys.sql', '0006_course_path.sql']);
     expect(rows[1]?.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('0006：按旧结构建成的库迁移后有路径表、origin/review_source/hidden_at 列与自学布置唯一索引，且可重复执行', async () => {
+    await applySchema(db);
+    await db.exec('drop table if exists public.schema_migrations');
+    await db.exec('drop table app.solution_reveals');
+    await db.exec('drop table content.unit_items');
+    await db.exec('drop table content.course_units');
+    await db.exec('drop table content.courses');
+    await db.exec('drop index app.assignments_one_path');
+    await db.exec('alter table app.assignments drop column origin');
+    await db.exec('alter table content.problem_versions drop column review_source');
+    await db.exec('alter table content.problems drop column hidden_at');
+
+    await migrate(db);
+    for (const table of ['content.courses', 'content.course_units', 'content.unit_items', 'app.solution_reveals']) {
+      expect(await hasTable(table), table).toBe(true);
+    }
+    const cols = (
+      await db.query<{ c: string }>(
+        `select table_schema || '.' || table_name || '.' || column_name as c from information_schema.columns
+          where column_name in ('origin', 'review_source', 'hidden_at')`,
+      )
+    ).rows.map((row) => row.c);
+    expect(cols).toEqual(
+      expect.arrayContaining(['app.assignments.origin', 'content.problem_versions.review_source', 'content.problems.hidden_at']),
+    );
+    const idx = await db.query(`select 1 from pg_indexes where indexname = 'assignments_one_path'`);
+    expect(idx.rows).toHaveLength(1);
+
+    // 再执行一遍迁移 SQL 本身不报错（IF NOT EXISTS / 重复约束吞掉）。
+    const sql = readFileSync(`${MIGRATIONS_DIR}/0006_course_path.sql`, 'utf8');
+    await db.exec(sql);
   });
 
   it('迁移文件创建的表/列在 schema.sql 中存在（防止只加迁移、忘了同步 schema.sql）', () => {

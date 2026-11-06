@@ -235,6 +235,7 @@ CREATE TABLE content.problems (
   title            text NOT NULL,
   chapter          text,
   current_version  integer,                           -- 最新已发布版本
+  hidden_at        timestamptz,                       -- 教师下架：不进路径与练习区
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 
@@ -243,6 +244,7 @@ CREATE TABLE content.problem_versions (
   version        integer NOT NULL,
   public         jsonb NOT NULL,                      -- problem-package.schema.json 的 public
   review_status  text NOT NULL CHECK (review_status IN ('draft', 'pending', 'returned', 'published', 'retired')),
+  review_source  text NOT NULL DEFAULT 'teacher' CHECK (review_source IN ('teacher', 'auto')),  -- auto = 批量导入、AI 整理
   auto_checks    jsonb NOT NULL DEFAULT '{}'::jsonb,
   provenance     jsonb NOT NULL DEFAULT '{}'::jsonb,
   draft_id       uuid REFERENCES content.import_drafts(id),
@@ -316,6 +318,33 @@ CREATE TABLE content.lean_checks (
   at          timestamptz NOT NULL DEFAULT now()
 );
 
+-- 学习路径：课程 → 单元 → 题（Task 11）
+CREATE TABLE content.courses (
+  id     text PRIMARY KEY,
+  title  text NOT NULL,
+  sort   integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE content.course_units (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id    text NOT NULL REFERENCES content.courses(id),
+  chapter_no   integer NOT NULL,
+  unit_no      integer NOT NULL,
+  title        text NOT NULL,
+  summary      text NOT NULL DEFAULT '',
+  concept_ids  text[] NOT NULL DEFAULT '{}',
+  sort         integer NOT NULL DEFAULT 0,
+  UNIQUE (course_id, chapter_no, unit_no)
+);
+
+CREATE TABLE content.unit_items (
+  unit_id     uuid NOT NULL REFERENCES content.course_units(id),
+  problem_id  text NOT NULL REFERENCES content.problems(id),
+  sort        integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (unit_id, problem_id)
+);
+CREATE INDEX unit_items_problem ON content.unit_items (problem_id);
+
 -- =====================================================================
 -- 4. 布置与实验
 -- =====================================================================
@@ -331,11 +360,13 @@ CREATE TABLE app.assignments (
   status               text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'open', 'closed', 'cancelled')),
   review_published_at  timestamptz,                    -- 题目关闭后教师发布参考证明与讲评
   review_note          text,
+  origin               text NOT NULL DEFAULT 'teacher' CHECK (origin IN ('teacher', 'path')),  -- path = 学生点路径/练习区时懒创建的自学布置，不进教师看板与导出
   created_by           uuid NOT NULL REFERENCES app.users(id),
   created_at           timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (problem_id, problem_version) REFERENCES content.problem_versions(problem_id, version)
 );
 CREATE INDEX assignments_class ON app.assignments (class_id, open_at DESC);
+CREATE UNIQUE INDEX assignments_one_path ON app.assignments (class_id, problem_id, problem_version) WHERE origin = 'path';
 
 CREATE TABLE app.experiments (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -381,6 +412,16 @@ CREATE UNIQUE INDEX attempts_one_main ON app.attempts (assignment_id, user_id) W
 CREATE UNIQUE INDEX attempts_one_transfer ON app.attempts (parent_attempt_id) WHERE kind = 'transfer';
 CREATE INDEX attempts_user ON app.attempts (user_id, started_at DESC);
 CREATE INDEX attempts_assignment_status ON app.attempts (assignment_id, status);
+
+CREATE TABLE app.solution_reveals (                   -- 练习区：自学作答里主动看了思路 / 完整解答（Task 16）
+  user_id     uuid NOT NULL REFERENCES app.users(id),
+  attempt_id  uuid NOT NULL REFERENCES app.attempts(id),
+  problem_id  text NOT NULL,
+  level       text NOT NULL CHECK (level IN ('approach', 'full')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, problem_id, level)
+);
+CREATE INDEX solution_reveals_attempt ON app.solution_reveals (attempt_id);
 
 CREATE TABLE app.attempt_lines (                      -- 学生写下的每一行（各层通用）
   id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
