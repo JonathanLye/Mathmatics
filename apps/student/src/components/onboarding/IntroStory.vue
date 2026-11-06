@@ -101,7 +101,7 @@ const WEEK = ['一', '二', '三', '四', '五', '六', '日']
             <text class="pgs-a1__line pgs-a1__line--1">设 ε &gt; 0，取 N = ⌈1/ε⌉</text>
             <text class="pgs-a1__line pgs-a1__line--2">当 n &gt; N 时，1/n &lt; 1/N ≤ ε</text>
             <text class="pgs-a1__line pgs-a1__line--3">所以 1/n 趋于 0</text>
-            <text class="pgs-a1__qed">∎</text>
+            <view class="pgs-a1__qed"><PgIcon name="qed" :size="30" /></view>
           </view>
           <view class="pgs-a1__mascot"><PgMascot expr="happy" :motion="['cheer', 'blink']" :size="104" /></view>
         </view>
@@ -132,7 +132,7 @@ const WEEK = ['一', '二', '三', '四', '五', '六', '日']
               <text class="pgs-a4__dname">{{ d }}</text>
             </view>
           </view>
-          <view class="pgs-a4__book"><PgIcon name="book" :size="28" /><text class="pgs-a4__booktext">证明本</text><text class="pgs-a4__stamp">∎</text></view>
+          <view class="pgs-a4__book"><PgIcon name="book" :size="28" /><text class="pgs-a4__booktext">证明本</text><view class="pgs-a4__stamp"><PgIcon name="qed" :size="22" /></view></view>
           <view class="pgs-a4__mascot"><PgMascot expr="happy" :motion="['breathe', 'blink']" :size="72" /></view>
         </view>
       </view>
@@ -195,6 +195,12 @@ const WEEK = ['一', '二', '三', '四', '五', '六', '日']
 .pgs__next { flex: 1; }
 .pgs__back { flex: none; width: 56px; padding: 0; }
 
+/* 宽屏：内容和按钮一起居中，不把按钮丢在屏幕最下面 */
+@media (min-width: 700px) {
+  .pgs { justify-content: center; gap: var(--sp-3); }
+  .pgs__scene { flex: none; padding: var(--sp-6) 0; }
+}
+
 /* ---- 第 1 幕 ---- */
 .pgs-a1 { position: relative; width: 100%; max-width: 340px; height: 260px; }
 .pgs-a1__paper {
@@ -229,9 +235,8 @@ const WEEK = ['一', '二', '三', '四', '五', '六', '日']
   position: absolute;
   right: var(--sp-4);
   bottom: var(--sp-3);
+  display: flex;
   color: var(--accent-text);
-  font-size: var(--fs-28);
-  font-weight: var(--fw-black);
   animation: pgs-stamp 520ms var(--ease-spring) 2700ms both;
 }
 @keyframes pgs-stamp { 0% { opacity: 0; transform: scale(2.2) rotate(-12deg); } 100% { opacity: 1; transform: scale(1) rotate(-6deg); } }
@@ -317,6 +322,6 @@ const WEEK = ['一', '二', '三', '四', '五', '六', '日']
   animation: pgs-in-fwd var(--dur-slow) var(--ease-out) 1100ms both;
 }
 .pgs-a4__booktext { color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); }
-.pgs-a4__stamp { color: var(--accent-text); font-size: var(--fs-22); font-weight: var(--fw-black); animation: pgs-stamp 480ms var(--ease-spring) 1700ms both; }
+.pgs-a4__stamp { display: flex; color: var(--accent-text); animation: pgs-stamp 480ms var(--ease-spring) 1700ms both; }
 .pgs-a4__mascot { position: absolute; right: -4px; bottom: -8px; }
 </style>

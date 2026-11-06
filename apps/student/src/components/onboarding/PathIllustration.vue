@@ -11,22 +11,40 @@ import { PATH_STEP_NAMES } from '@/copy/onboarding'
 
 withDefaults(defineProps<{ mode?: 'once' | 'loop'; labels?: boolean }>(), { mode: 'once', labels: true })
 
-/** 站点位置（占舞台宽高的百分比）。 */
+/** 站点位置（占舞台宽高的百分比）；舞台宽高比 100:92，所以 y 的百分比对应 viewBox 里的 y × 0.92。 */
 const NODES: ReadonlyArray<{ x: number; y: number }> = [
-  { x: 11, y: 76 },
-  { x: 29, y: 48 },
-  { x: 48, y: 72 },
-  { x: 64, y: 42 },
-  { x: 79, y: 68 },
-  { x: 89, y: 26 },
+  { x: 11, y: 82 },
+  { x: 29, y: 58 },
+  { x: 48, y: 78 },
+  { x: 64, y: 52 },
+  { x: 79, y: 74 },
+  { x: 89, y: 44 },
 ]
-const PATH_D = 'M11 76 C 14 56, 20 48, 29 48 S 41 72, 48 72 S 58 42, 64 42 S 75 68, 79 68 S 87 40, 89 26'
+
+/** 过全部站点的平滑曲线（Catmull-Rom 转三次贝塞尔），路一定从每个站点中间穿过。 */
+function roadPath(): string {
+  const pts = NODES.map((n) => ({ x: n.x, y: n.y * 0.92 }))
+  let d = `M${pts[0]!.x} ${pts[0]!.y.toFixed(1)}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]!
+    const p1 = pts[i]!
+    const p2 = pts[i + 1]!
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]!
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = p1.y + (p2.y - p0.y) / 6
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x} ${p2.y.toFixed(1)}`
+  }
+  return d
+}
+const PATH_D = roadPath()
 </script>
 
 <template>
   <view class="pgp" :class="'pgp--' + mode" role="img" aria-label="六个站点依次点亮，小方走到终点">
     <view class="pgp__stage">
-      <svg class="pgp__svg" viewBox="0 0 100 86" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <svg class="pgp__svg" viewBox="0 0 100 92" preserveAspectRatio="none" aria-hidden="true" focusable="false">
         <path :d="PATH_D" class="pgp__road-bed" />
         <path :d="PATH_D" class="pgp__road" />
       </svg>
@@ -52,7 +70,7 @@ const PATH_D = 'M11 76 C 14 56, 20 48, 29 48 S 41 72, 48 72 S 58 42, 64 42 S 75 
 <!-- 带 pgp- 前缀的非 scoped 样式：需要对 html[data-motion] 做选择，也要穿过 PgMascot 的 v-html。 -->
 <style>
 .pgp { width: 100%; max-width: 380px; margin: 0 auto; }
-.pgp__stage { position: relative; width: 100%; aspect-ratio: 100 / 86; }
+.pgp__stage { position: relative; width: 100%; aspect-ratio: 100 / 92; }
 .pgp__svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .pgp__road-bed { fill: none; stroke: var(--rule); stroke-width: 18px; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .pgp__road { fill: none; stroke: var(--rule-2); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 2 9; vector-effect: non-scaling-stroke; }
@@ -101,8 +119,9 @@ const PATH_D = 'M11 76 C 14 56, 20 48, 29 48 S 41 72, 48 72 S 58 42, 64 42 S 75 
   position: absolute;
   width: 25%;
   left: 11%;
-  top: 76%;
-  transform: translate(-50%, -88%);
+  top: 82%;
+  margin-top: -16px;
+  transform: translate(-50%, -100%);
   pointer-events: none;
 }
 .pgp__bob .pg-mascot { display: block; width: 100%; }
@@ -127,12 +146,12 @@ const PATH_D = 'M11 76 C 14 56, 20 48, 29 48 S 41 72, 48 72 S 58 42, 64 42 S 75 
 
 /* 站点 → 小方站的位置（和 NODES 保持一致）：4/17/30/43/56/69% 到达 1…6 号站 */
 @keyframes pgp-walk {
-  0%, 4% { left: 11%; top: 76%; animation-timing-function: ease-in-out; }
-  17% { left: 29%; top: 48%; animation-timing-function: ease-in-out; }
-  30% { left: 48%; top: 72%; animation-timing-function: ease-in-out; }
-  43% { left: 64%; top: 42%; animation-timing-function: ease-in-out; }
-  56% { left: 79%; top: 68%; animation-timing-function: ease-in-out; }
-  69%, 100% { left: 89%; top: 26%; }
+  0%, 4% { left: 11%; top: 82%; animation-timing-function: ease-in-out; }
+  17% { left: 29%; top: 58%; animation-timing-function: ease-in-out; }
+  30% { left: 48%; top: 78%; animation-timing-function: ease-in-out; }
+  43% { left: 64%; top: 52%; animation-timing-function: ease-in-out; }
+  56% { left: 79%; top: 74%; animation-timing-function: ease-in-out; }
+  69%, 100% { left: 89%; top: 44%; }
 }
 @keyframes pgp-bob {
   0%, 4% { transform: translateY(0); }
