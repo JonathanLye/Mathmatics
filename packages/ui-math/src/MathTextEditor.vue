@@ -390,7 +390,7 @@ onBeforeUnmount(() => {
 .ui-mte {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2, 8px);
+  gap: var(--sp-2);
   width: 100%;
   box-sizing: border-box;
 }
@@ -399,55 +399,55 @@ onBeforeUnmount(() => {
 }
 .ui-mte__preview {
   min-height: 44px;
-  padding: var(--sp-2, 8px) var(--sp-3, 12px);
-  border: 1px solid var(--rule, #e2e4e8);
-  border-radius: var(--radius-card, 10px);
-  background: var(--paper, #f7f6f2);
-  color: var(--ink, #1d2430);
-  font-size: var(--fs-body, 16px);
-  line-height: var(--lh-body, 1.65);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-16);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-16);
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
 .ui-mte__placeholder {
-  color: var(--ink-2, #5d6878);
-  font-size: var(--fs-small, 13px);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
 }
 .ui-mte__inputwrap {
   overflow: hidden;
-  border: 1px solid var(--rule, #e2e4e8);
-  border-radius: var(--radius-input, 6px);
-  background: var(--sheet, #fff);
-  transition: border-color var(--dur-fast, 150ms) ease-out, box-shadow var(--dur-fast, 150ms) ease-out;
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-12);
+  background: var(--sheet);
+  transition: border-color var(--dur-fast) ease-out, box-shadow var(--dur-fast) ease-out;
 }
 .ui-mte__inputwrap--focus {
-  border-color: var(--focus, #2b4fa3);
-  box-shadow: 0 0 0 2px var(--accent-soft, #e8eefb);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .ui-mte__input {
   display: block;
   width: 100%;
-  color: var(--ink, #1d2430);
+  color: var(--ink);
   background: transparent;
-  font-size: 16px; /* 02 §2.3：16px 防 iOS 聚焦缩放 */
+  font-size: var(--fs-16); /* 02 §2.3：16px 防 iOS 聚焦缩放 */
   line-height: 1.65;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
 }
 .ui-mte__input .uni-textarea-textarea {
-  padding: var(--sp-2, 8px) var(--sp-3, 12px);
+  padding: var(--sp-2) var(--sp-3);
   box-sizing: border-box;
 }
 .ui-mte__input .uni-textarea-placeholder {
-  color: var(--ink-2, #5d6878);
+  color: var(--ink-2);
 }
 .ui-mte__meta {
   display: flex;
   justify-content: space-between;
-  gap: var(--sp-2, 8px);
+  gap: var(--sp-2);
   min-height: 18px;
-  color: var(--ink-2, #5d6878);
-  font-size: var(--fs-small, 13px);
+  color: var(--ink-2);
+  font-size: var(--fs-13);
 }
 .ui-mte__keyboard {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
 }
 </style>

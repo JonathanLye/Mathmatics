@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./mathText": "./src/mathText.ts",
+    "./mathRender": "./src/mathRender.ts",
     "./*": "./src/*"
   },
   "dependencies": {

@@ -1,0 +1,291 @@
+/**
+ * 设计 token —— v3（唯一来源，学生端与教师端共用；规格见 SDD design-spec）。
+ *
+ * 规则：
+ * - 颜色只表达含义：青绿=主操作；蓝=助教的话；金=完成/经验/计额度的提示；绿=答对；橙=连胜与提醒；
+ *   红=不可撤销的操作（永远不用在证明行上）；靛蓝=吉祥物小方。
+ * - 对比度由 apps/student/tests/dark-mode.test.ts 强制：所有 *-text 与 --ink/--ink-2 在纸面上 ≥ 4.5:1。
+ *   --ink-3 只用于禁用态、占位符和装饰（浅色下不够 4.5:1），不要拿它写正文。
+ * - 深色模式写两份同值：跟随系统（媒体查询）与手动（html[data-theme='dark']）；
+ *   html[data-theme='light'] 能压住系统深色。别名都在 :root 上，自动跟随，不必重复。
+ */
+:root {
+  /* 中性色 */
+  --paper: #ffffff;
+  --paper-2: #f5f7f9;
+  --sheet: #ffffff;
+  --ink: #23303a;
+  --ink-2: #5b6b78;
+  --ink-3: #8b99a5;
+  --rule: #e3e8ec;
+  --rule-2: #cbd3d9;
+
+  /* 主色青绿 */
+  --accent: #0fb5a6;
+  --accent-lip: #0b8e83;
+  --accent-soft: #d9f7f3;
+  --accent-text: #0a7a70;
+  --on-accent: #04302b;
+
+  /* 助教蓝 */
+  --sea: #4c8dff;
+  --sea-lip: #2f6fde;
+  --sea-soft: #e3eeff;
+  --sea-text: #1f5bc2;
+  --on-sea: #06224f;
+
+  /* 金：完成、经验、计额度的提示 */
+  --bee: #ffc233;
+  --bee-lip: #d99a00;
+  --bee-soft: #fff3cf;
+  --bee-text: #8a6200;
+  --on-bee: #3d2c00;
+
+  /* 绿：答对 */
+  --ok: #12a150;
+  --ok-lip: #0c7f3d;
+  --ok-soft: #ddf7e7;
+  --ok-text: #0b7a3a;
+  --on-ok: #04260f;
+
+  /* 橙：连胜、温和提醒 */
+  --fox: #ff8a4c;
+  --fox-lip: #e8590c;
+  --fox-soft: #ffe8db;
+  --fox-text: #b53c0a;
+  --on-fox: #3a1403;
+
+  /* 红：不可撤销的操作（白字压在 --danger-face 上，--chili 本身不够 4.5:1） */
+  --chili: #e5484d;
+  --chili-lip: #c4323a;
+  --chili-soft: #fde8e8;
+  --chili-text: #b3261e;
+  --danger-face: #c4323a;
+  --danger-lip: #9c2229;
+  --on-danger: #ffffff;
+
+  /* 吉祥物小方 */
+  --indigo: #5b6cff;
+  --indigo-lip: #4152d9;
+  --mascot-ink: #1c2252;
+  --mascot-eye: #ffffff;
+  --mascot-cheek: #ff9db0;
+  --mascot-drop: #a8d4ff;
+
+  /* 叠层 */
+  --mask: rgba(16, 22, 28, 0.5);
+  --mask-strong: rgba(16, 22, 28, 0.72);
+  --shine: rgba(255, 255, 255, 0.42);
+  --toast-bg: #23303a;
+  --toast-ink: #ffffff;
+
+  /* 焦点环 */
+  --focus: #1f5bc2;
+
+  /* 间距 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* 形状：2px 边 + 4px 硬下唇（不用模糊阴影）；圆角 12 / 16 / 24 / 胶囊 */
+  --bw: 2px;
+  --lip: 4px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-24: 24px;
+  --radius-pill: 999px;
+
+  /* 字：Nunito 负责拉丁与数字，中文走系统粗体；题面和公式走衬线/KaTeX */
+  --font-serif: 'STIX Two Text', 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  --font-sans: 'Nunito', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-22: 22px;
+  --fs-28: 28px;
+  --fs-display: 56px;
+  /* 图解 SVG 里的标签：按 viewBox 缩放，不在界面字号阶梯内 */
+  --fs-svg: 10px;
+  --fs-svg-small: 9px;
+  --fw-bold: 700;
+  --fw-heavy: 800;
+  --fw-black: 900;
+  --lh-body: 1.6;
+  --lh-tight: 1.25;
+
+  /* 动效 */
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 视口与安全区 */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --keyboard-inset: 0px;
+
+  /* 布局 */
+  --touch: 44px;
+  --content-max: 720px;
+  --form-max: 480px;
+  --shell-main: 600px;
+  --shell-side: 232px;
+  --shell-rail: 300px;
+  --shell-icon-rail: 88px;
+  --tabbar-h: 64px;
+
+  /* ---- 旧名别名（已有样式与测试还在用） ---- */
+  --soft: var(--paper-2);
+  --margin: var(--sea);
+  --margin-lip: var(--sea-lip);
+  --margin-soft: var(--sea-soft);
+  --margin-text: var(--sea-text);
+  --on-margin: var(--on-sea);
+  --hint: var(--bee-text);
+  --hint-fill: var(--bee);
+  --hint-lip: var(--bee-lip);
+  --hint-soft: var(--bee-soft);
+  --on-hint: var(--on-bee);
+  --danger: var(--chili);
+  --danger-text: var(--chili-text);
+  --danger-soft: var(--chili-soft);
+  --warn: var(--fox);
+  --warn-lip: var(--fox-lip);
+  --warn-text: var(--fox-text);
+  --warn-soft: var(--fox-soft);
+  --radius-input: var(--radius-12);
+  --radius-card: var(--radius-16);
+  --radius-sheet: var(--radius-24);
+  --dur-normal: var(--dur-base);
+  --ease-pop: var(--ease-spring);
+  --fs-mono: var(--fs-12);
+  --fs-small: var(--fs-13);
+  --fs-body: var(--fs-16);
+  --fs-stem: var(--fs-18);
+  --shadow-dock: 0 -2px 0 var(--rule);
+  --shadow-sheet: 0 -2px 0 var(--rule);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #10161c;
+    --paper-2: #161e26;
+    --sheet: #18212a;
+    --ink: #e7edf2;
+    --ink-2: #a3b1bd;
+    --ink-3: #76858f;
+    --rule: #2b3742;
+    --rule-2: #3a4854;
+    --accent: #2dd4c4;
+    --accent-lip: #159e92;
+    --accent-soft: #0f3b38;
+    --accent-text: #4fe0d2;
+    --on-accent: #04302b;
+    --sea: #6ea3ff;
+    --sea-lip: #3f77dc;
+    --sea-soft: #16294a;
+    --sea-text: #9dc0ff;
+    --on-sea: #06224f;
+    --bee: #ffc233;
+    --bee-lip: #b98400;
+    --bee-soft: #3a2e0e;
+    --bee-text: #ffd166;
+    --on-bee: #3d2c00;
+    --ok: #2fc46f;
+    --ok-lip: #1b9a52;
+    --ok-soft: #11331f;
+    --ok-text: #62dd96;
+    --on-ok: #04260f;
+    --fox: #ff9a63;
+    --fox-lip: #d9692a;
+    --fox-soft: #402414;
+    --fox-text: #ffb088;
+    --on-fox: #3a1403;
+    --chili: #f0666b;
+    --chili-lip: #c4323a;
+    --chili-soft: #401b1e;
+    --chili-text: #ff9a9e;
+    --danger-face: #c4323a;
+    --danger-lip: #9c2229;
+    --on-danger: #ffffff;
+    --indigo: #7c8aff;
+    --indigo-lip: #5a68e6;
+    --mascot-ink: #161a42;
+    --mascot-eye: #ffffff;
+    --mascot-cheek: #ff9db0;
+    --mascot-drop: #a8d4ff;
+    --mask: rgba(4, 8, 12, 0.62);
+    --mask-strong: rgba(4, 8, 12, 0.8);
+    --shine: rgba(255, 255, 255, 0.3);
+    --toast-bg: #e7edf2;
+    --toast-ink: #10161c;
+    --focus: #9dc0ff;
+  }
+}
+
+/* 手动切换（我的 → 外观）；必须与上面的媒体查询逐项同值，dark-mode.test.ts 校验。 */
+html[data-theme='dark'] {
+  --paper: #10161c;
+  --paper-2: #161e26;
+  --sheet: #18212a;
+  --ink: #e7edf2;
+  --ink-2: #a3b1bd;
+  --ink-3: #76858f;
+  --rule: #2b3742;
+  --rule-2: #3a4854;
+  --accent: #2dd4c4;
+  --accent-lip: #159e92;
+  --accent-soft: #0f3b38;
+  --accent-text: #4fe0d2;
+  --on-accent: #04302b;
+  --sea: #6ea3ff;
+  --sea-lip: #3f77dc;
+  --sea-soft: #16294a;
+  --sea-text: #9dc0ff;
+  --on-sea: #06224f;
+  --bee: #ffc233;
+  --bee-lip: #b98400;
+  --bee-soft: #3a2e0e;
+  --bee-text: #ffd166;
+  --on-bee: #3d2c00;
+  --ok: #2fc46f;
+  --ok-lip: #1b9a52;
+  --ok-soft: #11331f;
+  --ok-text: #62dd96;
+  --on-ok: #04260f;
+  --fox: #ff9a63;
+  --fox-lip: #d9692a;
+  --fox-soft: #402414;
+  --fox-text: #ffb088;
+  --on-fox: #3a1403;
+  --chili: #f0666b;
+  --chili-lip: #c4323a;
+  --chili-soft: #401b1e;
+  --chili-text: #ff9a9e;
+  --danger-face: #c4323a;
+  --danger-lip: #9c2229;
+  --on-danger: #ffffff;
+  --indigo: #7c8aff;
+  --indigo-lip: #5a68e6;
+  --mascot-ink: #161a42;
+  --mascot-eye: #ffffff;
+  --mascot-cheek: #ff9db0;
+  --mascot-drop: #a8d4ff;
+  --mask: rgba(4, 8, 12, 0.62);
+  --mask-strong: rgba(4, 8, 12, 0.8);
+  --shine: rgba(255, 255, 255, 0.3);
+  --toast-bg: #e7edf2;
+  --toast-ink: #10161c;
+  --focus: #9dc0ff;
+}

@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import PgButton from '@/components/ui/PgButton.vue'
+import PgFold from '@/components/ui/PgFold.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
 import PgMascot from '@/components/ui/PgMascot.vue'
+import { useToast } from '@/components/ui/useToast'
+import { COPY, independenceCopy, layerName, noteWhoLabel } from '@/copy'
+import { setFeedbackTestMode } from '@/motion/useFeedbackPrefs'
 /**
  * 做题页（issue #10/#11/#12/#16 的集成页）。
  * 只渲染 AttemptState；不做层/预算/门槛/归类判定（08 §8 AI 规则 3）。
@@ -132,7 +137,7 @@ const sessionLineNotes = ref<Note[]>([])
 const dismissedNoteIds = ref<Set<string>>(new Set())
 /** 最近一次求助请求：预览卡「重新获取预览」/ dwell 归零时按原意图重放 */
 const lastHelp = ref<{ intent: HelpIntent; text: string }>({ intent: 'concept', text: '' })
-const toast = ref('')
+const toast = useToast()
 /** #15 拍照识别确认：识别中 → 确认面板；确认后的文本进入「草稿」并回填行编辑器 */
 const recogOpen = ref(false)
 const recogBusy = ref(false)
@@ -222,7 +227,7 @@ const isCompleted = computed(() => state.value.status === 'completed')
 // 契约有软删 deleteLine，行号会不连续：下一个行号取 max(n)+1，不用数组长度（PR #90 复审建议）。
 const nextLineNo = computed(() => nextLineNoOf(lines.value))
 const isTransferAttempt = computed(() => state.value.kind === 'transfer')
-const layerTitle = computed(() => state.value.layers.find((l) => l.layer === currentLayer.value)?.title ?? '')
+const layerTitle = computed(() => layerName(currentLayer.value))
 const layerTask = computed(() => {
   if (currentLayer.value === 'L1') return state.value.def?.task ?? ''
   if (currentLayer.value === 'L2') return state.value.frame?.task ?? ''
@@ -230,6 +235,14 @@ const layerTask = computed(() => {
   return ''
 })
 const modeClass = computed(() => 'pg-practice--' + mode.value)
+
+// 测验模式没有音效和游戏化：进出做题页时切换全局静音。
+watch(
+  () => state.value.mode,
+  (attemptMode) => setFeedbackTestMode(attemptMode === 'test'),
+  { immediate: true },
+)
+onUnmounted(() => setFeedbackTestMode(false))
 const strictClass = computed(() => ({ 'pg-practice--strict': strictExamActive.value }))
 /** #27：打开行编辑器时的初始值 —— 识别确认的文本优先（#15 行为），否则用本机未提交草稿。 */
 const editorInitialStatement = computed(() => recogDraft.value?.text ?? lineDraftInitial.value.statement)
@@ -300,8 +313,7 @@ onUnload(() => {
 })
 
 function show(msg: string) {
-  toast.value = msg
-  setTimeout(() => { toast.value = '' }, 2400)
+  toast.show(msg)
 }
 
 /** 开发期 mock 开关（PR #87 审计）：生产构建不允许用 ?mock= 切到假状态。 */
@@ -589,7 +601,7 @@ function onSwitchMock(k: MockKey) {
 
 function switchLayer(_layer: LayerId) {
   layersOpen.value = false
-  show('P0 层跳转由服务端 state 决定，这里不自己改层')
+  show('这一层现在还不能跳过去')
 }
 
 async function handleSubmit(text: string) {
@@ -624,7 +636,7 @@ async function handleLesson() {
     if (next) apply(next)
     return
   }
-  show('本层的讲解入口在 #24 接入')
+  show('这一层暂时没有讲解')
 }
 
 async function checkMicro(stepId: string, choice: number) {
@@ -882,7 +894,7 @@ function handleSoftLanding(action: string) {
   helpOpen.value = false
   helpNote.value = null
   hintPreview.value = null
-  show('已选「' + softLandingLabel(action) + '」；微课/下一题入口在 #26 接入')
+  show('已选「' + softLandingLabel(action) + '」，这个入口还在准备')
 }
 
 /** #151：关闭一条批注（只影响本页展示，不回写服务端；刷新后以服务端 state 为准）。 */
@@ -1289,7 +1301,9 @@ function closeRecogLoading() {
 }
 
 function handleBack() {
-  uni.navigateBack()
+  // 直接打开链接时没有上一页，回到路径。
+  if (getCurrentPages().length > 1) uni.navigateBack()
+  else uni.reLaunch({ url: '/pages/home/index' })
 }
 
 function backHome() {
@@ -1322,7 +1336,7 @@ function backHome() {
     </view>
     <view v-if="error" class="pg-practice__error pg-small">
       <text class="pg-practice__errortext">{{ error }}</text>
-      <button class="pg-practice__errorbtn pg-small" @tap="backHome">回首页</button>
+      <PgButton variant="ghost" size="sm" @tap="backHome">回首页</PgButton>
     </view>
 
     <LayerNav
@@ -1345,12 +1359,10 @@ function backHome() {
           <!-- #27 草稿恢复提示：重新打开时告诉学生内容来自本机未提交草稿 -->
           <view v-if="restoredDraft" class="pg-draftnotice" data-testid="draft-restored" role="status">
             <text class="pg-draftnotice__text pg-small">已恢复上次未提交的草稿</text>
-            <button class="pg-draftnotice__btn pg-small" role="button" data-testid="draft-restored-dismiss" @tap="restoredDraft = null">
-              知道了
-            </button>
+            <PgButton variant="ghost" size="sm" data-testid="draft-restored-dismiss" @tap="restoredDraft = null">知道了</PgButton>
           </view>
 
-          <view class="pg-practice__head">
+          <view v-if="!isCompleted" class="pg-practice__head">
             <text class="pg-practice__layertitle">{{ layerTitle }}</text>
             <!-- #11：L1/L2 的任务说明由表单用 MathText 渲染，这里不再显示纯文本（避免露出 LaTeX 源码）。 -->
             <text
@@ -1362,39 +1374,28 @@ function backHome() {
           <template v-if="isCompleted">
             <!-- 迁移题子作答完成：给出回到主题作答完成页 / 加入证明本的出口（01 §L5） -->
             <view v-if="isTransferAttempt" class="pg-practice__done pg-sheet" data-testid="transfer-complete-card">
-              <text class="pg-practice__donetitle" data-testid="transfer-complete-title">迁移题完成</text>
-              <text class="pg-practice__donebody pg-small">
-                这道迁移题独立完成：{{ state.problem.title }}。你把 ε-N 的骨架用到了 ε-δ 上。
-              </text>
-              <text class="pg-practice__donebody pg-small">
-                自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；独立度
-                {{ state.completion?.independence ?? '-' }}。
-              </text>
-              <text class="pg-practice__donebody pg-small">
-                mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}
-              </text>
+              <text class="pg-practice__donetitle" data-testid="transfer-complete-title">这道题也完成了</text>
+              <view class="pg-practice__donebody pg-small">
+                <MathText :text="state.problem.title" />：你把 $\varepsilon$-$N$ 的骨架用到了 $\varepsilon$-$\delta$ 上。
+              </view>
+              <text class="pg-practice__donebody pg-small">{{ independenceCopy(state.budget.keysOwn, state.budget.keysTotal) }}。</text>
+              <PgFold :title="COPY.extensionFold" class="pg-practice__donebody">
+                <text>mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}</text>
+              </PgFold>
               <view class="pg-practice__donerow">
-                <button class="pg-practice__btn" role="button" data-testid="back-to-parent" @tap="handleBackToParent">回到本题完成页</button>
-                <button
-                  class="pg-practice__btn pg-practice__btn--primary"
-                  role="button"
-                  data-testid="transfer-add-to-notebook"
-                  @tap="goProofbook"
-                >
-                  加入证明本
-                </button>
+                <PgButton variant="secondary" data-testid="back-to-parent" @tap="handleBackToParent">回到本题完成页</PgButton>
+                <PgButton data-testid="transfer-add-to-notebook" @tap="goProofbook">加入证明本</PgButton>
               </view>
             </view>
 
             <view v-else class="pg-practice__done pg-practice__done--win" data-testid="completion-card">
               <view class="pg-win__paper" aria-hidden="true">
                 <view class="pg-win__sk" style="width: 82%" /><view class="pg-win__sk" style="width: 64%" /><view class="pg-win__sk" style="width: 73%" />
-                <view class="pg-win__stamp"><PgIcon name="qed" :size="44" color="#fff" /></view>
+                <view class="pg-win__stamp"><PgIcon name="qed" :size="44" color="currentColor" /></view>
               </view>
-              <view class="pg-win__mascot"><PgMascot expr="cheer" :size="84" tone="bee" /></view>
+              <view class="pg-win__mascot"><PgMascot expr="cheer" :size="84" /></view>
               <text class="pg-practice__donetitle" data-testid="completion-title">本题完成</text>
-              <text class="pg-win__big" data-testid="completion-independence">{{ state.completion?.independence ?? '-' }}</text>
-              <text class="pg-win__biglabel">独立度</text>
+              <text class="pg-win__big" data-testid="completion-independence">{{ independenceCopy(state.budget.keysOwn, state.budget.keysTotal) }}</text>
               <view class="pg-win__keys" aria-hidden="true">
                 <view
                   v-for="k in state.budget.keysTotal"
@@ -1402,37 +1403,23 @@ function backHome() {
                   class="pg-win__key"
                   :class="{ 'pg-win__key--hint': k > state.budget.keysOwn }"
                 >
-                  <PgIcon :name="k > state.budget.keysOwn ? 'bulb' : 'check'" :size="26" :tone="'ink'" />
+                  <PgIcon :name="k > state.budget.keysOwn ? 'bulb' : 'check'" :size="26" tone="ink" />
                 </view>
               </view>
               <text class="pg-practice__donebody pg-small">
-                自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；
-                透露 {{ state.budget.revealUsed }} / {{ state.budget.revealMax }}。
-                独立度 {{ state.completion?.independence ?? '-' }}。
+                自己写出 {{ state.budget.keysOwn }} / {{ state.budget.keysTotal }} 个关键步骤；{{ COPY.hintBudget }}用了 {{ state.budget.revealUsed }} / {{ state.budget.revealMax }}。
               </text>
-              <text class="pg-practice__donebody pg-small">mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}</text>
               <text v-if="state.completion?.leanCard?.steps?.length" class="pg-practice__donebody pg-small">
                 你写出的关键步骤：{{ state.completion?.leanCard?.steps?.map((s) => s.label).join('、') }}
               </text>
-              <text class="pg-practice__donebody pg-small">P0 只核对关键步骤齐全，未校验逻辑顺序。</text>
+              <text class="pg-practice__donebody pg-small">{{ COPY.honestNote }}。</text>
+              <PgFold :title="COPY.extensionFold" class="pg-practice__donebody">
+                <text>mathlib4 对照（只列定理名）：{{ state.completion?.leanCard?.theorems?.join('、') ?? '—' }}</text>
+              </PgFold>
               <view class="pg-practice__donerow pg-practice__donerow--win">
-                <button
-                  class="pg-btn pg-win__btn"
-                  role="button"
-                  data-testid="add-to-notebook"
-                  @tap="goProofbook"
-                >
-                  加入证明本
-                </button>
-                <button
-                  class="pg-btn pg-win__btn pg-win__btn--ghost"
-                  role="button"
-                  data-testid="make-transfer"
-                  @tap="handleMakeTransfer"
-                >
-                  再做一道迁移题
-                </button>
-                <button class="pg-btn pg-win__btn pg-win__btn--ghost" role="button" data-testid="back-home" @tap="backHome">回首页</button>
+                <PgButton class="pg-win__btn" variant="secondary" block size="lg" data-testid="add-to-notebook" @tap="goProofbook">加入证明本</PgButton>
+                <PgButton class="pg-win__btn pg-win__btn--ghost" variant="ghost" block data-testid="make-transfer" @tap="handleMakeTransfer">再换一道题试试</PgButton>
+                <PgButton class="pg-win__btn pg-win__btn--ghost" variant="ghost" block data-testid="back-home" @tap="backHome">回首页</PgButton>
               </view>
             </view>
           </template>
@@ -1477,15 +1464,15 @@ function backHome() {
             <!-- #15：拍照识别确认后的结果先作为「这一行」的草稿显示，学生确认/再改后才提交 -->
             <view v-if="recogDraft" class="pg-practice__draft pg-sheet" :data-draft-text="recogDraft.text">
               <view class="pg-practice__drafthead">
-                <text class="pg-practice__drafttitle">📷 识别结果（已确认）</text>
+                <text class="pg-practice__drafttitle">识别结果（已确认）</text>
                 <text class="pg-practice__draftmeta pg-small">已放入这一行草稿</text>
               </view>
               <view class="pg-practice__drafttext">
                 <MathText :text="recogDraft.text" block />
               </view>
               <view class="pg-practice__draftrow">
-                <button class="pg-practice__btn pg-small pg-practice__draftbtn--continue" @tap="editorOpen = true">用键盘继续改</button>
-                <button class="pg-practice__btn pg-small pg-practice__draftbtn--clear" @tap="recogDraft = null">清除草稿</button>
+                <PgButton class="pg-practice__draftbtn--continue" variant="secondary" size="sm" @tap="editorOpen = true">用键盘继续改</PgButton>
+                <PgButton class="pg-practice__draftbtn--clear" variant="ghost" size="sm" @tap="recogDraft = null">清除草稿</PgButton>
               </view>
             </view>
             <ProofLineList
@@ -1496,15 +1483,7 @@ function backHome() {
               @dismiss-note="handleDismissNote"
             />
             <view class="pg-practice__finishrow">
-              <button
-                class="pg-practice__btn pg-practice__btn--primary"
-                role="button"
-                data-testid="finish-steps"
-                :disabled="!state.steps?.canFinish || busy"
-                @tap="handleFinish"
-              >
-                写完了
-              </button>
+              <PgButton size="lg" data-testid="finish-steps" sound="tap" :disabled="!state.steps?.canFinish || busy" @tap="handleFinish">写完了</PgButton>
             </view>
           </template>
 
@@ -1528,7 +1507,7 @@ function backHome() {
           <SummaryForm v-else-if="currentLayer === 'L6'" :view="state.summary ?? null" :busy="busy" @submit="handleSubmitSummary" />
 
           <view v-else class="pg-practice__placeholder pg-sheet">
-            <text class="pg-practice__layertitle">{{ currentLayer }} · {{ layerTitle }}</text>
+            <text class="pg-practice__layertitle">{{ layerTitle }}</text>
             <text class="pg-practice__layertask pg-small">这一层暂未接入。</text>
           </view>
         </view>
@@ -1542,36 +1521,37 @@ function backHome() {
           class="pg-practice__note pg-sheet"
           :class="'pg-practice__note--' + n.kind"
           role="note"
-          :aria-label="n.who + '：' + n.text"
+          :aria-label="noteWhoLabel(n.who) + '：' + n.text"
         >
           <view class="pg-practice__notehead">
-            <text class="pg-practice__notewho pg-small">{{ n.who }}</text>
+            <text class="pg-practice__notewho pg-small">{{ noteWhoLabel(n.who) }}</text>
             <text
               v-if="formatNoteTime(n.at)"
               class="pg-practice__notetime pg-small"
               data-testid="aside-note-time"
             >{{ formatNoteTime(n.at) }}</text>
-            <button
+            <PgButton
               class="pg-practice__notedismiss"
-              role="button"
+              variant="ghost"
+              size="icon"
               aria-label="关闭这条批注"
               data-testid="aside-note-dismiss"
               :data-note-id="n.noteId"
               @tap.stop="handleDismissNote(n.noteId)"
-            >×</button>
+            ><PgIcon name="close" :size="18" /></PgButton>
           </view>
-          <text class="pg-practice__notetext pg-small">{{ n.text }}</text>
+          <MathText class="pg-practice__notetext pg-small" :text="n.text" block />
         </view>
-        <text v-if="asideNotes.length === 0" class="pg-practice__empty pg-small">还没有批注。写完一行，红笔会出现在这一行旁边。</text>
+        <text v-if="asideNotes.length === 0" class="pg-practice__empty pg-small">还没有批注。写完一行，助教的问题会出现在这一行旁边。</text>
         <view class="pg-practice__asidehelp">
-          <button
-            class="pg-practice__btn pg-small"
-            :class="{ 'pg-practice__btn--disabled': strictHelpOff }"
+          <PgButton
+            class="pg-practice__btn"
+            variant="hint"
+            block
             :disabled="strictHelpOff"
-            :aria-disabled="strictHelpOff ? 'true' : undefined"
             :data-testid="strictExam ? 'exam-help-aside' : undefined"
             @tap="openHelp"
-          >求助</button>
+          >求助</PgButton>
         </view>
       </view>
     </view>
@@ -1632,7 +1612,7 @@ function backHome() {
     <view v-if="inkOpen" class="pg-inksheet" data-testid="ink-sheet" role="dialog" aria-modal="true" aria-label="手写这一行">
       <view class="pg-inksheet__bar">
         <text class="pg-inksheet__title">手写第 {{ nextLineNo }} 行</text>
-        <button class="pg-practice__btn pg-small" data-testid="ink-cancel" @tap="handleInkCancel">取消</button>
+        <PgButton variant="secondary" size="sm" data-testid="ink-cancel" @tap="handleInkCancel">取消</PgButton>
       </view>
       <view class="pg-inksheet__stage">
         <InkCanvas v-model="inkValue" height="100%" @finish="handleInkFinish" />
@@ -1645,7 +1625,7 @@ function backHome() {
         <text class="pg-recogloading__title" data-testid="photo-progress">{{ photoProgress || '识别中…' }}</text>
         <text v-if="recogSource === 'ink'" class="pg-recogloading__hint pg-small">识别结果只是候选，要你核对确认后才会用；识别不好可以改用键盘。</text>
         <text v-else class="pg-recogloading__hint pg-small">图片会先压缩（长边≤2000/≤2MB）再识别；结果要你逐行确认后才会用。</text>
-        <button class="pg-practice__btn" @tap="closeRecogLoading">取消</button>
+        <PgButton variant="secondary" block @tap="closeRecogLoading">取消</PgButton>
       </view>
     </view>
     <!-- #25 拍照整页识别：逐行确认（可勾选/编辑/全部加入/逐行加入/忽略） -->
@@ -1667,7 +1647,7 @@ function backHome() {
     />
     <MicroCourse :open="microOpen" :lesson="microLesson" :check="checkMicro" @close="closeMicro" />
 
-    <!-- 真实模式不显示 mock 状态切换（#24） -->
+    <!-- 真实模式和生产构建都不显示演示状态切换（#24） -->
     <MockSwitcher v-if="mockEnabled && !realMode" :model-value="mockKey" @update:model-value="onSwitchMock" />
 
     <!-- #46 严格测验覆盖层：水印（不遮挡交互）→ 切出警告 → 锁定遮罩 → 说明页 -->
@@ -1683,7 +1663,7 @@ function backHome() {
       <view class="pg-fsexit__sheet">
         <text class="pg-fsexit__title">你已退出全屏</text>
         <text class="pg-fsexit__text pg-small">请回到全屏继续本场测验；退出全屏会被记录。</text>
-        <button class="pg-fsexit__btn" role="button" data-testid="exam-return-fullscreen" @tap="returnFullscreen">回到全屏</button>
+        <PgButton block size="lg" data-testid="exam-return-fullscreen" @tap="returnFullscreen">回到全屏</PgButton>
       </view>
     </view>
 
@@ -1709,7 +1689,6 @@ function backHome() {
       @start="startExam"
     />
 
-    <view v-if="toast" class="pg-toast pg-small" role="status" aria-live="polite">{{ toast }}</view>
   </view>
 </template>
 
@@ -1733,9 +1712,9 @@ function backHome() {
   border-bottom: 2px solid var(--accent);
   color: var(--accent-text);
 }
-.pg-exambar__label { font-size: var(--fs-small); font-weight: 600; }
-.pg-exambar__time { margin-left: auto; font-size: var(--fs-body); }
-.pg-exambar__note { flex-basis: 100%; color: var(--hint); }
+.pg-exambar__label { font-size: var(--fs-13); font-weight: var(--fw-bold); }
+.pg-exambar__time { margin-left: auto; font-size: var(--fs-16); }
+.pg-exambar__note { flex-basis: 100%; color: var(--bee-text); }
 .pg-fsexit {
   position: fixed;
   inset: 0;
@@ -1744,7 +1723,7 @@ function backHome() {
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--mask-strong);
 }
 .pg-fsexit__sheet {
   width: min(420px, 100%);
@@ -1754,19 +1733,10 @@ function backHome() {
   padding: var(--sp-4);
   background: var(--sheet);
   border: 2px solid var(--rule);
-  border-radius: var(--radius-sheet);
+  border-radius: var(--radius-24);
 }
-.pg-fsexit__title { font-size: 20px; font-weight: 900; color: var(--ink); }
+.pg-fsexit__title { font-size: var(--fs-22); font-weight: var(--fw-black); color: var(--ink); }
 .pg-fsexit__text { color: var(--ink-2); line-height: 1.6; }
-.pg-fsexit__btn {
-  min-height: 52px;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--accent);
-  box-shadow: 0 var(--lip) 0 var(--accent-lip);
-  color: var(--on-accent);
-  font-weight: 900;
-}
 .pg-practice__shell {
   display: block;
 }
@@ -1782,7 +1752,7 @@ function backHome() {
   margin: 0 auto;
 }
 .pg-practice__rail {
-  border-right: 1px solid var(--rule);
+  border-right: var(--bw) solid var(--rule);
   padding-top: var(--sp-2);
   position: sticky;
   top: 60px;
@@ -1790,7 +1760,12 @@ function backHome() {
 }
 .pg-practice__main {
   min-width: 0;
-  padding-bottom: 140px;
+  /* 手机：额度条 + 操作坞的高度 */
+  padding-bottom: calc(136px + var(--safe-bottom));
+}
+.pg-practice--tablet .pg-practice__main,
+.pg-practice--desktop .pg-practice__main {
+  padding: 0 var(--sp-4) var(--sp-10);
 }
 .pg-practice__error {
   display: flex;
@@ -1798,19 +1773,11 @@ function backHome() {
   gap: var(--sp-2);
   margin: var(--sp-2) var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-input);
-  background: var(--margin-soft);
+  border-radius: var(--radius-12);
+  background: var(--sea-soft);
   color: var(--ink);
 }
 .pg-practice__errortext { flex: 1; }
-.pg-practice__errorbtn {
-  min-height: 36px;
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: var(--sheet);
-  color: var(--ink);
-}
 .pg-practice__content {
   padding: 0;
 }
@@ -1821,21 +1788,12 @@ function backHome() {
   margin: var(--sp-2) 0;
   padding: var(--sp-2) var(--sp-3);
   border: 2px solid var(--accent);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-16);
   background: var(--accent-soft);
   color: var(--ink);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 .pg-draftnotice__text { flex: 1; min-width: 0; }
-.pg-draftnotice__btn {
-  flex: 0 0 auto;
-  min-height: 28px;
-  padding: 0 var(--sp-2);
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-2);
-}
 .pg-practice__head {
   display: flex;
   flex-direction: column;
@@ -1843,96 +1801,64 @@ function backHome() {
   margin: var(--sp-2) 0;
 }
 .pg-practice__layertitle {
-  font-size: 24px;
-  font-weight: 900;
-  line-height: 1.25;
+  font-size: var(--fs-22);
+  font-weight: var(--fw-black);
+  line-height: var(--lh-tight);
   color: var(--ink);
 }
 .pg-practice__layertask {
   color: var(--ink-2);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 .pg-practice__aside {
-  border-left: 1px solid var(--rule);
+  border-left: var(--bw) solid var(--rule);
   padding: var(--sp-3);
   min-width: 0;
 }
 .pg-practice__asidetitle {
   display: block;
-  font-size: 15px;
-  font-weight: 900;
+  font-size: var(--fs-15);
+  font-weight: var(--fw-black);
   margin-bottom: var(--sp-2);
 }
 .pg-practice__note {
   padding: var(--sp-2) var(--sp-3);
   margin-bottom: var(--sp-2);
-  border-radius: 14px;
+  border-radius: var(--radius-12);
 }
-.pg-practice__note--annotation { border-color: var(--margin); background: var(--margin-soft); }
-.pg-practice__note--hint { border-color: var(--hint-fill); background: var(--hint-soft); }
+.pg-practice__note--annotation { border-color: var(--sea); background: var(--sea-soft); }
+.pg-practice__note--hint { border-color: var(--bee); background: var(--bee-soft); }
 .pg-practice__note--concept { border-color: var(--accent); background: var(--accent-soft); }
 .pg-practice__notehead { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 2px; }
 .pg-practice__notewho { display: block; color: var(--ink-2); }
-.pg-practice__notetime { color: var(--ink-2); font-family: var(--font-mono); font-size: var(--fs-mono); }
+.pg-practice__notetime { color: var(--ink-2); font-family: var(--font-mono); font-size: var(--fs-12); }
 /* 关闭批注（#151）：触控目标 ≥44px，不额外撑高页边卡片。 */
-.pg-practice__notedismiss {
-  flex: 0 0 auto;
-  margin-left: auto;
-  margin-top: calc(-1 * var(--sp-2));
-  margin-bottom: calc(-1 * var(--sp-2));
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 18px;
-  line-height: 1;
-}
-.pg-practice__notedismiss::after { border: 0; }
+.pg-practice__notedismiss.pg-button { margin: calc(-1 * var(--sp-2)) calc(-1 * var(--sp-2)) calc(-1 * var(--sp-2)) auto; color: var(--ink-2); }
 .pg-practice__notetext { display: block; margin-top: 2px; color: var(--ink); }
 .pg-practice__empty { color: var(--ink-2); }
 .pg-practice__asidehelp { margin-top: var(--sp-3); }
+/* 额度条在操作坞上方，一起贴底、一起随键盘上移（操作坞不再自己 fixed，否则会盖住额度条） */
 .pg-practice__dockwrap {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 30;
-}
-.pg-practice__dockwrap :deep(.pg-budget) {
   background: var(--paper);
-  border-top: 2px solid var(--rule);
+  border-top: var(--bw) solid var(--rule);
+  transform: translateY(calc(-1 * var(--keyboard-inset)));
+  transition: transform var(--dur-fast) ease-out;
+}
+.pg-practice__dockwrap :deep(.pg-dock) {
+  position: static;
+  padding-top: 0;
+  border-top: 0;
+  transform: none;
 }
 .pg-practice__finishrow {
   display: flex;
   justify-content: flex-end;
   padding: var(--sp-3) 0 var(--sp-2);
-}
-.pg-practice__btn {
-  min-height: 48px;
-  padding: 0 var(--sp-4);
-  border-radius: var(--radius-card);
-  border: 2px solid var(--rule);
-  box-shadow: 0 2px 0 var(--rule);
-  background: var(--sheet);
-  color: var(--margin-text);
-  font-size: 15px;
-  font-weight: 900;
-  letter-spacing: 0.3px;
-}
-.pg-practice__btn::after { display: none; }
-.pg-practice__btn:active { transform: translateY(2px); box-shadow: none; }
-.pg-practice__btn--primary {
-  border: 0;
-  color: var(--on-accent);
-  background: var(--accent);
-  box-shadow: 0 var(--lip) 0 var(--accent-lip);
-}
-.pg-practice__btn--primary:active { transform: translateY(var(--lip)); box-shadow: none; }
-.pg-practice__btn:disabled,
-.pg-practice__btn--disabled {
-  opacity: 0.45;
 }
 /* #15 拍照识别：确认后的草稿卡 + 识别中占位（02 §4.5/§4.6） */
 .pg-practice__draft {
@@ -1950,14 +1876,14 @@ function backHome() {
   gap: var(--sp-2);
 }
 .pg-practice__drafttitle {
-  font-size: 15px;
-  font-weight: 900;
+  font-size: var(--fs-15);
+  font-weight: var(--fw-black);
   color: var(--ink);
 }
 .pg-practice__draftmeta { color: var(--ink-2); }
 .pg-practice__drafttext {
   padding: var(--sp-2);
-  border-radius: var(--radius-input);
+  border-radius: var(--radius-12);
   background: var(--paper);
   color: var(--ink);
 }
@@ -1968,16 +1894,16 @@ function backHome() {
   z-index: 65;
   display: flex;
   flex-direction: column;
-  background: var(--paper, #fbf8f1);
+  background: var(--paper);
 }
 .pg-inksheet__bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  border-bottom: 2px solid var(--rule, rgba(0, 0, 0, 0.12));
+  border-bottom: var(--bw) solid var(--rule);
 }
-.pg-inksheet__title { font-size: 18px; font-weight: 900; color: var(--ink); }
+.pg-inksheet__title { font-size: var(--fs-18); font-weight: var(--fw-black); color: var(--ink); }
 .pg-inksheet__stage { flex: 1; min-height: 0; }
 .pg-recogmask {
   position: fixed;
@@ -1985,7 +1911,7 @@ function backHome() {
   z-index: 66;
   display: flex;
   align-items: flex-end;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--mask);
 }
 .pg-recogloading {
   width: 100%;
@@ -1993,63 +1919,48 @@ function backHome() {
   flex-direction: column;
   gap: var(--sp-2);
   padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  animation: pg-sheet-up 320ms var(--ease-pop) both;
+  border-radius: var(--radius-24) var(--radius-24) 0 0;
+  animation: pg-sheet-up var(--dur-slow) var(--ease-out) both;
 }
 .pg-recogloading__title {
-  font-size: 18px;
-  font-weight: 900;
+  font-size: var(--fs-18);
+  font-weight: var(--fw-black);
 }
 .pg-recogloading__hint { color: var(--ink-2); }
 .pg-practice__placeholder { padding: var(--sp-3); }
 .pg-practice__done { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-practice__donetitle { font-size: 22px; font-weight: 900; }
-.pg-practice__donebody { color: var(--ink-2); font-weight: 700; }
+.pg-practice__donetitle { font-size: var(--fs-22); font-weight: var(--fw-black); }
+.pg-practice__donebody { color: var(--ink-2); font-weight: var(--fw-bold); }
 .pg-practice__donerow { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
-/* 完成页：整块深草绿 + ∎ 落章（白字对 #3c8400 ≥ 4.5:1）。 */
+/* 完成页：整块主色 + ∎ 落章。文字用 on-accent，深浅主题都够对比度。 */
 .pg-practice__done--win {
   position: relative;
   margin: var(--sp-3) calc(-1 * var(--sp-3)) 0;
   padding: 150px var(--sp-4) var(--sp-6);
   align-items: center;
   gap: var(--sp-2);
-  background: #3c8400;
-  color: #fff;
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius-24);
+  margin-bottom: var(--sp-6);
   text-align: center;
 }
-.pg-win__paper { position: absolute; left: 32px; right: 32px; top: 36px; height: 120px; padding: 20px 22px; border-radius: 20px; background: #fff; box-shadow: 0 6px 0 #2c6200; }
-.pg-win__sk { height: 10px; margin-bottom: 12px; border-radius: 5px; background: #eee; }
-.pg-win__stamp { position: absolute; right: 14px; bottom: -34px; width: 80px; height: 80px; border-radius: 24px; background: var(--accent); border: 5px solid #fff; box-shadow: 0 6px 0 var(--accent-lip); display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); animation: pg-stamp 700ms var(--ease-pop) both; }
+.pg-win__paper { position: absolute; left: 32px; right: 32px; top: 36px; height: 120px; padding: 20px 22px; border-radius: var(--radius-16); background: var(--sheet); box-shadow: 0 var(--lip) 0 var(--accent-lip); }
+.pg-win__sk { height: 10px; margin-bottom: var(--sp-3); border-radius: var(--radius-pill); background: var(--rule); }
+.pg-win__stamp { position: absolute; right: 14px; bottom: -34px; width: 80px; height: 80px; border-radius: var(--radius-24); background: var(--accent); color: var(--on-accent); border: 5px solid var(--sheet); box-shadow: 0 var(--lip) 0 var(--accent-lip); display: flex; align-items: center; justify-content: center; transform: rotate(-8deg); animation: pg-stamp 700ms var(--ease-spring) both; }
 .pg-win__mascot { position: absolute; right: 18px; top: -34px; }
-.pg-practice__done--win .pg-practice__donetitle { margin-top: var(--sp-3); font-size: 15px; letter-spacing: 1.4px; opacity: 0.95; }
-.pg-win__big { font-size: 64px; line-height: 1; font-weight: 900; letter-spacing: -1px; }
-.pg-win__biglabel { font-size: 14px; font-weight: 900; letter-spacing: 1px; opacity: 0.92; }
-.pg-win__keys { display: flex; gap: 10px; justify-content: center; margin: var(--sp-2) 0; }
-.pg-win__key { width: 44px; height: 44px; border-radius: 14px; background: #fff; color: #14290a; box-shadow: 0 4px 0 #2c6200; display: flex; align-items: center; justify-content: center; animation: pg-pop 380ms var(--ease-pop) both; }
-.pg-win__key--hint { background: var(--hint-fill); box-shadow: 0 4px 0 var(--hint-lip); }
-.pg-practice__done--win .pg-practice__donebody { color: #fff; opacity: 0.95; }
+.pg-practice__done--win .pg-practice__donetitle { margin-top: var(--sp-3); font-size: var(--fs-15); opacity: 0.95; }
+.pg-win__big { font-size: var(--fs-28); line-height: var(--lh-tight); font-weight: var(--fw-black); }
+.pg-win__keys { display: flex; gap: var(--sp-2); justify-content: center; margin: var(--sp-2) 0; }
+.pg-win__key { width: 44px; height: 44px; border-radius: var(--radius-12); background: var(--sheet); color: var(--ink); box-shadow: 0 var(--lip) 0 var(--accent-lip); display: flex; align-items: center; justify-content: center; animation: pg-pop 380ms var(--ease-spring) both; }
+.pg-win__key--hint { background: var(--bee); color: var(--on-bee); box-shadow: 0 var(--lip) 0 var(--bee-lip); }
+.pg-practice__done--win .pg-practice__donebody { color: var(--on-accent); opacity: 0.95; }
 .pg-practice__donerow--win { flex-direction: column; align-self: stretch; margin-top: var(--sp-3); gap: var(--sp-3); }
-.pg-win__btn { background: #fff; color: #2c6200; box-shadow: 0 4px 0 #cfefb0; }
-.pg-win__btn--ghost { background: transparent; color: #fff; border: 2px solid rgba(255, 255, 255, 0.6); box-shadow: none; min-height: 48px; }
+.pg-win__btn--ghost.pg-button { color: var(--on-accent); }
 .pg-practice__mask {
   position: fixed;
   inset: 0;
   z-index: 55;
-  background: rgba(29, 36, 48, 0.2);
-}
-.pg-toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(120px + var(--safe-bottom));
-  transform: translateX(-50%);
-  z-index: 80;
-  max-width: 80vw;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-input);
-  background: rgba(29, 36, 48, 0.92);
-  /* 深色遮罩上的提示文字固定白色：不是主色按钮，不随深浅主题变（D3 审计列的 14 处中第 14 处，实际应保留）。 */
-  color: #fff;
-  text-align: center;
+  background: var(--mask);
 }
 </style>

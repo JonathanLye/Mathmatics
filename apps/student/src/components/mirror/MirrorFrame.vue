@@ -159,15 +159,15 @@ function onFrameError() {
 }
 
 .pg-mirror__title {
-  font-size: 16px;
-  font-weight: 900;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-black);
   color: var(--ink);
 }
 
 .pg-mirror__tag {
   padding: 1px var(--sp-2);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
+  border: var(--bw) solid var(--accent);
+  border-radius: var(--radius-pill);
   color: var(--accent-text);
   background: var(--accent-soft);
   white-space: nowrap;
@@ -184,8 +184,8 @@ function onFrameError() {
   width: 100%;
   aspect-ratio: 16 / 9;
   padding: var(--sp-4);
-  border: 1px dashed var(--rule);
-  border-radius: var(--radius-card);
+  border: var(--bw) dashed var(--rule);
+  border-radius: var(--radius-16);
   background: var(--paper);
   color: var(--ink-2);
   text-align: center;
@@ -193,8 +193,8 @@ function onFrameError() {
 
 .pg-mirror__placeholder-title,
 .pg-mirror__error-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--fs-15);
+  font-weight: var(--fw-bold);
   color: var(--ink-2);
 }
 
@@ -209,8 +209,8 @@ function onFrameError() {
 .pg-mirror__stage {
   position: relative;
   width: 100%;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-card);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-16);
   overflow: hidden;
   background: var(--sheet);
 }

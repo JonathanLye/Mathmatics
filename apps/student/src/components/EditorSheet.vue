@@ -3,16 +3,18 @@
  * 行编辑器（issue #12；02 §4.4）。
  *
  * 布局（PR #90 复审第 6 条决策，2026-11-03）：
- * - 手机（<600px）从底部升起弹层；
- * - 平板/桌面（≥600px）用居中的对话框卡片，不做"稿纸内联展开"。
- *   决策已写进 02 §4.4 与本目录 README，组件里不再用注释代替规范。
+ * - 手机从底部升起弹层，宽屏是居中的对话框卡片（都由 PgSheet 负责），不做"稿纸内联展开"。
+ *   决策已写进 02 §4.4 与本目录 README。
  *
  * 输入：本轮先用 textarea + 常用符号快捷条（#13 的 MathTextEditor + ProofKeyboard 落地后替换输入区，
  * 提交契约 LineDraft / InputMeta 不变）；「依据」默认键盘，依据可空（02 §4.4）。
  *
  * 不做判定：只保证「这一行」非空才可提交；provenance 本轮固定 keyboard（#15 接入后由父级传 ink/photo/mixed）。
  */
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import PgButton from '@/components/ui/PgButton.vue'
+import PgField from '@/components/ui/PgField.vue'
+import PgSheet from '@/components/ui/PgSheet.vue'
 import { buildLineDraft } from './lineDrafts'
 import type { InputProvenance, LineDraft } from '@/types/attempt'
 
@@ -94,39 +96,14 @@ watch([statement, justification], ([nextStatement, nextJustification]) => {
   if (props.open) emit('update:draft', { statement: nextStatement, justification: nextJustification })
 })
 
-let previousFocus: HTMLElement | null = null
-
-function onKeydown(event: KeyboardEvent) {
-  // Esc 关闭（H5；小程序端不挂监听）
-  if (event.key === 'Escape') close()
-}
-
-function bindKeyboard(open: boolean) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return
-  if (open) {
-    previousFocus = (document.activeElement as HTMLElement | null) ?? null
-    window.addEventListener('keydown', onKeydown)
-  } else {
-    window.removeEventListener('keydown', onKeydown)
-    // 焦点归还（a11y）：关闭后回到打开前的元素
-    if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus()
-    previousFocus = null
-  }
-}
-
 watch(
   () => props.open,
   (open) => {
     // 只在 open 翻转时重置草稿；打开期间 lineNo / 409 静默刷新不清空学生输入（PR #90 复审建议）。
     if (open) resetDraft()
-    bindKeyboard(open)
   },
   { immediate: true },
 )
-
-onUnmounted(() => {
-  if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown)
-})
 
 /** 常用符号（临时）：#13 的证明键盘落地后由 ProofKeyboard 替换。 */
 const SYMBOLS: Array<{ label: string; insert: string }> = [
@@ -186,251 +163,74 @@ function submit() {
 </script>
 
 <template>
-  <view v-if="props.open" class="pg-editor-mask" data-testid="editor-mask" @tap="close">
-    <view
-      class="pg-editor"
-      data-testid="editor-sheet"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="'第 ' + props.lineNo + ' 行编辑'"
-      @tap.stop
-    >
-      <view class="pg-editor__handle" />
-      <view class="pg-editor__head">
-        <text class="pg-editor__title">第 {{ props.lineNo }} 行</text>
-        <text class="pg-editor__hint pg-small">一次写一行：先写「这一行」，再写「依据」。依据可以留空，服务端会追问。</text>
-      </view>
-
-      <view class="pg-editor__field">
-        <text class="pg-editor__label">这一行</text>
-        <textarea
-          v-model="statement"
-          class="pg-editor__input"
-          data-testid="editor-statement"
-          aria-label="这一行"
-          placeholder="这一行：写下结论或算式（公式用 $…$，例如 $rac{5}{n+2}$）"
-          :disabled="props.busy"
-          :maxlength="2000"
-          @input="onStatementInput"
-        />
-        <view class="pg-editor__symbols pg-scroll-x" data-testid="symbol-bar" aria-label="常用符号">
-          <button
-            v-for="symbol in SYMBOLS"
-            :key="symbol.label"
-            class="pg-editor__symbol"
-            :disabled="props.busy"
-            :aria-label="'插入 ' + symbol.label"
-            @tap="insertSymbol(symbol.insert)"
-          >
-            {{ symbol.label }}
-          </button>
-        </view>
-      </view>
-
-      <view class="pg-editor__field">
-        <text class="pg-editor__label">依据 <text class="pg-editor__optional pg-small">可空</text></text>
-        <textarea
-          v-model="justification"
-          class="pg-editor__input pg-editor__input--just"
-          data-testid="editor-justification"
-          aria-label="依据（可空）"
-          placeholder="依据：这一行由哪条定义或已证结论得到？"
-          :disabled="props.busy"
-          :maxlength="1000"
-          @input="onJustificationInput"
-        />
-      </view>
-
-      <view class="pg-editor__actions">
-        <button class="pg-editor__btn" data-testid="editor-cancel" :disabled="props.busy" @tap="close">取消</button>
-        <button
-          class="pg-editor__btn pg-editor__btn--primary"
-          data-testid="editor-submit"
-          :disabled="!canSubmit"
-          @tap="submit"
-        >
-          {{ props.busy ? '正在加入…' : '加入证明' }}
-        </button>
-      </view>
+  <PgSheet
+    :open="props.open"
+    :persistent="props.busy"
+    :z-index="65"
+    mask-testid="editor-mask"
+    class="pg-editor"
+    data-testid="editor-sheet"
+    :aria-label="'第 ' + props.lineNo + ' 行编辑'"
+    @update:open="close"
+  >
+    <view class="pg-editor__head">
+      <text class="pg-editor__title">第 {{ props.lineNo }} 行</text>
+      <text class="pg-editor__hint">一次写一行：先写「这一行」，再写「依据」。依据可以留空，助教会追问。</text>
     </view>
-  </view>
+
+    <PgField label="这一行">
+      <textarea
+        v-model="statement"
+        class="pg-input-area pg-input-area--md"
+        data-testid="editor-statement"
+        aria-label="这一行"
+        placeholder="这一行：写下结论或算式（公式用 $…$，例如 $\frac{5}{n+2}$）"
+        :disabled="props.busy"
+        :maxlength="2000"
+        @input="onStatementInput"
+      />
+      <view class="pg-editor__symbols pg-scroll-x" data-testid="symbol-bar" aria-label="常用符号">
+        <PgButton
+          v-for="symbol in SYMBOLS"
+          :key="symbol.label"
+          class="pg-editor__symbol"
+          variant="secondary"
+          size="icon"
+          :disabled="props.busy"
+          :aria-label="'插入 ' + symbol.label"
+          @tap="insertSymbol(symbol.insert)"
+        >
+          {{ symbol.label }}
+        </PgButton>
+      </view>
+    </PgField>
+
+    <PgField label="依据" optional="可空">
+      <textarea
+        v-model="justification"
+        class="pg-input-area pg-input-area--xs"
+        data-testid="editor-justification"
+        aria-label="依据（可空）"
+        placeholder="依据：这一行由哪条定义或已证结论得到？"
+        :disabled="props.busy"
+        :maxlength="1000"
+        @input="onJustificationInput"
+      />
+    </PgField>
+
+    <view class="pg-layer__row">
+      <PgButton variant="secondary" data-testid="editor-cancel" :disabled="props.busy" @tap="close">取消</PgButton>
+      <PgButton data-testid="editor-submit" :loading="props.busy" :disabled="!canSubmit" sound="tap" @tap="submit">
+        {{ props.busy ? '正在加入…' : '加入证明' }}
+      </PgButton>
+    </view>
+  </PgSheet>
 </template>
 
 <style scoped>
-/* 遮罩：用 token 混色，不写死 rgba（README 硬规则 2）。 */
-.pg-editor-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 65;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  /* 手机软键盘：tokens.css 的 --keyboard-inset 由 visualViewport 写入（02 §6）。 */
-  padding-bottom: var(--keyboard-inset, 0px);
-  background: rgba(0, 0, 0, 0.45);
-}
-
-.pg-editor {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  width: 100%;
-  max-width: var(--content-max);
-  max-height: 88vh;
-  overflow-y: auto;
-  padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
-  background: var(--sheet);
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  box-shadow: var(--shadow-sheet);
-  animation: pg-editor-up var(--dur-normal) ease-out;
-}
-
-.pg-editor__handle {
-  width: 36px;
-  height: 4px;
-  margin: 0 auto;
-  border-radius: 2px;
-  background: var(--rule);
-}
-
-.pg-editor__head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.pg-editor__title {
-  font-size: 17px;
-  font-weight: 900;
-  color: var(--ink);
-}
-
-.pg-editor__hint {
-  color: var(--ink-2);
-  line-height: 1.5;
-}
-
-.pg-editor__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.pg-editor__label {
-  font-size: var(--fs-small);
-  color: var(--ink-2);
-}
-
-.pg-editor__optional {
-  color: var(--ink-2);
-}
-
-/* 输入框 16px 防 iOS 聚焦缩放（02 §2.3 / §6）。 */
-.pg-editor__input {
-  width: 100%;
-  min-height: 88px;
-  padding: var(--sp-2) var(--sp-3);
-  border: 2px solid var(--rule);
-  border-radius: var(--radius-input);
-  background: var(--sheet);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: var(--lh-body);
-  resize: vertical;
-}
-
-.pg-editor__input--just {
-  min-height: 64px;
-}
-
-/* 相邻按钮间距 ≥ 8px（02 §2.4）。 */
-.pg-editor__symbols {
-  display: flex;
-  gap: var(--sp-2);
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-/* 触控目标 ≥ 44px（02 §2.4）。 */
-.pg-editor__symbol {
-  flex: 0 0 auto;
-  min-width: 44px;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid var(--rule);
-  border-radius: var(--radius-input);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 16px;
-}
-
-.pg-editor__symbol::after {
-  border: 0;
-}
-
-.pg-editor__symbol:disabled {
-  opacity: 0.45;
-}
-
-.pg-editor__actions {
-  display: flex;
-  gap: var(--sp-2);
-  margin-top: var(--sp-1);
-}
-
-.pg-editor__btn {
-  flex: 1;
-  min-height: 48px;
-  border: 2px solid var(--rule);
-  border-radius: var(--radius-input);
-  background: var(--sheet);
-  color: var(--ink);
-  font-size: 16px;
-}
-
-.pg-editor__btn::after {
-  border: 0;
-}
-
-.pg-editor__btn:disabled {
-  opacity: 0.45;
-}
-
-.pg-editor__btn--primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--paper);
-}
-
-/*
- * 平板/桌面（≥600px）：居中的对话框卡片（不是稿纸内联展开）。
- * 决策口径：02 §4.4 + components/README.md（PR #90 复审第 6 条选路线 ②：改文档、保留居中卡片）。
- */
-@media (min-width: 600px) {
-  .pg-editor-mask {
-    align-items: center;
-    padding: var(--sp-4);
-  }
-
-  .pg-editor {
-    max-width: 560px;
-    max-height: 80vh;
-    padding-bottom: var(--sp-4);
-    border-radius: var(--radius-card);
-  }
-}
-
-@keyframes pg-editor-up {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+.pg-editor__head { display: flex; flex-direction: column; gap: var(--sp-1); }
+.pg-editor__title { color: var(--ink); font-size: var(--fs-18); font-weight: var(--fw-black); }
+.pg-editor__hint { color: var(--ink-2); font-size: var(--fs-13); line-height: 1.5; }
+.pg-editor__symbols { display: flex; gap: var(--sp-2); padding-bottom: var(--lip); }
+.pg-editor__symbol.pg-button { flex: none; font-size: var(--fs-16); }
 </style>

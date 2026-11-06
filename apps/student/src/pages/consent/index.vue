@@ -8,8 +8,13 @@
  */
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { isMockMode } from '@/api/client'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
+import PgButton from '@/components/ui/PgButton.vue'
+import PgCard from '@/components/ui/PgCard.vue'
+import PgFold from '@/components/ui/PgFold.vue'
+import PgMascot from '@/components/ui/PgMascot.vue'
+import PgSkeleton from '@/components/ui/PgSkeleton.vue'
+import PgSwitch from '@/components/ui/PgSwitch.vue'
 import { useSession } from '@/stores/session'
 
 const session = useSession()
@@ -17,9 +22,7 @@ const items = session.items
 const version = session.docVersion
 const requiredOk = session.requiredOk
 const loading = session.loading
-const mockMode = isMockMode()
 const error = ref('')
-const expanded = ref<string | null>(null)
 const errorText = computed(() => error.value || session.error.value || '')
 
 onLoad(async () => {
@@ -45,73 +48,58 @@ async function submit() {
 </script>
 
 <template>
-  <view class="pg-page pg-consent" data-testid="consent-page">
-    <text class="pg-consent__title">开始前，请读一下</text>
-    <text class="pg-consent__sub pg-small">这是校内的练习工具。下面说明我们要用哪些数据、存在哪里、你能怎么选。</text>
-    <view v-if="loading" class="pg-consent__item pg-sheet">
-      <text class="pg-consent__summary pg-small">正在加载同意书…</text>
-    </view>
-    <view v-for="item in items" :key="item.id" class="pg-consent__item pg-sheet" :data-testid="'consent-item-' + item.id">
-      <!-- guardianNotice（14–17 岁）只读说明：没有开关、不参与签署 -->
-      <template v-if="item.readOnly">
-        <view class="pg-consent__head" @tap="expanded = expanded === item.id ? null : item.id">
+  <view class="pg-page pg-form-page pg-consent" data-testid="consent-page">
+    <view class="pg-form-column pg-consent__column pg-enter">
+      <view class="pg-consent__hero">
+        <PgMascot expr="idle" :motion="['breathe', 'blink']" :size="88" />
+        <text class="pg-consent__title">开始前，请读一下</text>
+        <text class="pg-consent__sub">这是校内的练习工具。下面说明我们要用哪些数据、存在哪里、你能怎么选。</text>
+      </view>
+
+      <PgCard v-if="loading && !items.length"><PgSkeleton :count="3" /></PgCard>
+
+      <PgCard v-for="item in items" :key="item.id" class="pg-consent__item" :data-testid="'consent-item-' + item.id">
+        <view class="pg-consent__head">
           <text class="pg-consent__name">{{ item.title }}</text>
-          <text class="pg-consent__tag pg-small" data-testid="consent-readonly-badge">只读说明</text>
+          <!-- guardianNotice（14–17 岁）只读说明：没有开关、不参与签署 -->
+          <text v-if="item.readOnly" class="pg-consent__tag" data-testid="consent-readonly-badge">只读说明</text>
+          <template v-else>
+            <text class="pg-consent__tag" :class="{ 'pg-consent__tag--req': item.required }">{{ item.required ? '必选' : '可选' }}</text>
+            <PgSwitch :model-value="item.value" :disabled="item.required" :label="item.title" :data-testid="'consent-switch-' + item.id" @update:model-value="toggle(item.id)" />
+          </template>
         </view>
-        <text class="pg-consent__summary pg-small">{{ item.summary }}</text>
-        <text v-if="expanded === item.id" class="pg-consent__detail pg-small">{{ item.detail }}</text>
-        <text class="pg-consent__more pg-small" @tap="expanded = expanded === item.id ? null : item.id">
-          {{ expanded === item.id ? '收起全文' : '展开全文' }}
-        </text>
-      </template>
-      <template v-else>
-        <view class="pg-consent__head" @tap="expanded = expanded === item.id ? null : item.id">
-          <text class="pg-consent__name">{{ item.title }}</text>
-          <text v-if="item.required" class="pg-consent__tag pg-consent__tag--req pg-small">必选</text>
-          <text v-else class="pg-consent__tag pg-small">可选</text>
-          <switch
-            class="pg-consent__switch"
-            color="#58cc02"
-            :checked="item.value"
-            :disabled="item.required"
-            :data-testid="'consent-switch-' + item.id"
-            @change="toggle(item.id)"
-          />
-        </view>
-        <text class="pg-consent__summary pg-small">{{ item.summary }}</text>
-        <text v-if="expanded === item.id" class="pg-consent__detail pg-small">{{ item.detail }}</text>
-        <text class="pg-consent__more pg-small" @tap="expanded = expanded === item.id ? null : item.id">
-          {{ expanded === item.id ? '收起全文' : '展开全文' }}
-        </text>
-      </template>
+        <text class="pg-consent__summary">{{ item.summary }}</text>
+        <PgFold title="全文" class="pg-consent__more"><text class="pg-consent__detail">{{ item.detail }}</text></PgFold>
+      </PgCard>
+
+      <text v-if="errorText" class="pg-consent__error" role="alert">{{ errorText }}</text>
+      <PgButton block size="lg" data-testid="consent-submit" :loading="loading && items.length > 0" :disabled="loading" @tap="submit">
+        {{ loading ? '提交中…' : '同意并开始' }}
+      </PgButton>
+      <text class="pg-consent__hint">版本 {{ version }} · 你可以随时联系老师了解这些安排。</text>
     </view>
-    <text v-if="errorText" class="pg-consent__error pg-small">{{ errorText }}</text>
-    <button class="pg-consent__submit" data-testid="consent-submit" :disabled="loading" @tap="submit">
-      {{ loading ? '提交中…' : '同意并开始' }}
-    </button>
-    <text class="pg-consent__hint pg-small">
-      版本 {{ version }} · {{ mockMode ? 'mock 模式：正文为占位（正式文本由服务端 /consents 提供），签署只记在本地。' : '你可以随时联系老师了解这些安排。' }}
-    </text>
   </view>
 </template>
 
 <style scoped>
-.pg-consent { padding-top: calc(var(--safe-top) + var(--sp-4)); padding-bottom: calc(var(--sp-6) + var(--safe-bottom)); }
-.pg-consent__title { display: block; font-size: 22px; font-weight: 900; margin-bottom: var(--sp-2); }
-.pg-consent__sub { display: block; color: var(--ink-2); margin-bottom: var(--sp-3); }
-.pg-consent__item { padding: var(--sp-3); margin-bottom: var(--sp-2); }
+.pg-consent__column { display: flex; flex-direction: column; gap: var(--sp-3); }
+.pg-consent__hero { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); text-align: center; }
+.pg-consent__title { color: var(--ink); font-size: var(--fs-22); font-weight: var(--fw-black); line-height: var(--lh-tight); }
+.pg-consent__sub { color: var(--ink-2); font-size: var(--fs-13); line-height: var(--lh-body); }
 .pg-consent__head { display: flex; align-items: center; gap: var(--sp-2); }
-.pg-consent__name { flex: 1; font-weight: 600; font-size: 15px; }
-.pg-consent__tag { padding: 1px 8px; border-radius: 999px; background: var(--paper); color: var(--ink-2); }
-.pg-consent__tag--req { color: var(--accent-text); background: var(--accent-soft); }
-.pg-consent__switch { transform: scale(0.8); }
-.pg-consent__summary { display: block; margin-top: var(--sp-2); color: var(--ink); }
-.pg-consent__detail { display: block; margin-top: var(--sp-2); padding: var(--sp-2); background: var(--paper); border-radius: var(--radius-input); color: var(--ink-2); line-height: 1.6; }
-.pg-consent__more { display: inline-block; margin-top: var(--sp-2); color: var(--accent-text); text-decoration: underline; }
-.pg-consent__error { display: block; color: var(--margin-text); margin: var(--sp-2) 0; }
-.pg-consent__submit { margin-top: var(--sp-3); min-height: 52px; border: 0; border-radius: var(--radius-card); background: var(--accent); box-shadow: 0 var(--lip) 0 var(--accent-lip); color: var(--on-accent); font-size: 16px; font-weight: 900; letter-spacing: 0.5px; }
-.pg-consent__submit::after { display: none; }
-.pg-consent__submit:active { transform: translateY(var(--lip)); box-shadow: none; }
-.pg-consent__submit:disabled { background: var(--rule); box-shadow: none; color: var(--ink-3); }
-.pg-consent__hint { display: block; margin-top: var(--sp-3); color: var(--ink-2); }
+.pg-consent__name { flex: 1; min-width: 0; color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); line-height: 1.35; }
+.pg-consent__tag {
+  flex: none;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+}
+.pg-consent__tag--req { background: var(--accent-soft); color: var(--accent-text); }
+.pg-consent__summary { display: block; margin-top: var(--sp-2); color: var(--ink); font-size: var(--fs-13); line-height: var(--lh-body); }
+.pg-consent__more { margin-top: var(--sp-1); color: var(--accent-text); }
+.pg-consent__detail { display: block; padding: var(--sp-3); border-radius: var(--radius-12); background: var(--paper-2); color: var(--ink-2); }
+.pg-consent__error { color: var(--fox-text); font-size: var(--fs-13); }
+.pg-consent__hint { color: var(--ink-2); font-size: var(--fs-12); line-height: 1.5; text-align: center; }
 </style>

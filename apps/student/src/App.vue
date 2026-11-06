@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { onHide, onLaunch } from '@dcloudio/uni-app'
+import { onHide, onLaunch, onPageNotFound } from '@dcloudio/uni-app'
 import { initIntegrity } from '@/integrity/sdk'
+import { installSfxUnlock } from '@/motion/sfx'
 
 // 全局启动钩子（#27）：初始化诚信事件 SDK（visibility/blur/copy/paste/multitab/network + 批量上报）。
 // 只在客户端执行；页面隐藏/卸载由 SDK 自己 flushBeacon，不阻塞启动。
 onLaunch(() => {
   initIntegrity()
+  // 浏览器要求音频在首次手势后才能播放。这里只解锁，不发声；发声都在调用点。
+  installSfxUnlock()
 })
 
 // 切后台时立即把队列里的诚信事件发出去（11 §3：页面隐藏用 beacon）。
 // 注意：不在 onHide 里 destroy——否则回到前台后采集器不会恢复；SDK 实例随应用生命周期存在。
 onHide(() => {
   void initIntegrity().flushBeacon()
+})
+
+onPageNotFound(() => {
+  uni.reLaunch({ url: '/pages/not-found/index' })
 })
 </script>
 

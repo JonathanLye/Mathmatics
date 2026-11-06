@@ -25,7 +25,21 @@
       "path": "pages/home/index",
       "style": {
         "navigationStyle": "custom",
-        "navigationBarTitleText": "首页"
+        "navigationBarTitleText": "路径"
+      }
+    },
+    {
+      "path": "pages/practice-zone/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "练习"
+      }
+    },
+    {
+      "path": "pages/mistakes/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "错题"
       }
     },
     {
@@ -43,23 +57,39 @@
       }
     },
     {
+      "path": "pages/me/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
       "path": "pages/mirror/index",
       "style": {
         "navigationStyle": "custom",
         "navigationBarTitleText": "镜像预览（只读）"
       }
+    },
+    {
+      "path": "pages/not-found/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "页面不存在"
+      }
+    },
+    {
+      "path": "pages/dev/gallery",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "组件预览"
+      }
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "证明陪练场",
-    "navigationBarBackgroundColor": "#F7F6F2",
-    "backgroundColor": "#F7F6F2"
+    "navigationBarTitleText": "证明陪练场"
   },
   "easycom": {
-    "autoscan": true,
-    "custom": {
-      "^t-(.*)": "tdesign-uniapp/components/$1/$1.vue"
-    }
+    "autoscan": true
   }
 }

@@ -271,8 +271,8 @@ describe('buildTimeline（08 §2/§3 事件 → 回放时间轴）', () => {
       makeEvent(5, 'help.request', T2, { intent: 'stuck', routed: 'stuck' }),
     ])
     expect(timeline.markers.map((marker) => marker.label)).toEqual([
-      'L1 提交定义（未通过）',
-      'L3 提交第 2 行',
+      '第 1 层提交定义（未通过）',
+      '第 3 层提交第 2 行',
       '离开页面',
       '回到页面（离开 30 秒）',
       '求助·卡住了',
@@ -479,9 +479,9 @@ describe('mirrorDemo（典型作答 mock）', () => {
     expect(timeline.markers.map((marker) => marker.label)).toEqual([
       '打开应用',
       '页面：practice',
-      'L1 提交定义（通过）',
-      'L3 提交第 1 行',
-      'L3 提交第 2 行',
+      '第 1 层提交定义（通过）',
+      '第 3 层提交第 1 行',
+      '第 3 层提交第 2 行',
       '求助·卡住了',
       '离开页面',
       '回到页面（离开 30 秒）',

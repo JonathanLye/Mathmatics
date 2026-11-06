@@ -1,0 +1,12 @@
+{
+  "name": "@proof-gym/ui-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "description": "证明陪练场 · 设计 token 唯一来源（学生端、教师端共用）",
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  },
+  "sideEffects": [
+    "*.css"
+  ]
+}

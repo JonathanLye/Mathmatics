@@ -251,10 +251,10 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   /* 02 §4.7（2026-11 修订）：大屏约 38%，最小 360px（844 屏上约 43%；保证右侧 7 个 ≥44px 动作键） */
   height: max(38vh, 360px);
   box-sizing: border-box;
-  padding-bottom: var(--safe-bottom, 0px);
-  background: var(--sheet, #fff);
-  border-top: 1px solid var(--rule, #e2e4e8);
-  box-shadow: var(--shadow-dock, 0 -1px 0 #e2e4e8, 0 -6px 18px rgba(29, 36, 48, 0.06));
+  padding-bottom: var(--safe-bottom);
+  background: var(--sheet);
+  border-top: var(--bw) solid var(--rule);
+  box-shadow: var(--shadow-dock);
 }
 .ui-pk--disabled {
   opacity: 0.55;
@@ -263,32 +263,32 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   flex: 0 0 auto;
   display: flex;
   gap: 2px;
-  padding: var(--sp-1, 4px) var(--sp-2, 8px) 0;
+  padding: var(--sp-1) var(--sp-2) 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 .ui-pk__tab {
   flex: 0 0 auto;
   min-height: 36px;
-  padding: 0 var(--sp-2, 8px);
+  padding: 0 var(--sp-2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-small, 13px);
-  color: var(--ink-2, #5d6878);
-  border-radius: var(--radius-input, 6px) var(--radius-input, 6px) 0 0;
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+  border-radius: var(--radius-12) var(--radius-12) 0 0;
 }
 .ui-pk__tab--active {
-  color: var(--accent-text, #3c8400);
-  background: var(--accent-soft, #e8eefb);
-  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  font-weight: var(--fw-bold);
 }
 .ui-pk__body {
   flex: 1 1 auto;
   display: flex;
-  gap: var(--sp-1, 4px);
+  gap: var(--sp-1);
   min-height: 0;
-  padding: 2px var(--sp-2, 8px) 0;
+  padding: 2px var(--sp-2) 0;
 }
 .ui-pk__rows {
   flex: 1 1 auto;
@@ -315,18 +315,18 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   align-items: center;
   justify-content: center;
   padding: 2px;
-  border: 1px solid var(--rule, #e2e4e8);
-  border-radius: var(--radius-input, 6px);
-  background: var(--sheet, #fff);
-  color: var(--ink, #1d2430);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-12);
+  background: var(--sheet);
+  color: var(--ink);
 }
 .ui-pk__key--template {
-  background: var(--accent-soft, #e8eefb);
-  color: var(--accent-text, #3c8400);
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 .ui-pk__key--phrase {
-  background: var(--paper, #f7f6f2);
-  font-size: var(--fs-small, 13px);
+  background: var(--paper);
+  font-size: var(--fs-13);
   padding: 2px 4px;
 }
 /* 证明句式键文字较长（如「当 0<|x−x₀|<δ 时」），允许换行而不是被截断 */
@@ -334,29 +334,29 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   white-space: normal;
   text-align: center;
   line-height: 1.2;
-  font-size: 11px;
+  font-size: var(--fs-12);
 }
 .ui-pk__key--press {
-  background: var(--accent-soft, #e8eefb);
+  background: var(--accent-soft);
 }
 .ui-pk__keylabel {
-  font-size: 15px;
+  font-size: var(--fs-15);
   line-height: 1.05;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ui-pk__row--dense .ui-pk__keylabel {
-  font-size: 11px;
+  font-size: var(--fs-12);
   letter-spacing: -0.2px;
 }
 .ui-pk__variantdot {
   position: absolute;
   right: 3px;
   bottom: 1px;
-  font-size: 10px;
+  font-size: var(--fs-svg);
   line-height: 1;
-  color: var(--ink-2, #5d6878);
+  color: var(--ink-2);
 }
 .ui-pk__actions {
   flex: 0 0 56px;
@@ -369,81 +369,78 @@ defineExpose({ selectLayer, closeVariants, activeLayerId, resolvedLayout })
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  border: 1px solid var(--rule, #e2e4e8);
-  border-radius: var(--radius-input, 6px);
-  background: var(--paper, #f7f6f2);
-  color: var(--ink, #1d2430);
-  font-size: 15px;
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-12);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-15);
 }
 .ui-pk__action--press {
-  background: var(--accent-soft, #e8eefb);
+  background: var(--accent-soft);
 }
 .ui-pk__action--system {
-  color: var(--accent-text, #3c8400);
-  font-weight: 600;
+  color: var(--accent-text);
+  font-weight: var(--fw-bold);
 }
 .ui-pk__action--done {
-  border-color: var(--accent, #2b4fa3);
-  background: var(--accent, #2b4fa3);
-  /* #164：主色按钮文字跟随主题（#155 在 tokens.css 定义 --on-accent: var(--paper)：
-     浅色 #2b4fa3 上 7.06:1、深色 #8fb0ff 上 8.48:1，均 ≥ WCAG AA 4.5:1；
-     ui-math 是独立包，缺 token 时依次回退 --paper / #fff，不写死 #fff）。 */
-  color: var(--on-accent, var(--paper, #ffffff));
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .ui-pk__variantmask {
   position: absolute;
   inset: 0;
   z-index: 5;
-  background: rgba(29, 36, 48, 0.18);
+  background: var(--mask);
 }
 .ui-pk__variants {
   position: absolute;
-  left: var(--sp-2, 8px);
-  right: var(--sp-2, 8px);
-  bottom: calc(var(--sp-2, 8px) + var(--safe-bottom, 0px));
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: calc(var(--sp-2) + var(--safe-bottom));
   z-index: 6;
-  padding: var(--sp-2, 8px) var(--sp-3, 12px);
-  border: 1px solid var(--rule, #e2e4e8);
-  border-radius: var(--radius-card, 10px);
-  background: var(--sheet, #fff);
-  box-shadow: var(--shadow-sheet, 0 -8px 28px rgba(29, 36, 48, 0.16));
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-16);
+  background: var(--sheet);
+  box-shadow: var(--shadow-sheet);
 }
 .ui-pk__varianthead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--sp-1, 4px);
+  margin-bottom: var(--sp-1);
 }
 .ui-pk__varianttitle {
-  font-size: var(--fs-small, 13px);
-  color: var(--ink-2, #5d6878);
+  font-size: var(--fs-13);
+  color: var(--ink-2);
 }
 .ui-pk__variantclose {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  font-size: var(--fs-small, 13px);
-  color: var(--accent-text, #3c8400);
+  font-size: var(--fs-13);
+  color: var(--accent-text);
 }
 .ui-pk__variantrow {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2, 8px);
+  gap: var(--sp-2);
 }
 .ui-pk__variant {
   min-width: 64px;
   min-height: 44px;
-  padding: 0 var(--sp-3, 12px);
+  padding: 0 var(--sp-3);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--rule, #e2e4e8);
-  border-radius: var(--radius-input, 6px);
-  background: var(--paper, #f7f6f2);
-  color: var(--ink, #1d2430);
-  font-size: 17px;
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-12);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-18);
 }
 .ui-pk__variant--press {
-  background: var(--accent-soft, #e8eefb);
+  background: var(--accent-soft);
 }
 </style>

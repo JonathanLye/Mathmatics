@@ -41,7 +41,7 @@ const title = computed(() => examLockedText())
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--mask-strong);
 }
 .pg-locked__sheet {
   width: min(440px, 100%);
@@ -50,17 +50,17 @@ const title = computed(() => examLockedText())
   gap: var(--sp-2);
   padding: var(--sp-4);
   background: var(--sheet);
-  border-radius: var(--radius-sheet);
+  border-radius: var(--radius-24);
   box-shadow: var(--shadow-sheet);
-  border-left: 4px solid var(--margin);
+  border-left: 4px solid var(--sea);
 }
-.pg-locked__icon { font-size: 28px; line-height: 1; }
-.pg-locked__title { font-size: 19px; font-weight: 900; color: var(--ink); }
+.pg-locked__icon { font-size: var(--fs-28); line-height: 1; }
+.pg-locked__title { font-size: var(--fs-18); font-weight: var(--fw-black); color: var(--ink); }
 .pg-locked__text { color: var(--ink-2); line-height: 1.6; }
 .pg-locked__btn {
   min-height: 44px;
-  border-radius: var(--radius-input);
-  border: 1px solid var(--accent);
+  border-radius: var(--radius-12);
+  border: var(--bw) solid var(--accent);
   background: var(--accent);
   color: var(--on-accent);
 }

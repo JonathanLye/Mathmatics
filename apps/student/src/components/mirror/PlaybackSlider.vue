@@ -324,8 +324,8 @@ const isEmpty = computed(() => duration.value <= 0)
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-input);
+  border: var(--bw) solid var(--rule);
+  border-radius: var(--radius-12);
   background: var(--sheet);
   color: var(--accent-text);
 }
@@ -339,13 +339,13 @@ const isEmpty = computed(() => duration.value <= 0)
 }
 
 .pg-playback__icon {
-  font-size: 16px;
+  font-size: var(--fs-16);
   line-height: 1;
 }
 
 .pg-playback__time {
   flex: 0 0 auto;
-  font-size: var(--fs-mono);
+  font-size: var(--fs-12);
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
@@ -372,7 +372,7 @@ const isEmpty = computed(() => duration.value <= 0)
 .pg-playback__track:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
-  border-radius: var(--radius-input);
+  border-radius: var(--radius-12);
 }
 
 .pg-playback__rail,
@@ -380,7 +380,7 @@ const isEmpty = computed(() => duration.value <= 0)
   position: absolute;
   top: 50%;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   transform: translateY(-50%);
 }
 
@@ -401,7 +401,7 @@ const isEmpty = computed(() => duration.value <= 0)
   top: 50%;
   width: 4px;
   height: 16px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   transform: translate(-50%, -50%);
   background: var(--ink-2);
 }
@@ -415,11 +415,11 @@ const isEmpty = computed(() => duration.value <= 0)
 }
 
 .pg-playback__marker--hint {
-  background: var(--hint);
+  background: var(--bee);
 }
 
 .pg-playback__marker--margin {
-  background: var(--margin);
+  background: var(--sea);
 }
 
 .pg-playback__marker--muted {

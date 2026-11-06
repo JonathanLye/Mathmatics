@@ -24,8 +24,10 @@ function markOffline(): void {
 
 function toggleTheme(): void {
   dark.value = !dark.value;
+  // theme-mode 给 TDesign，data-theme 给共用 token，两边要一起切。
   if (dark.value) document.documentElement.setAttribute('theme-mode', 'dark');
   else document.documentElement.removeAttribute('theme-mode');
+  document.documentElement.setAttribute('data-theme', dark.value ? 'dark' : 'light');
 }
 
 function onUnauthorized(): void {

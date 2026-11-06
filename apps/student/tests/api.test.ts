@@ -312,7 +312,9 @@ describe('真实接口客户端（issue #24）', () => {
     configureClientForTests({ fetchImpl, mock: false })
 
     const home = await fetchHome()
-    expect(home.greeting).toContain('S-TEST')
+    // 没有昵称时叫“同学”，不显示匿名码（design-spec：nickname never anon code）。
+    expect(home.greeting).not.toContain('S-TEST')
+    expect(home.greeting).toBe('同学，你好')
     expect(home.week).toEqual({ keysOwn: 2, keysTotal: 4, problemsDone: 1 })
     expect(home.notebook).toBeNull()
     expect(home.inProgress[0]?.assignmentId).toBe('22222222-2222-4222-8222-222222222222')

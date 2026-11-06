@@ -6,12 +6,14 @@
  * - 入口：C 的 mirror-token 返回 /s/mirror?attempt=…&token=…；H5 是 hash 路由，
  *   main.ts 会把路径式 URL 重定向到 #/pages/mirror/index?attempt=…&token=…（也支持直接打开 hash）。
  * - 数据：SSE GET /api/v1/teacher/attempts/{id}/stream?token=… 的 event: state（学生视图 AttemptState）+ ping。
- * - 只读：页面不渲染任何输入/按钮/求助/mock 开关；token 不出现在可见文本里（只用于请求 URL）。
+ * - 只读：页面不渲染任何输入/按钮/求助/演示开关；token 不出现在可见文本里（只用于请求 URL）。
  * - 回放由教师端提供，本页只展示服务端推送的最新状态，不伪造事件。
  */
 import { computed, onUnmounted, ref } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
 import MathText from '@ui-math/MathText.vue'
+import PgFold from '@/components/ui/PgFold.vue'
+import { COPY, independenceCopy, LAYER_STATUS_TEXT, layerLabel, layerName, noteWhoLabel } from '@/copy'
 import ProofLineList from '@/components/layers/ProofLineList.vue'
 import { isValidAttemptId, isValidMirrorToken } from '@/components/mirror/mirror'
 import { MIRROR_BANNER, MIRROR_PLAYBACK_NOTE, buildMirrorViewModel } from '@/components/mirror/mirrorView'
@@ -145,7 +147,7 @@ onUnmounted(cleanup)
           {{ view.chapter }} · {{ view.layerLabel }} · {{ view.statusLabel }} · 状态版本 {{ view.stateVersion }}
         </text>
         <view class="pg-mirror__budget pg-small" data-testid="mirror-budget">
-          <text>透露 {{ view.budget.revealUsed }} / {{ view.budget.revealMax }}</text>
+          <text>{{ COPY.hintBudget }} {{ view.budget.revealUsed }} / {{ view.budget.revealMax }}</text>
           <text>·</text>
           <text>自己写出 {{ view.budget.keysOwn }} / {{ view.budget.keysTotal }}</text>
         </view>
@@ -159,7 +161,7 @@ onUnmounted(cleanup)
               'pg-mirror__layer--done': layer.status === 'done' || layer.status === 'skipped',
             }"
             :data-testid="'mirror-layer-' + layer.layer"
-          >{{ layer.layer }} · {{ layer.status }}</text>
+          >{{ layerName(layer.layer) }} · {{ LAYER_STATUS_TEXT[layer.status] ?? layer.status }}</text>
         </view>
       </view>
 
@@ -168,7 +170,7 @@ onUnmounted(cleanup)
       </view>
 
       <view v-if="view.definition" class="pg-mirror__section pg-sheet" data-testid="mirror-def">
-        <text class="pg-mirror__sectiontitle">第 1 层 · 定义</text>
+        <text class="pg-mirror__sectiontitle">{{ layerLabel('L1') }}</text>
         <MathText v-if="view.definition.task" :text="view.definition.task" block />
         <view class="pg-mirror__answer">
           <text class="pg-mirror__label pg-small">学生写的定义（提交 {{ view.definition.submissions }} 次）</text>
@@ -178,7 +180,7 @@ onUnmounted(cleanup)
       </view>
 
       <view v-if="view.frame" class="pg-mirror__section pg-sheet" data-testid="mirror-frame">
-        <text class="pg-mirror__sectiontitle">第 2 层 · 证明骨架</text>
+        <text class="pg-mirror__sectiontitle">{{ layerLabel('L2') }}</text>
         <MathText v-if="view.frame.task" :text="view.frame.task" block />
         <view v-if="view.frame.templateShown && view.frame.template" class="pg-mirror__answer">
           <text class="pg-mirror__label pg-small">已展开的通用骨架</text>
@@ -192,7 +194,7 @@ onUnmounted(cleanup)
       </view>
 
       <view class="pg-mirror__section pg-sheet" data-testid="mirror-lines">
-        <text class="pg-mirror__sectiontitle">第 3 层 · 已写的证明行</text>
+        <text class="pg-mirror__sectiontitle">{{ layerLabel('L3') }}</text>
         <ProofLineList readonly :lines="view.lines" :notes="state?.notes ?? []" />
       </view>
 
@@ -200,13 +202,13 @@ onUnmounted(cleanup)
         <text class="pg-mirror__sectiontitle">页边批注 / 提示</text>
         <text v-if="view.notes.length === 0" class="pg-mirror__muted pg-small">还没有批注或提示。</text>
         <view v-for="note in view.notes" :key="note.noteId" class="pg-mirror__note" :class="'pg-mirror__note--' + note.kind">
-          <text class="pg-mirror__notewho pg-small">{{ note.kindLabel }} · {{ note.who }}</text>
+          <text class="pg-mirror__notewho pg-small">{{ note.kindLabel }} · {{ noteWhoLabel(note.who) }}</text>
           <MathText :text="note.text" block />
         </view>
       </view>
 
       <view v-if="view.selfcheck.length > 0" class="pg-mirror__section pg-sheet" data-testid="mirror-selfcheck">
-        <text class="pg-mirror__sectiontitle">第 4 层 · 自检</text>
+        <text class="pg-mirror__sectiontitle">{{ layerLabel('L4') }}</text>
         <view v-for="item in view.selfcheck" :key="item.itemId" class="pg-mirror__checkrow">
           <text class="pg-mirror__label pg-small" :data-testid="'mirror-selfcheck-status-' + item.itemId">[{{ item.statusLabel }}] {{ item.question }}</text>
           <MathText v-if="item.answer" :text="item.answer" block />
@@ -215,12 +217,12 @@ onUnmounted(cleanup)
       </view>
 
       <view v-if="view.transfer" class="pg-mirror__section pg-sheet" data-testid="mirror-transfer">
-        <text class="pg-mirror__sectiontitle">第 5 层 · 迁移题（{{ view.transfer.statusLabel }}）</text>
+        <text class="pg-mirror__sectiontitle">{{ layerLabel('L5') }}（{{ view.transfer.statusLabel }}）</text>
         <MathText v-if="view.transfer.stem" :text="view.transfer.stem" block />
       </view>
 
       <view v-if="view.summary" class="pg-mirror__section pg-sheet" data-testid="mirror-summary">
-        <text class="pg-mirror__sectiontitle">第 6 层 · 总结五问</text>
+        <text class="pg-mirror__sectiontitle">{{ layerLabel('L6') }}</text>
         <view v-for="(question, index) in view.summary.questions" :key="index" class="pg-mirror__checkrow">
           <MathText :text="question" block />
           <MathText v-if="view.summary.answers[index]" :text="view.summary.answers[index] as string" block />
@@ -230,8 +232,10 @@ onUnmounted(cleanup)
 
       <view v-if="view.completion?.done" class="pg-mirror__section pg-mirror__done pg-sheet" data-testid="mirror-completion">
         <text class="pg-mirror__sectiontitle">本题完成</text>
-        <text class="pg-mirror__label pg-small">独立度 {{ view.completion.independence ?? '-' }}</text>
-        <text v-if="view.completion.theorems.length" class="pg-mirror__label pg-small">mathlib4 对照：{{ view.completion.theorems.join('、') }}</text>
+        <text class="pg-mirror__label pg-small">{{ independenceCopy(view.budget.keysOwn, view.budget.keysTotal) }}</text>
+        <PgFold v-if="view.completion.theorems.length" :title="COPY.extensionFold" class="pg-mirror__label">
+          <text>mathlib4 对照：{{ view.completion.theorems.join('、') }}</text>
+        </PgFold>
         <text v-if="view.completion.steps.length" class="pg-mirror__label pg-small">关键步骤：{{ view.completion.steps.join('、') }}</text>
       </view>
 
@@ -261,17 +265,17 @@ onUnmounted(cleanup)
   margin: 0 calc(-1 * var(--sp-3));
   padding: 0 var(--sp-3);
   background: var(--accent-soft);
-  border-bottom: 1px solid var(--accent);
+  border-bottom: var(--bw) solid var(--accent);
   color: var(--accent-text);
 }
-.pg-mirror__bannertext { font-weight: 600; font-size: var(--fs-small); }
+.pg-mirror__bannertext { font-weight: var(--fw-bold); font-size: var(--fs-13); }
 .pg-mirror__status { margin-left: auto; color: var(--ink-2); }
 .pg-mirror__authhint {
   margin: var(--sp-2) 0;
   padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-input);
-  background: var(--hint-soft);
-  color: var(--hint);
+  border-radius: var(--radius-12);
+  background: var(--bee-soft);
+  color: var(--bee-text);
 }
 .pg-mirror__error,
 .pg-mirror__loading {
@@ -282,7 +286,7 @@ onUnmounted(cleanup)
   flex-direction: column;
   gap: var(--sp-2);
 }
-.pg-mirror__errortitle { font-weight: 900; color: var(--ink); }
+.pg-mirror__errortitle { font-weight: var(--fw-black); color: var(--ink); }
 .pg-mirror__errorbody,
 .pg-mirror__loadingtext { color: var(--ink-2); }
 .pg-mirror__shell {
@@ -295,32 +299,32 @@ onUnmounted(cleanup)
   padding-top: var(--sp-3);
 }
 .pg-mirror__head { padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
-.pg-mirror__title { font-size: 17px; font-weight: 900; color: var(--ink); }
+.pg-mirror__title { font-size: var(--fs-18); font-weight: var(--fw-black); color: var(--ink); }
 .pg-mirror__meta { color: var(--ink-2); }
 .pg-mirror__budget { display: flex; gap: var(--sp-2); color: var(--ink-2); flex-wrap: wrap; }
 .pg-mirror__layers { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
 .pg-mirror__layer {
   padding: 1px var(--sp-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--paper);
-  border: 1px solid var(--rule);
+  border: var(--bw) solid var(--rule);
   color: var(--ink-2);
 }
 .pg-mirror__layer--active { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
-.pg-mirror__layer--done { color: var(--ok); }
-.pg-mirror__problem { padding: var(--sp-3) var(--sp-4); font-family: var(--font-serif); font-size: var(--fs-stem); line-height: var(--lh-body); color: var(--ink); }
+.pg-mirror__layer--done { color: var(--ok-text); }
+.pg-mirror__problem { padding: var(--sp-3) var(--sp-4); font-family: var(--font-serif); font-size: var(--fs-18); line-height: var(--lh-body); color: var(--ink); }
 .pg-mirror__section { padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-.pg-mirror__sectiontitle { font-size: 15px; font-weight: 900; color: var(--ink); }
+.pg-mirror__sectiontitle { font-size: var(--fs-15); font-weight: var(--fw-black); color: var(--ink); }
 .pg-mirror__label { color: var(--ink-2); }
 .pg-mirror__muted { color: var(--ink-2); }
 .pg-mirror__answer { display: flex; flex-direction: column; gap: var(--sp-1); padding-left: var(--sp-2); border-left: 2px solid var(--rule); }
-.pg-mirror__checkrow { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) 0; border-bottom: 1px dashed var(--rule); }
+.pg-mirror__checkrow { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) 0; border-bottom: var(--bw) dashed var(--rule); }
 .pg-mirror__checkrow:last-child { border-bottom: 0; }
 /* 手机：行内批注由 ProofLineList 渲染；宽屏只留标记，这里补正文。 */
 .pg-mirror__notes { display: none; }
-.pg-mirror__note { padding: var(--sp-2); border-left: 3px solid var(--rule); border-radius: 0 var(--radius-input) var(--radius-input) 0; }
-.pg-mirror__note--annotation { border-left-color: var(--margin); background: var(--margin-soft); }
-.pg-mirror__note--hint { border-left-color: var(--hint); background: var(--hint-soft); }
+.pg-mirror__note { padding: var(--sp-2); border-left: 3px solid var(--rule); border-radius: 0 var(--radius-12) var(--radius-12) 0; }
+.pg-mirror__note--annotation { border-left-color: var(--sea); background: var(--sea-soft); }
+.pg-mirror__note--hint { border-left-color: var(--bee); background: var(--bee-soft); }
 .pg-mirror__note--concept { border-left-color: var(--accent); background: var(--accent-soft); }
 .pg-mirror__notewho { display: block; color: var(--ink-2); }
 .pg-mirror__done { border-left: 3px solid var(--ok); }
