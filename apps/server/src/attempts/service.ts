@@ -260,9 +260,27 @@ export function createAttemptService(db: Db, contract: ContractValidator): Attem
       const anon = await userAnon(tx, row.user_id);
       const saved = await commit(tx, row, result, row.status, anon, `L${snap.state.layer}`);
       if (spec.record) await spec.record(tx, saved, result);
+      if (saved.kind === 'transfer' && saved.status === 'completed' && saved.parent_attempt_id !== null) {
+        await completeTransferParent(tx, saved.parent_attempt_id, saved.user_id);
+      }
       // 行和事件都在这个事务里刚写完：重新读，响应里才有刚写的那一行。
       return dto({ ...snap, row: saved, state: result.state, extras: await loadViewExtras(tx, saved) });
     });
+  }
+
+  // 迁移题子作答完成（含跳过）：同一事务里把 transfer.complete 应用到父作答，走和普通命令一样的
+  // 事件 + 状态 + state_version 路径。父作答已越过第 5 层（或已结束）时引擎拒绝该命令，视为已处理，什么都不写。
+  // 加锁顺序：子作答（调用方已锁）-> 父作答；transfer() 先锁父作答，但那时子作答还不存在，不会互相等待。
+  async function completeTransferParent(tx: Queryable, parentId: string, userId: string): Promise<void> {
+    const parent = (
+      await tx.query<AttemptRow>(`select * from app.attempts where id = $1 and user_id = $2 for update`, [parentId, userId])
+    ).rows[0];
+    if (!parent || parent.status === 'completed' || parent.status === 'abandoned') return;
+    const snap = await snapshotOf(tx, parent);
+    const result = step(snap.problem.ctx, snap.state, { kind: 'transfer.complete' }, snap.now);
+    if (result.rejected || result.events.length === 0) return;
+    const anon = await userAnon(tx, parent.user_id);
+    await commit(tx, parent, result, parent.status, anon, `L${snap.state.layer}`);
   }
 
   async function grantH4(spec: GrantH4Spec): Promise<void> {
