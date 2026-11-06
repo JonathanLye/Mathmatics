@@ -337,8 +337,8 @@ async function main() {
     await page.screenshot({ path: path.join(outDir, '8-证明本.png'), fullPage: true })
 
     await tap(page, 'notebook-open', '看这份证明', 0)
-    await waitTestId(page, 'proof-detail-page')
-    check('证明本打开证明详情（只读）', (await countTestId(page, 'proof-detail-lines')) === 1)
+    await waitTestId(page, 'proof-detail-lines')
+    check('证明本打开证明详情（只读）', page.url().includes('/pages/proof-detail/index') && (await countTestId(page, 'proof-detail-lines')) === 1)
   }
 
   try {
