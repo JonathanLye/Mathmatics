@@ -78,8 +78,9 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
       submissions: state.def.attempts,
       ...(extras.defLast === null ? {} : { last: extras.defLast }),
       lessonSuggested: false,
+      lessonAvailable: lessonAvailable(problem),
     },
-    notes: overrideNotes(row, state, problem),
+    notes: allNotes(row, state, problem, extras),
     help: helpView(help),
     integrity: { mode: row.mode, locked: row.status === 'locked' },
     serverTime: new Date(now).toISOString(),
@@ -113,11 +114,20 @@ export function toAttemptState({ row, state, problem, now, extras }: Snapshot): 
     dto.completion = {
       done: true,
       independence: independenceOf(state, keysTotal),
-      reviewAvailable: false,
+      reviewAvailable: extras.reviewAvailable,
       leanCard: null,
     };
   }
   return dto;
+}
+
+// 已下发的提示与批注（落库的）加上教师补发的 H4，按时间排序。概念批注补上本题的概念 ID（微课入口）。
+function allNotes(row: AttemptRow, state: AttemptState, problem: LoadedProblem, extras: ViewExtras): Record<string, unknown>[] {
+  const conceptId = problem.public.def?.conceptId ?? null;
+  const stored = extras.notes.map((note) =>
+    note.kind === 'concept' && note.lessonConceptId === null && conceptId ? { ...note, lessonConceptId: conceptId } : note,
+  );
+  return [...stored, ...overrideNotes(row, state, problem)].sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 
 // 教师补发的 H4（软着陆）以批注形式下发：由引擎状态 overrides 推出，不另存，所以刷新/重连后仍在，回放一致。
@@ -142,6 +152,14 @@ function overrideNotes(row: AttemptRow, state: AttemptState, problem: LoadedProb
       },
     ];
   });
+}
+
+// 概念缺失或没有微课步骤时隐藏微课入口（GET /lesson 对缺失概念是 404）。
+function lessonAvailable(problem: LoadedProblem): boolean {
+  const conceptId = problem.public.def?.conceptId;
+  if (!conceptId) return false;
+  const concept = problem.ctx.concepts.concepts.find((c) => c.id === conceptId) as { lesson?: { steps?: unknown[] } } | undefined;
+  return Array.isArray(concept?.lesson?.steps) && concept.lesson.steps.length > 0;
 }
 
 function transferView(state: AttemptState, extras: ViewExtras): Record<string, unknown> {
@@ -229,5 +247,6 @@ function helpView(help: HelpPreview): Record<string, unknown> {
     exhausted: help.exhausted,
     flagged: help.flagged,
     stuckOffer: help.stuckOffer,
+    canFlag: help.canFlag,
   };
 }

@@ -39,6 +39,15 @@ import {
 } from '@/mocks/laterLayers'
 import { SELFCHECK_ADAPTIVE_CONFIG } from '@/components/selfcheck/adaptView'
 import { COPY, layerLabel, studentName } from '@/copy'
+import {
+  mockListPractice,
+  mockRandomPractice,
+  mockReveal,
+  mockReview,
+  mockSolution,
+  mockStartProblem,
+  mockStudentPath,
+} from '@/mocks/pathMock'
 import type {
   AgeBand,
   AttemptState,
@@ -68,6 +77,14 @@ import type {
   Recognition,
   StudentHomeView,
 } from '@/types/attempt'
+import type {
+  DifficultyBand,
+  PracticeItem,
+  PracticeList,
+  PracticeQuery,
+  PracticeSolution,
+  StudentPath,
+} from '@/types/path'
 
 export { ApiError, errorMessage, isApiError }
 
@@ -546,7 +563,7 @@ export const MOCK_CONSENT_SECTIONS: ConsentDoc['sections'] = [
 ]
 
 export const mockConsentDoc: ConsentDoc = {
-  version: 'p0-v1',
+  version: 'v2',
   sections: MOCK_CONSENT_SECTIONS,
   signed: null,
 }
@@ -954,6 +971,53 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   }
   const body = { answers, input: inputMeta('keyboard', options.draftId ?? newDraftId()) }
   return writeState(`/attempts/${state.attemptId}/summary`, body, {
+    ifMatch: state.stateVersion,
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** POST /attempts/{attemptId}/flag-teacher：找老师（额度用完，或卡住满一段时间后可用；重复调用幂等）。 */
+export async function flagTeacher(state: AttemptState, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    next.stateVersion += 1
+    next.help = { ...next.help, flagged: true, canFlag: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/flag-teacher`, undefined, {
+    idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** POST /student/notes/{noteId}/feedback：对一条 AI 回答点“有用 / 没用”（13 §5）；失败不打断学习。 */
+export async function noteFeedback(noteId: string, useful: boolean): Promise<void> {
+  if (USE_MOCK) {
+    await sleep()
+    return
+  }
+  await withRetry(() =>
+    activeHttp.request<unknown>(`/student/notes/${encodeURIComponent(noteId)}/feedback`, {
+      method: 'POST',
+      body: { useful },
+      idempotencyKey: newUuid(),
+    }),
+  )
+}
+
+/** POST /attempts/{attemptId}/layers/{layer}/enter：回到已完成的层（只能去已解锁的层）。 */
+export async function enterLayer(state: AttemptState, layer: LayerId, options: WriteOptions = {}): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    const next = clone(state)
+    if (next.layers.find((l) => l.layer === layer)?.status === 'locked') return next
+    next.stateVersion += 1
+    next.currentLayer = layer
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  return writeState(`/attempts/${state.attemptId}/layers/${layer}/enter`, undefined, {
     ifMatch: state.stateVersion,
     idempotencyKey: options.idempotencyKey ?? newUuid(),
   })
@@ -1887,4 +1951,154 @@ export async function sendFeedback(kind: FeedbackKind, body: string, page?: stri
     return
   }
   await sleep()
+}
+
+// ---------------------------------------------------------------------------
+// 学习路径（Task 11）与练习区（Task 16）。真实模式调服务端；mock 模式按同一套规则在 mocks/pathMock 里算。
+// 前端不判定：完成、锁定、难度档、可看的解答级别都来自服务端响应。
+// ---------------------------------------------------------------------------
+
+/** mock 里抛出的普通错误（带 status/code）转成 ApiError，页面的错误处理与真实模式一致。 */
+async function mockPath<T>(action: () => T): Promise<T> {
+  await sleep()
+  try {
+    return clone(action())
+  } catch (error) {
+    const e = error as { status?: number; code?: string; message?: string }
+    throw new ApiError({ status: e.status ?? 500, code: e.code ?? 'INTERNAL', message: e.message ?? '出了点问题' })
+  }
+}
+
+function queryString(params: Record<string, string | number | undefined>): string {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+  return entries.length === 0 ? '' : `?${entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`
+}
+
+/** mock 开始一道题：把演示状态改成这道题的标题与题面；导入题只启用写证明与总结两层。 */
+async function mockStartState(problemId: string): Promise<AttemptState> {
+  const { problem, attemptId } = mockStartProblem(problemId)
+  const state = await fetchAttempt()
+  state.attemptId = attemptId
+  state.problem = {
+    ...state.problem,
+    problemId: problem.id,
+    title: problem.title,
+    stem: problem.stem,
+    keyCount: problem.keyCount,
+  }
+  if (problem.layers === 2) {
+    state.currentLayer = 'L3'
+    state.layers = state.layers.map((layer) =>
+      layer.layer === 'L3'
+        ? { ...layer, status: 'active' }
+        : layer.layer === 'L6'
+          ? { ...layer, status: 'locked' }
+          : { ...layer, status: 'disabled', enabled: false },
+    )
+  }
+  return state
+}
+
+/** GET /student/path?unit=：只带当前单元的题目详情，其余单元只有摘要。不传 unit = 第一个没做完的单元。 */
+export async function getStudentPath(unitId?: string): Promise<StudentPath> {
+  if (USE_MOCK) return mockPath(() => mockStudentPath(unitId))
+  return withRetry(() => activeHttp.get<StudentPath>(`/student/path${queryString({ unit: unitId })}`))
+}
+
+async function startFromPool(
+  prefix: '/student/path/items' | '/student/practice',
+  problemId: string,
+  options: WriteOptions & { classId?: string } = {},
+): Promise<AttemptState> {
+  if (USE_MOCK) {
+    await sleep()
+    try {
+      return await mockStartState(problemId)
+    } catch (error) {
+      const e = error as { status?: number; code?: string; message?: string }
+      throw new ApiError({ status: e.status ?? 500, code: e.code ?? 'INTERNAL', message: e.message ?? '出了点问题' })
+    }
+  }
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
+  const result = await withRetry(() =>
+    activeHttp.post<{ state: AttemptState }>(
+      `${prefix}/${encodeURIComponent(problemId)}/start`,
+      options.classId === undefined ? undefined : { classId: options.classId },
+      { idempotencyKey },
+    ),
+  )
+  if (!isAttemptState(result.data?.state)) {
+    throw new ApiError({ status: result.status, code: 'INTERNAL', message: '服务端返回的状态格式不正确' })
+  }
+  return result.data.state
+}
+
+/**
+ * POST /student/path/items/{problemId}/start：从路径节点开始、继续或回看（已做完返回只读状态）。
+ * 班里这题有没结束的测验 → ApiError code=TEST_IN_PROGRESS（409，文案可直接展示）。
+ */
+export function startPathItem(problemId: string, options: WriteOptions & { classId?: string } = {}): Promise<AttemptState> {
+  return startFromPool('/student/path/items', problemId, options)
+}
+
+/** POST /student/practice/{problemId}/start：从练习区开始，规则同 startPathItem。 */
+export function startPracticeProblem(problemId: string, options: WriteOptions & { classId?: string } = {}): Promise<AttemptState> {
+  return startFromPool('/student/practice', problemId, options)
+}
+
+/** GET /student/practice：按章节、难度、状态、关键词筛选，游标分页；响应带分面计数。 */
+export async function listPractice(query: PracticeQuery = {}): Promise<PracticeList> {
+  if (USE_MOCK) return mockPath(() => mockListPractice(query))
+  return withRetry(() =>
+    activeHttp.get<PracticeList>(
+      `/student/practice${queryString({
+        chapter: query.chapter,
+        difficulty: query.difficulty,
+        status: query.status,
+        q: query.q,
+        cursor: query.cursor,
+        limit: query.limit,
+      })}`,
+    ),
+  )
+}
+
+/** POST /student/practice/random：随机一道没做完的题（范围内都做完 → 404 NOT_FOUND，文案可直接展示），随后调用 startPracticeProblem。 */
+export async function randomPracticeProblem(
+  filter: { chapter?: string; difficulty?: DifficultyBand } = {},
+  options: WriteOptions = {},
+): Promise<PracticeItem> {
+  if (USE_MOCK) return mockPath(() => mockRandomPractice(filter))
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
+  const result = await withRetry(() => activeHttp.post<PracticeItem>('/student/practice/random', filter, { idempotencyKey }))
+  return result.data
+}
+
+/** GET /student/practice/{problemId}/solution：只含这位学生此刻可以看的那一级（none / approach / full）。 */
+export async function getPracticeSolution(problemId: string): Promise<PracticeSolution> {
+  if (USE_MOCK) return mockPath(() => mockSolution(problemId))
+  return withRetry(() => activeHttp.get<PracticeSolution>(`/student/practice/${encodeURIComponent(problemId)}/solution`))
+}
+
+/**
+ * POST /student/practice/{problemId}/solution/reveal：主动查看思路（approach）或完整解答（full）。
+ * 只限自己的练习模式自学作答；老师布置、测验 → 403，没开始做 → 409。查看后写出的关键步骤按“有提示”计。
+ */
+export async function revealPracticeSolution(
+  problemId: string,
+  level: 'approach' | 'full',
+  options: WriteOptions = {},
+): Promise<PracticeSolution> {
+  if (USE_MOCK) return mockPath(() => mockReveal(problemId, level))
+  const idempotencyKey = options.idempotencyKey ?? newUuid()
+  const result = await withRetry(() =>
+    activeHttp.post<PracticeSolution>(`/student/practice/${encodeURIComponent(problemId)}/solution/reveal`, { level }, { idempotencyKey }),
+  )
+  return result.data
+}
+
+/** GET /attempts/{attemptId}/review：讲评（已标记可发布的参考证明）。自学作答完成即可看；教师布置要教师发布；否则 403。 */
+export async function getAttemptReview(attemptId: string): Promise<PublishedReview> {
+  if (USE_MOCK) return mockPath(() => mockReview(attemptId))
+  return withRetry(() => activeHttp.get<PublishedReview>(`/attempts/${encodeURIComponent(attemptId)}/review`))
 }

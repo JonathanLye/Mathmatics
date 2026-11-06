@@ -24,6 +24,7 @@ export type StoredEventV1 = {
     | "attempt.complete"
     | "attempt.abandon"
     | "attempt.lock"
+    | "solution.revealed"
     | "attempt.unlock"
     | "layer.enter"
     | "layer.done"

@@ -5,6 +5,7 @@ import { AppError } from '../errors.ts';
 
 import { attemptRoutes } from './attempts.ts';
 import { eventRoutes } from './events.ts';
+import { pathRoutes } from './path.ts';
 import { recognitionRoutes } from './recognitions.ts';
 import { authRoutes, type AuthRouteOptions } from './auth.ts';
 import { consentRoutes } from './consents.ts';
@@ -31,9 +32,10 @@ export const apiRoutes: FastifyPluginAsync<AuthRouteOptions & { gateway: ModelGa
   // 不能整体转发 options：Fastify 会把 prefix 也带进插件选项，导致前缀重复。
   await api.register(authRoutes, { db, config, contract });
   await api.register(consentRoutes, { db, config, contract });
-  await api.register(attemptRoutes, { db, config, contract });
+  await api.register(attemptRoutes, { db, config, contract, gateway });
   await api.register(progressRoutes, { db, config, contract });
   await api.register(eventRoutes, { db, config, contract });
+  await api.register(pathRoutes, { db, config, contract });
   await api.register(recognitionRoutes, { db, config, contract, gateway });
   // C：教师端接口（/teacher/*）。本文件属 B，新增这一行注册需要 B 评审。
   await api.register(teacherRoutes, { db, config, contract });

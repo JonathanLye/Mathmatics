@@ -27,6 +27,18 @@ export interface AppConfig {
   rateLimits: { events: number; help: number; login?: number };
   // 识别（03 §3、09 §10）：每生每日上限、全局并发（= 已购 SimpleTex QPS）、每生同时在途数、照片落盘目录。
   recognition: { inkPerDay: number; photoPerDay: number; concurrency: number; perUserConcurrency: number; storageDir: string };
+  // 模型回答（U15）：每生限流、每日预算、并发、单次调用超时。预算为 null 表示不设上限。
+  ai: {
+    dailyBudgetCny: number | null;
+    studentCallsPer10Min: number;
+    concurrency: number;
+    perUserConcurrency: number;
+    genTimeoutMs: number;
+    reviewTimeoutMs: number;
+    // 结构化小判定（软规则复核、L1/L2 语义判定、兜底归类）的单次超时
+    classifyTimeoutMs: number;
+    totalMs: number;
+  };
   // 含各 provider 的密钥（见 ai/registry.ts）：不得打印或序列化。
   models: ModelRegistry;
 }
@@ -113,6 +125,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       concurrency: positiveInt(env.RECOG_CONCURRENCY, 5, 'RECOG_CONCURRENCY'),
       perUserConcurrency: positiveInt(env.RECOG_PER_USER_CONCURRENCY, 2, 'RECOG_PER_USER_CONCURRENCY'),
       storageDir: env.STORAGE_DIR ?? '.data/photos',
+    },
+    ai: {
+      dailyBudgetCny: env.AI_DAILY_BUDGET_CNY === undefined || env.AI_DAILY_BUDGET_CNY === '' ? null : Number(env.AI_DAILY_BUDGET_CNY),
+      studentCallsPer10Min: positiveInt(env.AI_STUDENT_CALLS_PER_10MIN, 20, 'AI_STUDENT_CALLS_PER_10MIN'),
+      concurrency: positiveInt(env.AI_CONCURRENCY, 6, 'AI_CONCURRENCY'),
+      perUserConcurrency: positiveInt(env.AI_PER_USER_CONCURRENCY, 2, 'AI_PER_USER_CONCURRENCY'),
+      genTimeoutMs: 6000,
+      reviewTimeoutMs: 5000,
+      classifyTimeoutMs: 4000,
+      totalMs: 12000,
     },
     models: loadModelRegistry(MODELS_PATH, env),
   };

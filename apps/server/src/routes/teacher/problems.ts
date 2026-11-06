@@ -2,13 +2,16 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { AppError } from '../../errors.ts';
 import { requireTeacher } from '../../services/teacher/auth.ts';
-import { getProblemVersion, listProblems, reviewProblem, type ReviewInput } from '../../services/teacher/problems.ts';
+import { getProblemVersion, listProblemsPage, reviewProblem, type ReviewInput } from '../../services/teacher/problems.ts';
 
 import type { AuthRouteOptions } from '../auth.ts';
 
 interface ProblemListQuery {
   status?: string;
   chapter?: string;
+  q?: string;
+  limit?: string;
+  cursor?: string;
 }
 interface ProblemVersionParams {
   problemId: string;
@@ -43,15 +46,29 @@ function validateReviewBody(body: unknown): void {
 
 export const teacherProblemRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db, contract }) => {
   // 04 §8 审核屏：题库列表（含审核状态）；status / chapter 过滤。
-  app.get('/teacher/problems', async (request) => {
+  app.get('/teacher/problems', async (request, reply) => {
     await requireTeacher(db, request);
     const query = request.query as ProblemListQuery;
     if (query.status !== undefined && !STATUSES.includes(query.status as (typeof STATUSES)[number])) {
       throw new AppError('VALIDATION_FAILED', 422, 'status 不合法');
     }
-    const items = await listProblems(db, { status: query.status, chapter: query.chapter });
-    for (const item of items) contract.validate('ProblemListItem', item);
-    return items;
+    let limit: number | undefined;
+    if (query.limit !== undefined && query.limit !== '') {
+      limit = Number(query.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new AppError('VALIDATION_FAILED', 422, 'limit 需为 1–100');
+    }
+    if (query.q !== undefined && query.q.length > 60) throw new AppError('VALIDATION_FAILED', 422, 'q 太长');
+    const page = await listProblemsPage(db, {
+      status: query.status,
+      chapter: query.chapter,
+      q: query.q,
+      limit,
+      cursor: query.cursor === '' ? undefined : query.cursor,
+    });
+    for (const item of page.items) contract.validate('ProblemListItem', item);
+    // 响应体仍是数组（教师端现有调用不变）；下一页游标放响应头。
+    if (page.nextCursor !== null) reply.header('x-next-cursor', page.nextCursor);
+    return page.items;
   });
 
   // 04 §8.2 审核结论：approve 要求 auto_checks 四项全绿（由导入 S8 写入）；return 记录退回。

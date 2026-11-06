@@ -1,14 +1,8 @@
 import type { ContractValidator } from '../contract.ts';
 import type { Db } from '../db/index.ts';
+import { AppError } from '../errors.ts';
 
 import { notebookCounts } from './notebook.ts';
-
-// content.problem_versions.public 里首页用到的字段（problem-package.schema.json 的 public 子集）。
-interface PublicProblem {
-  title?: string;
-  chapter?: string;
-  stem?: string;
-}
 
 // 首页一次查询的扁平行：布置 + 学生自己的 main 作答（没有作答时为 null）。
 // 用 type 而非 interface：Queryable.query 要求 Record<string, unknown>（隐式索引签名，见 view.ts）。
@@ -20,7 +14,8 @@ type HomeRow = {
   open_at: Date | string;
   close_at: Date | string | null;
   review_published_at: Date | string | null;
-  public: PublicProblem;
+  title: string | null;
+  chapter: string | null;
   attempt_id: string | null;
   attempt_status: 'active' | 'parked' | 'locked' | 'completed' | 'abandoned' | null;
   current_layer: 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | null;
@@ -36,7 +31,7 @@ function iso(value: Date | string | null): string | null {
 function toCard(row: HomeRow): Record<string, unknown> {
   const card: Record<string, unknown> = {
     assignmentId: row.assignment_id,
-    title: row.public.title ?? row.problem_id,
+    title: row.title ?? row.problem_id,
     mode: row.mode,
     status: row.status,
     openAt: iso(row.open_at),
@@ -46,8 +41,8 @@ function toCard(row: HomeRow): Record<string, unknown> {
     currentLayer: row.current_layer,
     reviewPublished: row.review_published_at !== null,
   };
-  if (row.public.chapter !== undefined) card.chapter = row.public.chapter;
-  if (row.public.stem !== undefined) card.stem = row.public.stem;
+  // 首页不再带整段题面（题多时体积大）；路径与练习区的条目带截断的预览。
+  if (row.chapter !== null) card.chapter = row.chapter;
   return card;
 }
 
@@ -57,13 +52,13 @@ export async function studentHome(db: Db, contract: ContractValidator, userId: s
   const rows = (
     await db.query<HomeRow>(
       `select a.id as assignment_id, a.problem_id, a.mode, a.status, a.open_at, a.close_at,
-              a.review_published_at, pv.public,
+              a.review_published_at, pv.public->>'title' as title, pv.public->>'chapter' as chapter,
               att.id as attempt_id, att.status as attempt_status, att.current_layer
          from app.assignments a
          join app.class_members m on m.class_id = a.class_id and m.user_id = $1 and m.role = 'student'
          join content.problem_versions pv on pv.problem_id = a.problem_id and pv.version = a.problem_version
          left join app.attempts att on att.assignment_id = a.id and att.user_id = $1 and att.kind = 'main'
-        where a.status <> 'cancelled'
+        where a.status <> 'cancelled' and a.origin = 'teacher'
         order by a.open_at desc, a.id`,
       [userId],
     )
@@ -103,4 +98,30 @@ export async function studentHome(db: Db, contract: ContractValidator, userId: s
   };
   contract.validate('StudentHome', dto);
   return dto;
+}
+
+// GET /student/assignments/{assignmentId}（openapi AssignmentCard）：只给本班学生；布置不存在或不在自己班里一律 404。
+export async function studentAssignment(
+  db: Db,
+  contract: ContractValidator,
+  userId: string,
+  assignmentId: string,
+): Promise<Record<string, unknown>> {
+  const row = (
+    await db.query<HomeRow & { problem_version: number }>(
+      `select a.id as assignment_id, a.problem_id, a.problem_version, a.mode, a.status, a.open_at, a.close_at,
+              a.review_published_at, pv.public,
+              att.id as attempt_id, att.status as attempt_status, att.current_layer
+         from app.assignments a
+         join app.class_members m on m.class_id = a.class_id and m.user_id = $1
+         join content.problem_versions pv on pv.problem_id = a.problem_id and pv.version = a.problem_version
+         left join app.attempts att on att.assignment_id = a.id and att.user_id = $1 and att.kind = 'main'
+        where a.id = $2 and a.status <> 'cancelled'`,
+      [userId, assignmentId],
+    )
+  ).rows[0];
+  if (!row) throw new AppError('NOT_FOUND', 404, '找不到这份布置');
+  const card = { ...toCard(row), problemId: row.problem_id, version: row.problem_version };
+  contract.validate('AssignmentCard', card);
+  return card;
 }

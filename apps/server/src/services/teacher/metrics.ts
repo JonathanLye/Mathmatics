@@ -43,11 +43,11 @@ export async function buildClassMetrics(
         ? `select a.id, a.problem_id, a.problem_version, a.status, a.current_layer, a.state,
                   a.reveal, a.keys_total, a.keys_own, a.independence
              from app.attempts a join app.assignments asg on asg.id = a.assignment_id
-            where asg.class_id = $1 and a.kind = 'main'`
+            where asg.class_id = $1 and asg.origin = 'teacher' and a.kind = 'main'`
         : `select a.id, a.problem_id, a.problem_version, a.status, a.current_layer, a.state,
                   a.reveal, a.keys_total, a.keys_own, a.independence
              from app.attempts a join app.assignments asg on asg.id = a.assignment_id
-            where asg.class_id = $1 and a.assignment_id = $2 and a.kind = 'main'`,
+            where asg.class_id = $1 and asg.origin = 'teacher' and a.assignment_id = $2 and a.kind = 'main'`,
       assignmentId === undefined ? [classId] : [classId, assignmentId],
     )
   ).rows;

@@ -55,6 +55,12 @@ const MAIN_OPS = [
   'POST /student/assignments/{assignmentId}/attempt',
   'GET /attempts/{attemptId}',
   'POST /attempts/{attemptId}/layers/{layer}/skip',
+  'POST /attempts/{attemptId}/layers/{layer}/enter',
+  'GET /student/assignments/{assignmentId}',
+  'PUT /attempts/{attemptId}/draft',
+  'PATCH /attempts/{attemptId}/lines/{lineId}',
+  'DELETE /attempts/{attemptId}/lines/{lineId}',
+  'POST /attempts/{attemptId}/flag-teacher',
   'POST /attempts/{attemptId}/definition',
   'POST /attempts/{attemptId}/framework',
   'POST /attempts/{attemptId}/framework/template',
@@ -66,6 +72,7 @@ const MAIN_OPS = [
   'POST /attempts/{attemptId}/park',
   'POST /attempts/{attemptId}/help',
   'POST /attempts/{attemptId}/hints/claim',
+  'POST /student/notes/{noteId}/feedback',
   'POST /events/batch',
   'POST /recognitions/ink',
   'POST /recognitions/photo',
@@ -184,6 +191,9 @@ interface StudentContext {
   fx: Fixture;
   cookie: string;
   records: ScanRecord[];
+  // 白盒改状态会让 matched 回退；下发提示时已经写出的 key（及其自己的 H3/H4）按“当时的 matched”记在这里。
+  // 提示下发时的闸门就是按当时的 matched 放行的，刷新读回的旧提示文本因此仍然合法（学生当时已经看到过）。
+  seen?: Map<string, Set<string>>;
 }
 
 async function openApp(mainId: string): Promise<Omit<StudentContext, 'cookie' | 'records'> & { assignmentId: string }> {
@@ -218,6 +228,17 @@ async function parentExempt(db: Db, attemptId: string): Promise<Record<string, s
   return parent ? { [parent.problem_id]: parent.state.hint.matched } : {};
 }
 
+// 已下发的 H3/H4（透露量 1）所属的关键步骤：状态里的 notes 会把已下发的提示文本原样读回（刷新不丢），
+// 所以这些 key 的片段在之后的响应里可以出现。读的是 app.hint_deliveries，也就是服务端真正发出去的记录；
+// H0/H1/H2 与批注不豁免——它们的文本在下发时就必须不含任何未透露片段。
+async function deliveredKeys(db: Db, attemptId: string): Promise<string[]> {
+  const rows = await db.query<{ key_id: string }>(
+    `select distinct key_id from app.hint_deliveries where attempt_id = $1 and level in ('H3', 'H4')`,
+    [attemptId],
+  );
+  return rows.rows.map((row) => row.key_id);
+}
+
 // 发一次真实请求并记录。op 形如 "POST /attempts/{attemptId}/lines"，URL 由它和 params 拼出，保证记录的接口就是真实请求的接口。
 // 豁免取请求之前本题已写出的 key（与 redteam.test.ts 的证明行通道同一口径），extraExempt 只用于 H3/H4 所属的 key。
 async function call(
@@ -226,12 +247,18 @@ async function call(
   owner: string,
   opts: { params?: Record<string, string>; payload?: unknown; extraExempt?: readonly string[]; tag?: Tag; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; json: Record<string, any>; body: string; headers: Record<string, unknown> }> {
-  const [method, template] = op.split(' ') as ['GET' | 'POST' | 'PATCH', string];
+  const [method, template] = op.split(' ') as ['GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', string];
   const params = opts.params ?? {};
   const url = template.replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? `{${name}}`);
-  const attemptId = params.attemptId;
+  // 继续作答（POST …/attempt）没有 attemptId 参数，但响应里同样带着已下发的提示：按布置找到这次作答。
+  const attemptId =
+    params.attemptId ??
+    (params.assignmentId === undefined
+      ? undefined
+      : (await ctx.db.query<{ id: string }>(`select id from app.attempts where assignment_id = $1 and kind = 'main'`, [params.assignmentId])).rows[0]?.id);
   const matched = attemptId === undefined ? [] : await matchedOf(ctx.db, attemptId);
   const parent = attemptId === undefined ? {} : await parentExempt(ctx.db, attemptId);
+  const delivered = attemptId === undefined ? [] : [...(await deliveredKeys(ctx.db, attemptId)), ...(ctx.seen?.get(attemptId) ?? [])];
   const res = await ctx.app.inject({
     method,
     url: `/api/v1${url}`,
@@ -241,7 +268,7 @@ async function call(
   ctx.records.push({
     op,
     owner,
-    exempt: { ...parent, [owner]: [...matched, ...(opts.extraExempt ?? [])] },
+    exempt: { ...parent, [owner]: [...matched, ...delivered, ...(opts.extraExempt ?? [])] },
     status: res.statusCode,
     body: res.body,
     ...(opts.tag === undefined ? {} : { tag: opts.tag }),
@@ -284,6 +311,9 @@ async function walkHintLadder(ctx: StudentContext, owner: string, attemptId: str
           hint: { ...base.hint, matched: route.slice(0, position), hintLv: { [key.id]: level }, reveal: 0, hintTimes: [] },
         });
         const extraExempt = hint.cost === 1 ? [key.id] : [];
+        const seen = ctx.seen?.get(attemptId) ?? new Set<string>();
+        for (const id of route.slice(0, position)) seen.add(id);
+        ctx.seen?.set(attemptId, seen);
         const params = { attemptId };
         const asked = await call(ctx, 'POST /attempts/{attemptId}/help', owner, { params, payload: { intent: 'stuck' }, tag: 'hint' });
         if (asked.json.note !== undefined) {
@@ -392,7 +422,7 @@ interface Walk {
 // 一名学生从登录到完成一道主题（含迁移题）的全程。
 async function walkProblem(main: string, transfer: string): Promise<Walk> {
   const { app, db, fx, assignmentId } = await openApp(main);
-  const ctx: StudentContext = { app, db, fx, cookie: '', records: [] };
+  const ctx: StudentContext = { app, db, fx, cookie: '', records: [], seen: new Map() };
   const vault = (await db.query<VaultRow>(`select problem_id, secret from vault.problem_secrets`)).rows;
   const secretOf = (id: string): Secret => vault.find((v) => v.problem_id === id)?.secret as Secret;
   const publicOf: Record<string, Record<string, any>> = {};
@@ -442,7 +472,18 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   const attemptId = started.json.state.attemptId as string;
   const params = { attemptId };
   const inProgress = (await call(ctx, 'GET /student/home', main)).json;
+
+  // —— 学习路径与练习区（Task 11 / 16）：此刻作答未完成、没有任何查看记录，这些响应里不得出现题目机密。
+  // 解题思路（secret.walkthrough）在未查看前同样不能出现在任何一个响应里。
+  await call(ctx, 'GET /student/path', main);
+  await call(ctx, 'POST /student/path/items/{problemId}/start', main, { params: { problemId: main } });
+  await call(ctx, 'GET /student/practice', main);
+  await call(ctx, 'POST /student/practice/random', main, { payload: {} });
+  await call(ctx, 'POST /student/practice/{problemId}/start', main, { params: { problemId: main } });
+  await call(ctx, 'GET /student/practice/{problemId}/solution', main, { params: { problemId: main } });
   await call(ctx, 'GET /attempts/{attemptId}', main, { params });
+  await call(ctx, 'GET /student/assignments/{assignmentId}', main, { params: { assignmentId } });
+  await call(ctx, 'PUT /attempts/{attemptId}/draft', main, { params, payload: { target: 'line', content: { statement: NEUTRAL_LINE } } });
 
   // —— 同意后的事件：带作答 ID 接受、不存在的作答被拒、同批重发算重复。
   const acceptedEvent = event({ type: 'help.open', attemptId, layer: 'L1', payload: { from: 'dock' } });
@@ -494,6 +535,17 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   await call(ctx, 'POST /attempts/{attemptId}/framework/template', main, { params });
   await call(ctx, 'POST /attempts/{attemptId}/layers/{layer}/skip', main, { params: { attemptId, layer: 'L2' } });
 
+  // —— 切层：先回到第 1 层（已跳过）再回第 3 层；第 3 层里写一行，改一行，删一行，然后找老师（卡住满 3 分钟）
+  await call(ctx, 'POST /attempts/{attemptId}/layers/{layer}/enter', main, { params: { attemptId, layer: 'L1' } });
+  await call(ctx, 'POST /attempts/{attemptId}/layers/{layer}/enter', main, { params: { attemptId, layer: 'L3' } });
+  const editable = await call(ctx, 'POST /attempts/{attemptId}/lines', main, { params, payload: { statement: NEUTRAL_LINE, justification: '由题设', input: INPUT } });
+  const editableId = editable.json.state.steps.lines.at(-1).lineId as string;
+  await call(ctx, 'PATCH /attempts/{attemptId}/lines/{lineId}', main, { params: { attemptId, lineId: editableId }, payload: { statement: `${NEUTRAL_LINE}二`, justification: '由题设', input: INPUT } });
+  await call(ctx, 'DELETE /attempts/{attemptId}/lines/{lineId}', main, { params: { attemptId, lineId: editableId } });
+  const fresh = await storedState(db, attemptId);
+  await setState(db, attemptId, 'L3', { ...fresh, lastProgressAt: Date.now() - 300_000 });
+  await call(ctx, 'POST /attempts/{attemptId}/flag-teacher', main, { params });
+
   // —— 第 3 层：写一行、求助（概念 / 行批注 / 题目自带的提问芯片 / 提示阶梯）、finish、搁置再恢复
   const ladder: Walk['ladder'] = {};
   const concept: Walk['concept'] = {};
@@ -506,6 +558,9 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   for (const text of (publicOf[main]?.askChips ?? []) as string[]) {
     await call(ctx, 'POST /attempts/{attemptId}/help', main, { params, payload: { intent: 'free', text }, tag: 'chip' });
   }
+  // —— 对一条回答点“有用 / 没用”（模型回答的反馈入口；204 无正文，但仍要走到并扫描）
+  const asked = await call(ctx, 'POST /attempts/{attemptId}/help', main, { params, payload: { intent: 'concept' } });
+  await call(ctx, 'POST /student/notes/{noteId}/feedback', main, { params: { noteId: asked.json.note.noteId as string }, payload: { useful: true } });
   ladder[main] = { delivered: await walkHintLadder(ctx, main, attemptId, secret), expected: hintsOf(secret) };
   await call(ctx, 'POST /attempts/{attemptId}/finish', main, { params });
   await call(ctx, 'POST /attempts/{attemptId}/park', main, { params });
@@ -673,13 +728,37 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
   });
 
   describe.each(PROBLEMS)('$main：响应确实带着真实内容（防止空响应假绿）', ({ main }) => {
-    it('/student/home：待做 / 进行中 / 已完成三态都下发真实标题与题面', () => {
+    // Task 11：首页卡片不再带整段题面（题多时体积大）；题面预览改由学习路径 / 练习区条目携带，见下一条。
+    it('/student/home：待做 / 进行中 / 已完成三态都下发真实标题，且不带整段题面', () => {
       const walk = walkOf(main);
       const pub = walk.publicOf[main] as Record<string, any>;
-      const card = { title: pub.title, stem: pub.stem };
+      const card = { title: pub.title };
       expect(walk.home.todo.todo).toEqual([expect.objectContaining(card)]);
       expect(walk.home.inProgress.inProgress).toEqual([expect.objectContaining(card)]);
       expect(walk.home.done.done).toEqual([expect.objectContaining(card)]);
+      for (const cards of [walk.home.todo.todo, walk.home.inProgress.inProgress, walk.home.done.done]) {
+        expect((cards as Record<string, unknown>[])[0]).not.toHaveProperty('stem');
+      }
+    });
+
+    it('/student/path 与 /student/practice：条目下发真实标题与截断的题面预览', () => {
+      const walk = walkOf(main);
+      const pub = walk.publicOf[main] as Record<string, any>;
+      const path = walk.records.find((r) => r.owner === main && r.op === 'GET /student/path' && r.status === 200);
+      const practice = walk.records.find((r) => r.owner === main && r.op === 'GET /student/practice' && r.status === 200);
+      expect(path).toBeDefined();
+      expect(practice).toBeDefined();
+      // 路径只展开当前单元（第一个没做完的），另一道主题在别的单元里，只有摘要。
+      const body = JSON.parse(path!.body) as { current: { items: Record<string, any>[] }; units: unknown[] };
+      const item = body.current.items.find((i) => i.problemId === main);
+      if (item) {
+        expect(item).toMatchObject({ title: pub.title });
+        expect(String(pub.stem).startsWith(String(item.stemPreview).replace(/…$/, ''))).toBe(true);
+      } else {
+        expect(body.units).toHaveLength(2);
+      }
+      const listed = (JSON.parse(practice!.body).items as Record<string, any>[]).find((i) => i.problemId === main);
+      expect(listed).toMatchObject({ title: pub.title });
     });
 
     it('/consents：14–17 岁档的全部段落（含监护人告知）都被扫描', () => {
@@ -796,7 +875,11 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
     const ops = contractStudentOps();
     expect(ops).toContain('GET /student/home');
     const scanned = new Set<string>(walk.records.filter(ok).map((r) => r.op));
-    const unscanned = ops.filter((op) => implemented(walk.app, op)).filter((op) => !scanned.has(op));
+    // 这两个接口的响应按设计就含参考证明 / 解题思路，由 path-practice.test.ts 专门验证它们的放行条件，不适用“0 命中”。
+    const BY_DESIGN_SECRET = new Set(['POST /student/practice/{problemId}/solution/reveal', 'GET /attempts/{attemptId}/review']);
+    const unscanned = ops
+      .filter((op) => implemented(walk.app, op) && !BY_DESIGN_SECRET.has(op))
+      .filter((op) => !scanned.has(op));
     expect(unscanned, '这些学生接口已实现但没有泄露扫描：加进 walkProblem 与 MAIN_OPS').toEqual([]);
   });
 });
@@ -810,7 +893,7 @@ describe.each(PROBLEMS)('跨题门槛：$main 缺任一 key 都到不了 $transf
       const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
       ctx.cookie = cookieFrom(login.headers['set-cookie']);
       await call(ctx, 'POST /auth/student/age-band', main, { payload: { ageBand: 'ge18' } });
-      await call(ctx, 'POST /consents', main, { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
+      await call(ctx, 'POST /consents', main, { payload: { version: 'v2', items: ALL_REQUIRED } });
       const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', main, { params: { assignmentId } });
       const attemptId = started.json.state.attemptId as string;
       const params = { attemptId };
@@ -884,7 +967,7 @@ describe('教师补发 H4（grantH4）后的学生响应', { timeout: 60_000 }, 
       const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
       ctx.cookie = cookieFrom(login.headers['set-cookie']);
       await call(ctx, 'POST /auth/student/age-band', 'epsN', { payload: { ageBand: 'ge18' } });
-      await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
+      await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'v2', items: ALL_REQUIRED } });
       const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', 'epsN', { params: { assignmentId } });
       const attemptId = started.json.state.attemptId as string;
 
@@ -955,7 +1038,7 @@ describe('负面对照：扫描真的能报出泄露', { timeout: 60_000 }, () =
     const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
     ctx.cookie = cookieFrom(login.headers['set-cookie']);
     await call(ctx, 'POST /auth/student/age-band', 'epsN', { payload: { ageBand: 'ge18' } });
-    await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'p0-v1', items: ALL_REQUIRED } });
+    await call(ctx, 'POST /consents', 'epsN', { payload: { version: 'v2', items: ALL_REQUIRED } });
     const started = await call(ctx, 'POST /student/assignments/{assignmentId}/attempt', 'epsN', { params: { assignmentId: opened.assignmentId } });
     attemptId = started.json.state.attemptId as string;
   }, 60_000);
@@ -987,18 +1070,27 @@ describe('负面对照：扫描真的能报出泄露', { timeout: 60_000 }, () =
     expect(scan([record(other)], vault).length).toBeGreaterThan(0);
   });
 
-  it('/student/home：题面被投毒时，真实路由的响应被报出', async () => {
+  it('/student/home 与 /student/path：标题 / 题面被投毒时，真实路由的响应被报出', async () => {
     const original = (await db.query<{ public: object }>(`select public from content.problem_versions where problem_id = 'epsN'`)).rows[0]?.public;
     const from = ctx.records.length;
     await poisoned(
       'content.problem_versions',
-      () => db.query(`update content.problem_versions set public = jsonb_set(public, '{stem}', to_jsonb($1::text)) where problem_id = 'epsN'`, [`题面 ${fragmentOf('epsN')}`]),
+      () =>
+        db.query(
+          `update content.problem_versions
+              set public = jsonb_set(jsonb_set(public, '{stem}', to_jsonb($1::text)), '{title}', to_jsonb($2::text))
+            where problem_id = 'epsN'`,
+          [`题面 ${fragmentOf('epsN')}`, `标题 ${fragmentOf('epsN')}`],
+        ),
       () => db.query(`update content.problem_versions set public = $1::jsonb where problem_id = 'epsN'`, [JSON.stringify(original)]),
       async () => {
         await call(ctx, 'GET /student/home', 'epsN');
+        await call(ctx, 'GET /student/path', 'epsN');
       },
     );
-    expect(scan(newRecords(from), vault).some((hit) => hit.includes('$.inProgress[0].stem'))).toBe(true);
+    const hits = scan(newRecords(from), vault);
+    expect(hits.some((hit) => hit.includes('$.inProgress[0].title'))).toBe(true);
+    expect(hits.some((hit) => hit.includes('stemPreview'))).toBe(true);
   });
 
   it('/me：显示名被投毒时，真实路由的响应被报出', async () => {

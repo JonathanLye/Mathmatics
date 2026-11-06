@@ -132,6 +132,19 @@
     "referenceProofs": [
       { "id": "R1", "route": 0, "publishable": true, "text": "任取 $\\varepsilon>0$。$|a_n-3|=\\left|\\frac{3n+1}{n+2}-3\\right|=\\frac{5}{n+2}<\\frac{5}{n}$。取 $N=\\left\\lceil\\frac{5}{\\varepsilon}\\right\\rceil$，则当 $n>N$ 时，$|a_n-3|<\\frac{5}{n}<\\frac{5}{N}\\le\\varepsilon$。故 $\\lim_{n\\to\\infty}\\frac{3n+1}{n+2}=3$。" }
     ],
+    "walkthrough": {
+      "approach": "先把目标写成 $\\varepsilon$-$N$ 的形式：对任意 $\\varepsilon>0$，要找到只依赖 $\\varepsilon$ 的 $N$，使 $n>N$ 时 $|a_n-3|<\\varepsilon$。所以从 $|a_n-3|$ 出发，化简后放大成一个只含 $n$ 的简单式子，再倒推 $N$。",
+      "keyIdeas": [
+        "先化简 $|a_n-3|$，通分后分子分母都变得很简单。",
+        "放大要保持方向：每一步只能把式子变大，不能变小。",
+        "$N$ 只能依赖 $\\varepsilon$，不能依赖 $n$。",
+        "最后用一串不等号把 $|a_n-3|$ 连到 $\\varepsilon$ 上。"
+      ],
+      "pitfalls": [
+        "从 $|a_n-3|<\\varepsilon$ 直接解出 $n$ 当作 $N$，却没有说明放大后仍然成立。",
+        "$N$ 里混进了 $n$，或忘了取整、忘了 $n>N$ 的前提。"
+      ]
+    },
     "lean": {
       "file": "EpsN.lean",
       "status": "proved",

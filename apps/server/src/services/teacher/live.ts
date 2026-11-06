@@ -73,7 +73,7 @@ async function resolveAssignmentId(
   assignmentId: string | undefined,
 ): Promise<string | null> {
   if (assignmentId !== undefined) {
-    const found = await db.query(`select 1 from app.assignments where id = $1 and class_id = $2`, [
+    const found = await db.query(`select 1 from app.assignments where id = $1 and class_id = $2 and origin = 'teacher'`, [
       assignmentId,
       classId,
     ]);
@@ -83,7 +83,7 @@ async function resolveAssignmentId(
   // 契约没有规定缺省取哪个布置；取最近开放的一个（04 §2.1 看板是“选中一个布置”）。
   const latest = (
     await db.query<{ id: string }>(
-      `select id from app.assignments where class_id = $1 and status <> 'cancelled'
+      `select id from app.assignments where class_id = $1 and status <> 'cancelled' and origin = 'teacher'
         order by open_at desc limit 1`,
       [classId],
     )

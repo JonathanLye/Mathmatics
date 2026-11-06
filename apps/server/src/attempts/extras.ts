@@ -1,4 +1,5 @@
 import type { Queryable } from '../db/index.ts';
+import { loadStoredNotes } from '../help/store.ts';
 
 import type { AttemptRow } from './view.ts';
 
@@ -25,6 +26,10 @@ export interface ViewExtras {
   // 最近一次 summary.submit 缺了哪些要点（用于挑追问）；没提交过为 null。
   summaryMissing: string[] | null;
   transfer: { childAttemptId: string; stem: string | null } | null;
+  // 完成后能不能看讲评：自学作答完成即可；教师布置要布置关闭且教师已发布。
+  reviewAvailable: boolean;
+  // 已下发的提示与批注（app.hint_deliveries / app.annotations），刷新后读回。noteId = 行 ID。
+  notes: Record<string, unknown>[];
 }
 
 // 刚创建的作答：还没有任何行与事件。
@@ -36,6 +41,8 @@ export const EMPTY_EXTRAS: ViewExtras = {
   summaryAnswers: [],
   summaryMissing: null,
   transfer: null,
+  reviewAvailable: false,
+  notes: [],
 };
 
 export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<ViewExtras> {
@@ -85,7 +92,19 @@ export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<Vie
       ).rows[0]?.stem ?? null)
     : null;
 
+  const asg = (
+    await q.query<{ origin: string; published: boolean; closed: boolean }>(
+      `select origin, review_published_at is not null as published,
+              (status in ('closed', 'cancelled') or (close_at is not null and close_at <= now())) as closed
+         from app.assignments where id = $1`,
+      [row.assignment_id],
+    )
+  ).rows[0];
+  const reviewAvailable =
+    row.status === 'completed' && asg !== undefined && (asg.origin === 'path' || (asg.published && asg.closed));
+
   return {
+    reviewAvailable,
     lines: lines
       .filter((l) => l.role === 'step')
       .map((l) => ({
@@ -111,5 +130,6 @@ export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<Vie
       .map(([, text]) => text),
     summaryMissing: submitted ? (submitted.payload.missing ?? []) : null,
     transfer: child ? { childAttemptId: child.id, stem: childStem } : null,
+    notes: await loadStoredNotes(q, row.id, null),
   };
 }

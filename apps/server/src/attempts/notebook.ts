@@ -3,6 +3,7 @@ import { deserializeState, type SerializedAttemptState } from '@proof-gym/engine
 import type { ContractValidator } from '../contract.ts';
 import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
+import { hasOpenTest } from '../path/common.ts';
 
 // 证明本（GET /student/notebook）、错题本（GET /student/mistakes）、讲评（GET /attempts/{id}/review）的只读聚合。
 // 只读学生自己的、已完成的作答（kind=main|redo）。不产生判断：错因分组来自作答时已经记下的行归类与引擎状态。
@@ -338,7 +339,10 @@ export async function notebookCounts(db: Queryable, userId: string): Promise<{ c
   return { cards: cards.length, toRedo: toRedo.length };
 }
 
-// GET /attempts/{attemptId}/review：教师发布讲评后，本人完成了作答（或布置已结束）才返回参考证明与讲评。
+// GET /attempts/{attemptId}/review：返回参考证明与讲评。
+//  - 自学作答（origin=path）：本人写完后可看；
+//  - 教师布置：教师已发布，且本人写完或布置已结束；
+//  - 班里这道题还有没结束的测验时一律不给（否则早交卷的人能把答案带给还在考的同学）。
 // 读参考证明记审计（vault.reference_access_log，purpose=review）。
 export async function loadReview(
   db: Db,
@@ -352,11 +356,12 @@ export async function loadReview(
         problem_id: string;
         problem_version: number;
         status: string;
+        origin: 'teacher' | 'path';
         asg_closed: boolean;
         review_published_at: Date | null;
         review_note: string | null;
       }>(
-        `select a.problem_id, a.problem_version, a.status,
+        `select a.problem_id, a.problem_version, a.status, asg.origin,
                 (asg.status in ('closed', 'cancelled') or (asg.close_at is not null and asg.close_at <= now())) as asg_closed,
                 asg.review_published_at, asg.review_note
            from app.attempts a join app.assignments asg on asg.id = a.assignment_id
@@ -365,12 +370,19 @@ export async function loadReview(
       )
     ).rows[0];
     if (!row) throw new AppError('NOT_FOUND', 404, '找不到这次作答');
-    if (row.review_published_at === null) throw new AppError('FORBIDDEN', 403, '老师还没有发布讲评');
-    if (row.status !== 'completed' && !row.asg_closed) throw new AppError('FORBIDDEN', 403, '写完这道题或布置结束后才能看讲评');
+    if (row.origin === 'path') {
+      if (row.status !== 'completed') throw new AppError('FORBIDDEN', 403, '写完这道题后才能看讲评');
+    } else {
+      if (row.review_published_at === null) throw new AppError('FORBIDDEN', 403, '老师还没有发布讲评');
+      if (row.status !== 'completed' && !row.asg_closed) throw new AppError('FORBIDDEN', 403, '写完这道题或布置结束后才能看讲评');
+    }
+    if (await hasOpenTest(tx, userId, row.problem_id)) {
+      throw new AppError('FORBIDDEN', 403, '这道题老师正在用作测验，测验结束后再看讲评');
+    }
 
     const proofs = (
       await tx.query<{ text: string }>(
-        `select text from vault.reference_proofs where problem_id = $1 and version = $2 and publishable order by proof_id`,
+        `select text from vault.reference_proofs where problem_id = $1 and version = $2 and publishable order by route nulls last, proof_id`,
         [row.problem_id, row.problem_version],
       )
     ).rows.map((r) => r.text);

@@ -77,6 +77,8 @@ import {
   addLine,
   addTransferLine,
   claimHint,
+  noteFeedback,
+  flagTeacher,
   completeTransferParent,
   deleteTransferLine,
   editTransferLine,
@@ -869,6 +871,15 @@ function handlePreviewRetry() {
   void runHelp(intent, text)
 }
 
+async function handleNoteFeedback(noteId: string, useful: boolean) {
+  try {
+    await noteFeedback(noteId, useful)
+    show('收到，谢谢')
+  } catch {
+    // 反馈失败不打断学习
+  }
+}
+
 async function handleClaim() {
   const preview = hintPreview.value
   if (!preview) return
@@ -890,7 +901,15 @@ function handleDecline() {
 }
 
 /** 软着陆出路（01 §4.4；文案与抽屉/预览卡共用 hintPreviewCopy，页面只显示选择，不实现微课跳转）。 */
-function handleSoftLanding(action: string) {
+async function handleSoftLanding(action: string) {
+  if (action === 'flag_teacher') {
+    const next = await run(() => flagTeacher(state.value))
+    if (next) {
+      apply(next)
+      show('已告诉老师，老师会看到你在这一步的卡点')
+    } else show(error.value ?? '暂时联系不上老师，请稍后再试')
+    return
+  }
   helpOpen.value = false
   helpNote.value = null
   hintPreview.value = null
@@ -1582,6 +1601,7 @@ function backHome() {
       @intent="handleIntent"
       @send="handleSend"
       @claim="handleClaim"
+      @feedback="handleNoteFeedback"
       @decline="handleDecline"
       @soft-landing="handleSoftLanding"
     />
