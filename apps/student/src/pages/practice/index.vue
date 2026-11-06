@@ -7,7 +7,6 @@
  */
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
-import BottomDock from '@/components/BottomDock.vue'
 import BudgetBar from '@/components/BudgetBar.vue'
 import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
@@ -18,7 +17,7 @@ import OfflineBar from '@/components/OfflineBar.vue'
 import TopBar from '@/components/TopBar.vue'
 import WechatHint from '@/components/WechatHint.vue'
 import CompletionScreen from '@/components/practice/CompletionScreen.vue'
-import ComposerOverlays from '@/components/practice/ComposerOverlays.vue'
+import Composer from '@/components/practice/Composer.vue'
 import ExamOverlays from '@/components/practice/ExamOverlays.vue'
 import LayerDefine from '@/components/practice/LayerDefine.vue'
 import LayerFrame from '@/components/practice/LayerFrame.vue'
@@ -39,6 +38,7 @@ import { useDrafts } from '@/composables/practice/useDrafts'
 import { useExamMode } from '@/composables/practice/useExamMode'
 import { useFeedback } from '@/composables/practice/useFeedback'
 import { useHelp } from '@/composables/practice/useHelp'
+import { useKeyLines } from '@/composables/practice/useKeyLines'
 import { useViewport } from '@/composables/useViewport'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { checkLesson } from '@/api/client'
@@ -64,7 +64,7 @@ const composer = useComposer(session, drafts)
 const composerView = reactive(composer)
 const loop = useFeedback(session)
 const { feedback, interstitial } = loop
-const { recogDraft } = composer
+const { matchedLineIds } = useKeyLines(session)
 const { restoredDraft, l1Initial } = drafts
 
 const layersOpen = ref(false)
@@ -119,6 +119,7 @@ onLoad(async (q) => {
   // 未登录/字段缺失不在这里拦（unknown），以服务端写接口的 409 AGE_BAND_REQUIRED / 403 AGE_RESTRICTED 为准。
   if (!ageGatePassed(await enforceAgeGate())) return
   await session.load(q)
+  void composer.loadDefaultInput()
 })
 
 function onSwitchMock(k: MockKey) {
@@ -277,11 +278,12 @@ function backHome() {
             :notes="visibleNotes"
             :busy="busy"
             :can-finish="Boolean(state.steps?.canFinish)"
-            :recog-draft="recogDraft"
-            @write-next="composer.openKeyboardEditor"
+            :matched-line-ids="matchedLineIds"
+            @write-next="composer.openComposer"
+            @edit-line="composer.openEdit"
+            @delete-line="session.removeLine($event.lineId)"
             @dismiss-note="help.dismissNote"
             @finish="session.finishProof"
-            @clear-draft="composer.clearRecogDraft"
           />
 
           <LayerSelfcheck
@@ -321,17 +323,6 @@ function backHome() {
       />
     </view>
 
-    <view v-if="mode === 'mobile' && !isCompleted && currentLayer === 'L3' && !isTransferAttempt" class="pg-practice__dockwrap">
-      <!-- 操作坞只放写证明行的输入方式：其他层用各自的表单 -->
-      <BottomDock
-
-        :photo-disabled="strictExam"
-        @ink="composer.startInk"
-        @keyboard="composer.openKeyboardEditor"
-        @photo="composer.startPhoto"
-      />
-    </view>
-
     <LayerSheet :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="closeLayers" />
 
     <HelpDrawer
@@ -359,7 +350,7 @@ function backHome() {
       @soft-landing="help.softLanding"
     />
 
-    <ComposerOverlays :composer="composerView" :line-no="nextLineNo" :busy="busy" @draft="drafts.saveLine" />
+    <Composer :composer="composerView" :line-no="nextLineNo" :lines="lines" :busy="busy" :photo-disabled="strictExam" />
 
     <PracticeFeedback :view="feedback" @continue="loop.dismissFeedback" />
     <LayerInterstitial :view="interstitial" :layers="state.layers" @continue="loop.dismissInterstitial" />
@@ -474,24 +465,6 @@ function backHome() {
 .pg-practice__layertask {
   color: var(--ink-2);
   font-weight: var(--fw-bold);
-}
-/* 额度条在操作坞上方，一起贴底、一起随键盘上移（操作坞不再自己 fixed，否则会盖住额度条） */
-.pg-practice__dockwrap {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 30;
-  background: var(--paper);
-  border-top: var(--bw) solid var(--rule);
-  transform: translateY(calc(-1 * var(--keyboard-inset)));
-  transition: transform var(--dur-fast) ease-out;
-}
-.pg-practice__dockwrap :deep(.pg-dock) {
-  position: static;
-  padding-top: 0;
-  border-top: 0;
-  transform: none;
 }
 .pg-practice__placeholder { padding: var(--sp-3); }
 </style>

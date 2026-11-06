@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import {
   addTransferLine,
   completeTransferParent,
+  deleteLine,
   deleteTransferLine,
   editTransferLine,
   fetchLesson,
@@ -205,6 +206,12 @@ export function useAttemptSession(drafts: DraftsHandle) {
     if (layer === 'L1') await drafts.clearDefinition(attemptId)
   }
 
+  /** 第 3 层：删一行（行号不重排，关键步骤由服务端重算）。 */
+  async function removeLine(lineId: string): Promise<void> {
+    const next = await run(() => deleteLine(state.value, lineId))
+    if (next) apply(next)
+  }
+
   /** 第 3 层「写完了」。 */
   async function finishProof(): Promise<void> {
     const next = await run(() => finishSteps(state.value))
@@ -291,6 +298,7 @@ export function useAttemptSession(drafts: DraftsHandle) {
     loadLesson,
     showFrameTemplate,
     skipCurrentLayer,
+    removeLine,
     finishProof,
     answerSelfcheckItem,
     beginTransfer,

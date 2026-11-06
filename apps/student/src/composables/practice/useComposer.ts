@@ -1,30 +1,44 @@
 /**
- * 写证明的输入：行编辑器、手写、拍照识别的开关与流程（#15/#21/#25）。
+ * 写下一行的输入器（#15/#21/#25）：一个入口、一个面板，手写 / 键盘 / 拍照切换，三个方式共用「这一行」和「依据」。
  * 识别结果只是候选，学生确认后才进入提交；来源（provenance）随提交带给服务端。
+ * 学生写的内容在这里，切方式、识别失败都不丢。
  */
 import { computed, ref } from 'vue'
 import {
   addLine,
   confirmRecognition,
+  editLine,
+  fetchSettings,
   isMockMode,
   photoRecognitionErrorMessage,
   recognizeInk,
   recognizePhoto,
+  updateSettings,
 } from '@/api/client'
 import { isApiError } from '@/api/http'
+import { buildLineDraft } from '@/components/lineDrafts'
+import {
+  photoFailureOf,
+  photoFailureOfResult,
+  withRecognitionTimeout,
+  type RecognitionFailure,
+} from '@/components/practice/recognitionFailure'
 import { useToast } from '@/components/ui/useToast'
 import { uuidv7 } from '@/integrity/ids'
 import { compressImage, loadImageBlobFromPath } from '@/utils/imageCompress'
-import type { LineDraft, Recognition } from '@/types/attempt'
+import type { LineDraft, ProofLine, Recognition, SettingsView } from '@/types/attempt'
 import type { AttemptSession } from './useAttemptSession'
 import type { DraftsHandle } from './useDrafts'
+
+export type ComposerTab = SettingsView['defaultInput']
+export type PhotoSource = 'camera' | 'album'
 
 /**
  * H5 选图：优先 uni.chooseImage（返回 tempFilePath）；若运行环境未注册该 API（本构建的 H5 运行时按需注册），
  * 退回原生 <input type=file>（返回 File）。两条路都支持相机/相册：camera 带 capture=environment。
  * 取消选择返回 null（不弹错误）。
  */
-function pickImageWithDomInput(source: 'camera' | 'album'): Promise<File | null> {
+function pickImageWithDomInput(source: PhotoSource): Promise<File | null> {
   return new Promise((resolve, reject) => {
     if (typeof document === 'undefined') {
       reject(new Error('当前环境不支持拍照，请用键盘或手写'))
@@ -61,7 +75,7 @@ function pickImageWithDomInput(source: 'camera' | 'album'): Promise<File | null>
   })
 }
 
-function choosePhotoFile(source: 'camera' | 'album'): Promise<File | string | null> {
+function choosePhotoFile(source: PhotoSource): Promise<File | string | null> {
   const uniApi = (typeof uni !== 'undefined' ? uni : undefined) as
     | { chooseImage?: (options: Record<string, unknown>) => void }
     | undefined
@@ -110,106 +124,196 @@ export function inkRecognitionErrorMessage(err: unknown): string {
   return '手写识别暂不可用，请用键盘'
 }
 
-export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'apply' | 'run'>, drafts: DraftsHandle) {
-  const { state, error, apply, run } = session
+export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'apply' | 'run' | 'busy'>, drafts: DraftsHandle) {
+  const { state, error, apply, run, busy } = session
   const toast = useToast()
 
   const editorOpen = ref(false)
-  /** #15 拍照识别确认：识别中 → 确认面板；确认后的文本进入「草稿」并回填行编辑器 */
-  const recogOpen = ref(false)
+  const tab = ref<ComposerTab>('keyboard')
+  /** 正在改已有的一行；null 是写新的一行。 */
+  const editingLine = ref<ProofLine | null>(null)
+  /** 三种方式共用：切方式、识别失败都不丢。 */
+  const statement = ref('')
+  const justification = ref('')
+  /** 一个落点一个 draftId（03 §1）：打开时生成，打开期间的重试复用，重新打开才换新。 */
+  let statementDraftId = ''
+  let justificationDraftId = ''
+
+  /** 识别结果确认后的来源：文字不改就按这个来源提交。 */
+  const recogDraft = ref<{ text: string; recogId: string; source: 'ink' | 'photo'; draftId?: string } | null>(null)
   const recogBusy = ref(false)
   const recognition = ref<Recognition | null>(null)
-  const recogDraft = ref<{ text: string; recogId: string; at: string; source?: 'ink' | 'photo'; draftId?: string } | null>(null)
-  /** #21 手写：全屏手写面板（InkCanvas）；写完一行 → /recognitions/ink → 确认卡 → 确认 → 行编辑器 → 以 ink 来源提交。 */
-  const inkOpen = ref(false)
-  const inkValue = ref('')
-  /** 本次识别结果的来源：手写（单行确认卡）或拍照（逐行面板）；影响加载文案与「重写」行为。 */
   const recogSource = ref<'ink' | 'photo'>('photo')
-  /** 一行一个 draftId（03 §1）：识别请求与随后提交这一行复用同一个。 */
-  let inkDraftId = ''
-  /** #25 拍照：压缩/识别进度文案；photoAdding=正在把选中的行加入证明。 */
+  /** 识别中的文案（拍照：打开相机 → 压缩 → 识别）。 */
   const photoProgress = ref('')
+  /** 正在把选中的行加入证明。 */
   const photoAdding = ref(false)
-  /** 本次识别结果是否进入「逐行确认」面板（整页拍照；即便加到只剩 1 行也保持该面板，不回退到单行卡）。 */
-  const photoPanelActive = ref(false)
+  /** 拍照没拿到结果：显示说明和出口，不显示原始报错。 */
+  const photoFailure = ref<RecognitionFailure | null>(null)
+  /** 手写没认出来时的一句话。 */
+  const inkFailure = ref('')
+  const inkValue = ref('')
+  /** 手写：识别请求与随后提交这一行复用同一个 draftId（03 §1）。 */
+  let inkDraftId = ''
   /** 最近一次压缩后的图片：重新识别时复用（不重拍、不再压缩）。 */
-  let lastPhoto: { image: Blob; source: 'camera' | 'album' } | null = null
+  let lastPhoto: { image: Blob; source: PhotoSource } | null = null
   /** 取消/重开时忽略在途识别结果。 */
   let recogSeq = 0
 
-  /** #27：打开行编辑器时的初始值 —— 识别确认的文本优先（#15 行为），否则用本机未提交草稿。 */
-  const editorInitialStatement = computed(() => recogDraft.value?.text ?? drafts.lineDraftInitial.value.statement)
-  const editorInitialJustification = computed(() => drafts.lineDraftInitial.value.justification)
+  let settingsLoaded = false
+  let tabChosen = false
 
-  /** 手写确认过的文字原样提交 → 来源记为 ink（带 recogId）；改过就按键盘（学生已经自己动了笔）。 */
-  function withInkProvenance(draft: LineDraft): LineDraft {
-    const rd = recogDraft.value
-    if (!rd || rd.source !== 'ink' || !rd.recogId) return draft
-    if (draft.statement.trim() !== rd.text.trim()) return draft
-    return { ...draft, input: { provenance: 'ink', draftId: rd.draftId || draft.input.draftId, recogId: rd.recogId } }
-  }
+  const canSubmit = computed(() => statement.value.trim().length > 0 && !busy.value)
+  /** 手写：有识别结果要核对。 */
+  const inkConfirming = computed(() => recogSource.value === 'ink' && Boolean(recognition.value))
+  /** 拍照：有识别结果要逐行确认。 */
+  const photoConfirming = computed(() => recogSource.value === 'photo' && Boolean(recognition.value))
 
-  async function submitLine(draft: LineDraft): Promise<void> {
-    const attemptId = state.value.attemptId
-    const toSend = withInkProvenance(draft)
-    const next = await run(() => addLine(state.value, toSend))
-    if (next) {
-      apply(next)
-      editorOpen.value = false
-      recogDraft.value = null
-      // #27：加行成功后清除这一行的本机草稿（失败时保留，便于重试）。
-      await drafts.clearLine(attemptId)
-    } else {
-      // 失败不关编辑器：本地草稿与 draftId 保留，重试复用（PR #90 复审建议）。
-      toast.show(error.value || '加入证明失败，请重试；你写的内容还在编辑器里')
+  /** 打开页面时读一次设置里的默认输入方式；读不到就用键盘，不打扰学生。 */
+  async function loadDefaultInput(): Promise<void> {
+    if (settingsLoaded) return
+    settingsLoaded = true
+    try {
+      const settings = await fetchSettings()
+      if (!tabChosen && settings.defaultInput) tab.value = settings.defaultInput
+    } catch {
+      /* 设置读不到不影响写证明 */
     }
   }
 
-  function openInkSheet(): void {
+  /** 学生切方式：记下来，下次打开就是它。写不进去也不影响这一次。 */
+  function chooseTab(next: ComposerTab): void {
+    tabChosen = true
+    if (tab.value === next) return
+    tab.value = next
+    updateSettings({ defaultInput: next }).catch(() => undefined)
+  }
+
+  function freshDraftIds(): void {
+    statementDraftId = uuidv7()
+    justificationDraftId = uuidv7()
+    inkDraftId = uuidv7()
+  }
+
+  function resetRecognition(): void {
+    recogSeq += 1
+    recognition.value = null
+    recogBusy.value = false
+    photoProgress.value = ''
+    photoFailure.value = null
+    inkFailure.value = ''
+  }
+
+  /** 写下一行：恢复本机草稿（#27）。测验模式下不可能落在拍照上。 */
+  function openComposer(): void {
+    if (busy.value) return
+    editingLine.value = null
+    statement.value = recogDraft.value?.text ?? drafts.lineDraftInitial.value.statement
+    justification.value = drafts.lineDraftInitial.value.justification
+    inkValue.value = ''
+    resetRecognition()
+    freshDraftIds()
+    if (tab.value === 'photo' && state.value.integrity.mode === 'test') tab.value = 'keyboard'
+    editorOpen.value = true
+  }
+
+  /** 改已有的一行：只用键盘，提交走 PATCH。 */
+  function openEdit(line: ProofLine): void {
+    if (busy.value) return
+    editingLine.value = line
+    statement.value = line.statement
+    justification.value = line.justification ?? ''
+    recogDraft.value = null
+    resetRecognition()
+    freshDraftIds()
+    editorOpen.value = true
+  }
+
+  function closeComposer(): void {
+    if (busy.value) return
+    resetRecognition()
+    editorOpen.value = false
+  }
+
+  /** #27：输入变化写本机草稿（父级防抖）。改已有的行不写草稿：原文还在服务端。 */
+  function saveDraft(): void {
+    if (!editorOpen.value || editingLine.value) return
+    drafts.saveLine({ statement: statement.value, justification: justification.value })
+  }
+
+  /** 手写确认过的文字原样提交 → 来源记为 ink（带 recogId）；改过就按键盘（学生已经自己动了笔）。 */
+  function withRecogProvenance(draft: LineDraft): LineDraft {
+    const rd = recogDraft.value
+    if (!rd || !rd.recogId) return draft
+    if (draft.statement.trim() !== rd.text.trim()) return draft
+    return { ...draft, input: { provenance: rd.source, draftId: rd.draftId || draft.input.draftId, recogId: rd.recogId } }
+  }
+
+  async function submit(): Promise<void> {
+    if (!canSubmit.value) return
+    const attemptId = state.value.attemptId
+    const editing = editingLine.value
+    const draft = withRecogProvenance(
+      buildLineDraft({
+        statement: statement.value,
+        justification: justification.value,
+        statementDraftId,
+        justificationDraftId,
+        provenance: 'keyboard',
+      }),
+    )
+    const next = await run(() => (editing ? editLine(state.value, editing.lineId, draft) : addLine(state.value, draft)))
+    if (next) {
+      apply(next)
+      editorOpen.value = false
+      editingLine.value = null
+      recogDraft.value = null
+      statement.value = ''
+      justification.value = ''
+      // #27：成功后清除这一行的本机草稿（失败时保留，便于重试）。
+      if (!editing) await drafts.clearLine(attemptId)
+    } else {
+      // 失败不关面板：内容与 draftId 保留，重试复用（PR #90 复审建议）。
+      toast.show(error.value || '这一行没加进去，再试一次；你写的内容还在')
+    }
+  }
+
+  /** 手写：重写这一行（清掉识别填进来的文字，回到画布）。 */
+  function rewriteInk(): void {
+    resetRecognition()
+    statement.value = ''
+    recogDraft.value = null
     inkValue.value = ''
     inkDraftId = uuidv7()
-    inkOpen.value = true
   }
 
-  function startInk(): void {
-    if (recogBusy.value) return
-    openInkSheet()
-  }
-
-  function cancelInk(): void {
-    inkOpen.value = false
-  }
-
-  /** 「写完这一行」：InkCanvas 给出 gzip(ink-v1) 的 base64，调 /recognitions/ink，结果进确认卡。 */
+  /** 「写完这一行」：InkCanvas 给出 gzip(ink-v1) 的 base64，调 /recognitions/ink，结果在面板里核对。 */
   async function finishInk(base64: string): Promise<void> {
-    inkOpen.value = false
     if (!base64) return
     const seq = ++recogSeq
     recogSource.value = 'ink'
     recogBusy.value = true
-    recogOpen.value = true
     recognition.value = null
-    photoPanelActive.value = false
+    inkFailure.value = ''
     photoProgress.value = '正在识别这一行…'
     try {
-      const result = await recognizeInk({
-        attemptId: state.value.attemptId,
-        draftId: inkDraftId || uuidv7(),
-        target: 'line_statement',
-        ink: base64,
-      })
+      const result = await withRecognitionTimeout(
+        recognizeInk({
+          attemptId: state.value.attemptId,
+          draftId: inkDraftId || uuidv7(),
+          target: 'line_statement',
+          ink: base64,
+        }),
+      )
       if (seq !== recogSeq) return
       if (result.status === 'empty' || !result.text) {
-        recogOpen.value = false
-        toast.show('没有识别到内容，请再写一次，或者用键盘')
+        inkFailure.value = '没有认出内容，再写一次，或者用键盘'
         return
       }
       recognition.value = result
-      recogOpen.value = false
     } catch (err) {
       if (seq !== recogSeq) return
-      recogOpen.value = false
-      toast.show(inkRecognitionErrorMessage(err))
+      inkFailure.value = inkRecognitionErrorMessage(err)
     } finally {
       if (seq === recogSeq) {
         recogBusy.value = false
@@ -218,17 +322,43 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
     }
   }
 
-  function openKeyboardEditor(): void {
-    editorOpen.value = true
+  /** 识别一张压缩好的图片（首次和「再试一次」共用）：失败只进 photoFailure，学生写的内容不动。 */
+  async function recognizePhotoBlob(image: Blob, source: PhotoSource, seq = ++recogSeq): Promise<void> {
+    recogSource.value = 'photo'
+    recogBusy.value = true
+    recognition.value = null
+    photoFailure.value = null
+    photoProgress.value = '正在识别…'
+    try {
+      const result = await withRecognitionTimeout(
+        recognizePhoto({
+          attemptId: state.value.attemptId,
+          draftId: uuidv7(),
+          target: 'line_statement',
+          source,
+          image,
+        }),
+      )
+      if (seq !== recogSeq) return
+      const failure = photoFailureOfResult(result)
+      if (failure) photoFailure.value = failure
+      else recognition.value = result
+    } catch (err) {
+      if (seq !== recogSeq) return
+      photoFailure.value = photoFailureOf(err)
+    } finally {
+      if (seq === recogSeq) {
+        recogBusy.value = false
+        photoProgress.value = ''
+      }
+    }
   }
 
   /**
    * #25 拍照识别：选择图片 → 压缩（长边≤2000/≤2MB/去 EXIF）→ POST /recognitions/photo → 逐行确认。
-   * - 真实后端已上线；404 表示作答/识别记录不存在，提示重新拍照或改用键盘，不伪造结果；
-   * - 测验模式 photo 已禁用；取消选择不提示错误；
-   * - 取消/重新打开时用 recogSeq 忽略在途结果。
+   * 测验模式 photo 已禁用；取消选择不提示错误；取消/重新打开时用 recogSeq 忽略在途结果。
    */
-  async function startPhoto(): Promise<void> {
+  async function startPhoto(source: PhotoSource = 'camera'): Promise<void> {
     if (recogBusy.value) return
     if (state.value.integrity.mode === 'test') {
       toast.show('测验模式下拍照不可用')
@@ -237,44 +367,36 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
     const seq = ++recogSeq
     recogSource.value = 'photo'
     recogBusy.value = true
-    recogOpen.value = true
     recognition.value = null
-    photoPanelActive.value = false
-    photoProgress.value = '正在打开相机…'
+    photoFailure.value = null
+    photoProgress.value = source === 'camera' ? '正在打开相机…' : '正在打开相册…'
     try {
-      const picked = await choosePhotoFile('camera')
+      const picked = await choosePhotoFile(source)
       if (seq !== recogSeq) return
       if (!picked) {
-        closeRecogLoading()
+        cancelRecognition()
         return
       }
       photoProgress.value = '正在压缩图片…'
       const sourceBlob = typeof picked === 'string' ? await loadImageBlobFromPath(picked) : picked
       const compressed = await compressImage(sourceBlob, { maxEdge: 2000, maxBytes: 2 * 1024 * 1024 })
       if (seq !== recogSeq) return
-      lastPhoto = { image: compressed.blob, source: 'camera' }
-      photoProgress.value = '正在识别…'
-      const result = await recognizePhoto({
-        attemptId: state.value.attemptId,
-        draftId: uuidv7(),
-        target: 'line_statement',
-        source: 'camera',
-        image: compressed.blob,
-      })
-      if (seq !== recogSeq) return
-      recognition.value = result
-      photoPanelActive.value = true
-      recogOpen.value = false
+      lastPhoto = { image: compressed.blob, source }
+      await recognizePhotoBlob(compressed.blob, source, seq)
     } catch (err) {
       if (seq !== recogSeq) return
-      recogOpen.value = false
-      toast.show(photoRecognitionErrorMessage(err))
-    } finally {
-      if (seq === recogSeq) {
-        recogBusy.value = false
-        photoProgress.value = ''
-      }
+      photoFailure.value = photoFailureOf(err)
+      recogBusy.value = false
+      photoProgress.value = ''
     }
+  }
+
+  /** 「再试一次」：有上一张照片就直接再识别（不重拍），服务恢复后马上能用。 */
+  function retryPhoto(): void {
+    if (recogBusy.value) return
+    const previous = lastPhoto
+    if (previous) void recognizePhotoBlob(previous.image, previous.source)
+    else void startPhoto()
   }
 
   /** 逐行确认面板：加入勾选行/单行 → 走既有 addLine（provenance=photo + recogId）→ 调 confirm。 */
@@ -305,7 +427,7 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
         }
         const next = await run(() => addLine(state.value, draft))
         if (!next) {
-          toast.show(error.value || '加入行失败，请重试')
+          toast.show(error.value || '这一行没加进去，再试一次')
           return
         }
         apply(next)
@@ -324,83 +446,28 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
         }
       } else {
         recognition.value = null
-        photoPanelActive.value = false
+        editorOpen.value = false
       }
-      toast.show('已加入 ' + added.length + ' 行（拍照识别）')
+      toast.show('已加入 ' + added.length + ' 行')
     } finally {
       photoAdding.value = false
       recogBusy.value = false
     }
   }
 
-  /** 忽略整次拍照识别。 */
+  /** 忽略整次拍照识别：回到拍照这一屏，学生写的内容不动。 */
   function ignoreRecognition(): void {
     recogSeq += 1
     recognition.value = null
-    photoPanelActive.value = false
-    recogOpen.value = false
-    toast.show('已忽略这次拍照识别，可以继续写')
+    photoFailure.value = null
   }
 
-  /** 「重新识别」：单行结果（#15 卡）重新跑一次；多行面板暂不提供重识别按钮。 */
-  async function rewriteRecognition(): Promise<void> {
-    if (recogSource.value === 'ink') {
-      // 手写：放弃这次结果，回到画布重写一遍（不重复识别同一份笔迹）。
-      recogSeq += 1
-      recognition.value = null
-      recogOpen.value = false
-      recogBusy.value = false
-      openInkSheet()
-      return
-    }
-    // 拍照：丢弃当前结果并重新走 /recognitions/photo；有压缩图时复用（不再重拍/压缩），
-    // 没有压缩图则重新打开拍照选择。绝不能调用 recognizeInk（那会把照片当手写发）。
-    recogSeq += 1
-    recognition.value = null
-    photoPanelActive.value = false
-    recogOpen.value = false
-    recogBusy.value = false
-    const previous = lastPhoto
-    if (previous === null) {
-      void startPhoto()
-      return
-    }
-    const retrySeq = recogSeq
-    recogSource.value = 'photo'
-    recogBusy.value = true
-    recogOpen.value = true
-    photoProgress.value = '正在重新识别…'
-    try {
-      const result = await recognizePhoto({
-        attemptId: state.value.attemptId,
-        draftId: uuidv7(),
-        target: 'line_statement',
-        source: previous.source,
-        image: previous.image,
-      })
-      if (retrySeq !== recogSeq) return
-      recognition.value = result
-      photoPanelActive.value = true
-      recogOpen.value = false
-    } catch (err) {
-      if (retrySeq !== recogSeq) return
-      recogOpen.value = false
-      toast.show(photoRecognitionErrorMessage(err))
-    } finally {
-      if (retrySeq === recogSeq) {
-        recogBusy.value = false
-        photoProgress.value = ''
-      }
-    }
-  }
-
-  /** 确认加入：识别结果进入草稿（mock 下页面能看到结果文本），并回填行编辑器 */
+  /** 确认手写结果：填进「这一行」，补上依据后加入证明；文字不改就按手写来源提交。 */
   async function confirmRecognized(text: string): Promise<void> {
     const current = recognition.value
     const recogId = current?.recogId ?? ''
-    const fromInk = recogSource.value === 'ink'
-    if (fromInk && current && !isMockMode()) {
-      // 先 confirm，之后才能以手写来源提交（服务端核对提交文字与确认文字一致）。失败则留在确认卡里，学生可重试。
+    if (current && !isMockMode()) {
+      // 先 confirm，之后才能以手写来源提交（服务端核对提交文字与确认文字一致）。失败则留在核对这一步，学生可重试。
       recogBusy.value = true
       try {
         await confirmRecognition(recogId, text)
@@ -411,76 +478,68 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
         recogBusy.value = false
       }
     }
-    photoPanelActive.value = false
-    recogOpen.value = false
     recognition.value = null
-    recogDraft.value = {
-      text,
-      recogId,
-      at: new Date().toISOString(),
-      source: fromInk ? 'ink' : 'photo',
-      draftId: fromInk ? inkDraftId : undefined,
-    }
-    if (fromInk) {
-      // 手写确认后直接进行编辑器：补依据后提交；文字不改则按 ink 来源提交。
-      editorOpen.value = true
-      toast.show('已确认，补上依据后加入证明')
-    } else {
-      toast.show('识别结果已放入草稿，继续写这一行')
-    }
+    statement.value = text
+    recogDraft.value = { text, recogId, source: 'ink', draftId: inkDraftId }
+    saveDraft()
   }
 
-  /** 放弃重写：关掉面板，不采用这次识别 */
+  /** 核对时点「放弃重写」「重新识别」：回到画布再写一遍（不重复识别同一份笔迹）。 */
   function discardRecognition(): void {
-    recogOpen.value = false
-    recognition.value = null
-    toast.show('已放弃这次识别，可以重新写')
+    rewriteInk()
   }
 
-  function closeRecogLoading(): void {
+  function cancelRecognition(): void {
     recogSeq += 1
-    recogOpen.value = false
     recognition.value = null
     recogBusy.value = false
     photoProgress.value = ''
   }
 
-  function clearRecogDraft(): void {
-    recogDraft.value = null
-  }
-
-  /** 切换 mock 状态时收起编辑器。 */
+  /** 切换 mock 状态时收起面板。 */
   function reset(): void {
+    resetRecognition()
     editorOpen.value = false
+    editingLine.value = null
+    recogDraft.value = null
+    statement.value = ''
+    justification.value = ''
   }
 
   return {
     editorOpen,
-    recogOpen,
+    tab,
+    editingLine,
+    statement,
+    justification,
+    canSubmit,
     recogBusy,
     recognition,
-    recogDraft,
-    inkOpen,
-    inkValue,
     recogSource,
+    inkConfirming,
+    photoConfirming,
     photoProgress,
     photoAdding,
-    photoPanelActive,
-    editorInitialStatement,
-    editorInitialJustification,
-    submitLine,
-    startInk,
-    cancelInk,
+    photoFailure,
+    inkFailure,
+    inkValue,
+    loadDefaultInput,
+    chooseTab,
+    openComposer,
+    openEdit,
+    closeComposer,
+    saveDraft,
+    submit,
+    rewriteInk,
     finishInk,
-    openKeyboardEditor,
+    recognizePhotoBlob,
     startPhoto,
+    retryPhoto,
     addPhotoLines,
     ignoreRecognition,
-    rewriteRecognition,
     confirmRecognized,
     discardRecognition,
-    closeRecogLoading,
-    clearRecogDraft,
+    cancelRecognition,
     reset,
   }
 }

@@ -63,7 +63,7 @@ function submit() {
       <MathText :text="props.view.task || '写出本题要用到的定义。'" serif block />
     </view>
     <text class="pg-layer__hint pg-small">
-      可以用自己的话写，也可以用量词。核对后系统只会指出缺了哪一个成分。
+      核对后只会指出缺了哪一个成分。
     </text>
 
     <MathField

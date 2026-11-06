@@ -48,8 +48,10 @@ const props = withDefaults(
     keyboardByDefault?: boolean
     /** 可选：是否展示两路识别全文（默认 true） */
     showRoutes?: boolean
+    /** 可选：嵌在父级面板里（不再自带遮罩和抽屉外壳，关闭按钮也交给父级） */
+    inline?: boolean
   }>(),
-  { busy: false, title: '识别结果 · 请核对', keyboardByDefault: true, showRoutes: true },
+  { busy: false, title: '识别结果 · 请核对', keyboardByDefault: true, showRoutes: true, inline: false },
 )
 
 const emit = defineEmits<{
@@ -170,9 +172,10 @@ function discard(): void {
 </script>
 
 <template>
-  <view class="ui-recog-mask">
+  <view :class="props.inline ? 'ui-recog-inline' : 'ui-recog-mask'">
     <view
       class="ui-recog"
+      :class="{ 'ui-recog--inline': props.inline }"
       role="dialog"
       aria-label="识别结果确认"
       :data-agree="view.agree === null ? 'null' : String(view.agree)"
@@ -184,7 +187,7 @@ function discard(): void {
           <text class="ui-recog__title">{{ props.title }}</text>
           <text class="ui-recog__summary pg-small">{{ routeSummary }}<template v-if="confidenceText"> · {{ confidenceText }}</template></text>
         </view>
-        <button class="ui-recog__close" :disabled="props.busy" @tap="discard">关闭</button>
+        <button v-if="!props.inline" class="ui-recog__close" :disabled="props.busy" @tap="discard">关闭</button>
       </view>
 
       <text v-if="statusHint" class="ui-recog__statushint">{{ statusHint }}</text>
@@ -315,6 +318,7 @@ function discard(): void {
   border-radius: var(--radius-24) var(--radius-24) 0 0;
   animation: pg-sheet-up 320ms var(--ease-spring) both;
 }
+.ui-recog--inline { max-height: none; overflow: visible; padding: 0; background: transparent; border-radius: 0; animation: none; }
 .ui-recog__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-2); }
 .ui-recog__headtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ui-recog__title { font-size: var(--fs-22); font-weight: var(--fw-black); line-height: 1.3; }

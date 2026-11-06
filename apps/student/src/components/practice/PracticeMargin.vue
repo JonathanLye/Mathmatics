@@ -45,7 +45,7 @@ defineEmits<{ (e: 'dismiss', noteId: string): void; (e: 'help'): void }>()
     <view class="pg-practice__asidehelp">
       <PgButton
         class="pg-practice__btn"
-        variant="hint"
+        variant="secondary"
         block
         :disabled="helpDisabled"
         :data-testid="strictExam ? 'exam-help-aside' : undefined"

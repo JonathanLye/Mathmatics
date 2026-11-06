@@ -1624,6 +1624,36 @@ export async function deleteTransferLine(state: AttemptState, lineId: string): P
   return next
 }
 
+/** PATCH /attempts/{attemptId}/lines/{lineId}：改写第 3 层的一行；请求形状和迁移题相同。 */
+export async function editLine(state: AttemptState, lineId: string, draft: LineDraft): Promise<AttemptState> {
+  if (!USE_MOCK || state.kind === 'transfer') return editTransferLine(state, lineId, draft)
+  await sleep()
+  const next = clone(state)
+  if (!next.steps?.lines.some((line) => line.lineId === lineId)) return next
+  next.steps.lines = next.steps.lines.map((line) =>
+    line.lineId === lineId
+      ? { ...line, statement: draft.statement.trim(), justification: (draft.justification ?? '').trim(), provenance: draft.input.provenance }
+      : line,
+  )
+  next.stateVersion += 1
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/** DELETE /attempts/{attemptId}/lines/{lineId}：删第 3 层的一行；行号不重排（服务端软删）。 */
+export async function deleteLine(state: AttemptState, lineId: string): Promise<AttemptState> {
+  if (!USE_MOCK || state.kind === 'transfer') return deleteTransferLine(state, lineId)
+  await sleep()
+  const next = clone(state)
+  if (!next.steps) return next
+  next.steps.lines = next.steps.lines.filter((line) => line.lineId !== lineId)
+  next.steps.canFinish = next.steps.lines.length >= 2
+  next.notes = next.notes.filter((note) => note.lineId !== lineId)
+  next.stateVersion += 1
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
 /**
  * 第 5 层：写完了（POST /attempts/{childAttemptId}/finish）。
  * mock 判定（state.steps.canFinish 由 addLine 维护）：达标 → completed；不达标 → 只追加一条批注，不给答案。

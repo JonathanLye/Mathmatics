@@ -428,6 +428,8 @@ onBeforeUnmount(() => {
 .ui-mte__input {
   display: block;
   width: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-2) var(--sp-3);
   color: var(--ink);
   background: transparent;
   font-size: var(--fs-16); /* 02 §2.3：16px 防 iOS 聚焦缩放 */
