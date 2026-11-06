@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { AppError } from '../../errors.ts';
 import { requireTeacher } from '../../services/teacher/auth.ts';
-import { getProblemVersion, listProblemsPage, reviewProblem, type ReviewInput } from '../../services/teacher/problems.ts';
+import { getProblemVersion, listProblemsPage, reviewProblem, setProblemHidden, type ReviewInput } from '../../services/teacher/problems.ts';
 
 import type { AuthRouteOptions } from '../auth.ts';
 
@@ -10,6 +10,8 @@ interface ProblemListQuery {
   status?: string;
   chapter?: string;
   q?: string;
+  reviewSource?: string;
+  kind?: string;
   limit?: string;
   cursor?: string;
 }
@@ -19,6 +21,8 @@ interface ProblemVersionParams {
 }
 
 const STATUSES = ['draft', 'pending', 'returned', 'published', 'retired'] as const;
+const REVIEW_SOURCES = ['teacher', 'auto'] as const;
+const KINDS = ['main', 'transfer'] as const;
 const DECISIONS = ['approve', 'return', 'edit'] as const;
 
 // openapi 的 review requestBody 内联引用了 ./problem-package.schema.json（AJV 无法直接 resolve 外部文件），
@@ -57,11 +61,19 @@ export const teacherProblemRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
       limit = Number(query.limit);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new AppError('VALIDATION_FAILED', 422, 'limit 需为 1–100');
     }
+    if (query.reviewSource !== undefined && !REVIEW_SOURCES.includes(query.reviewSource as (typeof REVIEW_SOURCES)[number])) {
+      throw new AppError('VALIDATION_FAILED', 422, 'reviewSource 不合法');
+    }
+    if (query.kind !== undefined && !KINDS.includes(query.kind as (typeof KINDS)[number])) {
+      throw new AppError('VALIDATION_FAILED', 422, 'kind 不合法');
+    }
     if (query.q !== undefined && query.q.length > 60) throw new AppError('VALIDATION_FAILED', 422, 'q 太长');
     const page = await listProblemsPage(db, {
       status: query.status,
       chapter: query.chapter,
       q: query.q,
+      reviewSource: query.reviewSource,
+      kind: query.kind,
       limit,
       cursor: query.cursor === '' ? undefined : query.cursor,
     });
@@ -69,6 +81,17 @@ export const teacherProblemRoutes: FastifyPluginAsync<AuthRouteOptions> = async 
     // 响应体仍是数组（教师端现有调用不变）；下一页游标放响应头。
     if (page.nextCursor !== null) reply.header('x-next-cursor', page.nextCursor);
     return page.items;
+  });
+
+  // 下架 / 恢复上架：设置或清除 hidden_at。下架的题不再进学生的路径与练习区；已有作答与老师的布置不受影响。
+  app.patch('/teacher/problems/:problemId/visibility', async (request) => {
+    const auth = await requireTeacher(db, request);
+    const params = request.params as { problemId: string };
+    const body = (request.body ?? {}) as { hidden?: unknown };
+    if (typeof body.hidden !== 'boolean') throw new AppError('VALIDATION_FAILED', 422, 'hidden 必须是布尔值');
+    const result = await setProblemHidden(db, auth.userId, params.problemId, body.hidden);
+    contract.validate('ProblemVisibility', result);
+    return result;
   });
 
   // 04 §8.2 审核结论：approve 要求 auto_checks 四项全绿（由导入 S8 写入）；return 记录退回。

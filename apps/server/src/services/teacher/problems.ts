@@ -15,6 +15,7 @@ export interface ProblemListItemDto {
   autoChecks?: Record<string, unknown>;
   source?: string;
   reviewSource?: 'teacher' | 'auto';
+  hiddenAt?: string;
 }
 
 type ListRow = {
@@ -29,6 +30,7 @@ type ListRow = {
   reviewer: string | null;
   reviewed_at: string | null;
   review_source: 'teacher' | 'auto';
+  hidden_at: string | null;
 };
 
 export interface ProblemListPage {
@@ -41,7 +43,7 @@ export interface ProblemListPage {
 // 传了 limit 就按（题号, 版本）稳定顺序分页，cursor 是上一页的 nextCursor。
 export async function listProblemsPage(
   db: Queryable,
-  filter: { status?: string; chapter?: string; q?: string; limit?: number; cursor?: string },
+  filter: { status?: string; chapter?: string; q?: string; reviewSource?: string; kind?: string; limit?: number; cursor?: string },
 ): Promise<ProblemListPage> {
   let after: [string, number] | null = null;
   if (filter.cursor !== undefined) {
@@ -60,7 +62,7 @@ export async function listProblemsPage(
       `select p.id as problem_id, p.title, p.chapter, p.kind, v.version,
               v.review_status, v.auto_checks, v.provenance, v.review_source,
               coalesce(ru.display_name, ru.anon_code) as reviewer,
-              rr.at::text as reviewed_at
+              rr.at::text as reviewed_at, p.hidden_at::text as hidden_at
          from content.problems p
          join content.problem_versions v
            on v.problem_id = p.id
@@ -75,9 +77,20 @@ export async function listProblemsPage(
           and ($2::text is null or p.chapter = $2)
           and ($3 = '' or position($3 in lower(p.id || ' ' || p.title || ' ' || coalesce(p.chapter, ''))) > 0)
           and ($4::text is null or (p.id, v.version) > ($4::text, $5::int))
+          and ($7::text is null or v.review_source = $7)
+          and ($8::text is null or p.kind = $8)
         order by p.id, v.version
         limit $6`,
-      [filter.status ?? null, filter.chapter ?? null, needle, after?.[0] ?? null, after?.[1] ?? 0, limit === undefined ? null : limit + 1],
+      [
+        filter.status ?? null,
+        filter.chapter ?? null,
+        needle,
+        after?.[0] ?? null,
+        after?.[1] ?? 0,
+        limit === undefined ? null : limit + 1,
+        filter.reviewSource ?? null,
+        filter.kind ?? null,
+      ],
     )
   ).rows;
 
@@ -97,6 +110,7 @@ export async function listProblemsPage(
             autoChecks: row.auto_checks ?? {},
             ...(typeof row.provenance?.source === 'string' ? { source: row.provenance.source } : {}),
             reviewSource: row.review_source,
+            ...(row.hidden_at === null ? {} : { hiddenAt: new Date(row.hidden_at).toISOString() }),
             ...(row.reviewer === null ? {} : { reviewedBy: row.reviewer }),
             ...(row.reviewed_at === null ? {} : { reviewedAt: new Date(row.reviewed_at).toISOString() }),
           },
@@ -107,6 +121,30 @@ export async function listProblemsPage(
     items,
     nextCursor: paged && lastRow ? Buffer.from(JSON.stringify([lastRow.problem_id, lastRow.version])).toString('base64url') : null,
   };
+}
+
+// 下架 / 恢复：只动 content.problems.hidden_at（不进路径与练习区）；题目版本、已有作答和老师已布置的题都不受影响。
+export async function setProblemHidden(
+  db: Db,
+  actorId: string,
+  problemId: string,
+  hidden: boolean,
+): Promise<{ problemId: string; hiddenAt: string | null }> {
+  return db.tx(async (tx) => {
+    const row = (
+      await tx.query<{ hidden_at: string | null }>(
+        `update content.problems set hidden_at = case when $2::boolean then coalesce(hidden_at, now()) else null end
+          where id = $1 returning hidden_at::text as hidden_at`,
+        [problemId, hidden],
+      )
+    ).rows[0];
+    if (!row) throw new AppError('NOT_FOUND', 404, '题目不存在');
+    await tx.query(
+      `insert into app.audit_log (actor_id, action, target, detail) values ($1, $2, $3, $4::jsonb)`,
+      [actorId, hidden ? 'hide_problem' : 'unhide_problem', problemId, JSON.stringify({ problemId })],
+    );
+    return { problemId, hiddenAt: row.hidden_at === null ? null : new Date(row.hidden_at).toISOString() };
+  });
 }
 
 export async function listProblems(
