@@ -15,6 +15,7 @@ import { SEGMENT_MODEL, type SegmentedItem } from '../src/batch/segment.ts';
 import { selectForDraft, spreadByChapter } from '../src/batch/select.ts';
 import { sampleForVariation, VARIATION_MODEL } from '../src/batch/variation.ts';
 import { bandOf, NORMALIZE_MODEL, REPAIR_MODEL, VERIFY_MODEL, verifyPart, type VerifiedPart } from '../src/batch/verify.ts';
+import { findDuplicateParts } from '../src/batch/candidate.ts';
 import { draftFor, solutionFor, stemFor, stubClient, type StubClient } from './batch-fixtures.ts';
 
 const CONCEPTS = { concepts: [{ id: 'seq-limit', title: '数列极限' }], glossary: [] };
@@ -607,6 +608,30 @@ describe('校验', () => {
 
   it('难度映射到三档', () => {
     expect([1, 2, 3, 4, 5].map(bandOf)).toEqual(['easy', 'easy', 'medium', 'hard', 'hard']);
+  });
+});
+
+describe('发布前按题面去重', () => {
+  it('完全相同的都算；近似的只算跨书；优先留编号没撞车的', () => {
+    const stem = '设 $a>0$，用定义证明 $\\lim_{n\\to\\infty}\\frac{a}{n}=0$。';
+    const near = '设 $a>0$，用定义证明 $\\lim_{n\\to\\infty}\\frac{a}{n}=0$ 。证毕';
+    const other = '设 $f$ 在 $[a,b]$ 上连续，证明 $f$ 在 $[a,b]$ 上有界。';
+    const found = findDuplicateParts([
+      { id: 'a-c02-s01-e1-d1-p1', book: 'a', statement: stem },
+      { id: 'b-c03-s01-e1-p1', book: 'b', statement: stem },
+      { id: 'a-c03-s01-e2', book: 'a', statement: other },
+      { id: 'b-c03-s01-e2', book: 'b', statement: near },
+    ]);
+    expect(found.get('a-c02-s01-e1-d1-p1')).toBe('b-c03-s01-e1-p1');
+    expect(found.has('b-c03-s01-e1-p1')).toBe(false);
+    expect(found.has('a-c03-s01-e2')).toBe(false);
+    expect(found.size).toBeLessThanOrEqual(2);
+
+    const sameBook = findDuplicateParts([
+      { id: 'a-1', book: 'a', statement: '证明 $\\lim_{n\\to\\infty}\\frac{1}{n}=0$，其中 $n$ 是正整数，用定义写出。' },
+      { id: 'a-2', book: 'a', statement: '证明 $\\lim_{n\\to\\infty}\\frac{1}{n^2}=0$，其中 $n$ 是正整数，用定义写出。' },
+    ]);
+    expect(sameBook.size).toBe(0);
   });
 });
 

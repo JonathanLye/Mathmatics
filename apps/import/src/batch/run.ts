@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { ConceptsFile, ProblemPackage } from '@proof-gym/engine';
 
 import { buildBundle, encodeBundle } from './bundle.ts';
-import { canonicalChapters, selectCandidates } from './candidate.ts';
+import { canonicalChapters, selectCandidates, findDuplicateParts } from './candidate.ts';
 import { DRAFT_MODEL, draftPart, drafterOf, type DraftOutcome } from './draft-stage.ts';
 import { BudgetExceededError, CostLedger } from './ledger.ts';
 import { createChatClient, mapPool, type ChatClient } from './llm.ts';
@@ -455,9 +455,16 @@ async function stageBundle(context: BatchContext): Promise<void> {
   const itemOf = itemLookup(context);
   const partById = new Map(readVerified(context).map((part) => [part.partId, part]));
   for (const outcome of outcomes) recordOutcome(manifest, outcome, partById.get(outcome.partId));
-  const lines = buildBundle({ batchId, outcomes, itemOf });
+  const passing = outcomes.filter((outcome) => outcome.ok && outcome.pkg !== undefined);
+  const duplicates = findDuplicateParts(
+    passing.map((outcome) => ({ id: outcome.partId, book: itemOf(outcome.partId).book, statement: (outcome.pkg as ProblemPackage).public.stem })),
+  );
+  const lines = buildBundle({ batchId, outcomes: outcomes.filter((outcome) => !duplicates.has(outcome.partId)), itemOf });
   writeFileSync(join(out, 'bundle.jsonl.gz'), encodeBundle(lines));
-  const failures = collectFailures(context, outcomes);
+  const failures = [
+    ...collectFailures(context, outcomes),
+    ...[...duplicates].map(([id, twin]) => ({ id, stage: 'dedupe', reason: 'duplicate_part', detail: twin })),
+  ];
   writeAtomic(join(out, 'failed.json'), `${JSON.stringify(failures, null, 1)}\n`);
 
   const problems = lines.filter((line) => line.type === 'problem');

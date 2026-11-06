@@ -82,6 +82,27 @@ export interface CandidateResult {
   rejected: Array<{ id: string; reason: RejectReason; note?: string }>;
 }
 
+// 候选阶段按整条、按章去重；拆成小题之后两本书的小题仍可能相同，页眉漏检导致章号不同时也查不出来。
+// 发布前按整理后的题面再查一次：完全相同的都算，近似的只算跨书的（同一本书里的近似题往往是不同的题）。
+// 优先留下编号没撞车的（-dN 说明切分时同一节见到了重复题号，多半漏了页眉，章节不可靠），其次按输入顺序。
+export function findDuplicateParts(
+  entries: ReadonlyArray<{ id: string; book: string; statement: string }>,
+  threshold = 0.82,
+): Map<string, string> {
+  const suspect = (id: string): boolean => /-d\d+(?:-p\d+)?$/.test(id);
+  const ordered = [...entries.filter((entry) => !suspect(entry.id)), ...entries.filter((entry) => suspect(entry.id))];
+  const seen: Array<{ id: string; book: string; key: string; grams: Set<string> }> = [];
+  const duplicates = new Map<string, string>();
+  for (const entry of ordered) {
+    const key = dedupeKey(entry.statement);
+    const grams = shingles(key);
+    const twin = seen.find((peer) => peer.key === key || (peer.book !== entry.book && similarity(peer.grams, grams) >= threshold));
+    if (twin === undefined) seen.push({ id: entry.id, book: entry.book, key, grams });
+    else duplicates.set(entry.id, twin.id);
+  }
+  return duplicates;
+}
+
 // books 的顺序就是优先级：主书在前，副书里重复的题丢掉。
 export function selectCandidates(items: readonly SegmentedItem[], threshold = 0.82): CandidateResult {
   const kept: SegmentedItem[] = [];
