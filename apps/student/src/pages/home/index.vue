@@ -133,8 +133,8 @@ function scrollToCurrent(): void {
   const node = document.querySelector('[data-testid="home-path-node"][data-current="true"]')
   if (!node) return
   const rect = node.getBoundingClientRect()
-  const viewport = window.innerHeight
-  if (rect.top >= 120 && rect.bottom <= viewport - 120) return
+  const bottomMargin = window.innerWidth < 600 ? 96 : 24
+  if (rect.top >= 120 && rect.bottom <= window.innerHeight - bottomMargin) return
   node.scrollIntoView({ block: 'center', behavior: feedbackAllowed('motion') ? 'smooth' : 'auto' })
 }
 

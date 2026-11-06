@@ -9,7 +9,7 @@ import type { PathItem } from '@/types/path'
 
 /** 路径用一张逻辑画布（340 宽），按容器宽度等比缩放：节点坐标是百分比，首帧不用量宽度。 */
 export const PATH_WIDTH = 340
-export const PATH_STEP = 122
+export const PATH_STEP = 148
 /** 第一个节点就是当前节点时，上面要留出“继续”气泡和小方说话的位置。 */
 export const PATH_TOP_ROOMY = 124
 export const PATH_TOP = 60

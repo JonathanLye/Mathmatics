@@ -21,20 +21,32 @@ const props = withDefaults(
   { text: '', block: false, serif: false },
 )
 
+const CLOSING_PUNCTUATION = /^[。，、；：！？）》」』】”’.,;:!?)]+/
+
 type ViewSegment =
   | { kind: 'text'; value: string }
   | { kind: 'failed'; value: string }
-  | { kind: 'math'; html: string; display: boolean; scroll: boolean }
+  | { kind: 'math'; html: string; display: boolean; scroll: boolean; tail?: string }
 
-const segments = computed<ViewSegment[]>(() =>
-  parseMathText(props.text ?? '').map((seg): ViewSegment => {
-    if (seg.kind === 'text') return seg
+const segments = computed<ViewSegment[]>(() => {
+  const out: ViewSegment[] = []
+  for (const seg of parseMathText(props.text ?? '')) {
+    if (seg.kind === 'text') {
+      // 公式后面紧跟的标点跟公式放在一起，不单独掉到下一行。
+      const last = out[out.length - 1]
+      const tail = last?.kind === 'math' && !last.scroll ? (seg.value.match(CLOSING_PUNCTUATION)?.[0] ?? '') : ''
+      if (tail && last?.kind === 'math') last.tail = tail
+      const rest = seg.value.slice(tail.length)
+      if (rest) out.push({ kind: 'text', value: rest })
+      continue
+    }
     const display = seg.display === true
     const rendered = renderMath(seg.value, { display })
-    if (!rendered.ok) return { kind: 'failed', value: seg.value }
-    return { kind: 'math', html: rendered.html, display, scroll: display || isLongInlineMath(seg.value) }
-  }),
-)
+    if (!rendered.ok) out.push({ kind: 'failed', value: seg.value })
+    else out.push({ kind: 'math', html: rendered.html, display, scroll: display || isLongInlineMath(seg.value) })
+  }
+  return out
+})
 const hasScrollable = computed(() => segments.value.some((seg) => seg.kind === 'math' && seg.scroll))
 
 // ---- 两侧渐隐：只给真的放不下的公式加 mask，能往哪边滚就渐隐哪边 ----
@@ -97,6 +109,7 @@ onBeforeUnmount(() => {
     <template v-for="(seg, i) in segments" :key="i">
       <template v-if="seg.kind === 'text'">{{ seg.value }}</template>
       <span v-else-if="seg.kind === 'failed'" class="ui-math-raw" :title="MATH_RENDER_FAILED_HINT" data-testid="math-raw"><span class="ui-math-raw__src">{{ seg.value }}</span><span class="ui-math-raw__hint">{{ MATH_RENDER_FAILED_HINT }}</span></span>
+      <span v-else-if="seg.tail" class="ui-math-glue"><span class="ui-math-tex" v-html="seg.html" />{{ seg.tail }}</span>
       <span
         v-else
         :class="[seg.display ? 'ui-math-display' : 'ui-math-tex', { 'ui-math-scroll': seg.scroll }]"
@@ -120,6 +133,13 @@ onBeforeUnmount(() => {
 }
 .ui-math-tex .katex {
   font-size: 1.05em;
+}
+/* 公式和后面的标点之间不断行；公式内部（等号处）还可以断。 */
+.ui-math-glue {
+  white-space: nowrap;
+}
+.ui-math-glue .katex {
+  white-space: normal;
 }
 .ui-math-display {
   display: block;

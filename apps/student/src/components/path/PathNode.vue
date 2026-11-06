@@ -39,8 +39,8 @@ const ariaLabel = computed(() => `第 ${props.index + 1} 道：${plainTitle.valu
   <view class="pg-node" :class="['pg-node--' + visual, 'pg-node--' + side, { 'pg-node--just': just }]" :style="{ '--i': index }" role="listitem">
     <view class="pg-node__inner">
       <view v-if="visual === 'current' && settled" class="pg-node__bubble">
-        <PgButton class="pg-node__bubblebtn" variant="secondary" size="sm" sound="tap" data-testid="home-continue" :aria-label="actionText + ' ' + plainTitle" @tap="$emit('continue')">
-          {{ actionText }}
+        <PgButton class="pg-node__bubblebtn" variant="ghost" size="sm" sound="tap" data-testid="home-continue" :aria-label="actionText + ' ' + plainTitle" @tap="$emit('continue')">
+          <view class="pg-node__bubbleface">{{ actionText }}</view>
         </PgButton>
       </view>
       <view v-if="visual === 'current'" class="pg-node__pulse" aria-hidden="true" />
@@ -118,6 +118,7 @@ const ariaLabel = computed(() => `第 ${props.index + 1} 道：${plainTitle.valu
   border: var(--bw) solid var(--accent);
   border-radius: 50%;
   opacity: 0;
+  pointer-events: none;
   animation: pg-node-pulse 2200ms var(--ease-out) infinite;
 }
 @keyframes pg-node-pulse {
@@ -125,11 +126,11 @@ const ariaLabel = computed(() => `第 ${props.index + 1} 道：${plainTitle.valu
   70%, 100% { transform: scale(1.28); opacity: 0; }
 }
 
-.pg-node__ring { position: absolute; left: -52px; top: -49px; }
+.pg-node__ring { position: absolute; left: -52px; top: -49px; pointer-events: none; }
 .pg-node--active { --_size: 76px; }
 .pg-node--active .pg-node__ring { left: -48px; top: -45px; transform: scale(0.92); }
 
-/* 气泡：小尾巴指向节点，轻轻上下动 */
+/* 气泡：小尾巴指向节点，外观轻轻上下动；按钮本身不动，手指点得准。 */
 .pg-node__bubble {
   position: absolute;
   left: 0;
@@ -137,19 +138,35 @@ const ariaLabel = computed(() => `第 ${props.index + 1} 道：${plainTitle.valu
   width: 0;
   display: flex;
   justify-content: center;
-  animation: pg-node-bob 1800ms ease-in-out infinite;
 }
 .pg-node__bubblebtn.pg-button {
   flex: none;
   min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+.pg-node__bubblebtn.pg-button:active:not([disabled]) { background: transparent; box-shadow: none; }
+.pg-node__bubbleface {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
   padding: 0 var(--sp-5);
+  border: var(--bw) solid var(--rule-2);
   border-radius: var(--radius-16);
+  background: var(--sheet);
+  box-shadow: 0 var(--lip) 0 var(--rule-2);
   color: var(--accent-text);
   font-size: var(--fs-15);
+  font-weight: var(--fw-black);
   letter-spacing: 1px;
   white-space: nowrap;
+  animation: pg-node-bob 1800ms ease-in-out infinite;
 }
-.pg-node__bubblebtn.pg-button::before {
+.pg-node__bubbleface::before {
   content: '';
   position: absolute;
   left: 50%;

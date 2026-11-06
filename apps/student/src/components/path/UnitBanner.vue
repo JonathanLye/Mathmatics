@@ -59,7 +59,8 @@ const done = computed(() => props.unit.total > 0 && props.unit.done >= props.uni
   align-self: flex-start;
   gap: 2px;
   max-width: 100%;
-  min-height: 28px;
+  min-height: var(--touch);
+  margin: -8px 0;
   cursor: pointer;
 }
 .pg-banner__chapter:active { opacity: 0.7; }
