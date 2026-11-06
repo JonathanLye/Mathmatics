@@ -160,7 +160,7 @@ async function submit(): Promise<void> {
             </view>
           </PgButton>
         </view>
-        <text v-if="selected === 'lt14'" class="pg-age__risk pg-age__risktext" data-testid="age-risk-note">{{ AGE_BAND_LT14_RISK }}</text>
+        <text class="pg-age__risk pg-age__risktext" data-testid="age-risk-note">{{ AGE_BAND_LT14_RISK }}</text>
         <text v-if="errorText" class="pg-age__error" data-testid="age-error" role="alert">{{ errorText }}</text>
         <PgButton block size="lg" data-testid="age-submit" :loading="loading" :disabled="submitDisabled" @tap="submit">
           {{ loading ? '提交中…' : '确认分档' }}
