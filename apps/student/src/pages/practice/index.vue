@@ -165,7 +165,7 @@ function onSwitchMock(k: MockKey) {
           <ReviewingBar v-if="reviewing && currentLayer && frontier" :current="currentLayer" :frontier="frontier" :busy="busy" @return="selectLayer(frontier!)" />
           <DraftNotice v-if="restoredDraft" @dismiss="restoredDraft = null" />
 
-          <view v-if="!isCompleted" class="pg-practice__head">
+          <view v-if="!isCompleted && !isTransferAttempt" class="pg-practice__head">
             <text class="pg-practice__layertitle">{{ layerTitle }}</text>
             <!-- #11：L1/L2 的任务说明由表单用 MathText 渲染，这里不再显示纯文本（避免露出 LaTeX 源码）。 -->
             <text
@@ -191,7 +191,6 @@ function onSwitchMock(k: MockKey) {
           <LayerTransfer
             v-else-if="isTransferAttempt"
             child
-            :problem="state.problem"
             :lines="lines"
             :notes="visibleNotes"
             :can-finish="Boolean(state.steps?.canFinish)"
@@ -252,7 +251,6 @@ function onSwitchMock(k: MockKey) {
           <LayerTransfer
             v-else-if="currentLayer === 'L5'"
             :view="state.transfer ?? null"
-            :problem="state.problem"
             :busy="busy"
             :hide-skip="reviewing"
             @start="session.beginTransfer"

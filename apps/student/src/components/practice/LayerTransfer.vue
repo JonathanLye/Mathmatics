@@ -2,7 +2,7 @@
 /** 第 5 层屏：父作答的入口（TransferForm）或迁移题子作答（TransferAttempt）。 */
 import TransferAttempt from '@/components/layers/TransferAttempt.vue'
 import TransferForm from '@/components/layers/TransferForm.vue'
-import type { Note, ProblemView, ProofLine, TransferView } from '@/types/attempt'
+import type { Note, ProofLine, TransferView } from '@/types/attempt'
 import type { TransferDraft } from '@/composables/practice/useAttemptSession'
 
 defineProps<{
@@ -10,7 +10,6 @@ defineProps<{
   child?: boolean
   hideSkip?: boolean
   view?: TransferView | null
-  problem: ProblemView
   lines?: ProofLine[]
   notes?: Note[]
   canFinish?: boolean
@@ -30,7 +29,6 @@ defineEmits<{
 <template>
   <TransferAttempt
     v-if="child"
-    :problem="problem"
     :lines="lines"
     :notes="notes"
     :can-finish="canFinish"

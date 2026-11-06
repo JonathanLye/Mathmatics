@@ -168,13 +168,13 @@ function onDismissNote(note: Note): void {
             <MathText v-if="line.justification" class="pg-lines__justtext" :text="line.justification" />
             <text v-else class="pg-lines__justempty pg-small">（未写）</text>
           </view>
-          <view v-if="props.editable && confirmingDelete !== line.lineId" class="pg-lines__actions">
-            <PgButton variant="ghost" size="sm" data-testid="line-edit" :aria-label="'改第 ' + line.n + ' 行'" :disabled="props.busy" @tap="emit('edit-line', line)">改</PgButton>
-            <PgButton variant="ghost" size="sm" data-testid="line-delete" :aria-label="'删第 ' + line.n + ' 行'" :disabled="props.busy" @tap="askDelete(line)">删</PgButton>
-          </view>
           <view v-if="showBadge(line.provenance)" class="pg-lines__badge">
             <PgIcon v-if="line.provenance && PROVENANCE_ICON[line.provenance]" :name="PROVENANCE_ICON[line.provenance]!" :size="14" />
             <text>{{ provenanceLabel(line.provenance) }}</text>
+          </view>
+          <view v-if="props.editable && confirmingDelete !== line.lineId" class="pg-lines__actions">
+            <PgButton variant="ghost" size="sm" data-testid="line-edit" :aria-label="'改第 ' + line.n + ' 行'" :disabled="props.busy" @tap="emit('edit-line', line)">改</PgButton>
+            <PgButton variant="ghost" size="sm" data-testid="line-delete" :aria-label="'删第 ' + line.n + ' 行'" :disabled="props.busy" @tap="askDelete(line)">删</PgButton>
           </view>
         </view>
 
@@ -369,6 +369,7 @@ function onDismissNote(note: Note): void {
 
 /* 轨道：行连成一条竖线，节点是行号；写到关键步骤的节点染绿。只有 rail 才生效，镜像不受影响。 */
 .pg-lines--rail { gap: 0; margin-top: var(--sp-2); }
+.pg-lines--rail .pg-lines__badge { margin-left: 0; }
 .pg-lines--rail .pg-lines__row {
   position: relative;
   padding: 0 0 var(--sp-4);

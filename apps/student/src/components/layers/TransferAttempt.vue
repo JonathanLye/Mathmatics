@@ -2,7 +2,7 @@
 /**
  * 第 5 层 · 换题试试的子作答（kind=transfer，01 §L5「完整流程」）。
  *
- * - 迁移题任务卡（MathText）+ #47 TransferOutlineDiagram 思路对照；
+ * - 题面在页面顶部的题面条里；这里是 #47 TransferOutlineDiagram 思路对照；
  * - 多行证明：行号 / 这一行 / 依据 / 来源徽标 / 行内批注（复用 #12 的列表形态做轻量版）；
  *   批注卡片与 L3 一致：署名 / 时间 / 正文 / 关闭（#151；readonly 只读镜像不显示关闭）；
  * - 行编辑器：结论 + 依据 + 来源（键盘/手写/拍照 mock），支持改写与删除一行；
@@ -17,11 +17,10 @@ import PgSegmented from '@/components/ui/PgSegmented.vue'
 import { noteWhoLabel } from '@/copy'
 import TransferOutlineDiagram from '@/components/diagrams/TransferOutlineDiagram.vue'
 import { formatNoteTime, groupNotesByLine, notesForLine } from './proofLines'
-import type { InputProvenance, Note, ProblemView, ProofLine } from '@/types/attempt'
+import type { InputProvenance, Note, ProofLine } from '@/types/attempt'
 
 const props = withDefaults(
   defineProps<{
-    problem: ProblemView
     lines?: ProofLine[]
     notes?: Note[]
     canFinish?: boolean
@@ -138,11 +137,6 @@ function remove(line: ProofLine) {
       <text class="pg-layer__step pg-small">{{ props.lines.length }} 行 · {{ props.canFinish ? '可以写完了' : '接着写' }}</text>
     </view>
 
-    <view class="pg-attempt__task pg-sheet" data-testid="transfer-attempt-task">
-      <text class="pg-attempt__label pg-small">这道新题</text>
-      <MathText :text="props.problem.stem" serif block />
-    </view>
-
     <view data-testid="transfer-outline">
       <TransferOutlineDiagram />
     </view>
@@ -230,14 +224,14 @@ function remove(line: ProofLine) {
 
     <view class="pg-attempt__footer">
       <PgButton variant="secondary" data-testid="transfer-add-line" :disabled="props.busy || editorOpen" @tap="openAdd"><PgIcon name="plus" :size="18" />写下一行</PgButton>
-      <PgButton data-testid="transfer-finish" sound="tap" :disabled="!props.canFinish || props.busy" @tap="emit('finish')">写完了</PgButton>
+    </view>
+    <view class="pg-pin">
+      <PgButton block size="lg" data-testid="transfer-finish" sound="tap" :disabled="!props.canFinish || props.busy" @tap="emit('finish')">写完了</PgButton>
     </view>
   </view>
 </template>
 
 <style scoped>
-.pg-attempt__task { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3); color: var(--ink); font-family: var(--font-serif); }
-.pg-attempt__label { color: var(--ink-2); font-family: var(--font-sans); }
 .pg-attempt__lines { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-attempt__empty { padding: var(--sp-3); color: var(--ink-2); }
 .pg-attempt__row { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
@@ -259,6 +253,7 @@ function remove(line: ProofLine) {
 .pg-attempt__provenance { display: flex; align-items: center; gap: var(--sp-2); }
 .pg-attempt__provlabel { flex: none; color: var(--ink-2); }
 .pg-attempt__segmented { flex: 1; min-width: 0; }
+.pg-attempt .pg-layer__title { color: var(--ink); font-size: var(--fs-18); }
 .pg-attempt__footer { display: flex; gap: var(--sp-2); }
 .pg-attempt__footer > * { flex: 1; min-width: 0; }
 </style>

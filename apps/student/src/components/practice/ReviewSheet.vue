@@ -67,7 +67,7 @@ watch(
 </template>
 
 <style scoped>
-.pg-review { display: flex; flex-direction: column; gap: var(--sp-3); }
+.pg-review { display: flex; flex-direction: column; gap: var(--sp-3); text-align: left; }
 .pg-review__title { color: var(--ink); font-size: var(--fs-18); font-weight: var(--fw-black); }
 .pg-review__state { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-4) 0; }
 .pg-review__hint { color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-bold); }

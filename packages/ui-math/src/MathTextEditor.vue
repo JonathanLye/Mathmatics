@@ -434,8 +434,9 @@ onBeforeUnmount(() => {
   line-height: 1.65;
   font-family: var(--font-mono);
 }
-.ui-mte__input textarea,
-.ui-mte__input .uni-textarea-textarea {
+/* 输入框的内层节点是 uni-app 建的，没有 scoped 标记，要用 :deep 才碰得到。 */
+.ui-mte__input :deep(textarea),
+.ui-mte__input :deep(.uni-textarea-textarea) {
   padding: var(--sp-2) var(--sp-3);
   box-sizing: border-box;
 }
