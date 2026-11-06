@@ -402,7 +402,7 @@ class Steps {
    * 每条计额度的提示之间要多写一行、停留 20 秒，所以整个过程要一两分钟（最多等 150 秒）。
    */
   async exhaustAndFlag() {
-    const deadline = Date.now() + 150_000;
+    const deadline = Date.now() + 330_000;
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     let written = 1; // 第一个关键步骤在 plan 里已经写出
     let exhausted = false;
@@ -417,9 +417,9 @@ class Steps {
       } else if (preview.allowed && preview.previewToken) {
         const claim = await this.actor.send('POST', `/attempts/${this.id}/hints/claim`, { previewToken: preview.previewToken });
         if (!claim.ok) break;
-        const budget = claim.body?.state?.budget;
-        exhausted = budget !== undefined && budget.revealUsed >= budget.revealMax;
-        if (!exhausted && preview.level === 'H3' && written < EPSN.k.length) await this.line(...EPSN.k[written++]);
+        // 额度领满不等于“用完”：引擎要等下一次求助被拒（budget）才把这一题记成额度用完，求助老师才可点。
+        // 所以这里不判断，回到循环顶部再要一次提示。
+        if (preview.level === 'H3' && written < EPSN.k.length) await this.line(...EPSN.k[written++]);
       } else if (preview.reason === 'need_attempt') {
         await this.line(...EPSN.vague);
       } else {
@@ -428,9 +428,9 @@ class Steps {
     }
     const flagged = await this.actor.send('POST', `/attempts/${this.id}/flag-teacher`);
     const head = exhausted ? '提示额度用完' : '提示额度还没用完';
-    if (flagged.ok) return `${head}，点了「求助老师」`;
+    if (flagged.ok) return exhausted ? '提示额度用完，点了「求助老师」' : '领了几条提示后点了「求助老师」';
     if (flagged.status === 404) return `${head}（这个服务还没有「求助老师」接口，更新服务后重新运行即可）`;
-    return `${head}，但「求助老师」没点成（${flagged.status}）`;
+    return `${head}，但「求助老师」没点成（${flagged.status} ${flagged.text.slice(0, 120)}）`;
   }
 }
 

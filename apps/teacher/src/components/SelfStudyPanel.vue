@@ -125,7 +125,7 @@ function timeText(iso: string | null | undefined): string {
 .ss__unit { min-width: 150px; }
 .ss__total { font-weight: 400; color: var(--pg-ink-3); }
 .ss__cell { min-width: 150px; }
-.ss__bar { display: inline-block; vertical-align: middle; width: 80px; height: 6px; border-radius: 3px; background: var(--pg-soft); overflow: hidden; margin-right: 8px; }
+.ss__bar { display: inline-block; vertical-align: middle; width: 80px; height: 6px; border-radius: 3px; background: var(--pg-rule); overflow: hidden; margin-right: 8px; }
 .ss__bar i { display: block; height: 100%; background: var(--pg-accent); }
 .ss__frac { font-variant-numeric: tabular-nums; color: var(--pg-ink-2); }
 .ss__time { color: var(--pg-ink-2); }

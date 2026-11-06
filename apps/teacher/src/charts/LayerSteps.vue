@@ -23,7 +23,7 @@ const total = computed(() => props.data.reduce((sum, d) => sum + d.value, 0));
 .ls { display: grid; gap: 10px; padding: 6px 0 2px; }
 .ls__row { display: grid; grid-template-columns: 64px 1fr 32px; align-items: center; gap: 10px; }
 .ls__name { font-weight: 700; font-size: 13px; color: var(--pg-text-secondary); }
-.ls__track { height: 14px; border-radius: 4px; background: var(--pg-soft); overflow: hidden; }
+.ls__track { height: 14px; border-radius: 4px; background: var(--pg-rule); overflow: hidden; }
 .ls__bar { display: block; height: 100%; border-radius: 4px; background: var(--pg-accent); transition: width 0.35s ease-out; }
 .ls__val { text-align: right; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .ls__bar { transition: none; } }

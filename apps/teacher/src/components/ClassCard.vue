@@ -49,7 +49,7 @@ const percent = computed(() => Math.round(share.value * 100));
 .cc__stat { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .cc__num { font-size: 22px; font-weight: 700; line-height: 1.2; }
 .cc__of { font-size: 14px; font-weight: 600; color: var(--pg-text-secondary); }
-.cc__bar { display: block; height: 6px; border-radius: 3px; background: var(--pg-soft); overflow: hidden; }
+.cc__bar { display: block; height: 6px; border-radius: 3px; background: var(--pg-rule); overflow: hidden; }
 .cc__bar i { display: block; height: 100%; background: var(--pg-accent); border-radius: 3px; }
 .cc__code { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--pg-border); }
 .cc__code code { font-weight: 700; font-size: 14px; color: var(--pg-accent-text); }
