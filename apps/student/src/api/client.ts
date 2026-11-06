@@ -1217,9 +1217,17 @@ export async function confirmRecognition(
 }
 
 /**
- * 拍照识别错误 → 学生可读文案（#25）：
- * 后端 #21 未实现时 404 必须降级为「即将上线」，不能显示「请求的内容不存在」。
+ * 拍照识别错误 → 学生可读文案（#25，真实服务端语义）。
+ *
+ * 服务端 #189 已上线，因此 404 不再是「即将上线」，而是作答/识别记录不存在；
+ * PHOTO_DISABLED 与 RATE_LIMITED 有多个原因（功能未开放/老师关闭、上一张在识别/今日次数用完/
+ * 每分钟限流），优先展示服务端可直接给学生看的 message，避免前端固定文案掩盖真实原因。
  */
+function serverCopyOr(error: { message: string }, fallback: string): string {
+  const message = error.message.trim()
+  return message === '' ? fallback : message
+}
+
 export function photoRecognitionErrorMessage(error: unknown): string {
   if (error instanceof ImageCompressError) {
     switch (error.code) {
@@ -1240,19 +1248,40 @@ export function photoRecognitionErrorMessage(error: unknown): string {
   }
   if (isApiError(error)) {
     if (error.status === 404 || error.code === 'NOT_FOUND') {
-      return '拍照识别即将上线，请改用键盘/手写'
+      return '识别记录或作答不存在，请重新拍照/确认，或用键盘'
     }
     if (error.code === 'PHOTO_DISABLED') {
-      return '本场考试已关闭拍照识别，请用键盘或手写'
+      return serverCopyOr(error, '拍照识别暂未开放，请用键盘或手写')
     }
     if (error.code === 'PAYLOAD_TOO_LARGE' || error.status === 413) {
       return '图片仍然太大，请靠近一点重拍或用键盘'
     }
     if (error.code === 'RATE_LIMITED' || error.status === 429) {
-      return '识别太频繁，请等几秒再试'
+      return serverCopyOr(error, '识别太频繁，请稍后再试或用键盘')
+    }
+    if (error.code === 'CONSENT_REQUIRED') {
+      return '请先阅读并签署知情同意书，再使用拍照识别'
+    }
+    if (error.code === 'AGE_BAND_REQUIRED') {
+      return '请先选择年龄段，再使用拍照识别'
+    }
+    if (error.code === 'AGE_RESTRICTED') {
+      return '本服务暂未向 14 岁以下学生开放'
+    }
+    if (error.code === 'FORBIDDEN') {
+      return '当前账号不能使用拍照识别，请用键盘或手写'
     }
     if (error.code === 'TEST_MODE_RESTRICTED') {
       return '测验模式下拍照识别不可用，请用键盘或手写'
+    }
+    if (error.code === 'ATTEMPT_LOCKED') {
+      return '本题已锁定，请联系老师'
+    }
+    if (error.code === 'RECOG_NOT_CONFIRMED') {
+      return '识别结果还没确认，请先确认再加入'
+    }
+    if (error.code === 'VALIDATION_FAILED') {
+      return '识别参数异常，请重新拍照或改用键盘'
     }
     if (error.code === 'NETWORK' || error.status === 0) {
       return '网络不稳定，拍照识别暂不可用；可以稍后重试或用键盘'

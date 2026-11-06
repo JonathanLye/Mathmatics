@@ -923,13 +923,22 @@ function handleInkCancel() {
   inkOpen.value = false
 }
 
-/** 手写识别错误 → 学生可读文案（不暗示对错，给出键盘兜底）。 */
+/** 手写识别错误 → 学生可读文案（真实服务端语义；不暗示对错，给出键盘兜底）。 */
 function inkRecognitionErrorMessage(err: unknown): string {
   if (isApiError(err)) {
-    if (err.code === 'RATE_LIMITED' || err.status === 429) return '识别太频繁或今天的次数用完了，可以先用键盘'
+    if (err.code === 'RATE_LIMITED' || err.status === 429) {
+      return err.message.trim() === '' ? '识别太频繁或今天的次数用完了，可以先用键盘' : err.message
+    }
     if (err.code === 'UPSTREAM_UNAVAILABLE' || err.status === 503) return '没认出来，再写一次，或者用键盘'
     if (err.code === 'PAYLOAD_TOO_LARGE' || err.status === 413) return '这一行写得太满了，分两行写或用键盘'
+    if (err.status === 404 || err.code === 'NOT_FOUND') return '识别记录或作答不存在，请重新手写或改用键盘'
+    if (err.code === 'CONSENT_REQUIRED') return '请先阅读并签署知情同意书，再使用手写识别'
+    if (err.code === 'AGE_BAND_REQUIRED') return '请先选择年龄段，再使用手写识别'
+    if (err.code === 'AGE_RESTRICTED') return '本服务暂未向 14 岁以下学生开放'
+    if (err.code === 'FORBIDDEN') return '当前账号不能使用手写识别，请用键盘'
     if (err.code === 'ATTEMPT_LOCKED') return '本题已锁定，请联系老师'
+    if (err.code === 'RECOG_NOT_CONFIRMED') return '识别结果还没确认，请先确认再加入'
+    if (err.code === 'VALIDATION_FAILED') return '手写数据无效，请重新写一次或用键盘'
     if (err.code === 'NETWORK' || err.status === 0) return '网络不稳定，手写识别暂不可用；可以稍后重试或用键盘'
   }
   return '手写识别暂不可用，请用键盘'
@@ -1049,7 +1058,7 @@ function choosePhotoFile(source: 'camera' | 'album'): Promise<File | string | nu
 
 /**
  * #25 拍照识别：选择图片 → 压缩（长边≤2000/≤2MB/去 EXIF）→ POST /recognitions/photo → 逐行确认。
- * - 真实后端未实现时 404 会降级提示「即将上线」，不伪造识别结果；
+ * - 真实后端已上线；404 表示作答/识别记录不存在，提示重新拍照或改用键盘，不伪造结果；
  * - 测验模式 photo 已禁用；取消选择不提示错误；
  * - 取消/重新打开时用 recogSeq 忽略在途结果。
  */
@@ -1187,17 +1196,45 @@ async function handleRecogRewrite() {
     openInkSheet()
     return
   }
-  recogBusy.value = true
-  photoPanelActive.value = false
+  // 拍照：丢弃当前结果并重新走 /recognitions/photo；有压缩图时复用（不再重拍/压缩），
+  // 没有压缩图则重新打开拍照选择。绝不能调用 recognizeInk（那会把照片当手写发）。
+  recogSeq += 1
   recognition.value = null
-  const result = await run(() => recognizeInk('mock-photo'))
+  photoPanelActive.value = false
+  recogOpen.value = false
   recogBusy.value = false
-  if (!result) {
-    recogOpen.value = false
-    show('识别暂不可用，请用键盘')
+  const previous = lastPhoto
+  if (previous === null) {
+    void startPhotoRecognition()
     return
   }
-  recognition.value = result
+  const retrySeq = recogSeq
+  recogSource.value = 'photo'
+  recogBusy.value = true
+  recogOpen.value = true
+  photoProgress.value = '正在重新识别…'
+  try {
+    const result = await recognizePhoto({
+      attemptId: state.value.attemptId,
+      draftId: uuidv7(),
+      target: 'line_statement',
+      source: previous.source,
+      image: previous.image,
+    })
+    if (retrySeq !== recogSeq) return
+    recognition.value = result
+    photoPanelActive.value = true
+    recogOpen.value = false
+  } catch (error) {
+    if (retrySeq !== recogSeq) return
+    recogOpen.value = false
+    show(photoRecognitionErrorMessage(error))
+  } finally {
+    if (retrySeq === recogSeq) {
+      recogBusy.value = false
+      photoProgress.value = ''
+    }
+  }
 }
 
 /** 确认加入：识别结果进入草稿（mock 下页面能看到结果文本），并回填行编辑器 */

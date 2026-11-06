@@ -4,8 +4,8 @@
  * 覆盖：
  *  A. mock：点拍照 → 注入 fixture 图片（filechooser）→ 压缩 → mock /recognitions/photo 返回 3 行
  *     → 逐行确认面板（MathText/bbox）→「全部加入」→ 3 行追加到证明行列表（provenance=photo）。
- *  B. 真实模式 404 降级：page.route 拦截 GET /attempts/{id} 返回状态、POST /recognitions/photo 返回 404
- *     → 提示「拍照识别即将上线，请改用键盘/手写」，不渲染假识别结果。
+ *  B. 真实模式 404：page.route 拦截 GET /attempts/{id} 返回状态、POST /recognitions/photo 返回 404
+ *     → 提示「识别记录或作答不存在，请重新拍照/确认，或用键盘」，不渲染假识别结果。
  *  C. pageerror 为空、390 无横向溢出。
  *
  * 用法：先 npm run build:mock，再 npm run e2e:flows:25（PG_CHROMIUM 可指定 chromium）。
@@ -203,7 +203,7 @@ async function main() {
     await contextA.close()
   }
 
-  // ---------- B. 真实模式：后端 404 → 降级提示（不伪造识别结果） ----------
+  // ---------- B. 真实模式：404=作答/识别记录不存在（不是“即将上线”） ----------
   const contextB = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
   const pageB = await contextB.newPage()
   pageB.on('pageerror', (error) => pageErrors.push('404: ' + (error instanceof Error ? error.message : String(error))))
@@ -223,13 +223,13 @@ async function main() {
     await pageB.goto(base + '/#/pages/practice/index?api=real&attemptId=' + REAL_ATTEMPT, { waitUntil: 'networkidle' })
     await pageB.waitForFunction(() => document.body.innerText.includes('构造与推导'), { timeout: 20000 })
     await clickPhotoWithFile(pageB, fixturePath)
-    await pageB.waitForFunction(() => document.body.innerText.includes('拍照识别即将上线，请改用键盘/手写'), { timeout: 20000 })
-    check('404：提示「拍照识别即将上线，请改用键盘/手写」', true)
+    await pageB.waitForFunction(() => document.body.innerText.includes('识别记录或作答不存在，请重新拍照/确认，或用键盘'), { timeout: 20000 })
+    check('404：提示「识别记录或作答不存在，请重新拍照/确认，或用键盘」', true)
     check('404：不渲染假识别面板', (await countTestId(pageB, 'photo-recognition-panel')) === 0)
     check('404：不新增证明行', (await countTestId(pageB, 'proof-line')) === 0)
-    await pageB.screenshot({ path: path.join(outDir, '3-404-fallback.png'), fullPage: true })
+    await pageB.screenshot({ path: path.join(outDir, '3-404-real-semantics.png'), fullPage: true })
   } catch (error) {
-    check('404 降级流程未中断', false, error instanceof Error ? error.message : String(error))
+    check('404 真实语义流程未中断', false, error instanceof Error ? error.message : String(error))
   } finally {
     await contextB.close()
   }
