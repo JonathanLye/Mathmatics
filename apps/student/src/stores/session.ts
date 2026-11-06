@@ -21,6 +21,7 @@ import {
   setStudentAgeBand,
   submitConsents,
 } from '@/api/client'
+import { setAuthLostHandler } from '@/api/http'
 import { ageGateFor, isReadOnlyConsentSection, type AgeGateDecision } from '@/auth/ageBand'
 import type { AgeBand, ConsentChoices, ConsentDoc, ConsentKey, ConsentSectionKey, MeAgeBand, MeView } from '@/types/attempt'
 
@@ -90,6 +91,39 @@ function choices(): ConsentChoices {
 const requiredOk = computed(() => items.value.filter((item) => item.required).every((item) => item.value))
 
 const mockSleep = (ms = 80) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** 登录已失效的统一提示文案（401 / wrong_app 403）。 */
+export const AUTH_EXPIRED_TOAST = '登录已过期，请重新登录'
+const LOGIN_PAGE = 'pages/login/index'
+/** 登录页与镜像页（令牌访问，没有会话）不跳。 */
+const NO_REDIRECT_PAGES = [LOGIN_PAGE, 'pages/mirror/index']
+let lastAuthRedirectAt = 0
+
+function currentPageRoute(): string {
+  if (typeof getCurrentPages !== 'function') return ''
+  const pages = getCurrentPages()
+  return (pages[pages.length - 1] as { route?: string } | undefined)?.route ?? ''
+}
+
+/**
+ * 非登录类接口返回 401（或浏览器里只有教师端会话的 403 wrong_app）：清掉本地会话，提示后回登录页。
+ * 并发的多个请求同时失败时只跳一次；mock 模式不走 http，不会到这里。
+ */
+export function handleAuthLost(): void {
+  me.value = null
+  loggedIn.value = false
+  consented.value = false
+  const route = currentPageRoute().replace(/^\//, '')
+  if (NO_REDIRECT_PAGES.includes(route)) return
+  const now = Date.now()
+  if (now - lastAuthRedirectAt < 2000) return
+  lastAuthRedirectAt = now
+  if (typeof uni === 'undefined') return
+  uni.showToast({ title: AUTH_EXPIRED_TOAST, icon: 'none' })
+  uni.reLaunch({ url: `/${LOGIN_PAGE}` })
+}
+
+setAuthLostHandler(handleAuthLost)
 
 export function useSession() {
   /** GET /consents：加载服务端同意书文本；mock 模式回落到内置占位（正文只从 GET /consents 取）。 */
@@ -180,9 +214,17 @@ export function useSession() {
     loading.value = true
     error.value = null
     try {
-      me.value = await getMe()
+      const restored = await getMe()
+      // 学生端只认学生身份：服务端若给出别的角色（旧服务端、配置错误），当作没有会话，留在登录页。
+      if (restored.role !== 'student') {
+        me.value = null
+        loggedIn.value = false
+        consented.value = false
+        return false
+      }
+      me.value = restored
       loggedIn.value = true
-      consented.value = !me.value.consentRequired
+      consented.value = !restored.consentRequired
       return true
     } catch {
       loggedIn.value = false
@@ -280,6 +322,7 @@ export function useSession() {
 
 /** 测试隔离：恢复到初始状态（mock 文案、未登录）。 */
 export function __resetSessionForTests(): void {
+  lastAuthRedirectAt = 0
   items.value = toItems(mockConsentDoc)
   docVersion.value = mockConsentDoc.version
   signed.value = null

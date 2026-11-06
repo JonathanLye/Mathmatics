@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createSession, SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
+import { createSession, TEACHER_SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
 import { CLIENT_EVENT_TYPES } from '../src/events/client-schema.ts';
 import { TEACHER_CLIENT_TYPES } from '../src/events/ingest.ts';
 import type { Db } from '../src/db/index.ts';
@@ -75,7 +75,7 @@ async function signConsent(cookie: string): Promise<void> {
 async function teacherCookie(): Promise<string> {
   await db.query(`insert into app.devices (id, user_id) values ($1, $2)`, [DEVICE_B, teacherId]);
   const session = await createSession(db, { userId: teacherId, deviceId: DEVICE_B, ip: null, ttlMs: STUDENT_SESSION_MS });
-  return `${SESSION_COOKIE}=${app.signCookie(session.id)}`;
+  return `${TEACHER_SESSION_COOKIE}=${app.signCookie(session.id)}`;
 }
 
 async function startAttempt(cookie: string): Promise<string> {
@@ -100,10 +100,12 @@ const event = (overrides: Record<string, unknown> = {}) => ({
 });
 
 function postBatch(cookie: string, events: unknown[]) {
+  // 教师端请求带 x-pg-app: teacher，服务端据此读 pg_sid_t；学生端缺省。
+  const app_ = cookie.startsWith(`${TEACHER_SESSION_COOKIE}=`) ? { 'x-pg-app': 'teacher' } : {};
   return app.inject({
     method: 'POST',
     url: '/api/v1/events/batch',
-    headers: { cookie, ...WRITE_HEADERS },
+    headers: { cookie, ...WRITE_HEADERS, ...app_ },
     payload: { events },
   });
 }
@@ -200,7 +202,7 @@ describe('事件入库 /events/batch（#20）', () => {
     const otherId = other.rows[0]?.id as string;
     await db.query(`insert into app.devices (id, user_id) values ($1, $2)`, [DEVICE_B, otherId]);
     const session = await createSession(db, { userId: otherId, deviceId: DEVICE_B, ip: null, ttlMs: STUDENT_SESSION_MS });
-    const otherCookie = `${SESSION_COOKIE}=${app.signCookie(session.id)}`;
+    const otherCookie = `${TEACHER_SESSION_COOKIE}=${app.signCookie(session.id)}`;
 
     const e = event({ type: 't.view', attemptId, payload: { page: 'attempt' } });
     const res = await postBatch(otherCookie, [e]);

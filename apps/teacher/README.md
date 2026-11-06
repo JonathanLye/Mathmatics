@@ -18,7 +18,7 @@ pnpm --filter @proof-gym/teacher dev   # http://localhost:5174，/api 代理到 
 TEACHER_PASSWORD='<至少 8 位密码>' node apps/server/src/db/cli.ts create-teacher lin.teacher
 ```
 
-> 本地登录依赖 `pg_sid` Cookie（`Secure`）。Chrome 把 `http://localhost` 视为可信上下文，一般可用；若浏览器不保存 Cookie，改用 HTTPS 隧道（Caddy/ngrok），详见根 README 的“局域网/真机联调”。
+> 本地登录依赖教师会话 Cookie `pg_sid_t`（`Secure`；和学生端的 `pg_sid_s` 互相独立，同一浏览器可同时登录两端）。Chrome 把 `http://localhost` 视为可信上下文，一般可用；若浏览器不保存 Cookie，改用 HTTPS 隧道（Caddy/ngrok），详见根 README 的“局域网/真机联调”。
 
 ## 验证命令
 

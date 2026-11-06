@@ -4,7 +4,7 @@ import type { Db, Queryable } from '../db/index.ts';
 import { AppError } from '../errors.ts';
 
 import { getAgeBand } from './age-band.ts';
-import { requireAuth } from './session.ts';
+import { requireStudent } from './session.ts';
 
 // 13 §2：同意书改文案必须升版本；旧版本的签署不再满足练习条件，学生需重新确认。
 // 文案取自 13 §2 的白话要点与 11 §8 的过程监测说明；PO 确认前不得对外上线。
@@ -120,11 +120,10 @@ export async function recordConsent(db: Queryable, input: RecordConsentInput): P
   );
 }
 
-// 作答接口（#19）挂载此守卫：未登录 401；非学生 403；未选择年龄段 409；<14 岁 403；未签当前版本同意书 403 CONSENT_REQUIRED。
+// 作答接口（#19）挂载此守卫：未登录 401；非学生（含只登录了教师端）403；未选择年龄段 409；<14 岁 403；未签当前版本同意书 403 CONSENT_REQUIRED。
 export function requireStudentConsent(db: Db) {
   return async (request: FastifyRequest): Promise<void> => {
-    const auth = await requireAuth(db, request);
-    if (auth.role !== 'student') throw new AppError('FORBIDDEN', 403, '只有学生可以进行练习');
+    const auth = await requireStudent(db, request);
     // 13 §4：年龄分档先于同意书（14–17 的同意书多一段「建议告知监护人」；<14 不开通）。
     const ageBand = await getAgeBand(db, auth.userId);
     if (ageBand === null) throw new AppError('AGE_BAND_REQUIRED', 409, '请先选择年龄段');

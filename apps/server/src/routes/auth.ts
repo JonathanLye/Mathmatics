@@ -4,7 +4,15 @@ import { setAgeBandOnce, type AgeBand } from '../auth/age-band.ts';
 import { maskIp, normalizeStudentNo, sha256Hex, studentNoHash } from '../auth/crypto.ts';
 import { createLoginThrottle } from '../auth/login-throttle.ts';
 import { buildMe } from '../auth/me.ts';
-import { clearSessionCookie, requireAuth, revokeSession, setSessionCookie } from '../auth/session.ts';
+import {
+  clearSessionCookie,
+  LEGACY_SESSION_COOKIE,
+  requireAuth,
+  requireStudent,
+  revokeSession,
+  sessionAppFor,
+  setSessionCookie,
+} from '../auth/session.ts';
 import { studentLogin } from '../auth/student-login.ts';
 import { INVALID_CREDENTIALS, teacherLogin } from '../auth/teacher-login.ts';
 import type { AppConfig } from '../config.ts';
@@ -74,7 +82,8 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
         throw error;
       }
       loginThrottle.reset(throttleKey);
-      setSessionCookie(reply, session.sessionId, session.expiresAt, { secure: secureCookie });
+      // 只下发学生 Cookie，不碰同一浏览器里的教师登录。
+      setSessionCookie(reply, 'student', session.sessionId, session.expiresAt, { secure: secureCookie });
 
       const me = await buildMe(db, { userId: session.userId, role: 'student', sessionId: session.sessionId });
       contract.validate('Me', me);
@@ -84,8 +93,7 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
 
   // 13 §4：学生自选年龄段（名单未带时）。<14 也记录并返回 Me，但写接口守卫会 403 AGE_RESTRICTED。
   app.post('/auth/student/age-band', async (request) => {
-    const auth = await requireAuth(db, request);
-    if (auth.role !== 'student') throw new AppError('FORBIDDEN', 403, '只有学生需要选择年龄段');
+    const auth = await requireStudent(db, request);
     contract.validateRequest('/auth/student/age-band', 'post', request.body);
     const body = request.body as { ageBand: AgeBand };
     await setAgeBandOnce(db, auth.userId, body.ageBand);
@@ -121,7 +129,7 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
         throw error;
       }
       loginThrottle.reset(teacherKey);
-      setSessionCookie(reply, session.sessionId, session.expiresAt, { secure: secureCookie });
+      setSessionCookie(reply, 'teacher', session.sessionId, session.expiresAt, { secure: secureCookie });
 
       const me = await buildMe(db, { userId: session.userId, role: session.role, sessionId: session.sessionId });
       contract.validate('Me', me);
@@ -129,15 +137,25 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, { db
     },
   );
 
+  // 退出只作废并清除 x-pg-app 指明的那一端（缺省学生）；另一端的会话与 Cookie 原样保留。
   app.post('/auth/logout', async (request, reply) => {
-    const auth = await requireAuth(db, request);
+    const side = sessionAppFor(request);
+    const auth = await requireAuth(db, request, side);
     await revokeSession(db, auth.sessionId);
-    clearSessionCookie(reply, { secure: secureCookie });
+    clearSessionCookie(reply, side, { secure: secureCookie });
+    if (auth.legacy) clearSessionCookie(reply, LEGACY_SESSION_COOKIE, { secure: secureCookie });
     return reply.status(204).send();
   });
 
-  app.get('/me', async (request) => {
-    const auth = await requireAuth(db, request);
+  // x-pg-app: student|teacher 指明读哪一端的 Cookie（缺省学生）。
+  // 旧 pg_sid 在这里换成对应端的新 Cookie（同一个会话 id、同一个到期时间），并清掉旧的。
+  app.get('/me', async (request, reply) => {
+    const side = sessionAppFor(request);
+    const auth = await requireAuth(db, request, side);
+    if (auth.legacy && auth.expiresAt) {
+      setSessionCookie(reply, side, auth.sessionId, auth.expiresAt, { secure: secureCookie });
+      clearSessionCookie(reply, LEGACY_SESSION_COOKIE, { secure: secureCookie });
+    }
     const me = await buildMe(db, auth);
     contract.validate('Me', me);
     return me;

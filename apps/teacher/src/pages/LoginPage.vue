@@ -74,6 +74,9 @@ async function submit(): Promise<void> {
         </t-form-item>
         <t-button theme="primary" size="large" block :loading="loading" @click="submit">登录</t-button>
       </t-form>
+      <div style="margin-top: 16px; text-align: center; font-size: 13px">
+        <a href="/" data-testid="switch-to-student">我是学生</a>
+      </div>
     </div>
   </div>
 </template>

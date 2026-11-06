@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { requireStudentConsent } from '../src/auth/consent.ts';
-import { createSession, SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
+import { createSession, TEACHER_SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
 import { loadContract } from '../src/contract.ts';
 import type { Db } from '../src/db/index.ts';
 
@@ -67,7 +67,7 @@ async function teacherCookie(): Promise<string> {
     ip: null,
     ttlMs: STUDENT_SESSION_MS,
   });
-  return `${SESSION_COOKIE}=${app.signCookie(session.id)}`;
+  return `${TEACHER_SESSION_COOKIE}=${app.signCookie(session.id)}`;
 }
 
 function signConsent(cookie: string, body: Record<string, unknown> = { version: 'p0-v1', items: ALL_REQUIRED }, headers: Record<string, string> = {}) {

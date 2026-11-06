@@ -58,7 +58,7 @@ describe('会话 Cookie 的 Secure 属性（#67）', () => {
       expect(logout.statusCode).toBe(204);
       // 清 Cookie 的 Set-Cookie 属性须与登录一致：dev 下不带 Secure，否则浏览器会拒绝覆盖。
       const cleared = String([logout.headers['set-cookie']].flat()[0]);
-      expect(cleared).toMatch(/pg_sid=;|pg_sid=\s*;|Expires=Thu, 01 Jan 1970|Max-Age=0/i);
+      expect(cleared).toMatch(/pg_sid_s=;|pg_sid_s=\s*;|Expires=Thu, 01 Jan 1970|Max-Age=0/i);
       expect(cleared).not.toMatch(/;\s*Secure/i);
     } finally {
       await devApp.close();

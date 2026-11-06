@@ -53,7 +53,7 @@ describe('学生登录（邀请码 + 学号，认领名单）', () => {
 
     const setCookie = String(res.headers['set-cookie']);
     // @fastify/cookie 的签名格式：<值>.<HMAC>，值是会话 uuid。
-    expect(setCookie).toMatch(/^pg_sid=[0-9a-f-]{36}\.[A-Za-z0-9+/_-]+;/);
+    expect(setCookie).toMatch(/^pg_sid_s=[0-9a-f-]{36}\.[A-Za-z0-9+/_-]+;/);
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('Secure');
     expect(setCookie).toContain('SameSite=Lax');
@@ -188,7 +188,7 @@ describe('会话：/me、登出、过期与篡改', () => {
       headers: { cookie, ...WRITE_HEADERS },
     });
     expect(out.statusCode).toBe(204);
-    expect(String(out.headers['set-cookie'])).toMatch(/^pg_sid=;/);
+    expect(String(out.headers['set-cookie'])).toMatch(/^pg_sid_s=;/);
 
     const after = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { cookie } });
     expect(after.statusCode).toBe(401);

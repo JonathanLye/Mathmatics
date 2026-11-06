@@ -8,7 +8,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
-import { createSession, SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
+import { createSession, TEACHER_SESSION_COOKIE, STUDENT_SESSION_MS } from '../src/auth/session.ts';
 import { loadProblem } from '../src/attempts/problem.ts';
 import { loadConfig } from '../src/config.ts';
 import { seedContent } from '../src/db/seed.ts';
@@ -817,7 +817,7 @@ describe.each(PROBLEMS)('$transfer 不能被教师直接布置（#186）', ({ ma
     const teacherId = (await db.query<{ id: string }>(`select id from app.users where role = 'teacher'`)).rows[0]?.id as string;
     await db.query(`insert into app.devices (id, user_id) values ($1, $2)`, [DEVICE_B, teacherId]);
     const session = await createSession(db, { userId: teacherId, deviceId: DEVICE_B, ip: null, ttlMs: STUDENT_SESSION_MS });
-    const teacher = { cookie: `${SESSION_COOKIE}=${app.signCookie(session.id)}`, ...WRITE_HEADERS };
+    const teacher = { cookie: `${TEACHER_SESSION_COOKIE}=${app.signCookie(session.id)}`, ...WRITE_HEADERS };
     const created = await app.inject({
       method: 'POST',
       url: '/api/v1/teacher/assignments',
@@ -869,7 +869,7 @@ describe('教师补发 H4（grantH4）后的学生响应', { timeout: 60_000 }, 
       const granted = await app.inject({
         method: 'POST',
         url: `/api/v1/teacher/attempts/${attemptId}/unlock`,
-        headers: { cookie: `${SESSION_COOKIE}=${app.signCookie(session.id)}`, ...WRITE_HEADERS },
+        headers: { cookie: `${TEACHER_SESSION_COOKIE}=${app.signCookie(session.id)}`, ...WRITE_HEADERS },
         payload: { grantH4: 'K3' },
       });
       expect(granted.statusCode, granted.body).toBe(200);

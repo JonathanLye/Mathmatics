@@ -62,7 +62,7 @@ PII_KEY="$(openssl rand -base64 32)" \
 pnpm dev
 ```
 
-注意 `pg_sid` Cookie 是 `Secure` 的，纯 HTTP 的局域网地址无法写入/回传登录态；真机联调要么走 HTTPS 隧道（如 Caddy/ngrok），要么用浏览器 devtools 的 secure context 方案。生产容器里由 `infra/docker-compose.yml` 显式设置 `HOST=0.0.0.0`，不需要改这里。
+注意会话 Cookie（学生 `pg_sid_s`、教师 `pg_sid_t`，两端互相独立）是 `Secure` 的，纯 HTTP 的局域网地址无法写入/回传登录态；真机联调要么走 HTTPS 隧道（如 Caddy/ngrok），要么用浏览器 devtools 的 secure context 方案。生产容器里由 `infra/docker-compose.yml` 显式设置 `HOST=0.0.0.0`，不需要改这里。
 
 ## 当前状态（2026-11-03）
 

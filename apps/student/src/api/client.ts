@@ -2,7 +2,7 @@
  * 学生端 API 客户端（issue #24：接真实接口）。
  *
  * - 契约真源：`packages/contracts/openapi.yaml`（servers: /api/v1）。真实模式下本文件按契约调接口；
- *   传输细节（Cookie、CSRF 头、If-Match、Idempotency-Key、错误分类）在 `api/http.ts`。
+ *   传输细节（Cookie、X-Pg-App 端标识、CSRF 头、If-Match、Idempotency-Key、错误分类、登录失效通知）在 `api/http.ts`。
  * - USE_MOCK 是开发/离线 Demo 开关：默认开；`VITE_USE_MOCK=false` 或 `setMockMode(false)` 走真实接口。
  * - 写请求：带 If-Match（= 当前 state.stateVersion）与 Idempotency-Key；键在「每个用户动作入口」生成一次，
  *   只在同一次调用的 withRetry 重试之间复用，动作结束即丢弃（不同动作即使请求体相同也必须是新键）。

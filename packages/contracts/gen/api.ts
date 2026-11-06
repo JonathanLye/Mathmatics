@@ -4674,6 +4674,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+        pgApp: "student" | "teacher";
         attemptId: string;
         assignmentId: string;
         classId: string;
@@ -4789,7 +4791,10 @@ export interface operations {
     logout: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -4808,7 +4813,10 @@ export interface operations {
     getMe: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5588,7 +5596,10 @@ export interface operations {
     ingestEvents: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
             path?: never;
             cookie?: never;
         };

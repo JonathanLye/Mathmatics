@@ -33,6 +33,11 @@ onLoad(async (query) => {
   if (await session.restore()) redirectAfterLogin()
 })
 
+/** 教师端是同域另一个应用（/t/），整页跳转。 */
+function goTeacher() {
+  if (typeof window !== 'undefined') window.location.href = '/t/'
+}
+
 async function submit() {
   error.value = ''
   if (invite.value.trim().length !== 6) { error.value = '请输入 6 位邀请码（可问老师要）'; return }
@@ -62,6 +67,7 @@ async function submit() {
     <text class="pg-login__hint pg-small">
       {{ mockMode ? '当前为 mock 模式（离线演示）；接真实接口用 VITE_USE_MOCK=false 或 setMockMode(false)。' : '输入老师给你的 6 位邀请码和你的学号。第一次登录会自动认领名单里的你。' }}
     </text>
+    <text class="pg-login__hint pg-small" data-testid="login-switch-teacher" @tap="goTeacher">我是老师</text>
   </view>
 </template>
 

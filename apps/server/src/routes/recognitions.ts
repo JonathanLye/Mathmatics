@@ -2,7 +2,7 @@ import multipart from '@fastify/multipart';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { requireStudentConsent } from '../auth/consent.ts';
-import { bySession, requireAuth } from '../auth/session.ts';
+import { bySession, requireStudent } from '../auth/session.ts';
 import { AppError } from '../errors.ts';
 import { createRecognitionService } from '../recognition/service.ts';
 import type { ModelGateway } from '../ai/gateway.ts';
@@ -40,7 +40,7 @@ export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = as
       config: { rateLimit: limited },
     },
     async (request) => {
-      const auth = await requireAuth(db, request);
+      const auth = await requireStudent(db, request);
       contract.validateRequest('/recognitions/ink', 'post', request.body);
       const body = request.body as { attemptId: string; draftId: string; target: string; ink: string };
       if (body.ink.length > 256 * 1024) throw new AppError('PAYLOAD_TOO_LARGE', 413, '笔迹数据太大');
@@ -64,7 +64,7 @@ export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = as
       config: { rateLimit: limited },
     },
     async (request) => {
-      const auth = await requireAuth(db, request);
+      const auth = await requireStudent(db, request);
       if (!request.isMultipart()) throw new AppError('VALIDATION_FAILED', 422, '需要 multipart/form-data');
       const fields: Record<string, string> = {};
       let image: Buffer | null = null;
@@ -96,7 +96,7 @@ export const recognitionRoutes: FastifyPluginAsync<RecognitionRouteOptions> = as
     '/recognitions/:recogId/confirm',
     { preHandler: [requireStudentConsent(db)], config: { rateLimit: limited } },
     async (request) => {
-      const auth = await requireAuth(db, request);
+      const auth = await requireStudent(db, request);
       contract.validateRequest('/recognitions/{recogId}/confirm', 'post', request.body);
       const body = request.body as { text: string; lines?: string[] };
       return svc.confirm(auth.userId, param(request, 'recogId'), body);

@@ -3,7 +3,7 @@
   "info": {
     "title": "证明陪练场 API",
     "version": "1.0.0-p0",
-    "description": "三端共用的接口契约（学生端 H5/小程序、教师端、服务端）。说明见 06-接口契约.md。\n\n约定：\n- 基础路径 `/api/v1`；JSON UTF-8；时间 ISO 8601（UTC）。\n- 鉴权：HttpOnly + Secure + SameSite=Lax 的会话 Cookie `pg_sid`；教师端镜像 iframe 用短期 `mirrorToken`（查询参数）。\n- 所有改变状态的请求（POST/PUT/PATCH/DELETE）必须带 `X-Requested-With: proof-gym` 头（CSRF 防护，见 05 §7）；缺失或不符返回 403 `FORBIDDEN`。`sendBeacon` 无法加自定义头，只能用于可靠补发的事件上报（事件 id 幂等）。\n- 写操作带 `Idempotency-Key` 头（uuid）。同一个键 24 小时内重放返回同一结果。\n- 学生作答相关的写接口一律返回 `{ state: AttemptState, ... }`。前端只渲染 `state`，不自己推算层、预算、门槛。\n- 写接口可带 `If-Match: <stateVersion>`；版本落后返回 409 `STATE_STALE` 和最新 `state`。\n- 错误统一为 `{ error: { code, message, detail? } }`，`message` 可直接给用户看。\n- **DTO 白名单**：任何学生可调用的接口都不得返回题目包 secret 部分的任何字段（关键步骤、leak、pattern、提示原文库、要点卡、参考证明）。契约测试会扫描响应体。\n",
+    "description": "三端共用的接口契约（学生端 H5/小程序、教师端、服务端）。说明见 06-接口契约.md。\n\n约定：\n- 基础路径 `/api/v1`；JSON UTF-8；时间 ISO 8601（UTC）。\n- 鉴权：两端各一个 HttpOnly + Secure + SameSite=Lax 的会话 Cookie，同一浏览器可同时登录两端、互不覆盖：学生 `pg_sid_s`（30 天）、教师 `pg_sid_t`（12 小时）。`/teacher*`、`/auth/teacher*` 读教师 Cookie，其余读学生 Cookie；只有 `/me`、`/auth/logout`、`/events/batch` 由请求头 `X-Pg-App: student|teacher` 指明（缺省学生）。登录只下发本端 Cookie、不吊销另一端；退出只作废并清除 `X-Pg-App` 指明的那一端。浏览器里只有另一端的会话时，守卫返回 403 `FORBIDDEN` 且 `detail.reason = \"wrong_app\"`（没有任何会话才是 401），两端客户端遇到 401 或 `wrong_app` 一律回登录页。旧版共用的 `pg_sid` 只读兼容：新 Cookie 不在时才读，且会话主人的角色必须与请求的那一端相符，`GET /me` 时换成对应端的新 Cookie 并清掉 `pg_sid`。教师端镜像 iframe 用短期 `mirrorToken`（查询参数），不依赖 Cookie。\n- 所有改变状态的请求（POST/PUT/PATCH/DELETE）必须带 `X-Requested-With: proof-gym` 头（CSRF 防护，见 05 §7）；缺失或不符返回 403 `FORBIDDEN`。`sendBeacon` 无法加自定义头，只能用于可靠补发的事件上报（事件 id 幂等）。\n- 写操作带 `Idempotency-Key` 头（uuid）。同一个键 24 小时内重放返回同一结果。\n- 学生作答相关的写接口一律返回 `{ state: AttemptState, ... }`。前端只渲染 `state`，不自己推算层、预算、门槛。\n- 写接口可带 `If-Match: <stateVersion>`；版本落后返回 409 `STATE_STALE` 和最新 `state`。\n- 错误统一为 `{ error: { code, message, detail? } }`，`message` 可直接给用户看。\n- **DTO 白名单**：任何学生可调用的接口都不得返回题目包 secret 部分的任何字段（关键步骤、leak、pattern、提示原文库、要点卡、参考证明）。契约测试会扫描响应体。\n",
     "contact": {
       "name": "证明陪练场项目组"
     },
@@ -57,7 +57,7 @@
   ],
   "security": [
     {
-      "cookieAuth": []
+      "studentCookieAuth": []
     }
   ],
   "paths": {
@@ -244,6 +244,19 @@
         ],
         "summary": "退出登录",
         "operationId": "logout",
+        "security": [
+          {
+            "studentCookieAuth": []
+          },
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/pgApp"
+          }
+        ],
         "responses": {
           "204": {
             "description": "已退出"
@@ -261,6 +274,19 @@
         ],
         "summary": "当前用户",
         "operationId": "getMe",
+        "security": [
+          {
+            "studentCookieAuth": []
+          },
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/pgApp"
+          }
+        ],
         "responses": {
           "200": {
             "description": "当前用户",
@@ -1581,6 +1607,19 @@
         "summary": "批量上报前端事件（幂等）",
         "description": "每批 ≤ 100 条、≤ 256KB。按事件 `id` 去重。只接受 events.schema.json 中 $defs/ClientEvent 允许的类型；服务端类型一律拒收。",
         "operationId": "ingestEvents",
+        "security": [
+          {
+            "studentCookieAuth": []
+          },
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/pgApp"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1660,6 +1699,11 @@
         ],
         "summary": "我的班级",
         "operationId": "listClasses",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "班级列表",
@@ -1685,6 +1729,11 @@
         ],
         "summary": "建班（生成邀请码）",
         "operationId": "createClass",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1734,6 +1783,11 @@
         ],
         "summary": "更新班级默认设置（拍照/微课生成/默认预算/诚信/测验切出）",
         "operationId": "updateClassSettings",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1779,6 +1833,11 @@
         ],
         "summary": "名单列表（认领状态；学号只存哈希不返回）",
         "operationId": "listRoster",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1812,6 +1871,11 @@
         ],
         "summary": "导入名单（CSV：学号,姓名；姓名可空）",
         "operationId": "importRoster",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1878,6 +1942,11 @@
         ],
         "summary": "解除认领（学生换设备/异常时；写 audit_log）",
         "operationId": "unclaimRoster",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1912,6 +1981,11 @@
         ],
         "summary": "重置邀请码",
         "operationId": "rotateInvite",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1941,6 +2015,11 @@
         ],
         "summary": "实时看板快照（P0 每 5 秒轮询；P1 改用 /stream）",
         "operationId": "getLive",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -1979,6 +2058,11 @@
         "summary": "实时看板推送（SSE）",
         "description": "事件名：`row`（某学生行变化，data=LiveRow）、`flag`（新诚信/求助标记）、`ping`（每 20 秒）。断线重连后重推当前快照；前端另有 5s 轮询兜底。",
         "operationId": "streamLive",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -2017,6 +2101,11 @@
         ],
         "summary": "班级指标（口径见 08-事件与数据字典.md §4）",
         "operationId": "getMetrics",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/classId"
@@ -2054,6 +2143,11 @@
         ],
         "summary": "学生作答详情（全部行、批注、提示、识别、诚信信号、时间线）",
         "operationId": "getAttemptDetail",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2083,6 +2177,11 @@
         ],
         "summary": "作答事件流（回放用；按 seq 分页）",
         "operationId": "getAttemptEvents",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2148,6 +2247,11 @@
         ],
         "summary": "教师改判一行归类（写 audit_log；不改学生已看到的注解/事件，04 §4）",
         "operationId": "reclassifyLine",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2273,6 +2377,11 @@
         "summary": "镜像预览推送（SSE，P1）：该作答每次 state_version 变化推送学生视图",
         "description": "事件名：`state`（data=AttemptState，与学生端看到的完全一致）、`ping`（每 20 秒）。可用教师 Cookie 或 mirrorToken 鉴权。",
         "operationId": "streamAttempt",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2313,6 +2422,11 @@
         ],
         "summary": "取镜像预览令牌（P1）：教师端 iframe 用它以只读模式打开学生页面",
         "operationId": "getMirrorToken",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2360,6 +2474,11 @@
         ],
         "summary": "解锁作答（测验模式切出过多被锁等）；可同时补发一条 H4（额度耗尽出口）",
         "operationId": "unlockAttempt",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2414,6 +2533,11 @@
         ],
         "summary": "给学生发一句话（同样过闸门；被改写会告知教师）",
         "operationId": "nudgeStudent",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/attemptId"
@@ -2474,6 +2598,11 @@
         ],
         "summary": "处理求助标记或诚信信号",
         "operationId": "resolveFlag",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "flagId",
@@ -2524,6 +2653,11 @@
         ],
         "summary": "班级布置列表（按开放时间倒序；状态按数据库时钟推导）",
         "operationId": "listAssignments",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "classId",
@@ -2566,6 +2700,11 @@
         ],
         "summary": "布置练习或测验",
         "operationId": "createAssignment",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2600,6 +2739,11 @@
         ],
         "summary": "修改布置（时间、开关；已开始的作答不受题目版本变化影响）",
         "operationId": "updateAssignment",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/assignmentId"
@@ -2639,6 +2783,11 @@
         ],
         "summary": "题目关闭后发布参考证明与讲评（A/B 两组同时发布）",
         "operationId": "publishReview",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/assignmentId"
@@ -2688,6 +2837,11 @@
         ],
         "summary": "导出（默认匿名；实名需管理员审批）",
         "operationId": "createExport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2767,6 +2921,11 @@
         ],
         "summary": "导出任务状态与下载链接",
         "operationId": "getExport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "exportId",
@@ -2802,6 +2961,11 @@
         ],
         "summary": "下载导出文件（同源教师 Cookie；仅创建者或管理员）",
         "operationId": "downloadExport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "exportId",
@@ -2847,6 +3011,11 @@
         ],
         "summary": "题库列表（含审核状态）",
         "operationId": "listProblems",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "status",
@@ -2903,6 +3072,11 @@
         ],
         "summary": "完整题目包（含 secret；仅教师/审核角色；读参考证明记审计）",
         "operationId": "getProblemVersion",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "problemId",
@@ -2954,6 +3128,11 @@
         ],
         "summary": "审核结论（通过 / 退回 / 直接修改后通过）",
         "operationId": "reviewProblem",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "problemId",
@@ -3029,6 +3208,11 @@
         ],
         "summary": "发起题库导入任务（PDF 页码范围 → 题目包草稿）",
         "operationId": "createImport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3104,6 +3288,11 @@
         ],
         "summary": "导入任务进度与草稿列表",
         "operationId": "getImport",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "jobId",
@@ -3139,6 +3328,11 @@
         ],
         "summary": "用 Lean 4 + mathlib 编译题目包登记的参考证明（沿用 08 server.mjs，转为 worker 任务）",
         "operationId": "leanCheck",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3325,13 +3519,34 @@
   },
   "components": {
     "securitySchemes": {
-      "cookieAuth": {
+      "studentCookieAuth": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "pg_sid"
+        "name": "pg_sid_s",
+        "description": "学生端会话，30 天。除 `/teacher*`、`/auth/teacher*` 外的接口读这个 Cookie。"
+      },
+      "teacherCookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "pg_sid_t",
+        "description": "教师端会话，12 小时。`/teacher*`、`/auth/teacher*` 读这个 Cookie。"
       }
     },
     "parameters": {
+      "pgApp": {
+        "name": "X-Pg-App",
+        "in": "header",
+        "required": false,
+        "description": "两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "student",
+            "teacher"
+          ],
+          "default": "student"
+        }
+      },
       "attemptId": {
         "name": "attemptId",
         "in": "path",

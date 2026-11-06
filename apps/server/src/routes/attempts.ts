@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import { requireStudentConsent } from '../auth/consent.ts';
-import { bySession, requireAuth } from '../auth/session.ts';
+import { bySession, requireStudent } from '../auth/session.ts';
 import { studentHome } from '../attempts/home.ts';
 import { addLine, createAttemptService } from '../attempts/service.ts';
 import type { ContractValidator } from '../contract.ts';
@@ -103,35 +103,35 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
 
   // 学生首页（06 §3.1）：只读聚合，不要求同意书（未签同意也能先看到作业列表）。
   app.get('/student/home', async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     return studentHome(db, contract, auth.userId);
   });
 
   app.post('/student/assignments/:assignmentId/attempt', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const state = await svc.start(auth.userId, uuidParam(param(request, 'assignmentId')));
     return { state };
   });
 
   app.get('/attempts/:attemptId', async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     return { state: await svc.get(auth.userId, attemptId(request)) };
   });
 
   // 预写微课（06 §4.4）：只读，已过闸门；小核验的答案不下发，由 /check 判定。
   app.get('/attempts/:attemptId/lesson/:conceptId', async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     return lessonSvc.get(auth.userId, attemptId(request), conceptParam(request));
   });
 
   app.post('/attempts/:attemptId/lesson/:conceptId/check', { preHandler: [requireStudentConsent(db)] }, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<{ stepId: string; choice: number }>(contract, '/attempts/{attemptId}/lesson/{conceptId}/check', request);
     return lessonSvc.check(auth.userId, attemptId(request), conceptParam(request), body);
   });
 
   app.post('/attempts/:attemptId/definition', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/definition', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
@@ -149,7 +149,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   app.post('/attempts/:attemptId/framework', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/framework', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const lineId = randomUUID();
@@ -167,7 +167,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   app.post('/attempts/:attemptId/framework/template', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const state = await svc.command({
       userId: auth.userId,
       attemptId: attemptId(request),
@@ -178,7 +178,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   app.post('/attempts/:attemptId/lines', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<LineSubmission>(contract, '/attempts/{attemptId}/lines', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.statement]);
     if (body.justificationInput) {
@@ -219,7 +219,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   app.post('/attempts/:attemptId/finish', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const state = await svc.command({
       userId: auth.userId,
       attemptId: attemptId(request),
@@ -230,7 +230,7 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   app.post('/attempts/:attemptId/selfcheck/:itemId', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<TextSubmission>(contract, '/attempts/{attemptId}/selfcheck/{itemId}', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, [body.text]);
     const itemId = param(request, 'itemId');
@@ -257,13 +257,13 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   app.post('/attempts/:attemptId/transfer', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const state = await svc.transfer(auth.userId, attemptId(request), ifMatchOf(request));
     return { state };
   });
 
   app.post('/attempts/:attemptId/summary', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<SummarySubmission>(contract, '/attempts/{attemptId}/summary', request);
     await assertConfirmedInput(db, auth.userId, attemptId(request), body.input, body.answers);
     const state = await svc.command({
@@ -290,14 +290,14 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
   });
 
   app.post('/attempts/:attemptId/park', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const state = await svc.park(auth.userId, attemptId(request), ifMatchOf(request));
     return { state };
   });
 
   // 只跳过当前层；层不符返回 409 WRONG_LAYER，不可跳过的层返回 409 LAYER_LOCKED。
   app.post('/attempts/:attemptId/layers/:layer/skip', writable, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const state = await svc.command({
       userId: auth.userId,
       attemptId: attemptId(request),
@@ -310,14 +310,14 @@ export const attemptRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
 
   // 求助（06 §4.2）：按钮意图与自由提问共用一个入口，服务端判意图。
   app.post('/attempts/:attemptId/help', helpLimited, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<HelpSubmission>(contract, '/attempts/{attemptId}/help', request);
     return helpSvc.help(auth.userId, attemptId(request), helpInput(body), body.lineId === undefined ? {} : { lineId: body.lineId });
   });
 
   // 领取 H2–H4 提示（06 §4.2）：必须带 /help 返回的 previewToken。
   app.post('/attempts/:attemptId/hints/claim', helpLimited, async (request) => {
-    const auth = await requireAuth(db, request);
+    const auth = await requireStudent(db, request);
     const body = parseBody<{ previewToken: string }>(contract, '/attempts/{attemptId}/hints/claim', request);
     return helpSvc.claim(auth.userId, attemptId(request), body.previewToken);
   });

@@ -7,7 +7,7 @@ import pino from 'pino';
 import Fastify from 'fastify';
 
 import { buildApp, trustNearestProxy } from '../src/app.ts';
-import { bySession, SESSION_COOKIE } from '../src/auth/session.ts';
+import { bySession, LEGACY_SESSION_COOKIE, STUDENT_SESSION_COOKIE } from '../src/auth/session.ts';
 import type { Pool } from 'pg';
 
 import { createPgPool, pgDbFromPool, PG_POOL_SETTINGS } from '../src/db/index.ts';
@@ -71,7 +71,7 @@ describe('会话级限流', () => {
 describe('会话级限流键', () => {
   const fakeRequest = (raw: string, valid: boolean, value: string): FastifyRequest =>
     ({
-      cookies: { [SESSION_COOKIE]: raw },
+      cookies: { [STUDENT_SESSION_COOKIE]: raw },
       unsignCookie: () => ({ valid, value, renew: false }),
       ip: '203.0.113.5',
     }) as unknown as FastifyRequest;
@@ -79,6 +79,23 @@ describe('会话级限流键', () => {
   it('未签名或非 UUID 的 Cookie 回退到 IP，避免伪造 Cookie 单独开桶', () => {
     expect(bySession(fakeRequest('forged', false, 'forged'))).toBe('203.0.113.5');
     expect(bySession(fakeRequest('', false, ''))).toBe('203.0.113.5');
+  });
+
+  it('新 Cookie 不在时回看旧 pg_sid（只读兼容）；新 Cookie 在场时旧的不参与', () => {
+    const id = '22222222-2222-4222-8222-222222222222';
+    const legacyOnly = {
+      cookies: { [LEGACY_SESSION_COOKIE]: `signed.${id}` },
+      unsignCookie: () => ({ valid: true, value: id, renew: false }),
+      ip: '203.0.113.5',
+    } as unknown as FastifyRequest;
+    expect(bySession(legacyOnly)).toBe(id);
+
+    const both = {
+      cookies: { [STUDENT_SESSION_COOKIE]: 'forged', [LEGACY_SESSION_COOKIE]: `signed.${id}` },
+      unsignCookie: (raw: string) => (raw === 'forged' ? { valid: false, value: 'forged', renew: false } : { valid: true, value: id, renew: false }),
+      ip: '203.0.113.5',
+    } as unknown as FastifyRequest;
+    expect(bySession(both)).toBe('203.0.113.5');
   });
 
   it('签名有效且是 UUID 的会话用自己的会话 id 作为键', () => {
