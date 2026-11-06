@@ -126,17 +126,65 @@ describe('mock 模式：拍照识别可演示（不伪造真实服务端）', ()
   })
 })
 
-describe('photoRecognitionErrorMessage：错误降级（404 不伪造）', () => {
-  it('后端未实现（404/NOT_FOUND）→ 即将上线，提示改用键盘/手写', () => {
-    expect(photoRecognitionErrorMessage(new ApiError({ status: 404, code: 'NOT_FOUND', message: '请求的内容不存在' }))).toContain('即将上线')
-    expect(photoRecognitionErrorMessage(new ApiError({ status: 404, code: 'NOT_FOUND', message: 'x' }))).toContain('键盘/手写')
+describe('photoRecognitionErrorMessage：真实服务端错误语义', () => {
+  it('404/NOT_FOUND → 识别记录或作答不存在（不再误报“即将上线”）', () => {
+    const copy = photoRecognitionErrorMessage(new ApiError({ status: 404, code: 'NOT_FOUND', message: '请求的内容不存在' }))
+    expect(copy).toContain('不存在')
+    expect(copy).toContain('键盘')
+    expect(copy).not.toContain('即将上线')
   })
 
-  it('PHOTO_DISABLED / 413 / 429 / NETWORK 各有学生可读文案', () => {
-    expect(photoRecognitionErrorMessage(new ApiError({ status: 403, code: 'PHOTO_DISABLED', message: 'x' }))).toContain('关闭拍照')
+  it('PHOTO_DISABLED 展示服务端具体原因（未开放 / 老师关闭）', () => {
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 403, code: 'PHOTO_DISABLED', message: '拍照识别暂未开放，请用键盘或手写' })),
+    ).toContain('暂未开放')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 403, code: 'PHOTO_DISABLED', message: '老师关闭了拍照识别，请用键盘或手写' })),
+    ).toContain('老师关闭')
+  })
+
+  it('RATE_LIMITED 展示服务端具体原因（上一张 / 今日次数 / 每分钟）', () => {
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 429, code: 'RATE_LIMITED', message: '上一张还在识别，请稍等' })),
+    ).toContain('上一张')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 429, code: 'RATE_LIMITED', message: '今天的拍照识别次数用完了，可以改用键盘输入' })),
+    ).toContain('次数用完')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 429, code: 'RATE_LIMITED', message: '操作太频繁，请稍后再试' })),
+    ).toContain('操作太频繁')
+  })
+
+  it('413/NETWORK/TEST/UPSTREAM 仍有学生可读文案', () => {
     expect(photoRecognitionErrorMessage(new ApiError({ status: 413, code: 'PAYLOAD_TOO_LARGE', message: 'x' }))).toContain('太大')
-    expect(photoRecognitionErrorMessage(new ApiError({ status: 429, code: 'RATE_LIMITED', message: 'x' }))).toContain('频繁')
     expect(photoRecognitionErrorMessage(new ApiError({ status: 0, code: 'NETWORK', message: 'x' }))).toContain('网络')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 403, code: 'TEST_MODE_RESTRICTED', message: 'x' })),
+    ).toContain('测验模式')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 503, code: 'UPSTREAM_UNAVAILABLE', message: 'x' })),
+    ).toContain('识别服务暂时不可用')
+  })
+
+  it('403 同意/年龄、409 锁定/未确认、422 参数错误有明确提示', () => {
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 403, code: 'CONSENT_REQUIRED', message: 'x' })),
+    ).toContain('知情同意书')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 409, code: 'AGE_BAND_REQUIRED', message: 'x' })),
+    ).toContain('年龄段')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 403, code: 'AGE_RESTRICTED', message: 'x' })),
+    ).toContain('14 岁')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 409, code: 'ATTEMPT_LOCKED', message: 'x' })),
+    ).toContain('锁定')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 409, code: 'RECOG_NOT_CONFIRMED', message: 'x' })),
+    ).toContain('确认')
+    expect(
+      photoRecognitionErrorMessage(new ApiError({ status: 422, code: 'VALIDATION_FAILED', message: 'x' })),
+    ).toContain('重新拍照')
   })
 
   it('压缩失败有对应降级文案（unsupported/too_large）', () => {
