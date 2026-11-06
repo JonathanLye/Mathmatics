@@ -257,6 +257,12 @@ async function finish(): Promise<void> {
 .pg-welcome__actions { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-2); }
 .pg-welcome__ready { color: var(--ink-2); font-size: var(--fs-15); text-align: center; }
 
+/* 宽屏：内容和按钮挨在一起，不把按钮丢在屏幕最下面 */
+@media (min-width: 700px) {
+  .pg-welcome__column { min-height: 0; padding-top: var(--sp-6); }
+  .pg-welcome__step { flex: none; }
+}
+
 /* 选择卡 */
 .pg-welcome__cards { display: flex; flex-direction: column; gap: var(--sp-3); width: 100%; margin-top: var(--sp-2); }
 .pg-welcome__card {
