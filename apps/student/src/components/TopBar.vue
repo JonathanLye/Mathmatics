@@ -1,58 +1,61 @@
 <script setup lang="ts">
 /**
- * 顶栏（02 §3.1）：关闭、六段层进度、当前层名、题名。
- * 六段：已完成满格 / 进行中半格 / 跳过半透明 / 未到灰色；点开 = 层列表弹层。
+ * 做题页顶栏：关闭、一条连续的进度条（每层一个刻度）、求助灯泡。点进度条看层列表。
+ * 层名不在这里重复：内容区只有一个标题。
  */
 import { computed } from 'vue'
-import type { LayerId, LayerStatus } from '@/types/attempt'
+import type { LayerStatus } from '@/types/attempt'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
 import PgProgress from '@/components/ui/PgProgress.vue'
-import { segmentFromLayerStatus } from '@/components/ui/uiLogic'
-import { layerName } from '@/copy'
-import MathText from '@ui-math/MathText.vue'
+import { layersProgress } from '@/components/practice/practiceProgress'
 
 const props = withDefaults(
   defineProps<{
-    title?: string
-    currentLayer?: LayerId | null
     layers?: LayerStatus[]
-    showBack?: boolean
-    dark?: boolean
-    /** 求助灯泡：hideHelp 时不显示；helpDisabled 时禁用（请求在途、测验关闭提示）。 */
-    hideHelp?: boolean
+    completed?: boolean
+    /** 求助灯泡：helpDisabled 时禁用（请求在途、测验关闭提示）。 */
     helpDisabled?: boolean
   }>(),
-  { title: '', currentLayer: null, layers: () => [], showBack: true, dark: false, hideHelp: false, helpDisabled: false },
+  { layers: () => [], completed: false, helpDisabled: false },
 )
 const emit = defineEmits<{ (e: 'back'): void; (e: 'open-layers'): void; (e: 'help'): void }>()
-const segments = computed(() => props.layers.map((layer) => segmentFromLayerStatus(layer.status)))
+const progress = computed(() => layersProgress(props.layers, props.completed))
 </script>
 
 <template>
-  <view class="pg-topbar" :class="{ 'pg-topbar--dark': dark }">
+  <view class="pg-topbar" data-testid="practice-topbar">
     <view class="pg-topbar__row">
-      <PgButton v-if="showBack" class="pg-topbar__back" variant="ghost" size="icon" aria-label="返回" @tap="emit('back')">
-        <PgIcon name="close" :size="28" />
+      <PgButton class="pg-topbar__back" variant="ghost" size="icon" aria-label="返回" @tap="emit('back')">
+        <PgIcon name="close" :size="26" />
       </PgButton>
-      <view class="pg-topbar__progress" role="button" tabindex="0" aria-label="层列表" @tap="emit('open-layers')" @keydown.enter.prevent="emit('open-layers')">
-        <PgProgress class="pg-topbar__dots" :segments="segments" seg-class="pg-dot" label="六层进度" />
-        <text v-if="props.currentLayer" class="pg-topbar__layer">{{ layerName(props.currentLayer) }}</text>
+      <view
+        class="pg-topbar__progress"
+        data-testid="practice-progress"
+        role="button"
+        tabindex="0"
+        aria-label="查看层列表"
+        @tap="emit('open-layers')"
+        @keydown.enter.prevent="emit('open-layers')"
+      >
+        <PgProgress :value="progress.value" label="这道题的进度" />
+        <view class="pg-topbar__ticks" aria-hidden="true">
+          <view v-for="at in progress.ticks" :key="at" class="pg-topbar__tick" :style="{ left: at * 100 + '%' }" />
+        </view>
       </view>
       <PgButton
-        v-if="!props.hideHelp"
         class="pg-topbar__help"
         variant="ghost"
         size="icon"
         aria-label="求助"
         data-testid="dock-help"
         :disabled="props.helpDisabled"
+        sound="tap"
         @tap="emit('help')"
       >
         <PgIcon name="bulb" :size="28" :tone="props.helpDisabled ? 'off' : 'on'" />
       </PgButton>
     </view>
-    <view v-if="props.title" class="pg-topbar__name"><MathText :text="props.title" /></view>
   </view>
 </template>
 
@@ -61,14 +64,14 @@ const segments = computed(() => props.layers.map((layer) => segmentFromLayerStat
   position: sticky;
   top: 0;
   z-index: 20;
-  padding: calc(var(--safe-top) + var(--sp-2)) 0 var(--sp-2);
+  padding: calc(var(--safe-top) + var(--sp-1)) 0 var(--sp-1);
   background: var(--paper);
 }
-.pg-topbar__row { display: flex; align-items: center; gap: var(--sp-2); }
+.pg-topbar__row { display: flex; align-items: center; gap: var(--sp-1); }
 .pg-topbar__back { color: var(--ink-2); margin-left: -8px; }
 .pg-topbar__help { margin-right: -8px; }
-.pg-topbar__progress { flex: 1; min-width: 0; min-height: var(--touch); display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
-.pg-topbar__dots { flex: 1; min-width: 0; }
-.pg-topbar__layer { flex: none; color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-black); }
-.pg-topbar__name { margin-top: 2px; color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-heavy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-topbar__progress { position: relative; flex: 1; min-width: 0; min-height: var(--touch); display: flex; align-items: center; cursor: pointer; }
+/* 刻度：压在进度条上的细缝，能看出还有几层，不抢进度本身的注意力。 */
+.pg-topbar__ticks { position: absolute; left: 0; right: 0; top: 50%; height: 14px; transform: translateY(-50%); pointer-events: none; }
+.pg-topbar__tick { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--paper); }
 </style>

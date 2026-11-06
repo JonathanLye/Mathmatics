@@ -6,6 +6,7 @@
  */
 import { computed, reactive, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import MathField from '@/components/practice/MathField.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import type { SummaryView } from '@/types/attempt'
 
@@ -41,7 +42,6 @@ function submit() {
 <template>
   <view class="pg-layer" data-testid="summary-form">
     <view class="pg-layer__head">
-      <text class="pg-layer__title">第 6 层</text>
       <text class="pg-layer__step pg-small">{{ filled }} / {{ questions.length }} 已回答</text>
     </view>
     <text class="pg-layer__hint pg-small">每问一句话即可。提交后进入完成页；总结会进入你的证明本。</text>
@@ -56,19 +56,21 @@ function submit() {
         <text class="pg-summary__qno">{{ index + 1 }}</text>
         <MathText :text="question" serif block />
       </view>
-      <textarea
+      <MathField
         v-model="drafts[index]"
-        class="pg-input-area pg-input-area--sm"
         :data-testid="'summary-input-' + index"
         :maxlength="500"
         :disabled="props.busy"
+        :min-rows="2"
         placeholder="一句话……"
       />
     </view>
 
-    <PgButton block size="lg" data-testid="summary-submit" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
-      {{ props.busy ? '提交中…' : '提交总结' }}
-    </PgButton>
+    <view class="pg-pin">
+      <PgButton block size="lg" data-testid="summary-submit" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
+        {{ props.busy ? '提交中…' : '提交总结' }}
+      </PgButton>
+    </view>
   </view>
 </template>
 

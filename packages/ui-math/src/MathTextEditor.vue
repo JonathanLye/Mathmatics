@@ -56,9 +56,11 @@ const props = withDefaults(
     minRows?: number
     /** 是否显示 KaTeX 预览（默认 true） */
     showPreview?: boolean
+    /** 是否显示输入框下方的键盘状态行（默认 true；内嵌在表单里时可以关掉） */
+    showMeta?: boolean
     maxlength?: number
   }>(),
-  { showPreview: true },
+  { showPreview: true, showMeta: true },
 )
 
 const emit = defineEmits<{
@@ -379,8 +381,8 @@ onBeforeUnmount(() => {
       />
     </view>
 
-    <view class="ui-mte__meta">
-      <text class="ui-mte__keyboard">{{ inputModeValue === 'none' ? '证明键盘' : '系统键盘' }}</text>
+    <view v-if="props.showMeta || placeholderHint" class="ui-mte__meta">
+      <text v-if="props.showMeta" class="ui-mte__keyboard">{{ inputModeValue === 'none' ? '证明键盘' : '系统键盘' }}</text>
       <text v-if="placeholderHint" class="ui-mte__placeholders">{{ placeholderHint }}</text>
     </view>
   </view>

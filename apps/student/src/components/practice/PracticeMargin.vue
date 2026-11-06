@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 页边（≥600px）：助教的批注和求助入口。手机上批注在行内，这里不渲染。 */
+/** 页边（桌面 ≥1024px）：助教的批注和求助入口。手机和平板上批注在行内，这里不渲染。 */
 import MathText from '@ui-math/MathText.vue'
 import { formatNoteTime } from '@/components/layers/proofLines'
 import PgButton from '@/components/ui/PgButton.vue'
@@ -12,8 +12,8 @@ defineEmits<{ (e: 'dismiss', noteId: string): void; (e: 'help'): void }>()
 </script>
 
 <template>
-  <view class="pg-practice__aside">
-    <text class="pg-practice__asidetitle">页边</text>
+  <view class="pg-practice__aside" data-testid="practice-margin">
+    <text class="pg-practice__asidetitle">助教的批注</text>
     <view
       v-for="n in notes"
       :key="n.noteId"
@@ -57,8 +57,12 @@ defineEmits<{ (e: 'dismiss', noteId: string): void; (e: 'help'): void }>()
 
 <style scoped>
 .pg-practice__aside {
-  border-left: var(--bw) solid var(--rule);
-  padding: var(--sp-3);
+  position: sticky;
+  top: calc(var(--safe-top) + 64px);
+  align-self: start;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  padding: var(--sp-1) var(--sp-1) var(--sp-3);
   min-width: 0;
 }
 .pg-practice__asidetitle {

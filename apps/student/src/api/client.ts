@@ -231,7 +231,7 @@ function inputMeta(provenance: InputProvenance, draftId: string): InputMeta {
 
 /**
  * 最近一次作答写接口带回的 rewards（没有则 null）。读一次即清空：页面在每次 await 写接口之后调用一次，
- * 把结果交给 useRewards 排队提示。mock 模式永远是 null。
+ * 把结果交给反馈面板和完成页。mock 模式下由演示 reducer 给一份演示奖励。
  */
 let lastRewards: RewardsView | null = null
 export function consumeRewards(): RewardsView | null {
@@ -755,6 +755,13 @@ export async function viewFrameTemplate(state: AttemptState, options: WriteOptio
 }
 
 /** POST /attempts/{attemptId}/lines：第 3 层加入一行。 */
+/** mock 的关键步骤判定（演示用，真实判定在服务端）：写到一个演示题的关键式子，且还没写够。 */
+const MOCK_KEY_PATTERNS = [/\\frac\{5\}\{n\+2\}|5\/\(n\+2\)/, /\\frac\{5\}\{n\}|5\/n/, /N\s*=/, /\\varepsilon|ε/]
+function mockKeyGain(state: AttemptState, statement: string): number {
+  if (state.budget.keysOwn >= state.budget.keysTotal) return 0
+  return MOCK_KEY_PATTERNS.some((pattern) => pattern.test(statement)) ? 1 : 0
+}
+
 export async function addLine(state: AttemptState, draft: LineDraft, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {
   await sleep()
@@ -762,6 +769,7 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   const lines = next.steps?.lines ?? []
   const n = lines.length + 1
   const lineId = mockUuid()
+  const keysGained = mockKeyGain(next, draft.statement)
   lines.push({
     lineId,
     n,
@@ -773,6 +781,10 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   })
   next.steps = { lines, canFinish: lines.length >= 2 }
   next.stateVersion += 1
+  if (keysGained > 0) {
+    next.budget = { ...next.budget, keysOwn: next.budget.keysOwn + keysGained }
+    lastRewards = { xp: 10, items: [{ kind: 'key_own', amount: 10, label: '写出关键步骤' }], badges: [] }
+  }
   // 写完一行后门槛满足：下一条提示重新可预览（01 §4：自上一条提示后又提交过一行）
   next.help = { ...next.help, needAttempt: false, waitSec: 0 }
   // mock 批注：依据为空时追问；否则「衔接上了」
@@ -920,6 +932,12 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   next.layers = next.layers.map((l) => (l.layer === 'L6' ? { ...l, status: 'done' as const } : l))
   next.status = 'completed'
   next.budget = { ...next.budget, keysOwn: Math.max(next.budget.keysOwn, 3) }
+  lastRewards = {
+    xp: 45,
+    items: [{ kind: 'problem', amount: 30, label: '完成一道题' }, { kind: 'layer', amount: 15, label: '走完六层' }],
+    badges: [{ id: 'first_proof', title: '第一个证明', desc: '完成了第一道证明题' }],
+    streak: { current: 3, extended: true },
+  }
   next.completion = {
     done: true,
     independence: 0.75,

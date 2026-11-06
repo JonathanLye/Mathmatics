@@ -3,7 +3,7 @@
  * 做题页（issue #10/#11/#12/#16 的集成页）。只做编排：
  * 状态和动作在 composables/practice/，每层的屏在 components/practice/。
  * 只渲染 AttemptState；不做层/预算/门槛/归类判定（08 §8 AI 规则 3）。
- * 布局：手机单列 + 底部操作坞；平板两栏；桌面三栏（02 §3）。
+ * 布局：手机单列，主按钮贴底；平板单列（最宽 720）；桌面两栏（题面和证明在左，助教批注在右，最宽 1100）。
  */
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
@@ -11,12 +11,10 @@ import BottomDock from '@/components/BottomDock.vue'
 import BudgetBar from '@/components/BudgetBar.vue'
 import HelpDrawer from '@/components/HelpDrawer.vue'
 import HintPreviewCard from '@/components/HintPreviewCard.vue'
-import LayerNav from '@/components/LayerNav.vue'
 import LayerSheet from '@/components/LayerSheet.vue'
 import MicroCourse from '@/components/MicroCourse.vue'
 import MockSwitcher from '@/components/MockSwitcher.vue'
 import OfflineBar from '@/components/OfflineBar.vue'
-import ProblemCard from '@/components/ProblemCard.vue'
 import TopBar from '@/components/TopBar.vue'
 import WechatHint from '@/components/WechatHint.vue'
 import CompletionScreen from '@/components/practice/CompletionScreen.vue'
@@ -24,18 +22,22 @@ import ComposerOverlays from '@/components/practice/ComposerOverlays.vue'
 import ExamOverlays from '@/components/practice/ExamOverlays.vue'
 import LayerDefine from '@/components/practice/LayerDefine.vue'
 import LayerFrame from '@/components/practice/LayerFrame.vue'
+import LayerInterstitial from '@/components/practice/LayerInterstitial.vue'
 import LayerProof from '@/components/practice/LayerProof.vue'
 import LayerSelfcheck from '@/components/practice/LayerSelfcheck.vue'
 import LayerSummary from '@/components/practice/LayerSummary.vue'
 import LayerTransfer from '@/components/practice/LayerTransfer.vue'
+import PracticeFeedback from '@/components/practice/PracticeFeedback.vue'
 import PracticeLoadState from '@/components/practice/PracticeLoadState.vue'
 import PracticeMargin from '@/components/practice/PracticeMargin.vue'
+import StemPeek from '@/components/practice/StemPeek.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import { useToast } from '@/components/ui/useToast'
 import { mockEnabled, useAttemptSession } from '@/composables/practice/useAttemptSession'
 import { useComposer } from '@/composables/practice/useComposer'
 import { useDrafts } from '@/composables/practice/useDrafts'
 import { useExamMode } from '@/composables/practice/useExamMode'
+import { useFeedback } from '@/composables/practice/useFeedback'
 import { useHelp } from '@/composables/practice/useHelp'
 import { useViewport } from '@/composables/useViewport'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
@@ -51,6 +53,8 @@ const { mode } = useViewport()
 const drafts = useDrafts()
 const session = useAttemptSession(drafts)
 const { state, mockKey, busy, error, realMode, phase, loadError, currentLayer, lines, isCompleted, nextLineNo, isTransferAttempt, layerTitle, layerTask } = session
+/** 写之前题面完整展开；写起来以后收成一行（桌面位置够，一直展开）。 */
+const stemDefaultOpen = computed(() => mode.value === 'desktop' || lines.value.length === 0)
 const exam = useExamMode(session)
 const examView = reactive(exam)
 const { strictExam, strictExamActive, examIsLocked, countdownText, timeUp, fullscreenNote, strictHelpOff } = exam
@@ -58,6 +62,8 @@ const help = useHelp(session, exam)
 const { helpOpen, hintPreview, helpNote, visibleNotes, asideNotes } = help
 const composer = useComposer(session, drafts)
 const composerView = reactive(composer)
+const loop = useFeedback(session)
+const { feedback, interstitial } = loop
 const { recogDraft } = composer
 const { restoredDraft, l1Initial } = drafts
 
@@ -119,6 +125,7 @@ function onSwitchMock(k: MockKey) {
   session.setMock(k)
   help.reset()
   composer.reset()
+  loop.reset()
   drafts.reset()
   void drafts.restoreDrafts()
 }
@@ -170,11 +177,10 @@ function backHome() {
 
 <template>
   <PracticeLoadState v-if="phase !== 'ready'" :phase="phase" :message="loadError" @retry="session.retryLoad" @home="backHome" />
-  <view v-else class="pg-page pg-practice" :class="[modeClass, strictClass]">
+  <view v-else class="pg-page pg-practice" :class="[modeClass, strictClass, { 'pg-practice--feedback': feedback }]">
     <TopBar
-      :title="state.problem.title"
-      :current-layer="currentLayer"
       :layers="state.layers"
+      :completed="isCompleted"
       :help-disabled="busy || strictHelpOff"
       @back="handleBack"
       @open-layers="layersOpen = true"
@@ -199,16 +205,10 @@ function backHome() {
       <PgButton variant="ghost" size="sm" @tap="backHome">回首页</PgButton>
     </view>
 
-    <LayerNav v-if="mode === 'tablet'" :layers="state.layers" :current="currentLayer" @select="closeLayers" />
-
     <view class="pg-practice__shell">
-      <view v-if="mode === 'desktop'" class="pg-practice__rail">
-        <LayerNav :layers="state.layers" :current="currentLayer" vertical @select="closeLayers" />
-        <BudgetBar :budget="state.budget" />
-      </view>
-
       <view class="pg-practice__main">
-        <ProblemCard :problem="state.problem" />
+        <StemPeek v-if="!isCompleted" :problem="state.problem" :default-open="stemDefaultOpen" />
+        <BudgetBar v-if="!isCompleted" :budget="state.budget" :show-keys="currentLayer !== 'L1' && currentLayer !== 'L2'" />
 
         <view class="pg-practice__content">
           <!-- #27 草稿恢复提示：重新打开时告诉学生内容来自本机未提交草稿 -->
@@ -312,7 +312,7 @@ function backHome() {
       </view>
 
       <PracticeMargin
-        v-if="mode !== 'mobile'"
+        v-if="mode === 'desktop'"
         :notes="asideNotes"
         :help-disabled="strictHelpOff"
         :strict-exam="strictExam"
@@ -321,11 +321,10 @@ function backHome() {
       />
     </view>
 
-    <view v-if="mode === 'mobile' && !isCompleted" class="pg-practice__dockwrap">
-      <BudgetBar :budget="state.budget" />
+    <view v-if="mode === 'mobile' && !isCompleted && currentLayer === 'L3' && !isTransferAttempt" class="pg-practice__dockwrap">
       <!-- 操作坞只放写证明行的输入方式：其他层用各自的表单 -->
       <BottomDock
-        v-if="currentLayer === 'L3' && !isTransferAttempt"
+
         :photo-disabled="strictExam"
         @ink="composer.startInk"
         @keyboard="composer.openKeyboardEditor"
@@ -333,8 +332,7 @@ function backHome() {
       />
     </view>
 
-    <LayerSheet v-if="mode === 'mobile'" :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="closeLayers" />
-    <view v-else-if="layersOpen" class="pg-practice__mask" @tap="layersOpen = false" />
+    <LayerSheet :open="layersOpen" :layers="state.layers" :current="currentLayer" @update:open="layersOpen = $event" @select="closeLayers" />
 
     <HelpDrawer
       :open="helpOpen"
@@ -362,6 +360,9 @@ function backHome() {
     />
 
     <ComposerOverlays :composer="composerView" :line-no="nextLineNo" :busy="busy" @draft="drafts.saveLine" />
+
+    <PracticeFeedback :view="feedback" @continue="loop.dismissFeedback" />
+    <LayerInterstitial :view="interstitial" :layers="state.layers" @continue="loop.dismissInterstitial" />
 
     <MicroCourse :open="microOpen" :lesson="microLesson" :check="checkMicro" @close="microOpen = false" />
 
@@ -398,38 +399,44 @@ function backHome() {
 .pg-practice__shell {
   display: block;
 }
-.pg-practice--tablet .pg-practice__shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 0;
+/* 平板：单列，最宽 720。 */
+.pg-practice--tablet .pg-practice__shell,
+.pg-practice--tablet :deep(.pg-topbar__row) {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
 }
+/* 桌面：题面和证明在左，助教批注在右；表单不撑满。 */
 .pg-practice--desktop .pg-practice__shell {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) 300px;
-  max-width: 1280px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--sp-8);
+  max-width: 1100px;
   margin: 0 auto;
-}
-.pg-practice__rail {
-  border-right: var(--bw) solid var(--rule);
   padding-top: var(--sp-2);
-  position: sticky;
-  top: 60px;
-  align-self: start;
+}
+.pg-practice--desktop :deep(.pg-topbar__row) {
+  max-width: 1100px;
+  margin: 0 auto;
 }
 .pg-practice__main {
   min-width: 0;
-  /* 手机：额度条 + 操作坞的高度 */
-  padding-bottom: calc(136px + var(--safe-bottom));
+  /* 手机：给贴底的主按钮留位置 */
+  padding-bottom: calc(112px + var(--safe-bottom));
 }
 .pg-practice--tablet .pg-practice__main,
 .pg-practice--desktop .pg-practice__main {
-  padding: 0 var(--sp-4) var(--sp-10);
+  padding-bottom: var(--sp-10);
+}
+/* 反馈面板开着时还能把证明滚到面板上方。 */
+.pg-practice--feedback .pg-practice__main {
+  padding-bottom: calc(260px + var(--safe-bottom));
 }
 .pg-practice__error {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin: var(--sp-2) var(--sp-3);
+  margin: var(--sp-2) 0;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-12);
   background: var(--sea-soft);
@@ -487,10 +494,4 @@ function backHome() {
   transform: none;
 }
 .pg-practice__placeholder { padding: var(--sp-3); }
-.pg-practice__mask {
-  position: fixed;
-  inset: 0;
-  z-index: 55;
-  background: var(--mask);
-}
 </style>

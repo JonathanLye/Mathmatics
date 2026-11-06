@@ -229,8 +229,25 @@ html[data-motion='off'] *::after {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: var(--sp-3) 0 var(--sp-4);
+  padding: var(--sp-2) 0 var(--sp-4);
   min-width: 0;
+  max-width: var(--shell-main);
+}
+/* 每屏唯一的主按钮：手机贴底，随键盘上移；宽屏留在内容流里。 */
+.pg-pin { display: block; }
+@media (max-width: 599px) {
+  .pg-pin {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    padding: var(--sp-3) max(var(--sp-4), var(--safe-right)) calc(var(--sp-3) + var(--safe-bottom)) max(var(--sp-4), var(--safe-left));
+    background: var(--paper);
+    border-top: var(--bw) solid var(--rule);
+    transform: translateY(calc(-1 * var(--keyboard-inset)));
+    transition: transform var(--dur-fast) ease-out;
+  }
 }
 .pg-layer__head {
   display: flex;

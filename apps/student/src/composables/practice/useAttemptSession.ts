@@ -70,7 +70,17 @@ function toLineDraft(draft: TransferDraft): LineDraft {
 export type LoadPhase = 'loading' | 'ready' | 'error'
 
 export function useAttemptSession(drafts: DraftsHandle) {
-  const { state, mockKey, busy, error, setMock, apply, clear, run } = useAttempt()
+  const { state, mockKey, busy, error, setMock, apply: applyToStore, clear, run } = useAttempt()
+  /** 服务端 state 落到页面时通知（反馈面板、层间过场）：只比较前后两份 state。 */
+  const transitionListeners: Array<(prev: AttemptState, next: AttemptState) => void> = []
+  function onTransition(listener: (prev: AttemptState, next: AttemptState) => void): void {
+    transitionListeners.push(listener)
+  }
+  function apply(next: AttemptState): void {
+    const prev = state.value
+    applyToStore(next)
+    for (const listener of transitionListeners) listener(prev, next)
+  }
   /** 真实模式（#24）：页面按服务端 state 渲染；mock 模式保留演示状态切换。 */
   const realMode = ref(!isMockMode())
   /** 真实模式必须等服务端 state，生产构建也一样：不拿演示数据或上一次的作答顶替。 */
@@ -261,6 +271,7 @@ export function useAttemptSession(drafts: DraftsHandle) {
     error,
     setMock,
     apply,
+    onTransition,
     run,
     realMode,
     phase,
