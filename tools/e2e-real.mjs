@@ -709,11 +709,15 @@ await scenario('隐私政策：不登录也能看', async () => {
   await p.goto(`${BASE}/#/pages/login/index`, { waitUntil: 'networkidle' });
   await p.waitForTimeout(600);
   if (await visible(p, 'intro-skip')) await tap(p, 'intro-skip');
+  check('登录页底部有 ICP 和公安备案号', /粤ICP备2026019694号/.test(await p.getByTestId('site-icp').first().innerText()) && /粤公网安备44060602003163号/.test(await p.getByTestId('site-psb').first().innerText()));
+  check('ICP 备案号链接工信部系统', (await p.getByTestId('site-icp').first().getAttribute('href')) === 'https://beian.miit.gov.cn/');
+  await shot(p, 'login-record');
   await tap(p, 'login-policy');
   await waitFor(p, 'privacy-policy-page');
   const text = await p.locator('body').innerText();
   check('隐私政策写明保存期限、第三方、权利和 AI 标识', ['保存', 'DeepSeek', 'SimpleTex', '通义千问', '删除', 'AI 生成', '投诉'].every((w) => text.includes(w)));
   check('隐私政策不提香港', !text.includes('香港'));
+  check('隐私政策写明运营方和联系方式', text.includes('JonathanLye工作室') && text.includes('junhongli105@gmail.com'));
   await shot(p, 'privacy-policy');
   await anon.close();
 });
@@ -723,6 +727,7 @@ await scenario('两端隔离和教师端', async () => {
   watch(t);
   await t.setViewportSize({ width: 1280, height: 800 });
   await t.goto(`${BASE}/t/`, { waitUntil: 'networkidle' });
+  check('教师登录页有备案号和隐私政策入口', /粤ICP备2026019694号/.test(await t.getByTestId('site-record').innerText()) && (await t.getByTestId('login-policy').count()) === 1);
   await t.getByPlaceholder('用户名').fill('e2e');
   await t.getByPlaceholder('密码').fill(TEACHER_PASSWORD);
   await t.keyboard.press('Enter');

@@ -82,7 +82,7 @@ async function submit(): Promise<void> {
       </div>
       <div v-if="SITE_RECORD.icp || SITE_RECORD.psb" style="margin-top: 12px; text-align: center; font-size: 12px" data-testid="site-record">
         <a v-if="SITE_RECORD.icp" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ SITE_RECORD.icp }}</a>
-        <a v-if="SITE_RECORD.psb" href="https://beian.mps.gov.cn/" target="_blank" rel="noopener noreferrer" style="margin-left: 8px">{{ SITE_RECORD.psb }}</a>
+        <a v-if="SITE_RECORD.psb" href="https://beian.mps.gov.cn/#/query/webSearch?code=44060602003163" target="_blank" rel="noopener noreferrer" style="margin-left: 8px">{{ SITE_RECORD.psb }}</a>
       </div>
     </div>
   </div>

@@ -3,6 +3,7 @@
  * 关于：版本、AI 使用说明、问题反馈（POST /student/feedback）。
  * ?feedback=1 进来时直接打开反馈弹层（“我的”里的问题反馈用它）。发送失败留在弹层里，内容不丢。
  */
+import SiteRecord from '@/components/SiteRecord.vue'
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { errorMessage, sendFeedback } from '@/api/client'
@@ -88,6 +89,7 @@ async function send(): Promise<void> {
         <text class="pg-about__itemtext">{{ ABOUT_COPY.feedbackBody }}</text>
         <PgButton variant="secondary" block sound="tap" data-testid="about-feedback" @tap="sheetOpen = true">{{ ABOUT_COPY.feedbackAction }}</PgButton>
       </PgCard>
+      <SiteRecord />
     </view>
 
     <PgSheet v-model:open="sheetOpen" data-testid="feedback-sheet" :persistent="sending">

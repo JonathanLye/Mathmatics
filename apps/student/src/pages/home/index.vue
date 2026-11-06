@@ -4,6 +4,7 @@
  * 只渲染服务端状态：完成、软锁、单元开放都来自接口。接口失败显示错误和重试，不回退假数据。
  * 演示构建默认走 mock（见 api/client.ts）；加 ?api=real 走真实接口（e2e 弱网用例用）。
  */
+import SiteRecord from '@/components/SiteRecord.vue'
 import { computed, nextTick, onUnmounted, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { consumeRewards, errorMessage, getMe, getStudentPath, isMockMode, setMockMode, startAttempt, startPathItem } from '@/api/client'
@@ -321,6 +322,7 @@ function goZone(): void {
           </view>
         </template>
       </template>
+      <SiteRecord />
     </view>
 
     <PathNodeSheet v-model:open="sheetOpen" :item="sheetItem" :busy="sheetBusy" :error="sheetError" @act="sheetItem && actOn(sheetItem)" @review="sheetItem && goDetail(sheetItem, 'review')" @stay="backToCurrent" />

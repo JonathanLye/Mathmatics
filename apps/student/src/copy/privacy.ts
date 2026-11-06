@@ -6,20 +6,20 @@
  */
 export const SITE = {
   /** 个人信息处理者（运营方）名称。 */
-  operator: '',
+  operator: 'JonathanLye工作室',
   /** 联系方式：行使权利、投诉举报都走这里。 */
-  contact: '',
+  contact: 'junhongli105@gmail.com',
   /** ICP 备案号，如“京ICP备00000000号”。 */
-  icp: '',
+  icp: '粤ICP备2026019694号',
   /** 公安联网备案号，如“京公网安备00000000000000号”。 */
-  psb: '',
+  psb: '粤公网安备44060602003163号',
   /** 生效日期。 */
   effectiveDate: '2026-11-07',
 }
 
 export const POLICY_TITLE = '隐私政策'
 export const MIIT_URL = 'https://beian.miit.gov.cn/'
-export const PSB_URL = 'https://beian.mps.gov.cn/'
+export const PSB_URL = 'https://beian.mps.gov.cn/#/query/webSearch?code=44060602003163'
 
 export interface PolicySection {
   id: string
