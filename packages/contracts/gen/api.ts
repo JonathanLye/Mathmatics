@@ -14,10 +14,41 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 学生登录（邀请码 + 学号）
-         * @description 首次登录时用学号认领名单里的一行；名单里没有该学号返回 403 `NOT_IN_ROSTER`。响应会告诉前端是否需要先签知情同意。
+         * 学生登录（学号 + 密码；首次/重置后用邀请码 + 学号激活）
+         * @description 三种用法，统一用学号 `studentNo` 标识账号：
+         *     1. **已设密码**：必须带 `password`；任何失败（学号不存在、密码错）都返回同一条 401 `INVALID_CREDENTIALS`（学号或密码不对）。
+         *        同时带有效的 `inviteCode` 则顺带加入该班（第二个班的入班路径；名单规则不变）。
+         *     2. **未设密码或学号尚无账号**：必须带 `inviteCode`，按名单认领；登录成功但 `Me.needsPassword=true`，
+         *        前端先去设密码（`POST /auth/student/password`）。名单里没有该学号返回 403 `NOT_IN_ROSTER`。
+         *     3. **已设密码却只带邀请码**：401 `PASSWORD_REQUIRED_LOGIN`（这个学号已设置密码，请用密码登录）。堵住同学冒登。
+         *     连续失败按 (IP, 学号) 锁定，返回 429 `RATE_LIMITED`（detail.retryAfterSec）。
          */
         post: operations["studentLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/student/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 学生设置 / 修改密码
+         * @description 首次设置（`Me.needsPassword=true`）不需要 `currentPassword`；已有密码时必须带正确的 `currentPassword`，
+         *     否则 403 `INVALID_CREDENTIALS`（刻意不用 401，避免客户端把它当成会话失效而跳回登录页）；连续输错同样被锁定（429）。
+         *     新密码规则：8–64 个字符、不限字符类型，不能与学号相同，也不能是常见弱密码（422 `VALIDATION_FAILED`，message 可直接展示）。
+         *     成功后作废该学生**其他**所有会话（当前会话保留）。服务端开启 `STUDENT_PASSWORD_ENFORCE` 时，
+         *     未设密码的学生调用除 `/me`、`/auth/logout`、本接口之外的学生接口一律 403 `PASSWORD_SETUP_REQUIRED`。
+         *     支持 `Idempotency-Key`。
+         */
+        post: operations["setStudentPassword"];
         delete?: never;
         options?: never;
         head?: never;
@@ -61,6 +92,43 @@ export interface paths {
         put?: never;
         /** 教师登录（用户名 + 密码 + 可选 TOTP） */
         post: operations["teacherLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/teacher/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 教师修改密码（需当前密码；作废其他会话）
+         * @description 新密码至少 8 个字符。当前密码不对返回 403 `INVALID_CREDENTIALS`（不用 401，原因同学生端）；连续输错被锁定（429）。支持 `Idempotency-Key`。
+         */
+        post: operations["changeTeacherPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 退出所有设备（作废该用户全部会话并清 Cookie） */
+        post: operations["logoutAll"];
         delete?: never;
         options?: never;
         head?: never;
@@ -692,6 +760,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/classes/{classId}/roster/{rosterId}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 重置学生密码（清哈希、作废该生全部会话；写 audit_log）
+         * @description 名单行必须已被认领、且班级归当前教师；学生之后用邀请码 + 学号重新激活并设置新密码。重置是账号级的（该生在其他班也要重新设密码）。
+         */
+        post: operations["resetStudentPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/teacher/classes/{classId}/invite-code": {
         parameters: {
             query?: never;
@@ -1151,12 +1239,15 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "AGE_BAND_REQUIRED" | "AGE_RESTRICTED" | "AGE_BAND_LOCKED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL";
+                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "NOT_IN_ROSTER" | "INVALID_INVITE" | "CONSENT_REQUIRED" | "AGE_BAND_REQUIRED" | "AGE_RESTRICTED" | "AGE_BAND_LOCKED" | "INVALID_CREDENTIALS" | "PASSWORD_REQUIRED_LOGIN" | "PASSWORD_SETUP_REQUIRED" | "WRONG_LAYER" | "LAYER_LOCKED" | "STATE_STALE" | "ATTEMPT_LOCKED" | "ASSIGNMENT_CLOSED" | "RECOG_NOT_CONFIRMED" | "HINT_NOT_READY" | "HINT_PREVIEW_EXPIRED" | "BUDGET_EXHAUSTED" | "RATE_LIMITED" | "PAYLOAD_TOO_LARGE" | "PHOTO_DISABLED" | "TEST_MODE_RESTRICTED" | "UPSTREAM_UNAVAILABLE" | "VALIDATION_FAILED" | "INTERNAL";
                 /** @description 可直接展示给用户的中文 */
                 message: string;
                 /** @description 如 { waitSec, softLanding: [...], state } */
                 detail?: Record<string, never>;
             };
+        };
+        OkResult: {
+            ok: boolean;
         };
         /** @description 中文 + $…$ 行内 LaTeX；字面 $ 写作 \$ */
         MathText: string;
@@ -1182,6 +1273,8 @@ export interface components {
              * @enum {string|null}
              */
             ageBand?: "lt14" | "14to17" | "ge18" | null;
+            /** @description 仅学生返回：true=账号还没设密码，前端先去 POST /auth/student/password（密码设好前，开启强制时其余学生接口 403 PASSWORD_SETUP_REQUIRED） */
+            needsPassword?: boolean;
             /** @description 功能开关：photo, lessonGenerated, mirror, testMode … */
             features?: {
                 [key: string]: boolean;
@@ -1517,6 +1610,8 @@ export interface components {
             claimedAt?: string | null;
             /** @description 认领学生的匿名码 */
             claimedByAnon?: string | null;
+            /** @description 认领学生是否已设置密码（未认领为 false）；教师可据此提示或重置 */
+            passwordSet?: boolean;
         };
         ClassSettings: {
             /** @default true */
@@ -4704,8 +4799,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    inviteCode: string;
+                    inviteCode?: string;
                     studentNo: string;
+                    /** Format: password */
+                    password?: string;
                     /** Format: uuid */
                     deviceId: string;
                 };
@@ -4723,6 +4820,39 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    setStudentPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: password */
+                    currentPassword?: string;
+                    /** Format: password */
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             429: components["responses"]["Error"];
         };
     };
@@ -4786,6 +4916,61 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             429: components["responses"]["Error"];
+        };
+    };
+    changeTeacherPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: password */
+                    currentPassword: string;
+                    /** Format: password */
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已修改 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    logoutAll: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
+                "X-Pg-App"?: components["parameters"]["pgApp"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已退出所有设备 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
         };
     };
     logout: {
@@ -5789,6 +5974,30 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    resetStudentPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                classId: components["parameters"]["classId"];
+                rosterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已重置 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
         };
     };

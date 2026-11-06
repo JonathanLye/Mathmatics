@@ -44,8 +44,10 @@ const ALL_PROBLEM_IDS = ['epsN', 'epsN-T1', 'series', 'series-T1'];
 // 主题走到的每个学生接口。覆盖面守卫（见下）用它和契约对账。
 const MAIN_OPS = [
   'POST /auth/student/login',
+  'POST /auth/student/password',
   'POST /auth/student/age-band',
   'POST /auth/logout',
+  'POST /auth/logout-all',
   'GET /me',
   'GET /consents',
   'POST /consents',
@@ -396,6 +398,8 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   const login = await app.inject({ method: 'POST', url: '/api/v1/auth/student/login', headers: WRITE_HEADERS, payload: loginBody() });
   ctx.records.push({ op: 'POST /auth/student/login', owner: main, exempt: {}, status: login.statusCode, body: login.body });
   ctx.cookie = cookieFrom(login.headers['set-cookie']);
+  // 首次登录后先设密码（Me.needsPassword），再选年龄分档
+  await call(ctx, 'POST /auth/student/password', main, { payload: { newPassword: 'correct horse battery' } });
   await call(ctx, 'POST /auth/student/age-band', main, { payload: { ageBand: '14to17' } });
   const meBefore = (await call(ctx, 'GET /me', main)).json;
   const consentsUnsigned = (await call(ctx, 'GET /consents', main)).json;
@@ -553,6 +557,15 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   const done = (await call(ctx, 'GET /student/home', main)).json;
 
   await call(ctx, 'POST /auth/logout', main);
+  // 退出所有设备：用学号 + 密码重新登录一次拿到新会话，再整体作废
+  const relogin = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/student/login',
+    headers: WRITE_HEADERS,
+    payload: { studentNo: loginBody().studentNo, password: 'correct horse battery', deviceId: loginBody().deviceId },
+  });
+  ctx.cookie = cookieFrom(relogin.headers['set-cookie']);
+  await call(ctx, 'POST /auth/logout-all', main);
 
   return {
     main,

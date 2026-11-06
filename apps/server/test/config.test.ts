@@ -42,4 +42,15 @@ describe('loadConfig：开发密钥只能留在本机回环上', () => {
     expect(() => loadConfig({ HOST: '0.0.0.0', ...SECRETS, PII_KEY: '' })).toThrow('不是回环地址');
     expect(() => loadConfig({ NODE_ENV: 'production', HOST: '0.0.0.0', ...SECRETS, PII_KEY: '' })).toThrow('PII_KEY');
   });
+
+  it('STUDENT_PASSWORD_ENFORCE：开发/测试缺省关闭，生产缺省开启；显式值优先，写错直接报错', () => {
+    expect(loadConfig({}).studentPasswordEnforce).toBe(false);
+    expect(loadConfig({ NODE_ENV: 'test' }).studentPasswordEnforce).toBe(false);
+    expect(loadConfig({ STUDENT_PASSWORD_ENFORCE: 'true' }).studentPasswordEnforce).toBe(true);
+    expect(loadConfig({ STUDENT_PASSWORD_ENFORCE: '1' }).studentPasswordEnforce).toBe(true);
+    expect(loadConfig({ NODE_ENV: 'production', HOST: '0.0.0.0', ...SECRETS }).studentPasswordEnforce).toBe(true);
+    expect(loadConfig({ NODE_ENV: 'production', HOST: '0.0.0.0', ...SECRETS, STUDENT_PASSWORD_ENFORCE: 'false' }).studentPasswordEnforce).toBe(false);
+    expect(loadConfig({ STUDENT_PASSWORD_ENFORCE: '' }).studentPasswordEnforce).toBe(false);
+    expect(() => loadConfig({ STUDENT_PASSWORD_ENFORCE: 'yes' })).toThrow('STUDENT_PASSWORD_ENFORCE');
+  });
 });

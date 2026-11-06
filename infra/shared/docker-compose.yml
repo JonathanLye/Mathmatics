@@ -87,6 +87,8 @@ services:
       NODE_ENV: production
       # 容器内监听所有网卡；对宿主机只发布到 127.0.0.1（见 ports），公网到不了。
       HOST: 0.0.0.0
+      # 学生必须设密码才能用（WS1）；调试时可在 .env 里设 STUDENT_PASSWORD_ENFORCE=false 临时关闭。
+      STUDENT_PASSWORD_ENFORCE: ${STUDENT_PASSWORD_ENFORCE:-true}
       DATABASE_URL: postgres://proof_gym:${POSTGRES_PASSWORD:?}@postgres:5432/proof_gym
       # 老生代堆上限低于容器上限，让 GC 先于 OOM 起作用。
       NODE_OPTIONS: --max-old-space-size=230

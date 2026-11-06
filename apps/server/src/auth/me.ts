@@ -14,6 +14,8 @@ export interface MeView {
   consentRequired: boolean;
   /** 13 §4：null=尚未选择年龄段（需先调 POST /auth/student/age-band）；仅学生返回。 */
   ageBand?: AgeBand | null;
+  /** 仅学生返回：账号还没设密码（登录后先去 POST /auth/student/password）。 */
+  needsPassword?: boolean;
   features: Record<string, boolean>;
 }
 
@@ -36,6 +38,12 @@ export async function buildMe(db: Queryable, auth: AuthContext): Promise<MeView>
 
   const consentRequired = auth.role === 'student' ? !(await hasValidConsent(db, auth.userId)) : false;
   const ageBand = auth.role === 'student' ? await getAgeBand(db, auth.userId) : null;
+  const needsPassword =
+    auth.role === 'student'
+      ? (
+          await db.query<{ needs: boolean }>(`select password_hash is null as needs from app.student_profiles where user_id = $1`, [auth.userId])
+        ).rows[0]?.needs === true
+      : false;
 
   return {
     userId: auth.userId,
@@ -44,7 +52,7 @@ export async function buildMe(db: Queryable, auth: AuthContext): Promise<MeView>
     displayName: row.display_name,
     classes: classes.rows,
     consentRequired,
-    ...(auth.role === 'student' ? { ageBand } : {}),
+    ...(auth.role === 'student' ? { ageBand, needsPassword } : {}),
     features: {},
   };
 }

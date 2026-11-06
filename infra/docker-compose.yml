@@ -67,6 +67,8 @@ services:
       NODE_ENV: production
       # 容器内必须监听所有网卡，Caddy 才连得上 server:3000；端口只 expose 不 publish，外网到不了。
       HOST: 0.0.0.0
+      # 学生必须设密码才能用（WS1）；调试时可在 .env 里设 STUDENT_PASSWORD_ENFORCE=false 临时关闭。
+      STUDENT_PASSWORD_ENFORCE: ${STUDENT_PASSWORD_ENFORCE:-true}
       DATABASE_URL: postgres://proof_gym:${POSTGRES_PASSWORD:?}@postgres:5432/proof_gym
       # 拍照原图落盘目录：与下面的命名卷挂载点一致（镜像里已建好并归 node 用户）。
       STORAGE_DIR: /data/files

@@ -28,7 +28,8 @@ describe('0001 迁移（07 §8）', () => {
 
     const result = await migrate(db);
     expect(result.baselined).toBe(true);
-    expect(result.applied).toEqual(['0001_idempotency_keys.sql']);
+    // 旧库没有版本表：只记基线 0000_init，再把 migrations/ 里的文件全部（幂等地）执行一遍。
+    expect(result.applied).toEqual(['0001_idempotency_keys.sql', '0002_student_password.sql']);
     expect(await hasTable('app.idempotency_keys')).toBe(true);
 
     const rows = (
@@ -36,7 +37,7 @@ describe('0001 迁移（07 §8）', () => {
         'select version, sha256 from public.schema_migrations order by version',
       )
     ).rows;
-    expect(rows.map((row) => row.version)).toEqual(['0000_init', '0001_idempotency_keys.sql']);
+    expect(rows.map((row) => row.version)).toEqual(['0000_init', '0001_idempotency_keys.sql', '0002_student_password.sql']);
     expect(rows[1]?.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 

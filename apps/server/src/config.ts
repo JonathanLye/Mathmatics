@@ -15,6 +15,9 @@ export interface AppConfig {
   sessionSecret: string;
   piiKey: Buffer;
   studentNoPepper: string;
+  // 学生密码强制（WS1）：开启后，未设密码的学生除 /me、/auth/logout、/auth/logout-all、/auth/student/password 外的学生接口一律 403 PASSWORD_SETUP_REQUIRED。
+  // 缺省只在生产开启（fail-closed）；开发/测试关闭，现有流程与压测脚本不受影响。
+  studentPasswordEnforce: boolean;
   databaseUrl?: string;
   pgliteDir: string;
   // GET /health/details 的访问令牌（请求头 x-health-token）。未配置则明细接口一律 404。
@@ -37,6 +40,14 @@ const MODELS_PATH = fileURLToPath(new URL('../config/models.yaml', import.meta.u
 // 空串等于没提供：不能拿 '' 当密钥（会被当成“已提供”而绕过回环守卫）。
 function configured(raw: string | undefined): raw is string {
   return raw !== undefined && raw !== '';
+}
+
+function booleanFlag(raw: string | undefined, fallback: boolean, name: string): boolean {
+  if (raw === undefined || raw === '') return fallback;
+  const value = raw.trim().toLowerCase();
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  throw new Error(`${name} 只能是 true / false / 1 / 0：${raw}`);
 }
 
 function positiveInt(raw: string | undefined, fallback: number, name: string): number {
@@ -87,6 +98,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionSecret,
     piiKey,
     studentNoPepper,
+    studentPasswordEnforce: booleanFlag(env.STUDENT_PASSWORD_ENFORCE, isProduction, 'STUDENT_PASSWORD_ENFORCE'),
     databaseUrl: env.DATABASE_URL === undefined || env.DATABASE_URL === '' ? undefined : env.DATABASE_URL,
     pgliteDir: env.PGLITE_DIR ?? '.data/pglite',
     ...(configured(env.HEALTH_TOKEN) ? { healthToken: env.HEALTH_TOKEN } : {}),

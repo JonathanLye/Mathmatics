@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 课堂并发压测（本地/预发用，不要对生产库跑）：N 个学生同时登录并作答，教师同时刷新看板。
 // 用法：PG_BASE=http://127.0.0.1:3000 PG_TEACHER_USER=e2e PG_TEACHER_PASSWORD=... node tools/loadtest.mjs [学生数=60] [每人行数=6]
+// 学生密码：压测学生只用邀请码 + 学号登录、不设密码，因此服务端必须在 STUDENT_PASSWORD_ENFORCE 关闭（开发/预发默认）的状态下跑；开启后除 /me 外的学生接口会 403。
 // 注意：学生登录按 IP 限流（120 次/分），N 不要超过 100。输出每个接口的 p50/p95/max 与错误数；有错误或 p95>1500ms 则退出码非 0。
 const BASE = process.env.PG_BASE ?? 'http://127.0.0.1:3000';
 const USER = process.env.PG_TEACHER_USER ?? '';

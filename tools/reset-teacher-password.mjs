@@ -6,15 +6,10 @@
 //   TEACHER_PASSWORD=… node tools/reset-teacher-password.mjs <用户名> [--totp]
 // --totp 需要 PII_KEY（加密 totp secret），生产容器的 env_file 里已有。
 // 数据库连接同 apps/server/src/db/cli.ts：DATABASE_URL（生产）或 PGLITE_DIR（本地）。
-import { createRequire } from 'node:module';
-
 import { openDb } from '../apps/server/src/db/index.ts';
+// 哈希参数与并发限制统一在 password.ts（argon2id）；这里直接用它，不再复制一份参数。
+import { hashPassword } from '../apps/server/src/auth/password.ts';
 
-const require = createRequire(new URL('../apps/server/package.json', import.meta.url));
-const { hash } = require('@node-rs/argon2');
-
-// 与 apps/server/src/auth/teacher-login.ts 的 HASH_OPTIONS 保持一致（argon2id）。
-const HASH_OPTIONS = { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 };
 const MIN_PASSWORD_LENGTH = 8;
 
 const username = (process.argv[2] ?? '').trim();
@@ -36,7 +31,7 @@ if (rotateTotp) {
 
 const db = await openDb({ databaseUrl: process.env.DATABASE_URL, pgliteDir: process.env.PGLITE_DIR ?? '.data/pglite' });
 try {
-  const passwordHash = await hash(password, HASH_OPTIONS);
+  const passwordHash = await hashPassword(password);
   let revoked = 0;
   await db.tx(async (tx) => {
     const result = await tx.query('update app.teacher_accounts set password_hash = $1 where username = $2 returning user_id', [

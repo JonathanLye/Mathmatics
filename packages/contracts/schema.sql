@@ -32,6 +32,8 @@ CREATE TABLE app.student_profiles (
   age_band         text CHECK (age_band IN ('lt14', '14to17', 'ge18')),  -- 未成年人分档（13-合规）
   grade            text,
   major            text,
+  password_hash    text,                              -- argon2id；NULL=尚未设密码（首次用邀请码激活后设置；教师重置会清空）
+  password_set_at  timestamptz,
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 

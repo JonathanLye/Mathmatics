@@ -31,6 +31,16 @@ export interface AuthContext {
   expiresAt?: Date;
   /** 这次是靠旧的 pg_sid 认出来的（只读兼容）。 */
   legacy?: boolean;
+  /** 学生账号还没设密码（只对学生有意义；教师恒为 false）。 */
+  needsPassword?: boolean;
+}
+
+// buildApp 在根实例上挂的开关（config.studentPasswordEnforce），requireApp 通过 request.server 读取，
+// 这样三十多个 requireStudent(db, request) 调用点不用改签名。
+declare module 'fastify' {
+  interface FastifyInstance {
+    studentPasswordEnforce: boolean;
+  }
 }
 
 export const cookieNameFor = (app: SessionApp): string => (app === 'teacher' ? TEACHER_SESSION_COOKIE : STUDENT_SESSION_COOKIE);
@@ -41,7 +51,7 @@ const roleBelongsTo = (app: SessionApp, role: Role): boolean => (app === 'teache
 // 这样百分号编码、重复斜杠之类的写法不会让“看起来是学生路径”的请求实际走到教师处理器。
 const TEACHER_ROUTE = /^\/(?:teacher|auth\/teacher)(?:\/|$)/;
 // 这些接口两端共用，由 x-pg-app 指明身份。
-const HEADER_ROUTES = new Set(['/me', '/auth/logout', '/events/batch']);
+const HEADER_ROUTES = new Set(['/me', '/auth/logout', '/auth/logout-all', '/events/batch']);
 
 function routeOf(request: FastifyRequest): string {
   const route = request.routeOptions?.url ?? (request.url ?? '').split('?')[0] ?? '';
@@ -127,11 +137,22 @@ export async function revokeSession(db: Queryable, sessionId: string): Promise<v
   await db.query(`update app.auth_sessions set revoked_at = now() where id = $1 and revoked_at is null`, [sessionId]);
 }
 
+// 作废某用户的会话：keepSessionId 给定时保留那一个（改密码时保留当前设备），否则全部作废。返回作废条数。
+export async function revokeUserSessions(db: Queryable, userId: string, keepSessionId?: string): Promise<number> {
+  const result = await db.query(
+    `update app.auth_sessions set revoked_at = now()
+      where user_id = $1 and revoked_at is null and ($2::uuid is null or id <> $2::uuid)`,
+    [userId, keepSessionId ?? null],
+  );
+  return result.rowCount;
+}
+
 async function loadSession(db: Queryable, sessionId: string): Promise<AuthContext | null> {
-  const result = await db.query<{ user_id: string; role: Role; expires_at: Date | string }>(
-    `select u.id as user_id, u.role, s.expires_at
+  const result = await db.query<{ user_id: string; role: Role; expires_at: Date | string; needs_password: boolean }>(
+    `select u.id as user_id, u.role, s.expires_at, (sp.user_id is not null and sp.password_hash is null) as needs_password
        from app.auth_sessions s
        join app.users u on u.id = s.user_id
+       left join app.student_profiles sp on sp.user_id = u.id
       where s.id = $1
         and s.revoked_at is null
         and s.expires_at > now()
@@ -139,7 +160,9 @@ async function loadSession(db: Queryable, sessionId: string): Promise<AuthContex
     [sessionId],
   );
   const row = result.rows[0];
-  return row ? { userId: row.user_id, role: row.role, sessionId, expiresAt: new Date(row.expires_at) } : null;
+  return row
+    ? { userId: row.user_id, role: row.role, sessionId, expiresAt: new Date(row.expires_at), needsPassword: row.needs_password }
+    : null;
 }
 
 // 无 Cookie、签名不对、会话过期或吊销、账号停用，都返回 null。
@@ -178,4 +201,21 @@ export async function requireApp(db: Queryable, request: FastifyRequest, app: Se
   throw new AppError('UNAUTHORIZED', 401, '请先登录');
 }
 
-export const requireStudent = (db: Queryable, request: FastifyRequest): Promise<AuthContext> => requireApp(db, request, 'student');
+// 开启 STUDENT_PASSWORD_ENFORCE 后，没设密码的学生被挡在设密码之前：除 /me、/auth/logout、/auth/logout-all（它们用 requireAuth）
+// 和 POST /auth/student/password（allowPasswordSetup）之外，所有走 requireStudent 的接口都返回这个 403。
+// code 是 PASSWORD_SETUP_REQUIRED、detail.reason 不是 wrong_app：客户端据此去设密码页，而不是回登录页。
+export function assertPasswordReady(request: FastifyRequest, auth: AuthContext): void {
+  if (auth.role === 'student' && auth.needsPassword === true && request.server.studentPasswordEnforce === true) {
+    throw new AppError('PASSWORD_SETUP_REQUIRED', 403, '请先设置密码', { reason: 'password_setup_required' });
+  }
+}
+
+export async function requireStudent(
+  db: Queryable,
+  request: FastifyRequest,
+  options: { allowPasswordSetup?: boolean } = {},
+): Promise<AuthContext> {
+  const auth = await requireApp(db, request, 'student');
+  if (options.allowPasswordSetup !== true) assertPasswordReady(request, auth);
+  return auth;
+}
