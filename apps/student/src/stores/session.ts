@@ -97,7 +97,7 @@ const requiredOk = computed(() => items.value.filter((item) => item.required).ev
 export const AUTH_EXPIRED_TOAST = '登录已过期，请重新登录'
 const LOGIN_PAGE = 'pages/login/index'
 /** 登录页、镜像页（令牌访问）和登录前试玩页（没有会话）不跳。 */
-const NO_REDIRECT_PAGES = [LOGIN_PAGE, 'pages/mirror/index', 'pages/tour/index']
+const NO_REDIRECT_PAGES = [LOGIN_PAGE, 'pages/mirror/index', 'pages/tour/index', 'pages/privacy-policy/index']
 export const SET_PASSWORD_PAGE = 'pages/set-password/index'
 let lastAuthRedirectAt = 0
 

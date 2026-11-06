@@ -28,28 +28,24 @@ export interface ConsentSection {
 export const GUARDIAN_NOTICE_SECTION: ConsentSection = {
   key: 'guardianNotice',
   title: '建议告知监护人',
-  body: '你未满 18 岁：建议把使用本服务（含数据存储在中国香港服务器）的事告诉家长或监护人。不同意本段不影响使用。',
+  body: '你未满 18 岁：建议把使用本服务的事告诉家长或监护人，一起看看《隐私政策》。不同意本段不影响使用。',
   required: false,
 };
 
+// 键名 crossBorderHosting 是历史名字（早期部署在香港），存量数据和契约都在用，不改；内容已是境内的模型和识别服务（13 §2、U22）。
+// crossBorderModel（境外决策模型）不再向学生展示，也不再记为同意：系统不向境外发送数据（U22）。
 export const CONSENT_SECTIONS: readonly ConsentSection[] = [
   {
     key: 'service',
     title: '服务所需处理',
-    body: '为提供练习功能，需要处理你的学号、作答内容和过程记录。',
+    body: '为提供练习功能，需要处理你的学号、姓名（老师导入名单时提供）、年龄段、作答内容（含手写笔迹和照片）、过程记录和登录设备信息。这些数据存储在中国境内的服务器上，按《隐私政策》写明的期限保存，到期删除或匿名化。',
     required: true,
   },
   {
     key: 'crossBorderHosting',
-    title: '数据存储在中国香港服务器',
-    body: '你的数据存储在中国香港的服务器上；国内模型（DeepSeek、通义千问）与识别服务（SimpleTex）在境内。你在求助里写的内容和你写的证明行会去掉身份信息后发给通义千问或 DeepSeek 生成回答。不同意则无法使用本版本。',
+    title: 'AI 模型和识别服务',
+    body: '你在求助里写的内容、你写的定义和证明行，会去掉身份信息后发给 DeepSeek 或通义千问，用来生成回答和判断你写的是哪一步；手写笔迹和拍的照片会发给 SimpleTex 或通义千问识别成文字和公式（请不要拍到姓名、学号）。这些服务都在中国境内，只用于完成上述功能。AI 生成的文字都会标注“AI 生成”。不同意则无法使用本版本。',
     required: true,
-  },
-  {
-    key: 'crossBorderModel',
-    title: '境外决策模型（可选）',
-    body: '去掉身份信息后的作答文本会发送给境外的 Jev 决策模型，用于判断你写的是哪一步。本版本中它只做对比记录，不同意不影响任何功能。',
-    required: false,
   },
   {
     key: 'monitoring',
@@ -65,7 +61,7 @@ export const CONSENT_SECTIONS: readonly ConsentSection[] = [
   },
 ];
 
-// 练习前必选的三段：服务所需、香港服务器存储、过程监测。
+// 练习前必选的三段：服务所需、AI 模型和识别服务、过程监测。
 export const REQUIRED_CONSENT_KEYS = ['service', 'crossBorderHosting', 'monitoring'] as const;
 
 export function missingRequiredConsent(items: Partial<Record<ConsentKey, boolean>>): ConsentKey[] {

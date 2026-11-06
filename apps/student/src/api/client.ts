@@ -557,8 +557,7 @@ export const CONSENT_PLACEHOLDER_BODY = '（正文由服务端提供，待 #62 �
  */
 export const MOCK_CONSENT_SECTIONS: ConsentDoc['sections'] = [
   { key: 'service', title: '服务所需处理', body: CONSENT_PLACEHOLDER_BODY, required: true },
-  { key: 'crossBorderHosting', title: '数据存储在中国香港服务器', body: CONSENT_PLACEHOLDER_BODY, required: true },
-  { key: 'crossBorderModel', title: '境外决策模型（可选）', body: CONSENT_PLACEHOLDER_BODY, required: false },
+  { key: 'crossBorderHosting', title: 'AI 模型和识别服务', body: CONSENT_PLACEHOLDER_BODY, required: true },
   { key: 'monitoring', title: '过程监测', body: CONSENT_PLACEHOLDER_BODY, required: true },
   { key: 'research', title: '教研使用（可选）', body: CONSENT_PLACEHOLDER_BODY, required: false },
 ]

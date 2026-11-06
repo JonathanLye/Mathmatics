@@ -1920,8 +1920,8 @@ components:
       required: [service, crossBorderHosting, crossBorderModel, monitoring, research]
       properties:
         service: { type: boolean, description: 服务所需处理（必选） }
-        crossBorderHosting: { type: boolean, description: 数据存储于中国香港服务器（P0 必选） }
-        crossBorderModel: { type: boolean, description: 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关对该生跳过 Jev） }
+        crossBorderHosting: { type: boolean, description: AI 模型和识别服务（必选；历史键名，内容已是境内服务，见 13 §2） }
+        crossBorderModel: { type: boolean, description: 已停用（U22）：系统不向境外发送数据，服务端一律记为 false；客户端仍需传这个键 }
         monitoring: { type: boolean, description: 作答过程监测（必选） }
         research: { type: boolean, description: 匿名数据用于教研（可选） }
     ConsentDoc:
@@ -2423,6 +2423,7 @@ components:
         attemptId: { type: [string, 'null'], format: uuid }
         reviewPublished: { type: boolean, description: 可以看讲评：自学作答完成即可；教师布置要教师发布 }
         autoImported: { type: boolean, description: 批量导入、AI 整理（界面显示小标签） }
+        sourceBook: { type: string, description: 题目出处（书名），有就显示（著作权法第 24 条要指明出处，13 §6） }
         softLocked: { type: boolean, description: 排在第一道未完成题之后，只提示、不拦 }
         lessonAvailable: { type: boolean }
     PathUnitSummary:
@@ -2484,6 +2485,7 @@ components:
         attemptId: { type: [string, 'null'], format: uuid }
         keyCount: { type: integer }
         autoImported: { type: boolean }
+        sourceBook: { type: string, description: 题目出处（书名），有就显示（13 §6） }
     PracticeList:
       type: object
       required: [items, facets, nextCursor]
@@ -2512,6 +2514,7 @@ components:
         canReveal: { type: boolean, description: 他有一份进行中的自学作答，且还可以再看一级 }
         hasApproach: { type: boolean, description: 本题有整理好的解题思路 }
         hasFull: { type: boolean, description: 本题有可发布的参考证明 }
+        aiGenerated: { type: boolean, description: 这些内容由 AI 整理；界面要显示“AI 生成”标识（13 §5） }
         approach: { $ref: '#/components/schemas/MathText' }
         keyIdeas: { type: array, items: { $ref: '#/components/schemas/MathText' } }
         pitfalls: { type: array, items: { $ref: '#/components/schemas/MathText' } }

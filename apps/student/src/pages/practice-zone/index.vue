@@ -33,7 +33,7 @@ import PgSegmented from '@/components/ui/PgSegmented.vue'
 import PgSheet from '@/components/ui/PgSheet.vue'
 import PgSkeleton from '@/components/ui/PgSkeleton.vue'
 import { useToast } from '@/components/ui/useToast'
-import { AI_IMPORTED_NOTE, AI_IMPORTED_TAG, DIFFICULTY_TONE, STATUS_LABEL, ZONE_COPY } from '@/copy'
+import { AI_IMPORTED_NOTE, SOURCE_OF, AI_IMPORTED_TAG, DIFFICULTY_TONE, STATUS_LABEL, ZONE_COPY } from '@/copy'
 import { DIFFICULTY_LABEL, type PracticeFacets, type PracticeItem } from '@/types/path'
 
 const toast = useToast()
@@ -332,6 +332,7 @@ async function roll(): Promise<void> {
         <MathText class="pg-zone__sheetname" :text="sheetItem.title" data-testid="zone-sheet-title" />
         <MathText class="pg-zone__sheetstem" :text="sheetItem.stemPreview" block serif data-testid="zone-sheet-stem" />
         <text class="pg-zone__sheetmeta">{{ sheetItem.chapter }}<text v-if="sheetItem.keyCount"> · {{ ZONE_COPY.keyCount(sheetItem.keyCount) }}</text></text>
+        <text v-if="sheetItem.sourceBook" class="pg-zone__sheetnote" data-testid="zone-sheet-source">{{ SOURCE_OF(sheetItem.sourceBook) }}</text>
         <text v-if="sheetItem.autoImported" class="pg-zone__sheetnote">{{ AI_IMPORTED_NOTE }}</text>
         <text v-if="sheetError" class="pg-zone__sheeterror" role="alert" data-testid="zone-sheet-error">{{ sheetError }}</text>
         <view class="pg-zone__sheetactions">

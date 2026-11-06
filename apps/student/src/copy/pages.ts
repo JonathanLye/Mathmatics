@@ -17,6 +17,7 @@ export const STATUS_LABEL: Readonly<Record<NodeState, string>> = {
 }
 
 export const AI_IMPORTED_TAG = 'AI 整理'
+export const SOURCE_OF = (book: string) => `题目出自《${book.replace(/^《|》$/g, '')}》`
 export const AI_IMPORTED_NOTE = '这道题由 AI 整理，可能有疏漏；发现问题可以在“我的”里反馈。'
 
 export const PROGRESS_COPY = {
@@ -261,7 +262,8 @@ export const ABOUT_COPY = {
     '判断你写的这一行对应哪个关键步骤，用提问帮你往下想，也回答你在求助里问的问题。它不替你写证明。',
     '系统核对关键步骤是否齐全，最终以老师讲评为准。',
     'AI 生成的文字下面都标着“AI 生成 · 仅作学习提示”，题库里 AI 整理的题标着“AI 整理”，可能有疏漏。',
-    '你在求助里写的内容和证明行，会去掉身份信息后发给通义千问或 DeepSeek 生成回答。详细说明在“隐私与同意书”。',
+    '你在求助里写的内容、定义和证明行，会去掉身份信息后发给 DeepSeek 或通义千问；手写和照片发给识别服务。都在中国境内。详细说明在《隐私政策》。',
+    '这是校内课程用的练习工具，面向任课老师名单里的学生，不对社会公众开放。',
   ],
   feedbackTitle: '问题反馈',
   feedbackBody: '哪里不对劲、哪里能更好，都可以说。',

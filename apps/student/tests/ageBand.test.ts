@@ -295,7 +295,7 @@ describe('mock 客户端（#145）', () => {
     configureClientForTests({ mock: true })
     __setMockAgeBandForTests('14to17')
     const teenDoc = await getConsents()
-    expect(teenDoc.sections).toHaveLength(6)
+    expect(teenDoc.sections).toHaveLength(5)
     const guardian = teenDoc.sections.find((section) => section.key === 'guardianNotice')
     expect(guardian?.required).toBe(false)
     expect(guardian?.body).toContain('服务端')

@@ -126,11 +126,13 @@ export function createPracticeService(deps: { db: Db; contract: ContractValidato
           stem: string | null;
           tags: string[] | null;
           section: string | null;
+          source_book: string | null;
           key_count: string | null;
           review_source: 'teacher' | 'auto';
         }>(
           `select p.id, p.title, left(pv.public->>'stem', 700) as stem, pv.public->'tags' as tags,
-                  pv.public#>>'{source,section}' as section, pv.public->>'keyCount' as key_count, pv.review_source
+                  pv.public#>>'{source,section}' as section, pv.public#>>'{source,book}' as source_book,
+                  pv.public->>'keyCount' as key_count, pv.review_source
              ${ELIGIBLE_FROM}
             where ${ELIGIBLE_WHERE} and p.id = any($1::text[])`,
           [rows.map((r) => r.id)],
@@ -154,6 +156,7 @@ export function createPracticeService(deps: { db: Db; contract: ContractValidato
         autoImported: d.review_source === 'auto',
       };
       if (d.section !== null) item.section = d.section;
+      if (d.source_book !== null) item.sourceBook = d.source_book;
       return [item];
     });
   }
@@ -249,7 +252,10 @@ export function createPracticeService(deps: { db: Db; contract: ContractValidato
 
   async function solution(userId: string, problemId: string): Promise<Record<string, unknown>> {
     const found = (
-      await db.query<{ version: number }>(`select pv.version ${ELIGIBLE_FROM} where ${ELIGIBLE_WHERE} and p.id = $1`, [problemId])
+      await db.query<{ version: number; review_source: 'teacher' | 'auto' }>(
+        `select pv.version, pv.review_source ${ELIGIBLE_FROM} where ${ELIGIBLE_WHERE} and p.id = $1`,
+        [problemId],
+      )
     ).rows[0];
     if (!found) throw new AppError('NOT_FOUND', 404, '这道题现在不能练习');
     const progress = (await progressByProblem(db, userId)).get(problemId);
@@ -263,6 +269,7 @@ export function createPracticeService(deps: { db: Db; contract: ContractValidato
         !blocked && progress?.origin === 'path' && progress.mode === 'practice' && progress.attemptStatus !== 'completed' && level !== 'full',
       hasApproach: content.walkthrough !== null,
       hasFull: content.proof !== null,
+      aiGenerated: found.review_source === 'auto',
     };
     if (level !== 'none' && content.walkthrough) {
       dto.approach = content.walkthrough.approach;

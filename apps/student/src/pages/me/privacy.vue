@@ -3,6 +3,7 @@
  * 隐私与同意书：看自己签过的版本；必选项只读，可选项随时改（POST /consents，五个键一起提交）。
  * 改动先显示，失败退回原来的值并提示，不假装成功。监护人告知只读，不参与签署。
  */
+import { POLICY_TITLE } from '@/copy/privacy'
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { errorMessage, getConsents, submitConsents } from '@/api/client'
@@ -79,12 +80,17 @@ async function toggle(key: ConsentKey, value: boolean): Promise<void> {
     saving.value = false
   }
 }
+
+function goPolicy(): void {
+  uni.navigateTo({ url: '/pages/privacy-policy/index' })
+}
 </script>
 
 <template>
   <AppShell active="me">
     <view class="pg-privacy" data-testid="privacy-page">
       <MeSubHeader :title="PRIVACY_COPY.title" />
+      <text class="pg-privacy__policy" role="link" tabindex="0" data-testid="privacy-policy-link" @tap="goPolicy">看完整的《{{ POLICY_TITLE }}》：处理哪些信息、存多久、怎么查询和删除</text>
 
       <PgCard v-if="loading" data-testid="privacy-loading" aria-busy="true"><PgSkeleton :count="4" /></PgCard>
 
@@ -121,6 +127,7 @@ async function toggle(key: ConsentKey, value: boolean): Promise<void> {
 </template>
 
 <style scoped>
+.pg-privacy__policy { color: var(--accent-text); font-size: var(--fs-13); font-weight: var(--fw-bold); line-height: 1.5; }
 .pg-privacy { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
 .pg-privacy__intro { display: flex; flex-direction: column; gap: var(--sp-1); }
 .pg-privacy__version { color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); line-height: 1.4; }

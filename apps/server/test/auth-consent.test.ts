@@ -92,7 +92,6 @@ describe('知情同意书接口', () => {
     expect(doc.sections.map((s: { key: string }) => s.key)).toEqual([
       'service',
       'crossBorderHosting',
-      'crossBorderModel',
       'monitoring',
       'research',
     ]);
@@ -215,11 +214,21 @@ describe('同意书守卫（作答接口挂载点）', () => {
     expect(res.json().error.code).toBe('CONSENT_REQUIRED');
   });
 
+  it('境外决策模型不再可选：客户端传 true 也记为不同意（U22）', async () => {
+    const cookie = await studentCookie();
+    const res = await signConsent(cookie, { version: 'v2', items: { ...ALL_REQUIRED, crossBorderModel: true } });
+    expect(res.statusCode, res.body).toBe(200);
+    const stored = await db.query<{ items: Record<string, boolean> }>('select items from app.consents order by created_at desc limit 1');
+    expect(stored.rows[0]?.items.crossBorderModel).toBe(false);
+  });
+
   it('v2：文案明确写出求助内容去标识后发给通义千问或 DeepSeek；v1 的签署不再有效（所有人重签一次）', async () => {
     const cookie = await studentCookie();
     const doc = (await app.inject({ method: 'GET', url: '/api/v1/consents', headers: { cookie } })).json();
     const text = doc.sections.map((section: { body: string }) => section.body).join('');
-    expect(text).toContain('你在求助里写的内容和你写的证明行会去掉身份信息后发给通义千问或 DeepSeek 生成回答');
+    expect(text).toContain('你在求助里写的内容、你写的定义和证明行，会去掉身份信息后发给 DeepSeek 或通义千问');
+    expect(text).toContain('中国境内');
+    expect(text).not.toContain('香港');
     const student = await db.query<{ user_id: string }>('select user_id from app.student_profiles');
     await db.query(`insert into app.consents (user_id, version, items) values ($1, 'p0-v1', $2::jsonb)`, [
       student.rows[0]?.user_id,

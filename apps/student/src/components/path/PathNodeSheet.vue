@@ -10,7 +10,7 @@ import PgIcon from '@/components/ui/PgIcon.vue'
 import PgProgress from '@/components/ui/PgProgress.vue'
 import PgSheet from '@/components/ui/PgSheet.vue'
 import TagChip from '@/components/TagChip.vue'
-import { AI_IMPORTED_NOTE, AI_IMPORTED_TAG, DIFFICULTY_TONE, PATH_COPY, STATUS_LABEL } from '@/copy'
+import { AI_IMPORTED_NOTE, AI_IMPORTED_TAG, SOURCE_OF, DIFFICULTY_TONE, PATH_COPY, STATUS_LABEL } from '@/copy'
 import { DIFFICULTY_LABEL, type PathItem } from '@/types/path'
 import { nodeAction, stepsFor } from './pathLogic'
 
@@ -45,6 +45,7 @@ const canReview = computed(() => props.item?.state === 'done' && props.item.revi
       </view>
       <MathText class="pg-nodesheet__title" :text="item.title" data-testid="node-sheet-title" />
       <MathText class="pg-nodesheet__stem" :text="item.stemPreview" block serif data-testid="node-sheet-stem" />
+      <text v-if="item.sourceBook" class="pg-nodesheet__note" data-testid="node-sheet-source">{{ SOURCE_OF(item.sourceBook) }}</text>
       <text v-if="item.autoImported" class="pg-nodesheet__note">{{ AI_IMPORTED_NOTE }}</text>
 
       <view v-if="steps.length" class="pg-nodesheet__steps" data-testid="node-sheet-steps">

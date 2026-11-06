@@ -376,7 +376,8 @@ describe('真实接口客户端（issue #24）', () => {
 
   it('离线同意书 fallback 只有占位正文，不复制服务端文本', () => {
     expect(mockConsentDoc.version).toBe('v2')
-    expect(MOCK_CONSENT_SECTIONS.map((section) => section.key)).toEqual(CONSENT_KEYS)
+    // 境外模型不再展示（U22），但提交时这个键仍要传
+    expect(MOCK_CONSENT_SECTIONS.map((section) => section.key)).toEqual(CONSENT_KEYS.filter((key) => key !== 'crossBorderModel'))
     for (const section of MOCK_CONSENT_SECTIONS) {
       expect(section.title.length).toBeGreaterThan(0)
       expect(section.body).toBe(CONSENT_PLACEHOLDER_BODY)

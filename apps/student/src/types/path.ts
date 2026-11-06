@@ -32,6 +32,8 @@ export interface PathItem {
   reviewPublished: boolean
   /** 批量导入、AI 整理：显示小标签。 */
   autoImported: boolean
+  /** 题目出处（书名），有就显示。 */
+  sourceBook?: string
   /** 排在第一道未完成题之后：只提示，确认后可跳过去。 */
   softLocked: boolean
   lessonAvailable: boolean
@@ -86,6 +88,8 @@ export interface PracticeItem {
   attemptId: string | null
   keyCount: number
   autoImported: boolean
+  /** 题目出处（书名），有就显示。 */
+  sourceBook?: string
 }
 
 export interface PracticeFacets {
@@ -114,6 +118,8 @@ export interface PracticeSolution {
   canReveal: boolean
   hasApproach: boolean
   hasFull: boolean
+  /** 这些内容由 AI 整理：界面要显示“AI 生成”标识。 */
+  aiGenerated?: boolean
   approach?: string
   keyIdeas?: string[]
   pitfalls?: string[]

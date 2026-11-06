@@ -53,7 +53,7 @@ export const consentRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     }
     const missing = missingRequiredConsent(body.items);
     if (missing.length > 0) {
-      throw new AppError('VALIDATION_FAILED', 422, '服务所需、香港服务器存储、过程监测为必选，不同意则无法开始练习', {
+      throw new AppError('VALIDATION_FAILED', 422, '服务所需、AI 模型和识别服务、过程监测为必选，不同意则无法开始练习', {
         missing,
       });
     }
@@ -62,7 +62,8 @@ export const consentRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, {
     const items: ConsentItems = {
       service: body.items.service,
       crossBorderHosting: body.items.crossBorderHosting,
-      crossBorderModel: body.items.crossBorderModel,
+      // 系统不向境外发送数据（U22）：不管客户端传什么都记为不同意，模型网关据此跳过境外 provider。
+      crossBorderModel: false,
       monitoring: body.items.monitoring,
       research: body.items.research,
     };

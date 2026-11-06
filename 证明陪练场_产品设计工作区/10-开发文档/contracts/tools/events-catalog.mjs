@@ -23,7 +23,7 @@ export const CATALOG = [
   ['app.open', S, '打开应用（冷启动或从后台回来）', { entry: str('入口：direct/wechat/qr/notice'), inWeChat: bool('是否在微信内置浏览器'), standalone: bool('是否以 PWA 方式打开'), viewport: { type: 'object', properties: { w: int('宽'), h: int('高'), dpr: num('像素比') } } }, ['entry']],
   ['session.login', V, '登录成功', { method: en(['invite', 'wechat', 'password'], '方式'), newDevice: bool('是否新设备') }, ['method']],
   ['session.logout', V, '退出登录', {}, []],
-  ['consent.submit', V, '提交知情同意', { version: str('同意书版本'), items: { type: 'object', properties: { service: bool('服务所需处理（必选）'), crossBorderHosting: bool('数据存储于中国香港服务器（P0 必选）'), crossBorderModel: bool('去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关跳过 Jev）'), monitoring: bool('作答过程监测与切屏记录（必选）'), research: bool('匿名数据用于教研（可选）') } } }, ['version', 'items']],
+  ['consent.submit', V, '提交知情同意', { version: str('同意书版本'), items: { type: 'object', properties: { service: bool('服务所需处理（必选）'), crossBorderHosting: bool('AI 模型和识别服务（必选；历史键名，见 13 §2）'), crossBorderModel: bool('已停用（U22）：v2 起恒为 false，网关跳过境外 provider'), monitoring: bool('作答过程监测与切屏记录（必选）'), research: bool('匿名数据用于教研（可选）') } } }, ['version', 'items']],
   ['nav.page', S, '页面切换', { page: str('页面 ID'), from: str('来源页面') }, ['page']],
   // —— 作答生命周期
   ['attempt.start', V, '开始或恢复一次作答', { resumed: bool('是否恢复'), kind: en(['main', 'transfer', 'redo'], '主题、迁移题或重做'), parentAttemptId: str('迁移题或重做的父作答', { format: 'uuid' }) }, ['resumed', 'kind']],

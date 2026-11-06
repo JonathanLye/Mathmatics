@@ -195,11 +195,12 @@ export function createPathService(deps: { db: Db; contract: ContractValidator; a
         difficulty: string | null;
         key_count: string | null;
         review_source: 'teacher' | 'auto';
+        source_book: string | null;
         has_lesson: boolean;
         layers_total: string;
       }>(
         `select p.id, p.title, left(pv.public->>'stem', 700) as stem, pv.public->>'difficulty' as difficulty,
-                pv.public->>'keyCount' as key_count, pv.review_source,
+                pv.public->>'keyCount' as key_count, pv.review_source, pv.public#>>'{source,book}' as source_book,
                 exists (
                   select 1 from content.concepts c
                    where c.id = pv.public#>>'{def,conceptId}' and c.status = 'published'
@@ -230,6 +231,7 @@ export function createPathService(deps: { db: Db; contract: ContractValidator; a
         attemptId: p?.attemptId ?? null,
         reviewPublished: reviewOpenFor(p),
         autoImported: row.review_source === 'auto',
+        ...(row.source_book === null ? {} : { sourceBook: row.source_book }),
         softLocked: state === 'todo' && frontier !== -1 && index > frontier,
         lessonAvailable: row.has_lesson,
       };

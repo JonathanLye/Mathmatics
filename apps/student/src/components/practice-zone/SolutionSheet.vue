@@ -9,6 +9,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import AiGeneratedTag from '@/components/AiGeneratedTag.vue'
 import { errorMessage, getPracticeSolution, revealPracticeSolution } from '@/api/client'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgCard from '@/components/ui/PgCard.vue'
@@ -160,6 +161,7 @@ function askFull(): void {
         </view>
         <text v-else-if="step === 'full'" class="pg-solution__muted" data-testid="solution-nofull">{{ SOLUTION_COPY.noFull }}</text>
 
+        <AiGeneratedTag v-if="solution.aiGenerated && (solution.approach || solution.referenceProof)" />
         <text v-if="revealError" class="pg-solution__error" role="alert" data-testid="solution-reveal-error">{{ revealError }}</text>
       </template>
     </PgSheet>

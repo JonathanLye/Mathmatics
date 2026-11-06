@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { SITE_RECORD } from '../site';
 import Icon from '../components/ui/Icon.vue';
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -76,6 +77,12 @@ async function submit(): Promise<void> {
       </t-form>
       <div style="margin-top: 16px; text-align: center; font-size: 13px">
         <a href="/" data-testid="switch-to-student">我是学生</a>
+        <span style="margin: 0 8px; color: var(--ink-3)">·</span>
+        <a href="/#/pages/privacy-policy/index" data-testid="login-policy">隐私政策</a>
+      </div>
+      <div v-if="SITE_RECORD.icp || SITE_RECORD.psb" style="margin-top: 12px; text-align: center; font-size: 12px" data-testid="site-record">
+        <a v-if="SITE_RECORD.icp" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ SITE_RECORD.icp }}</a>
+        <a v-if="SITE_RECORD.psb" href="https://beian.mps.gov.cn/" target="_blank" rel="noopener noreferrer" style="margin-left: 8px">{{ SITE_RECORD.psb }}</a>
       </div>
     </div>
   </div>

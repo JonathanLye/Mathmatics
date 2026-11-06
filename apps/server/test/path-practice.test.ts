@@ -479,7 +479,7 @@ describe('解答：查看与放行', () => {
 
   it('没开始做之前：看不到，也不能查看（409）；解答接口只告诉有无', async () => {
     const sol = await get(s1, '/student/practice/epsN/solution');
-    expect(sol.body).toEqual({ level: 'none', canReveal: false, hasApproach: true, hasFull: true });
+    expect(sol.body).toEqual({ level: 'none', canReveal: false, hasApproach: true, hasFull: true, aiGenerated: false });
     expect((await reveal(s1, 'approach')).status).toBe(409);
     expect((await reveal(s1, 'bogus')).status).toBe(422);
   });

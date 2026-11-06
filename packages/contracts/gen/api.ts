@@ -1564,9 +1564,9 @@ export interface components {
         ConsentItems: {
             /** @description 服务所需处理（必选） */
             service: boolean;
-            /** @description 数据存储于中国香港服务器（P0 必选） */
+            /** @description AI 模型和识别服务（必选；历史键名，内容已是境内服务，见 13 §2） */
             crossBorderHosting: boolean;
-            /** @description 去标识化后的作答文本发送给境外决策模型 Jev（可选；不同意则网关对该生跳过 Jev） */
+            /** @description 已停用（U22）：系统不向境外发送数据，服务端一律记为 false；客户端仍需传这个键 */
             crossBorderModel: boolean;
             /** @description 作答过程监测（必选） */
             monitoring: boolean;
@@ -2149,6 +2149,8 @@ export interface components {
             reviewPublished: boolean;
             /** @description 批量导入、AI 整理（界面显示小标签） */
             autoImported: boolean;
+            /** @description 题目出处（书名），有就显示（著作权法第 24 条要指明出处，13 §6） */
+            sourceBook?: string;
             /** @description 排在第一道未完成题之后，只提示、不拦 */
             softLocked: boolean;
             lessonAvailable: boolean;
@@ -2208,6 +2210,8 @@ export interface components {
             attemptId: string | null;
             keyCount: number;
             autoImported: boolean;
+            /** @description 题目出处（书名），有就显示（13 §6） */
+            sourceBook?: string;
         };
         PracticeList: {
             items: components["schemas"]["PracticeItem"][];
@@ -2237,6 +2241,8 @@ export interface components {
             hasApproach: boolean;
             /** @description 本题有可发布的参考证明 */
             hasFull: boolean;
+            /** @description 这些内容由 AI 整理；界面要显示“AI 生成”标识（13 §5） */
+            aiGenerated?: boolean;
             approach?: components["schemas"]["MathText"];
             keyIdeas?: components["schemas"]["MathText"][];
             pitfalls?: components["schemas"]["MathText"][];

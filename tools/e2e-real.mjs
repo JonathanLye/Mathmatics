@@ -368,6 +368,7 @@ await scenario('首次登录：设密码、年龄、同意、欢迎、导览', a
   await shot(page, 'consent');
   const consentText = await page.locator('body').innerText();
   check('同意书写明模型服务', /通义千问|DeepSeek/.test(consentText), consentText.slice(0, 120));
+  check('同意书写明数据在境内，不再提香港和境外模型', /中国境内/.test(consentText) && !/香港|境外/.test(consentText), consentText.slice(0, 160));
   await tap(page, 'consent-submit');
   await waitFor(page, 'welcome-page');
   await fill(page, 'welcome-nickname', '小明');
@@ -552,6 +553,7 @@ await scenario('练习区和导入题', async () => {
   await page.waitForTimeout(600);
   await shot(page, 'zone-sheet');
   check('题目卡片有题面', (await page.getByTestId('zone-sheet-stem').first().innerText()).length > 4);
+  if (bundle) check('题目卡片写明出处', /题目出自《/.test(await page.getByTestId('zone-sheet-source').first().innerText()));
   await tap(page, 'zone-sheet-solution');
   await page.waitForTimeout(1200);
   await shot(page, 'zone-solution');
@@ -580,6 +582,7 @@ await scenario('练习区和导入题', async () => {
   await waitFor(page, 'solution-approach');
   await shot(page, 'zone-solution-approach');
   check('思路有内容', (await page.getByTestId('solution-approach').innerText()).length > 10);
+  if (bundle) check('AI 整理的解题思路有“AI 生成”标识', await visible(page, 'aigc-tag'));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
   if (await page.locator('.pg-help__close').isVisible().catch(() => false)) await tapLoc(page, page.locator('.pg-help__close'));
@@ -697,6 +700,22 @@ await scenario('账号：退出、密码登录、邀请码不能冒登、改密'
   await page.waitForTimeout(1000);
   await clearOverlays(page);
   check('重看后首页正常，没被赶回同意页', page.url().includes('/pages/home/index'), page.url());
+});
+
+await scenario('隐私政策：不登录也能看', async () => {
+  const anon = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p = await anon.newPage();
+  watch(p);
+  await p.goto(`${BASE}/#/pages/login/index`, { waitUntil: 'networkidle' });
+  await p.waitForTimeout(600);
+  if (await visible(p, 'intro-skip')) await tap(p, 'intro-skip');
+  await tap(p, 'login-policy');
+  await waitFor(p, 'privacy-policy-page');
+  const text = await p.locator('body').innerText();
+  check('隐私政策写明保存期限、第三方、权利和 AI 标识', ['保存', 'DeepSeek', 'SimpleTex', '通义千问', '删除', 'AI 生成', '投诉'].every((w) => text.includes(w)));
+  check('隐私政策不提香港', !text.includes('香港'));
+  await shot(p, 'privacy-policy');
+  await anon.close();
 });
 
 await scenario('两端隔离和教师端', async () => {

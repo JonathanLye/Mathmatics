@@ -6,6 +6,7 @@
  *   （POST /consents 的 items 只有契约的 5 个可签键；14 岁以下不产生同意书）；
  * - 进入前先过年龄门（Me.ageBand 为 null / lt14 → 年龄选择页）。
  */
+import { POLICY_TITLE } from '@/copy/privacy'
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
@@ -51,6 +52,10 @@ async function submit() {
   // 第一次进来先去欢迎页（昵称、每日目标、默认输入）；读不到设置或已走过就直接首页。
   uni.redirectTo({ url: (await shouldGoWelcome()) ? '/pages/welcome/index' : '/pages/home/index' })
 }
+
+function goPolicy(): void {
+  uni.navigateTo({ url: '/pages/privacy-policy/index' })
+}
 </script>
 
 <template>
@@ -60,6 +65,7 @@ async function submit() {
         <PgMascot expr="idle" :motion="['breathe', 'blink']" :size="96" />
         <text class="pg-consent__title">{{ CONSENT_COPY.title }}</text>
         <text class="pg-consent__sub">{{ CONSENT_COPY.sub }}</text>
+        <text class="pg-consent__policy" role="link" tabindex="0" data-testid="consent-policy" @tap="goPolicy">看完整的《{{ POLICY_TITLE }}》</text>
       </view>
 
       <PgCard v-if="loading && !items.length"><PgSkeleton :count="3" /></PgCard>
@@ -88,6 +94,7 @@ async function submit() {
 </template>
 
 <style scoped>
+.pg-consent__policy { color: var(--accent-text); font-size: var(--fs-13); font-weight: var(--fw-bold); }
 .pg-consent__column { display: flex; flex-direction: column; gap: var(--sp-3); }
 .pg-consent__hero { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); text-align: center; }
 .pg-consent__title { color: var(--ink); font-size: var(--fs-22); font-weight: var(--fw-black); line-height: var(--lh-tight); }

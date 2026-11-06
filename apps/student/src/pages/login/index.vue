@@ -4,6 +4,8 @@
  * 邀请码可从链接参数带入（带入时自动进邀请码模式）。真实接口：POST /auth/student/login。
  * 手机：小方 + 大标题 + 一个表单；桌面：左边是六步路径插画，右边是不超过 420 宽的卡片。
  */
+import SiteRecord from '@/components/SiteRecord.vue'
+import { POLICY_TITLE } from '@/copy/privacy'
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { isMockMode, isMockOnboardingScenario } from '@/api/client'
@@ -77,6 +79,10 @@ function switchMode(next: LoginMode) {
 }
 
 /** 教师端是同域另一个应用（/t/），整页跳转。 */
+function goPolicy(): void {
+  uni.navigateTo({ url: '/pages/privacy-policy/index' })
+}
+
 function goTeacher() {
   if (typeof window !== 'undefined') window.location.href = '/t/'
 }
@@ -141,8 +147,10 @@ async function submit() {
             <text class="pg-login__link" role="button" tabindex="0" data-testid="login-watch-intro" @tap="introOpen = true">{{ LOGIN_COPY.watchIntro }}</text>
             <text class="pg-login__link" role="button" tabindex="0" data-testid="login-forgot" @tap="showForgot = !showForgot">{{ LOGIN_COPY.forgot }}</text>
             <text class="pg-login__link" role="link" tabindex="0" data-testid="login-switch-teacher" @tap="goTeacher">{{ LOGIN_COPY.teacher }}</text>
+            <text class="pg-login__link" role="link" tabindex="0" data-testid="login-policy" @tap="goPolicy">{{ POLICY_TITLE }}</text>
           </view>
           <text v-if="showForgot" class="pg-login__help" data-testid="login-forgot-help">{{ FORGOT_PASSWORD_HELP }}</text>
+          <SiteRecord />
         </view>
       </view>
     </view>

@@ -763,7 +763,8 @@ describe('DTO 泄露扫描（12 §7 第 3 项）', { timeout: 120_000 }, () => {
 
     it('/consents：14–17 岁档的全部段落（含监护人告知）都被扫描', () => {
       const { consentsUnsigned } = walkOf(main);
-      expect(consentsUnsigned.sections.length).toBeGreaterThan(5);
+      // v2 四段（U22 去掉了境外模型）+ 14–17 岁的监护人告知
+      expect(consentsUnsigned.sections.length).toBe(5);
       const hits = fields(consentsUnsigned).filter((f) => f.text.includes('监护人'));
       expect(hits.length).toBeGreaterThan(0);
     });
