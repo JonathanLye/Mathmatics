@@ -99,6 +99,8 @@ export interface TabItem {
   icon: 'path' | 'pen' | 'redo' | 'book' | 'me'
   url: string
   testid: string
+  /** 第二个稳定锚点（新手引导按它定位）；和标签同样大小，不改变原有 testid。 */
+  anchorTestid?: string
 }
 
 export const TAB_ITEMS: readonly TabItem[] = [
@@ -108,7 +110,7 @@ export const TAB_ITEMS: readonly TabItem[] = [
   { key: 'mistakes', label: '错题', icon: 'redo', url: '/pages/mistakes/index', testid: 'tab-mistakes' },
   // 沿用旧 testid：首页“证明本”入口一直叫这个名字。
   { key: 'proofbook', label: '证明本', icon: 'book', url: '/pages/proofbook/index', testid: 'home-proofbook' },
-  { key: 'me', label: '我的', icon: 'me', url: '/pages/me/index', testid: 'tab-me' },
+  { key: 'me', label: '我的', icon: 'me', url: '/pages/me/index', testid: 'tab-me', anchorTestid: 'nav-me' },
 ]
 
 /** 点已激活的标签不跳转。 */

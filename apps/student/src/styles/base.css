@@ -120,8 +120,9 @@ html .button-hover[type='default'] {
 @keyframes pg-spin { to { transform: rotate(360deg); } }
 
 /* 页面进入 */
+/* 只填充开始前（backwards）：填充结束后浏览器会一直把这个元素当成带变换的，position:fixed 的弹层就只能盖住主列，还会被标签栏压住。 */
 .pg-enter {
-  animation: pg-page-in var(--dur-slow) var(--ease-out) both;
+  animation: pg-page-in var(--dur-slow) var(--ease-out) backwards;
 }
 
 /* 按压回弹：松手时带一点弹性 */

@@ -78,6 +78,41 @@
       }
     },
     {
+      "path": "pages/me/account",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "账号与密码"
+      }
+    },
+    {
+      "path": "pages/me/privacy",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "隐私与同意书"
+      }
+    },
+    {
+      "path": "pages/me/about",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "关于"
+      }
+    },
+    {
+      "path": "pages/me/badges",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "我的徽章"
+      }
+    },
+    {
+      "path": "pages/proof-detail/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "证明详情"
+      }
+    },
+    {
       "path": "pages/mirror/index",
       "style": {
         "navigationStyle": "custom",
