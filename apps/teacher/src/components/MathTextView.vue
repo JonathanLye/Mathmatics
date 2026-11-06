@@ -5,7 +5,10 @@ import { MATH_RENDER_FAILED_HINT, renderMath } from '@proof-gym/ui-math/mathRend
 
 const props = defineProps<{ text?: string }>();
 
-type ViewSegment = { kind: 'text' | 'failed'; value: string } | { kind: 'math'; html: string; display: boolean };
+type ViewSegment =
+  | { kind: 'text'; value: string }
+  | { kind: 'failed'; value: string }
+  | { kind: 'math'; html: string; display: boolean };
 
 const segments = computed<ViewSegment[]>(() =>
   parseMathText(props.text ?? '').map((seg): ViewSegment => {
