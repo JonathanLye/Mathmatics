@@ -13,7 +13,7 @@ import { MASCOT_MOTION } from '@/motion/useMascot'
 import type { PathItem } from '@/types/path'
 import PathChest from './PathChest.vue'
 import PathNode from './PathNode.vue'
-import { PATH_WIDTH, currentIndex, freeSide, nodeVisual, pathHeight, pathPoints, pointStyle, segmentPath } from './pathLogic'
+import { PATH_TOP, PATH_TOP_ROOMY, PATH_WIDTH, currentIndex, freeSide, labelHidden, nodeVisual, pathHeight, pathPoints, pointStyle, segmentPath } from './pathLogic'
 
 const props = withDefaults(
   defineProps<{
@@ -29,9 +29,11 @@ const props = withDefaults(
 )
 defineEmits<{ (e: 'open', item: PathItem): void; (e: 'continue', item: PathItem): void; (e: 'chest'): void }>()
 
-const points = computed(() => pathPoints(props.items.length + 1))
-const height = computed(() => pathHeight(points.value.length))
 const current = computed(() => currentIndex(props.items))
+const top = computed(() => (current.value === 0 ? PATH_TOP_ROOMY : PATH_TOP))
+const points = computed(() => pathPoints(props.items.length + 1, top.value))
+const height = computed(() => pathHeight(points.value.length, top.value))
+const sides = computed(() => points.value.map(freeSide))
 const unitDone = computed(() => props.items.length > 0 && props.items.every((item) => item.state === 'done'))
 const chestPoint = computed(() => points.value[points.value.length - 1])
 
@@ -89,7 +91,7 @@ watch(
 onBeforeUnmount(clearTimer)
 
 const mascotPoint = computed(() => points.value[Math.min(mascotIndex.value, points.value.length - 1)])
-const mascotSide = computed(() => freeSide(points.value[restIndex.value]))
+const mascotSide = computed(() => sides.value[restIndex.value])
 const mascotStyle = computed(() => pointStyle(mascotPoint.value, height.value))
 const mascotExpr = computed(() => (unitDone.value ? 'cheer' : hopping.value ? 'happy' : 'idle'))
 const mascotMotion = computed(() => {
@@ -134,15 +136,15 @@ const mascotSay = computed(() => {
       :item="item"
       :index="i"
       :visual="nodeVisual(item, i === current)"
-      :side="freeSide(points[i])"
+      :side="sides[i]"
       :just="justDone.includes(item.problemId)"
       :settled="settled"
-      :hide-label="i === current"
+      :hide-label="labelHidden(i, current, sides)"
       @open="$emit('open', item)"
       @continue="$emit('continue', item)"
     />
 
-    <PathChest :style="pointStyle(chestPoint, height)" :done="unitDone" :side="freeSide(chestPoint)" :index="items.length" @open="$emit('chest')" />
+    <PathChest :style="pointStyle(chestPoint, height)" :done="unitDone" :index="items.length" @open="$emit('chest')" />
 
     <view class="pg-pathmap__mascot" :class="['pg-pathmap__mascot--' + mascotSide, { 'pg-pathmap__mascot--done': unitDone }]" :style="mascotStyle" data-testid="home-mascot" aria-hidden="true">
       <view class="pg-pathmap__figure">
@@ -189,7 +191,7 @@ const mascotSay = computed(() => {
 }
 .pg-pathmap__figure {
   position: absolute;
-  top: -42px;
+  top: -24px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);

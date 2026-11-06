@@ -3,7 +3,7 @@
 import { PATH_COPY } from '@/copy'
 import { playSfx } from '@/motion/sfx'
 
-defineProps<{ done: boolean; side: 'left' | 'right'; index: number }>()
+defineProps<{ done: boolean; index: number }>()
 const emit = defineEmits<{ (e: 'open'): void }>()
 
 function open(): void {
@@ -13,7 +13,7 @@ function open(): void {
 </script>
 
 <template>
-  <view class="pg-chest" :class="['pg-chest--' + side, { 'pg-chest--done': done }]" :style="{ '--i': index }">
+  <view class="pg-chest" :class="{ 'pg-chest--done': done }" :style="{ '--i': index }">
     <view class="pg-chest__inner">
       <view class="pg-chest__btn" role="button" tabindex="0" data-testid="home-unit-review" :aria-label="PATH_COPY.chestTitle" @tap="open" @keydown.enter.prevent="open">
         <svg class="pg-chest__svg" width="84" height="78" viewBox="0 0 84 78" aria-hidden="true" focusable="false">
@@ -29,10 +29,7 @@ function open(): void {
           <rect class="pg-chest__latch" x="35" :y="done ? 38 : 30" width="14" height="18" rx="5" />
         </svg>
       </view>
-      <view class="pg-chest__label">
-        <text class="pg-chest__title">{{ PATH_COPY.chestTitle }}</text>
-        <text class="pg-chest__sub">{{ done ? PATH_COPY.chestDone : PATH_COPY.chestTodo }}</text>
-      </view>
+      <text class="pg-chest__title">{{ PATH_COPY.chestTitle }}</text>
     </view>
   </view>
 </template>
@@ -70,19 +67,18 @@ function open(): void {
   to { transform: none; }
 }
 
-.pg-chest__label {
+.pg-chest__title {
   position: absolute;
-  top: -30px;
-  width: 104px;
-  width: min(124px, 34cqw);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  left: -48px;
+  top: 44px;
+  width: 96px;
+  color: var(--ink-2);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-black);
+  line-height: 1.25;
+  text-align: center;
 }
-.pg-chest--right .pg-chest__label { left: 54px; }
-.pg-chest--left .pg-chest__label { right: 54px; text-align: right; }
-.pg-chest__title { color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); line-height: 1.25; }
-.pg-chest__sub { color: var(--ink-2); font-size: var(--fs-12); font-weight: var(--fw-bold); line-height: 1.35; }
+.pg-chest--done .pg-chest__title { color: var(--bee-text); }
 
 .pg-pathmap--enter .pg-chest__inner { animation: pg-chest-in var(--dur-slow) var(--ease-spring) both; animation-delay: calc(var(--i) * 50ms); }
 @keyframes pg-chest-in {

@@ -7,6 +7,7 @@ import {
   deadlineView,
   doneIds,
   freeSide,
+  labelHidden,
   layerFraction,
   newlyDone,
   nodeAction,
@@ -69,6 +70,19 @@ describe('路径几何', () => {
 
   it('一段路是从 a 到 b 的三次贝塞尔', () => {
     expect(segmentPath({ x: 10, y: 0 }, { x: 30, y: 100 })).toBe('M10 0C10 50 30 50 30 100')
+  })
+
+  it('第一个节点上方可以多留空间', () => {
+    expect(pathPoint(0, 200).y).toBe(200)
+    expect(pathHeight(3, 200) - pathHeight(3, 100)).toBe(100)
+  })
+
+  it('当前节点不显示标题；前一个节点和小方同侧时也收起', () => {
+    expect(labelHidden(2, 2, ['right', 'left', 'left'])).toBe(true)
+    expect(labelHidden(1, 2, ['right', 'left', 'left'])).toBe(true)
+    expect(labelHidden(1, 2, ['right', 'right', 'left'])).toBe(false)
+    expect(labelHidden(0, 2, ['left', 'left', 'left'])).toBe(false)
+    expect(labelHidden(0, -1, ['left'])).toBe(false)
   })
 
   it('节点靠右时标题放左边，否则放右边', () => {

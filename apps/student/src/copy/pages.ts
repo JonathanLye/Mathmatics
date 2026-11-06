@@ -17,7 +17,7 @@ export const STATUS_LABEL: Readonly<Record<NodeState, string>> = {
 }
 
 export const AI_IMPORTED_TAG = 'AI 整理'
-export const AI_IMPORTED_NOTE = '这道题由 AI 从教辅整理，可能有疏漏；发现问题可以在“我的”里反馈。'
+export const AI_IMPORTED_NOTE = '这道题由 AI 整理，可能有疏漏；发现问题可以在“我的”里反馈。'
 
 export const PROGRESS_COPY = {
   goalTitle: '今日目标',
@@ -58,8 +58,6 @@ export const PATH_COPY = {
   lockedJump: '跳到这一道',
   stepsTitle: '这道题分几步',
   chestTitle: '单元复习',
-  chestDone: '这个单元写完了，回头看看卡过的地方',
-  chestTodo: '写完这个单元后，回头看看卡过的地方',
   nextUnit: (title: string) => `下一单元：${title}`,
   prevUnit: (title: string) => `上一单元：${title}`,
   unitLockedTitle: '这个单元还没解锁',
@@ -146,6 +144,7 @@ export const DETAIL_COPY = {
   reviewNote: '讲评',
   reference: '参考证明',
   reviewPending: '老师发布讲评后会出现在这里。',
+  reviewFailed: '讲评没加载出来，你的证明不受影响。',
   weakPoints: '下次注意',
   notFoundTitle: '没找到这份证明',
   notFoundBody: '它可能太早了，或者还没写完。',
@@ -219,7 +218,7 @@ export const ACCOUNT_COPY = {
   passwordTitle: '修改密码',
   current: '当前密码',
   next: '新密码',
-  nextHint: '8 到 64 位，改完后其他设备要重新登录。',
+  nextHint: '至少 8 个字符，改完后其他设备要重新登录。',
   confirm: '再输入一次',
   save: '保存新密码',
   saved: '密码改好了',

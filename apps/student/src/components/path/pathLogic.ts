@@ -9,8 +9,10 @@ import type { PathItem } from '@/types/path'
 
 /** 路径用一张逻辑画布（340 宽），按容器宽度等比缩放：节点坐标是百分比，首帧不用量宽度。 */
 export const PATH_WIDTH = 340
-export const PATH_STEP = 118
-export const PATH_TOP = 124
+export const PATH_STEP = 122
+/** 第一个节点就是当前节点时，上面要留出“继续”气泡和小方说话的位置。 */
+export const PATH_TOP_ROOMY = 124
+export const PATH_TOP = 60
 export const PATH_BOTTOM = 92
 export const PATH_AMPLITUDE = 92
 /** 正弦相位步长：约 7 个节点绕一圈，左右来回，又不会每个节点都急转。 */
@@ -22,19 +24,25 @@ export interface PathPoint {
 }
 
 /** 第 i 个点的位置；从中线出发，向右摆到最远再摆回左边。 */
-export function pathPoint(index: number): PathPoint {
+export function pathPoint(index: number, top: number = PATH_TOP): PathPoint {
   return {
     x: Math.round((PATH_WIDTH / 2 + PATH_AMPLITUDE * Math.sin(index * PATH_PHASE)) * 10) / 10,
-    y: PATH_TOP + index * PATH_STEP,
+    y: top + index * PATH_STEP,
   }
 }
 
-export function pathPoints(count: number): PathPoint[] {
-  return Array.from({ length: Math.max(0, count) }, (_, i) => pathPoint(i))
+export function pathPoints(count: number, top: number = PATH_TOP): PathPoint[] {
+  return Array.from({ length: Math.max(0, count) }, (_, i) => pathPoint(i, top))
 }
 
-export function pathHeight(count: number): number {
-  return count <= 0 ? PATH_TOP + PATH_BOTTOM : PATH_TOP + (count - 1) * PATH_STEP + PATH_BOTTOM
+export function pathHeight(count: number, top: number = PATH_TOP): number {
+  return count <= 0 ? top + PATH_BOTTOM : top + (count - 1) * PATH_STEP + PATH_BOTTOM
+}
+
+/** 节点的标题让不让位：当前节点不显示（小方在说）；前一个节点和小方同侧时也收起来，免得和气泡挤在一起。 */
+export function labelHidden(index: number, current: number, sides: readonly ('left' | 'right')[]): boolean {
+  if (index === current) return true
+  return current > 0 && index === current - 1 && sides[index] === sides[current]
 }
 
 /** 两点之间的一段路：两端都竖直进出，连起来是顺滑的 S 形。 */
