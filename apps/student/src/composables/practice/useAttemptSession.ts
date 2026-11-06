@@ -9,6 +9,7 @@ import {
   deleteLine,
   deleteTransferLine,
   editTransferLine,
+  enterLayer,
   fetchLesson,
   finishSteps,
   finishTransfer,
@@ -29,7 +30,7 @@ import { parseMockKey, type MockKey } from '@/mocks/attemptStates'
 import { takePendingAttempt, useAttempt } from '@/stores/attempt'
 import { useToast } from '@/components/ui/useToast'
 import { layerName } from '@/copy'
-import type { AttemptState, InputProvenance, LessonView, LineDraft } from '@/types/attempt'
+import type { AttemptState, InputProvenance, LayerId, LessonView, LineDraft } from '@/types/attempt'
 import type { DraftsHandle } from './useDrafts'
 
 /** 开发期 mock 开关（PR #87 审计）：生产构建不允许用 ?mock= 切到假状态。 */
@@ -230,6 +231,13 @@ export function useAttemptSession(drafts: DraftsHandle) {
     if (layer === 'L1') await drafts.clearDefinition(attemptId)
   }
 
+  /** 回到已解锁的层（POST /layers/{layer}/enter）。能不能去由服务端决定。 */
+  async function goToLayer(layer: LayerId): Promise<void> {
+    if (layer === currentLayer.value) return
+    const next = await run(() => enterLayer(state.value, layer))
+    if (next) apply(next)
+  }
+
   /** 第 3 层：删一行（行号不重排，关键步骤由服务端重算）。 */
   async function removeLine(lineId: string): Promise<void> {
     const next = await run(() => deleteLine(state.value, lineId))
@@ -322,6 +330,7 @@ export function useAttemptSession(drafts: DraftsHandle) {
     loadLesson,
     showFrameTemplate: guarded(showFrameTemplate),
     skipCurrentLayer: guarded(skipCurrentLayer),
+    goToLayer: guarded(goToLayer),
     removeLine: guarded(removeLine),
     finishProof: guarded(finishProof),
     answerSelfcheckItem: guarded(answerSelfcheckItem),

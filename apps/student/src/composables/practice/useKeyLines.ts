@@ -3,7 +3,7 @@
  * 按作答存在本机，刷新后还在；测验模式不记。
  */
 import { computed, ref, watch } from 'vue'
-import { keyLineOfTransition } from '@/components/practice/proofRail'
+import { keyLineLostOnTransition, keyLineOfTransition } from '@/components/practice/proofRail'
 import type { AttemptSession } from './useAttemptSession'
 
 const STORAGE_PREFIX = 'pg.keylines.'
@@ -37,6 +37,11 @@ export function useKeyLines(session: Pick<AttemptSession, 'state' | 'onTransitio
   )
 
   session.onTransition((prev, next) => {
+    const lost = keyLineLostOnTransition(prev, next)
+    if (lost && ids.value.includes(lost)) {
+      ids.value = ids.value.filter((id) => id !== lost)
+      writeStored(next.attemptId, ids.value)
+    }
     const lineId = keyLineOfTransition(prev, next)
     if (!lineId || ids.value.includes(lineId)) return
     ids.value = [...ids.value, lineId]

@@ -3,7 +3,7 @@
 import SelfcheckForm from '@/components/layers/SelfcheckForm.vue'
 import type { ProofLine, SelfcheckView } from '@/types/attempt'
 
-defineProps<{ view?: SelfcheckView | null; lines?: ProofLine[]; busy?: boolean }>()
+defineProps<{ view?: SelfcheckView | null; lines?: ProofLine[]; busy?: boolean; hideSkip?: boolean }>()
 defineEmits<{
   (e: 'submit', itemId: string, text: string): void
   (e: 'skip'): void
@@ -11,5 +11,5 @@ defineEmits<{
 </script>
 
 <template>
-  <SelfcheckForm :view="view ?? null" :lines="lines" :busy="busy" @submit="(itemId, text) => $emit('submit', itemId, text)" @skip="$emit('skip')" />
+  <SelfcheckForm :view="view ?? null" :lines="lines" :busy="busy" :hide-skip="hideSkip" @submit="(itemId, text) => $emit('submit', itemId, text)" @skip="$emit('skip')" />
 </template>

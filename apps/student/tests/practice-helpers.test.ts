@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { computeFeedback, computeInterstitial } from '@/components/practice/feedback'
 import { nextItemInUnit, nextUnitId } from '@/components/practice/nextProblem'
+import { frontierLayer } from '@/components/practice/practiceProgress'
+import { keyLineLostOnTransition, keyLineOfTransition } from '@/components/practice/proofRail'
 import { TYPING_MAX_MS, TYPING_STEP_MS, typingCuts, typingStride } from '@/components/practice/tutorTyping'
 import { TOAST_ACTION_MS, TOAST_DEFAULT_MS, useToast } from '@/components/ui/useToast'
-import { __resetClientForTests, configureClientForTests } from '@/api/client'
+import { __resetClientForTests, backupDraft, configureClientForTests, consumeRewards, editLine, enterLayer } from '@/api/client'
 import type { FetchLike } from '@/api/http'
 import { useAttemptSession } from '@/composables/practice/useAttemptSession'
+import { DRAFT_BACKUP_MS, useDrafts } from '@/composables/practice/useDrafts'
 import type { DraftsHandle } from '@/composables/practice/useDrafts'
 import { createMockState } from '@/mocks/attemptStates'
 import { useAttempt } from '@/stores/attempt'
@@ -183,5 +187,173 @@ describe('提交失败：弹带「重试」的提示，不是空白页', () => {
     expect(toast.state.message).not.toMatch(/Internal|Server|Error/)
     expect(toast.state.message).toMatch(/[\u4e00-\u9fff]/)
     expect(toast.state.action?.label).toBe('重试')
+  })
+})
+
+describe('回到已完成的层（/layers/{layer}/enter）', () => {
+  afterEach(() => __resetClientForTests())
+
+  it('还在做的层：第一个没完成、没跳过的启用层', () => {
+    const layers = createMockState('l3-active').layers
+    expect(frontierLayer(layers)).toBe('L3')
+    // 回看第 1 层时，第 3 层在服务端状态里是 locked，但它还是最前沿。
+    const reviewing = layers.map((l) => (l.layer === 'L3' ? { ...l, status: 'locked' as const } : l))
+    expect(frontierLayer(reviewing)).toBe('L3')
+    expect(frontierLayer(layers.map((l) => ({ ...l, status: 'done' as const })))).toBeNull()
+  })
+
+  it('mock 和引擎同一条规则：能回已完成的层，也能回最前沿，不能往没解锁的层跳', async () => {
+    configureClientForTests({ mock: true })
+    const start = createMockState('l3-active')
+    const back = await enterLayer(start, 'L1')
+    expect(back.currentLayer).toBe('L1')
+    expect(back.layers.find((l) => l.layer === 'L3')?.status).toBe('locked')
+    const again = await enterLayer(back, 'L3')
+    expect(again.currentLayer).toBe('L3')
+    expect(again.layers.find((l) => l.layer === 'L3')?.status).toBe('active')
+    const blocked = await enterLayer(start, 'L5')
+    expect(blocked.currentLayer).toBe('L3')
+    expect(blocked.stateVersion).toBe(start.stateVersion)
+  })
+
+  it('真实接口：POST 对的路径，带 If-Match，rewards 能被取走', async () => {
+    const start = createMockState('l3-active')
+    const calls: Array<{ url: string; method?: string; ifMatch?: string }> = []
+    const fetchImpl: FetchLike = async (url, init) => {
+      calls.push({ url: String(url), method: init?.method, ifMatch: (init?.headers as Record<string, string>)?.['If-Match'] })
+      return new Response(JSON.stringify({ state: { ...start, currentLayer: 'L1' }, rewards: { xp: 5 } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    configureClientForTests({ fetchImpl, mock: false })
+    const next = await enterLayer(start, 'L1')
+    expect(next.currentLayer).toBe('L1')
+    expect(calls[0].url).toContain('/attempts/' + start.attemptId + '/layers/L1/enter')
+    expect(calls[0].method).toBe('POST')
+    expect(calls[0].ifMatch).toBe(String(start.stateVersion))
+    expect(consumeRewards()?.xp).toBe(5)
+  })
+
+  it('回看完往前走不算做完一层：不出过场', () => {
+    const prev = createMockState('l3-active')
+    const reviewing = { ...prev, currentLayer: 'L1' as const, stateVersion: prev.stateVersion + 1 }
+    const backToFrontier = { ...reviewing, currentLayer: 'L3' as const, stateVersion: reviewing.stateVersion + 1 }
+    expect(computeInterstitial(prev, reviewing)).toBeNull()
+    expect(computeInterstitial(reviewing, backToFrontier)).toBeNull()
+    expect(computeFeedback(prev, reviewing)).toBeNull()
+  })
+})
+
+describe('改写一行：rewards 和轨道节点', () => {
+  afterEach(() => __resetClientForTests())
+
+  function withEdit(keysDelta: number) {
+    const prev = createMockState('l3-active')
+    const lines = prev.steps?.lines ?? []
+    const edited = lines[0]
+    const next = {
+      ...prev,
+      stateVersion: prev.stateVersion + 1,
+      budget: { ...prev.budget, keysOwn: prev.budget.keysOwn + keysDelta },
+      steps: { lines: lines.map((l) => (l.lineId === edited.lineId ? { ...l, statement: '改过了' } : l)), canFinish: false },
+    }
+    return { prev, next, lineId: edited.lineId }
+  }
+
+  it('改写写到了关键步骤：面板算到改的这一行上，经验来自 rewards', () => {
+    const { prev, next, lineId } = withEdit(1)
+    expect(keyLineOfTransition(prev, next)).toBe(lineId)
+    const panel = computeFeedback(prev, next, { xp: 10 } as never)
+    expect(panel?.title).toBe('衔接上了')
+    expect(panel?.lineId).toBe(lineId)
+    expect(panel?.xp).toBe(10)
+  })
+
+  it('改写丢了关键步骤：这一行的节点要灭，不弹面板', () => {
+    const { prev, next, lineId } = withEdit(-1)
+    expect(keyLineLostOnTransition(prev, next)).toBe(lineId)
+    expect(keyLineOfTransition(prev, next)).toBeNull()
+    expect(computeFeedback(prev, next)).toBeNull()
+  })
+
+  it('真实接口的改写回来 { state, rewards }：rewards 能被取走', async () => {
+    const start = createMockState('l3-active')
+    const calls: Array<{ url: string; method?: string }> = []
+    const fetchImpl: FetchLike = async (url, init) => {
+      calls.push({ url: String(url), method: init?.method })
+      return new Response(JSON.stringify({ state: start, rewards: { xp: 10 } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    configureClientForTests({ fetchImpl, mock: false })
+    const lineId = start.steps?.lines[0].lineId ?? ''
+    await editLine(start, lineId, { statement: '改过了', input: { provenance: 'keyboard', draftId: 'd' } })
+    expect(calls[0].method).toBe('PATCH')
+    expect(calls[0].url).toContain('/attempts/' + start.attemptId + '/lines/' + lineId)
+    expect(consumeRewards()?.xp).toBe(10)
+  })
+})
+
+describe('草稿备份（PUT /attempts/{id}/draft）', () => {
+  afterEach(() => {
+    __resetClientForTests()
+    useAttempt().setMock('l1-active')
+    vi.useRealTimers()
+  })
+
+  function captureDrafts() {
+    const puts: Array<{ url: string; method?: string; body: { target: string; content: { text: string } } }> = []
+    const fetchImpl: FetchLike = async (url, init) => {
+      puts.push({ url: String(url), method: init?.method, body: JSON.parse(String(init?.body ?? '{}')) })
+      return new Response(null, { status: 204 })
+    }
+    configureClientForTests({ fetchImpl, mock: false })
+    return puts
+  }
+
+  it('15 秒内同一落点只发最新一份', async () => {
+    vi.useFakeTimers()
+    const puts = captureDrafts()
+    useAttempt().apply(createMockState('l1-active'))
+    const attemptId = useAttempt().state.value.attemptId
+    const drafts = useDrafts()
+    drafts.saveDefinition('第一版')
+    drafts.saveDefinition('第二版')
+    expect(puts).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(DRAFT_BACKUP_MS)
+    expect(puts).toHaveLength(1)
+    expect(puts[0].url).toContain('/attempts/' + attemptId + '/draft')
+    expect(puts[0].method).toBe('PUT')
+    expect(puts[0].body).toEqual({ target: 'def', content: { text: '第二版' } })
+  })
+
+  it('提交成功后不再备份已经清掉的草稿', async () => {
+    vi.useFakeTimers()
+    const puts = captureDrafts()
+    useAttempt().apply(createMockState('l1-active'))
+    const attemptId = useAttempt().state.value.attemptId
+    const drafts = useDrafts()
+    drafts.saveDefinition('写完提交了')
+    void drafts.clearDefinition(attemptId)
+    await vi.advanceTimersByTimeAsync(DRAFT_BACKUP_MS)
+    expect(puts).toHaveLength(0)
+  })
+
+  it('离开页面时把还没发的发掉；备份失败不抛错', async () => {
+    const fetchImpl: FetchLike = async () => {
+      throw new TypeError('Failed to fetch')
+    }
+    configureClientForTests({ fetchImpl, mock: false })
+    useAttempt().apply(createMockState('l1-active'))
+    const drafts = useDrafts()
+    drafts.saveDefinition('断网时写的')
+    expect(() => drafts.stopBackup()).not.toThrow()
+    await expect(backupDraft('a', 'def', { text: 'x' })).rejects.toBeTruthy()
+  })
+
+  it('mock 模式不发请求', async () => {
+    const calls: string[] = []
+    configureClientForTests({ fetchImpl: async (url) => { calls.push(String(url)); return new Response(null, { status: 204 }) }, mock: true })
+    await backupDraft('a', 'def', { text: 'x' })
+    expect(calls).toHaveLength(0)
   })
 })

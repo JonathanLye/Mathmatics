@@ -224,6 +224,18 @@ async function main() {
     check('完成页：mathlib 收在延伸里', done.includes('延伸') && !done.includes('mathlib4'))
     check('完成页：下一题 / 换题试试 / 看我的证明', done.includes('下一题') && done.includes('换题试试') && done.includes('看我的证明'))
     await shot(page, 'completion')
+    check('完成页：reviewAvailable=false 时没有看讲评', (await countTestId(page, 'completion-review')) === 0)
+
+    // reviewAvailable=true（服务端说可以）：有看讲评，盖在全屏庆祝上面
+    await open(page, base, 'mock=completed')
+    await waitTestId(page, 'completion-review')
+    await tap(page, 'completion-review')
+    await waitTestId(page, 'review-proof')
+    check('看讲评：显示参考证明，公式已渲染', (await page.getByTestId('review-proof').first().locator('.katex').count()) > 0)
+    check('讲评盖在庆祝上面（能点到关闭）', await page.getByTestId('review-close').isEnabled())
+    await shot(page, 'review')
+    await tap(page, 'review-close')
+    await goneTestId(page, 'review-proof')
   }
 
   /** B. 证明轨道：行内改写、删除。 */
@@ -293,6 +305,15 @@ async function main() {
     check('测验模式：没有过场', (await countTestId(page, 'layer-interstitial')) === 0)
   }
 
+  /** 正常做题时不会误显示回看条。 */
+  const notReviewing = async (page) => {
+    for (const mock of ['l1-active', 'l3-active', 'l3-ready', 'l3-exhausted', 'l4-active', 'l5-active', 'l6-active']) {
+      await open(page, base, 'mock=' + mock)
+      await page.waitForTimeout(150)
+      check(mock + '：不显示回看条', (await countTestId(page, 'reviewing-bar')) === 0)
+    }
+  }
+
   /** F. 布局。 */
   const layout = async (browserRef) => {
     for (const width of [390, 768, 1280]) {
@@ -332,6 +353,7 @@ async function main() {
       ['证明轨道', rail],
       ['输入器', composer],
       ['测验模式', exam],
+      ['不误显示回看条', notReviewing],
     ]) {
       try {
         await scenario(page)

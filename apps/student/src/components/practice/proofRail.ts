@@ -11,11 +11,21 @@ export function keyLineOfTransition(prev: AttemptState, next: AttemptState): str
   if (next.mode === 'test' || next.integrity?.mode === 'test') return null
   if (!prev.attemptId || prev.attemptId !== next.attemptId) return null
   if (next.budget.keysOwn <= prev.budget.keysOwn) return null
+  const seen = new Set((prev.steps?.lines ?? []).map((line) => line.lineId))
+  const added = (next.steps?.lines ?? []).filter((line) => !seen.has(line.lineId)).at(-1)
+  return added?.lineId ?? editedLineId(prev, next)
+}
+
+/** 改写让关键步骤少了一个时，这一行的节点要灭掉；否则 null。 */
+export function keyLineLostOnTransition(prev: AttemptState, next: AttemptState): string | null {
+  if (!prev.attemptId || prev.attemptId !== next.attemptId) return null
+  if (next.budget.keysOwn >= prev.budget.keysOwn) return null
+  return editedLineId(prev, next)
+}
+
+function editedLineId(prev: AttemptState, next: AttemptState): string | null {
   const before = new Map((prev.steps?.lines ?? []).map((line) => [line.lineId, line]))
-  const lines = next.steps?.lines ?? []
-  const added = lines.filter((line) => !before.has(line.lineId)).at(-1)
-  if (added) return added.lineId
-  const edited = lines.find((line) => {
+  const edited = (next.steps?.lines ?? []).find((line) => {
     const old = before.get(line.lineId)
     return old && (old.statement !== line.statement || (old.justification ?? '') !== (line.justification ?? ''))
   })

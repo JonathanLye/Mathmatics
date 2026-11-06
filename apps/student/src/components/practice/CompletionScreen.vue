@@ -3,13 +3,14 @@
  * 完成页：全屏庆祝（撒花、音效、经验累加、连胜、关键步骤一排、新徽章）。主作答和换题的子作答共用。
  * 测验模式安静：没有撒花、音效和奖励数字，只说写完了。诚实说明一直在：系统没有校验逻辑顺序。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgCelebration from '@/components/ui/PgCelebration.vue'
 import PgFold from '@/components/ui/PgFold.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
 import PgStatChip from '@/components/ui/PgStatChip.vue'
+import ReviewSheet from './ReviewSheet.vue'
 import { COPY, independenceCopy } from '@/copy'
 import { useCountUp } from '@/motion/useCountUp'
 import type { AttemptState, RewardsView } from '@/types/attempt'
@@ -30,7 +31,6 @@ defineEmits<{
   (e: 'proofbook'): void
   (e: 'make-transfer'): void
   (e: 'next'): void
-  (e: 'review'): void
   (e: 'home'): void
 }>()
 
@@ -50,6 +50,7 @@ const nextLabel = computed(() => (props.origin === 'mistakes' ? '回错题本' :
 /** 换题只有带迁移题的主作答才有；重做和测验没有。 */
 const canTransfer = computed(() => props.state.kind === 'main' && !testMode.value && !props.origin)
 const reviewAvailable = computed(() => props.state.completion?.reviewAvailable === true)
+const reviewOpen = ref(false)
 </script>
 
 <template>
@@ -111,9 +112,10 @@ const reviewAvailable = computed(() => props.state.completion?.reviewAvailable =
     <template #actions>
       <PgButton v-if="!testMode" block size="lg" data-testid="completion-next" :loading="busy" @tap="$emit('next')">{{ nextLabel }}</PgButton>
       <PgButton v-if="canTransfer" block variant="secondary" data-testid="make-transfer" :disabled="busy" @tap="$emit('make-transfer')">换题试试</PgButton>
-      <PgButton v-if="reviewAvailable" block variant="secondary" data-testid="completion-review" :disabled="busy" @tap="$emit('review')">看讲评</PgButton>
+      <PgButton v-if="reviewAvailable" block variant="secondary" data-testid="completion-review" :disabled="busy" @tap="reviewOpen = true">看讲评</PgButton>
       <PgButton block variant="ghost" data-testid="add-to-notebook" :disabled="busy" @tap="$emit('proofbook')">看我的证明</PgButton>
       <PgButton block variant="ghost" data-testid="back-home" :disabled="busy" @tap="$emit('home')">回首页</PgButton>
+      <ReviewSheet v-model:open="reviewOpen" :attempt-id="state.attemptId" />
     </template>
   </PgCelebration>
 </template>

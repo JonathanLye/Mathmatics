@@ -3,7 +3,7 @@
 import Layer1Form from '@/components/layers/Layer1Form.vue'
 import type { DefView } from '@/types/attempt'
 
-defineProps<{ view?: DefView; busy?: boolean; initialText?: string }>()
+defineProps<{ view?: DefView; busy?: boolean; initialText?: string; hideSkip?: boolean }>()
 defineEmits<{
   (e: 'submit', text: string): void
   (e: 'update:text', value: string): void
@@ -18,6 +18,7 @@ defineEmits<{
     :view="view ?? {}"
     :busy="busy"
     :initial-text="initialText"
+    :hide-skip="hideSkip"
     @submit="$emit('submit', $event)"
     @update:text="$emit('update:text', $event)"
     @lesson="$emit('lesson')"

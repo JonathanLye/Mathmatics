@@ -10,6 +10,7 @@
  */
 import { LAYER_DONE, LAYER_INTRO, layerName, layerNumber } from '@/copy'
 import type { AttemptState, LayerId, Note, ProofLine, RewardsView } from '@/types/attempt'
+import { keyLineOfTransition } from './proofRail'
 
 export type FeedbackTone = 'ok' | 'sea' | 'bee'
 export type FeedbackSfx = 'correct' | 'gentle-question' | 'hint'
@@ -103,7 +104,8 @@ export function computeFeedback(prev: AttemptState, next: AttemptState, rewards:
       body: linked?.text ?? keysSentence(next),
       sfx: 'correct',
       xp,
-      lineId: line?.lineId ?? null,
+      // 改写也可能写到关键步骤：这时没有新行，算到改的那一行上。
+      lineId: line?.lineId ?? keyLineOfTransition(prev, next),
     }
   }
 
@@ -136,6 +138,9 @@ export function computeInterstitial(prev: AttemptState, next: AttemptState, rewa
   const from = prev.currentLayer
   const to = next.currentLayer
   if (!from || !to || from === to || layerNumber(to) < layerNumber(from)) return null
+  // 回看完旧层再往前走不算做完一层（旧层本来就完成了）。
+  const before = prev.layers.find((layer) => layer.layer === from)?.status
+  if (before === 'done' || before === 'skipped') return null
   const left = next.layers.find((layer) => layer.layer === from)
   const skipped = left?.status === 'skipped'
   return {

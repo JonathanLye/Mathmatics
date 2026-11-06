@@ -1,9 +1,10 @@
-/** 做题页的去向：返回、回首页、证明本、讲评，以及完成页主按钮要去哪里。 */
-import { ref } from 'vue'
+/** 做题页的去向：返回、回首页、证明本、层列表，以及完成页主按钮要去哪里。 */
+import { computed, ref } from 'vue'
 import { getStudentPath, startPathItem } from '@/api/client'
 import { nextItemInUnit, nextUnitId } from '@/components/practice/nextProblem'
+import { frontierLayer } from '@/components/practice/practiceProgress'
 import { setPendingAttempt } from '@/stores/attempt'
-import type { AttemptState } from '@/types/attempt'
+import type { AttemptState, LayerId } from '@/types/attempt'
 import type { AttemptSession } from './useAttemptSession'
 
 export type PracticeOrigin = 'mistakes' | 'redo' | null
@@ -18,7 +19,7 @@ async function nextPathAttempt(currentProblemId: string): Promise<AttemptState |
   return problemId ? startPathItem(problemId) : null
 }
 
-export function usePracticeNav(session: Pick<AttemptSession, 'state'>) {
+export function usePracticeNav(session: Pick<AttemptSession, 'state' | 'currentLayer' | 'isCompleted' | 'isTransferAttempt' | 'goToLayer'>) {
   /** 从错题本、证明本进来的重做：完成后回到那里。 */
   const origin = ref<PracticeOrigin>(null)
   const nextBusy = ref(false)
@@ -42,10 +43,6 @@ export function usePracticeNav(session: Pick<AttemptSession, 'state'>) {
   }
 
   /** 看讲评：讲评在证明本的这道题详情里。 */
-  function goReview(): void {
-    uni.navigateTo({ url: '/pages/proofbook/index?attemptId=' + encodeURIComponent(session.state.value.attemptId) })
-  }
-
   /** 完成页主按钮：回错题本、回证明本，或者学习路径上的下一题；没有下一题或取不到就回首页。 */
   async function goNext(): Promise<void> {
     if (origin.value === 'mistakes') {
@@ -72,5 +69,17 @@ export function usePracticeNav(session: Pick<AttemptSession, 'state'>) {
     }
   }
 
-  return { origin, nextBusy, setOrigin, backHome, handleBack, goProofbook, goReview, goNext }
+  /** 层列表：点已完成的层回去看，点还在做的层回来（POST /layers/{layer}/enter）。 */
+  const layersOpen = ref(false)
+  const frontier = computed(() => frontierLayer(session.state.value.layers))
+  /** 回看已完成的层：显示回去的入口，藏掉「跳过」（服务端不让跳已完成的层）。 */
+  const reviewing = computed(
+    () => !session.isCompleted.value && !session.isTransferAttempt.value && Boolean(frontier.value) && session.currentLayer.value !== frontier.value,
+  )
+  function selectLayer(layer: LayerId): void {
+    layersOpen.value = false
+    void session.goToLayer(layer)
+  }
+
+  return { layersOpen, frontier, reviewing, selectLayer, origin, nextBusy, setOrigin, backHome, handleBack, goProofbook, goNext }
 }

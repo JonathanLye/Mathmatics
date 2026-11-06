@@ -16,7 +16,7 @@ import { nextSelfcheck, type AdaptiveDecision } from '@/components/selfcheck/ada
 import { adaptiveHint, selfcheckAdaptiveInput, selfcheckProgress } from '@/components/selfcheck/adaptView'
 import type { ProofLine, SelfcheckItem, SelfcheckView } from '@/types/attempt'
 
-const props = withDefaults(defineProps<{ view?: SelfcheckView | null; lines?: ProofLine[]; busy?: boolean }>(), {
+const props = withDefaults(defineProps<{ hideSkip?: boolean; view?: SelfcheckView | null; lines?: ProofLine[]; busy?: boolean }>(), {
   view: null,
   lines: () => [],
   busy: false,
@@ -129,7 +129,7 @@ function statusText(item: SelfcheckItem): string {
       </view>
     </view>
 
-    <PgButton variant="secondary" block data-testid="selfcheck-skip" :disabled="props.busy" @tap="emit('skip')">跳过自检</PgButton>
+    <PgButton v-if="!props.hideSkip" variant="secondary" block data-testid="selfcheck-skip" :disabled="props.busy" @tap="emit('skip')">跳过自检</PgButton>
   </view>
 </template>
 
