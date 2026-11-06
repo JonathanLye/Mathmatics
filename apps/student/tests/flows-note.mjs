@@ -136,7 +136,7 @@ async function openPractice(browser, url, viewport) {
 }
 
 async function openHelpDrawer(page) {
-  await page.locator('.pg-dock__btn--help').click()
+  await page.locator('[data-testid="dock-help"]').click()
   await page.locator('.pg-help').waitFor({ state: 'visible', timeout: 5000 })
 }
 

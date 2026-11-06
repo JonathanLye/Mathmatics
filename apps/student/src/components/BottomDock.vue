@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 底部操作坞（02 §3.1）：输入方式 + 求助；固定底部，随键盘上移。 */
+/** 底部操作坞（02 §3.1）：只在第 3 层出现，放写证明行的输入方式；固定底部，随键盘上移。求助在顶栏。 */
 import PgButton from '@/components/ui/PgButton.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
 
@@ -7,15 +7,11 @@ const emit = defineEmits<{
   (e: 'ink'): void
   (e: 'keyboard'): void
   (e: 'photo'): void
-  (e: 'help'): void
 }>()
 defineProps<{
   inkActive?: boolean
-  helpBusy?: boolean
   /** #46 测验模式：拍照关闭（disabled，点击不会触发识别）。 */
   photoDisabled?: boolean
-  /** #46 测验模式：求助入口关闭（布置配置 allowedHelp=off 时）。 */
-  helpDisabled?: boolean
 }>()
 </script>
 
@@ -37,17 +33,6 @@ defineProps<{
       @tap="emit('photo')"
     >
       <PgIcon name="camera" :size="26" /><text class="pg-dock__label">拍照</text>
-    </PgButton>
-    <PgButton
-      class="pg-dock__btn pg-dock__btn--help"
-      :class="{ 'pg-dock__btn--disabled': helpBusy || helpDisabled }"
-      variant="hint"
-      stack
-      data-testid="dock-help"
-      :disabled="helpBusy || helpDisabled"
-      @tap="emit('help')"
-    >
-      <PgIcon name="bulb" :size="26" :tone="helpBusy || helpDisabled ? 'off' : 'ink'" /><text class="pg-dock__label">求助</text>
     </PgButton>
   </view>
 </template>

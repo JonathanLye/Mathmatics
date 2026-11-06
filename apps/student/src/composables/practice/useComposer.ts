@@ -172,11 +172,6 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
   }
 
   function startInk(): void {
-    // 手写与拍照一样用于第 3 层写证明行（其他层的输入框先用键盘）。
-    if (state.value.currentLayer !== 'L3') {
-      toast.show('手写用于第 3 层写证明行；这一层先用键盘')
-      return
-    }
     if (recogBusy.value) return
     openInkSheet()
   }
@@ -237,11 +232,6 @@ export function useComposer(session: Pick<AttemptSession, 'state' | 'error' | 'a
     if (recogBusy.value) return
     if (state.value.integrity.mode === 'test') {
       toast.show('测验模式下拍照不可用')
-      return
-    }
-    // 拍照识别用于整页切行后加入第 3 层证明行（复用 addLine；其他层没有行列表落点）。
-    if (state.value.currentLayer !== 'L3') {
-      toast.show('拍照识别用于第 3 层写证明行；请先完成前两层')
       return
     }
     const seq = ++recogSeq

@@ -179,6 +179,11 @@ async function main() {
     check('L1 有输入区（role=textbox）', (await page.getByRole('textbox').count()) === 1)
     check('L1 输入为空时「核对」禁用', (await isDisabled(page, 'layer1-check')) === true)
     check(
+      '非第 3 层没有写证明行的操作坞（手写/键盘/拍照），只用本层表单',
+      (await testIdCount(page, 'dock-ink')) === 0 && (await testIdCount(page, 'dock-keyboard')) === 0 && (await testIdCount(page, 'dock-photo')) === 0,
+    )
+    check('非第 3 层仍能求助（顶栏灯泡）', (await testIdCount(page, 'dock-help')) === 1)
+    check(
       'L1 输入上限对齐契约 MathText.maxLength=4000',
       (await page.getByRole('textbox').getAttribute('maxlength')) === '4000',
     )
@@ -224,6 +229,7 @@ async function main() {
     await page.waitForSelector('.pg-lines__add', { state: 'visible', timeout: 8000 })
     text = await bodyText(page)
     check('L2 点「核对」后进入 L3（出现「写下一行」）', text.includes('写下一行'))
+    check('第 3 层才出现操作坞', (await testIdCount(page, 'dock-ink')) === 1)
     await page.screenshot({ path: path.join(outDir, '4-l3.png'), fullPage: true })
   }
 

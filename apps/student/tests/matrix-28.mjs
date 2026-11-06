@@ -286,8 +286,8 @@ async function runProfile(browser, base, profile) {
     await page.screenshot({ path: path.join(outDir, profile.id + '-3-l3.png'), fullPage: true })
 
     // ---------- 5. 求助（三种意图之一：stuck → 预览卡） ----------
-    // 手机：底部操作坞；平板/桌面：页边栏的「求助」（uni-app 的 <button> 在 H5 是 uni-button，无 role=button）。
-    const dockHelp = page.locator('.pg-dock__btn--help')
+    // 顶栏的求助灯泡（所有宽度都有）；退路是页边栏的「求助」（uni-app 的 <button> 在 H5 是 uni-button，无 role=button）。
+    const dockHelp = page.locator('[data-testid="dock-help"]')
     if ((await dockHelp.count()) > 0) {
       await dockHelp.first().scrollIntoViewIfNeeded()
       await dockHelp.first().click()

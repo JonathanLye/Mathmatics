@@ -19,10 +19,13 @@ const props = withDefaults(
     layers?: LayerStatus[]
     showBack?: boolean
     dark?: boolean
+    /** 求助灯泡：hideHelp 时不显示；helpDisabled 时禁用（请求在途、测验关闭提示）。 */
+    hideHelp?: boolean
+    helpDisabled?: boolean
   }>(),
-  { title: '', currentLayer: null, layers: () => [], showBack: true, dark: false },
+  { title: '', currentLayer: null, layers: () => [], showBack: true, dark: false, hideHelp: false, helpDisabled: false },
 )
-const emit = defineEmits<{ (e: 'back'): void; (e: 'open-layers'): void }>()
+const emit = defineEmits<{ (e: 'back'): void; (e: 'open-layers'): void; (e: 'help'): void }>()
 const segments = computed(() => props.layers.map((layer) => segmentFromLayerStatus(layer.status)))
 </script>
 
@@ -36,6 +39,18 @@ const segments = computed(() => props.layers.map((layer) => segmentFromLayerStat
         <PgProgress class="pg-topbar__dots" :segments="segments" seg-class="pg-dot" label="六层进度" />
         <text v-if="props.currentLayer" class="pg-topbar__layer">{{ layerName(props.currentLayer) }}</text>
       </view>
+      <PgButton
+        v-if="!props.hideHelp"
+        class="pg-topbar__help"
+        variant="ghost"
+        size="icon"
+        aria-label="求助"
+        data-testid="dock-help"
+        :disabled="props.helpDisabled"
+        @tap="emit('help')"
+      >
+        <PgIcon name="bulb" :size="28" :tone="props.helpDisabled ? 'off' : 'on'" />
+      </PgButton>
     </view>
     <view v-if="props.title" class="pg-topbar__name"><MathText :text="props.title" /></view>
   </view>
@@ -51,6 +66,7 @@ const segments = computed(() => props.layers.map((layer) => segmentFromLayerStat
 }
 .pg-topbar__row { display: flex; align-items: center; gap: var(--sp-2); }
 .pg-topbar__back { color: var(--ink-2); margin-left: -8px; }
+.pg-topbar__help { margin-right: -8px; }
 .pg-topbar__progress { flex: 1; min-width: 0; min-height: var(--touch); display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
 .pg-topbar__dots { flex: 1; min-width: 0; }
 .pg-topbar__layer { flex: none; color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-black); }

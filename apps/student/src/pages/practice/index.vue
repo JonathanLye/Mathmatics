@@ -175,8 +175,10 @@ function backHome() {
       :title="state.problem.title"
       :current-layer="currentLayer"
       :layers="state.layers"
+      :help-disabled="busy || strictHelpOff"
       @back="handleBack"
       @open-layers="layersOpen = true"
+      @help="help.openHelp"
     />
 
     <!-- #27 离线提示条：正常文档流 + sticky，不覆盖 44px 操作区/BottomDock -->
@@ -321,14 +323,13 @@ function backHome() {
 
     <view v-if="mode === 'mobile' && !isCompleted" class="pg-practice__dockwrap">
       <BudgetBar :budget="state.budget" />
+      <!-- 操作坞只放写证明行的输入方式：其他层用各自的表单 -->
       <BottomDock
-        :help-busy="busy"
+        v-if="currentLayer === 'L3' && !isTransferAttempt"
         :photo-disabled="strictExam"
-        :help-disabled="strictHelpOff"
         @ink="composer.startInk"
         @keyboard="composer.openKeyboardEditor"
         @photo="composer.startPhoto"
-        @help="help.openHelp"
       />
     </view>
 
