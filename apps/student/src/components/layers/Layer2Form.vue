@@ -8,13 +8,14 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import MathField from '@/components/practice/MathField.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import type { FrameView } from '@/types/attempt'
 
 /** 单条 MathText 上限，对齐 openapi.yaml 的 `MathText.maxLength: 4000`；最终以服务端校验为准（#24）。 */
 const MAX_MATH_TEXT = 4000
 
-const props = withDefaults(defineProps<{ layer?: string; view?: FrameView; busy?: boolean }>(), {
+const props = withDefaults(defineProps<{ reviewing?: boolean; layer?: string; view?: FrameView; busy?: boolean }>(), {
   layer: 'L2',
   view: () => ({}),
   busy: false,
@@ -56,11 +57,6 @@ function showTemplate() {
 
 <template>
   <view class="pg-layer" data-testid="layer2-form">
-    <view class="pg-layer__head">
-      <text class="pg-layer__title">第 2 层</text>
-      <text class="pg-layer__step pg-small">写出框架</text>
-    </view>
-
     <view class="pg-layer__task" data-testid="layer2-task">
       <MathText :text="props.view.task || '写出这个证明的骨架。'" serif block />
     </view>
@@ -73,32 +69,41 @@ function showTemplate() {
       <MathText :text="props.view.template || ''" serif block />
     </view>
 
-    <textarea
+    <MathField
       v-model="draft"
-      class="pg-input-area"
       data-testid="layer2-input"
       :maxlength="MAX_MATH_TEXT"
-      :disabled="props.busy"
+      :disabled="props.busy || props.reviewing"
       placeholder="按骨架写：任取 ε>0。取 N=＿（待构造）。则当 n>N 时，⋯<ε。"
-    />
-    <text
-      v-if="text"
-      class="pg-layer__count pg-small"
-      :class="{ 'pg-layer__count--near': nearLimit }"
-      data-testid="layer2-count"
-    >已写 {{ draft.length }} / {{ MAX_MATH_TEXT }} 字</text>
+    >
+      <template #tools>
+        <text
+          v-if="text"
+          class="pg-layer__count pg-small"
+          :class="{ 'pg-layer__count--near': nearLimit }"
+          data-testid="layer2-count"
+        >已写 {{ draft.length }} / {{ MAX_MATH_TEXT }} 字</text>
+      </template>
+    </MathField>
 
     <view v-if="text" class="pg-layer__preview" data-testid="layer2-preview">
       <text class="pg-layer__previewlabel pg-small">公式预览</text>
       <MathText :text="text" block />
     </view>
 
-    <PgButton block size="lg" data-testid="layer2-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
-      {{ props.busy ? '核对中…' : '核对' }}
-    </PgButton>
+    <view v-if="props.view.feedback" class="pg-layer__feedback" data-testid="layer2-feedback" role="status">
+      <text class="pg-layer__feedbackwho pg-small">助教</text>
+      <MathText :text="props.view.feedback" block />
+    </view>
+
     <view class="pg-layer__row">
       <PgButton variant="secondary" data-testid="layer2-template-btn" :disabled="props.busy" @tap="showTemplate">看通用骨架</PgButton>
-      <PgButton variant="secondary" data-testid="layer2-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
+      <PgButton v-if="!props.reviewing" variant="secondary" data-testid="layer2-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
+    </view>
+    <view class="pg-pin">
+      <PgButton block size="lg" data-testid="layer2-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
+        {{ props.busy ? '核对中…' : '核对' }}
+      </PgButton>
     </view>
   </view>
 </template>

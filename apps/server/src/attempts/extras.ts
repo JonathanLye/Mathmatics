@@ -26,6 +26,9 @@ export interface ViewExtras {
   // 最近一次 summary.submit 缺了哪些要点（用于挑追问）；没提交过为 null。
   summaryMissing: string[] | null;
   transfer: { childAttemptId: string; stem: string | null } | null;
+  // 第 1、2 层最近一次核对的结果（没通过时告诉学生缺了什么）；没提交过为 null。
+  defCheck: { components: Record<string, boolean>; orderOk: boolean; pass: boolean } | null;
+  frameCheck: { missing: string[]; pass: boolean } | null;
   // 完成后能不能看讲评：自学作答完成即可；教师布置要布置关闭且教师已发布。
   reviewAvailable: boolean;
   // 已下发的提示与批注（app.hint_deliveries / app.annotations），刷新后读回。noteId = 行 ID。
@@ -41,6 +44,8 @@ export const EMPTY_EXTRAS: ViewExtras = {
   summaryAnswers: [],
   summaryMissing: null,
   transfer: null,
+  defCheck: null,
+  frameCheck: null,
   reviewAvailable: false,
   notes: [],
 };
@@ -77,6 +82,17 @@ export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<Vie
       [row.id],
     )
   ).rows[0];
+  const checks = (
+    await q.query<{ type: string; payload: Record<string, unknown> }>(
+      `select distinct on (type) type, payload from ev.events
+        where attempt_id = $1 and type in ('def.submit', 'frame.submit')
+        order by type, seq desc`,
+      [row.id],
+    )
+  ).rows;
+  const checkOf = (type: string) => checks.find((c) => c.type === type)?.payload;
+  const defPayload = checkOf('def.submit');
+  const framePayload = checkOf('frame.submit');
   const child = (
     await q.query<{ id: string; problem_id: string; problem_version: number }>(
       `select id, problem_id, problem_version from app.attempts where parent_attempt_id = $1 and kind = 'transfer' order by started_at limit 1`,
@@ -130,6 +146,14 @@ export async function loadViewExtras(q: Queryable, row: AttemptRow): Promise<Vie
       .map(([, text]) => text),
     summaryMissing: submitted ? (submitted.payload.missing ?? []) : null,
     transfer: child ? { childAttemptId: child.id, stem: childStem } : null,
+    defCheck: defPayload
+      ? {
+          components: (defPayload.components ?? {}) as Record<string, boolean>,
+          orderOk: defPayload.orderOk !== false,
+          pass: defPayload.pass === true,
+        }
+      : null,
+    frameCheck: framePayload ? { missing: (framePayload.missing ?? []) as string[], pass: framePayload.pass === true } : null,
     notes: await loadStoredNotes(q, row.id, null),
   };
 }

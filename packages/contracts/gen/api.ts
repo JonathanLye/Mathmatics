@@ -1725,6 +1725,8 @@ export interface components {
             conceptId?: string;
             submissions?: number;
             last?: components["schemas"]["MathText"];
+            /** @description 最近一次核对没通过时缺的那一个成分（或顺序追问），一次只说一件事；通过或离开本层后不再下发 */
+            feedback?: components["schemas"]["MathText"];
             /** @description 两次未过时为 true，界面主动展开"分步讲解" */
             lessonSuggested?: boolean;
             /** @description 概念缺失或没有微课步骤时为 false，界面隐藏微课入口（GET lesson 对缺失概念是 404） */
@@ -1734,6 +1736,8 @@ export interface components {
             task?: components["schemas"]["MathText"];
             lessonId?: string;
             last?: components["schemas"]["MathText"];
+            /** @description 最近一次核对没通过时缺的那一部分骨架；通过或离开本层后不再下发 */
+            feedback?: components["schemas"]["MathText"];
             templateShown?: boolean;
             template?: components["schemas"]["MathText"] | null;
         };

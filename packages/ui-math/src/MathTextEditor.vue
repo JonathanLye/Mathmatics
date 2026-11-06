@@ -56,9 +56,11 @@ const props = withDefaults(
     minRows?: number
     /** 是否显示 KaTeX 预览（默认 true） */
     showPreview?: boolean
+    /** 是否显示输入框下方的键盘状态行（默认 true；内嵌在表单里时可以关掉） */
+    showMeta?: boolean
     maxlength?: number
   }>(),
-  { showPreview: true },
+  { showPreview: true, showMeta: true },
 )
 
 const emit = defineEmits<{
@@ -379,8 +381,8 @@ onBeforeUnmount(() => {
       />
     </view>
 
-    <view class="ui-mte__meta">
-      <text class="ui-mte__keyboard">{{ inputModeValue === 'none' ? '证明键盘' : '系统键盘' }}</text>
+    <view v-if="props.showMeta || placeholderHint" class="ui-mte__meta">
+      <text v-if="props.showMeta" class="ui-mte__keyboard">{{ inputModeValue === 'none' ? '证明键盘' : '系统键盘' }}</text>
       <text v-if="placeholderHint" class="ui-mte__placeholders">{{ placeholderHint }}</text>
     </view>
   </view>
@@ -432,12 +434,17 @@ onBeforeUnmount(() => {
   line-height: 1.65;
   font-family: var(--font-mono);
 }
-.ui-mte__input .uni-textarea-textarea {
+/* 输入框的内层节点是 uni-app 建的，没有 scoped 标记，要用 :deep 才碰得到。 */
+.ui-mte__input :deep(textarea),
+.ui-mte__input :deep(.uni-textarea-textarea) {
   padding: var(--sp-2) var(--sp-3);
   box-sizing: border-box;
 }
 .ui-mte__input .uni-textarea-placeholder {
-  color: var(--ink-2);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
 }
 .ui-mte__meta {
   display: flex;

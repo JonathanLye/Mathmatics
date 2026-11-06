@@ -86,7 +86,7 @@ export function parseNote(raw: unknown): Note | null {
   const cost = typeof record.cost === 'number' && Number.isFinite(record.cost) ? record.cost : null
   const lessonConceptId =
     typeof record.lessonConceptId === 'string' && record.lessonConceptId ? record.lessonConceptId : null
-  return { noteId, kind, who, text, lineId, level, cost, lessonConceptId, at }
+  return { noteId, kind, who, text, lineId, level, cost, lessonConceptId, at, ...(record.aiGenerated === true ? { aiGenerated: true } : {}) }
 }
 
 /**

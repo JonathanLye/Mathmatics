@@ -13,7 +13,7 @@ import PgCard from '@/components/ui/PgCard.vue'
 import TransferOutlineDiagram from '@/components/diagrams/TransferOutlineDiagram.vue'
 import type { TransferView } from '@/types/attempt'
 
-const props = withDefaults(defineProps<{ view?: TransferView | null; busy?: boolean }>(), {
+const props = withDefaults(defineProps<{ reviewing?: boolean; view?: TransferView | null; busy?: boolean }>(), {
   view: null,
   busy: false,
 })
@@ -33,7 +33,6 @@ const status = computed(() => props.view?.status ?? 'not_started')
 <template>
   <view class="pg-layer" data-testid="transfer-form">
     <view class="pg-layer__head">
-      <text class="pg-layer__title">第 5 层</text>
       <text class="pg-layer__step pg-small">{{ status === 'completed' ? '已完成' : status === 'active' ? '作答中' : '待开始' }}</text>
     </view>
 
@@ -45,9 +44,9 @@ const status = computed(() => props.view?.status ?? 'not_started')
       <view data-testid="transfer-outline-preview">
         <TransferOutlineDiagram />
       </view>
-      <view class="pg-layer__row">
-        <PgButton data-testid="transfer-start" sound="tap" :loading="props.busy" @tap="emit('start')">{{ props.busy ? '准备中…' : '开始换题' }}</PgButton>
-        <PgButton variant="secondary" data-testid="transfer-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
+      <PgButton v-if="!props.reviewing" variant="secondary" block data-testid="transfer-skip" :disabled="props.busy" @tap="emit('skip')">跳过</PgButton>
+      <view class="pg-pin">
+        <PgButton block size="lg" data-testid="transfer-start" sound="tap" :loading="props.busy" @tap="emit('start')">{{ props.busy ? '准备中…' : '开始换题' }}</PgButton>
       </view>
     </template>
 

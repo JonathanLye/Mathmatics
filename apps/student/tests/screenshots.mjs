@@ -152,19 +152,19 @@ const PAGES = [
     // #26 第 4 层：自检（3 道题）→ 断言自检表单真实 DOM。
     name: 'practice-l4',
     hash: '#/pages/practice/index?mock=l4-active',
-    marker: { selector: '[data-testid="selfcheck-form"]', text: '第 4 层' },
+    marker: { selector: '[data-testid="selfcheck-form"]', text: '自检' },
   },
   {
     // #26 第 5 层：迁移题（已开始态）→ 断言迁移题表单。
     name: 'practice-l5',
     hash: '#/pages/practice/index?mock=l5-active',
-    marker: { selector: '[data-testid="transfer-form"]', text: '第 5 层' },
+    marker: { selector: '[data-testid="transfer-form"]', text: '换题试试' },
   },
   {
     // #26 第 6 层：总结五问 → 断言总结表单。
     name: 'practice-l6',
     hash: '#/pages/practice/index?mock=l6-active',
-    marker: { selector: '[data-testid="summary-form"]', text: '第 6 层' },
+    marker: { selector: '[data-testid="summary-form"]', text: '总结' },
   },
   {
     // #26 证明本：断言真实列表卡片（不再只截空页）。
@@ -247,7 +247,7 @@ async function main() {
         const clientWidth = await page.evaluate(() => document.documentElement.clientWidth)
         const horizontalOverflow = scrollWidth > clientWidth + 1
         if (horizontalOverflow) overflow++
-        // #10：三档布局 + 层导航断言（仅 practice 页）
+        // 三档布局 + 顶栏进度刻度断言（仅 practice 页）。层导航去掉了，桌面两栏、平板单栏。
         let layoutBad = false
         if (pg.name.startsWith('practice-')) {
           const info = await page.evaluate(() => {
@@ -255,17 +255,18 @@ async function main() {
             const shell = document.querySelector('.pg-practice__shell')
             return {
               cls: root ? root.className : '',
-              dots: document.querySelectorAll('.pg-dot').length,
-              nav: document.querySelectorAll('.pg-layernav').length,
+              ticks: document.querySelectorAll('.pg-topbar__tick').length,
+              progress: document.querySelectorAll('[data-testid="practice-progress"]').length,
               cols: shell ? getComputedStyle(shell).gridTemplateColumns.split(' ').filter(Boolean).length : 1,
             }
           })
           const want = vp.name === 'mobile'
-            ? { cls: 'pg-practice--mobile', nav: 0, cols: 1 }
+            ? { cls: 'pg-practice--mobile', cols: 1 }
             : vp.name === 'tablet'
-              ? { cls: 'pg-practice--tablet', nav: 1, cols: 2 }
-              : { cls: 'pg-practice--desktop', nav: 1, cols: 3 }
-          layoutBad = !info.cls.includes(want.cls) || info.dots !== 6 || info.cols !== want.cols || info.nav < want.nav
+              ? { cls: 'pg-practice--tablet', cols: 1 }
+              : { cls: 'pg-practice--desktop', cols: 2 }
+          // 一条连续的进度条，六层之间 5 个刻度。
+          layoutBad = !info.cls.includes(want.cls) || info.cols !== want.cols || info.progress !== 1 || info.ticks !== 5
           if (layoutBad) layoutBadCount++
         }
         // 状态标记：优先断言真实状态 DOM（marker），不再依赖调试控件文案。

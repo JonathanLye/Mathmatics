@@ -5,13 +5,19 @@
  */
 import { useToast } from './useToast'
 
-const { state } = useToast()
+const { state, hide } = useToast()
+function runAction(): void {
+  const action = state.action
+  hide()
+  action?.run()
+}
 </script>
 
 <template>
   <Transition name="pg-toast">
     <div v-if="state.message" class="pg-toast" :class="'pg-toast--' + state.tone" role="status" aria-live="polite" data-testid="toast">
       {{ state.message }}
+      <button v-if="state.action" class="pg-toast__action" type="button" data-testid="toast-action" @click="runAction">{{ state.action.label }}</button>
     </div>
   </Transition>
 </template>
@@ -33,6 +39,20 @@ const { state } = useToast()
   line-height: 1.45;
   text-align: center;
   transform: translateX(-50%);
+}
+.pg-toast__action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: var(--fw-black);
+  cursor: pointer;
 }
 .pg-toast--ok { background: var(--ok-lip); color: var(--on-danger); }
 .pg-toast--warn { background: var(--fox-text); color: var(--on-danger); }

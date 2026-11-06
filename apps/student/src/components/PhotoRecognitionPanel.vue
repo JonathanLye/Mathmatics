@@ -6,12 +6,12 @@
  * - 逐行展示 MathText；可勾选、可编辑（编辑的是 MathText 源文本，选中/加入时才生效）；
  * - 动作：「全部加入」（勾选行）、每行「加入这行」、忽略；
  * - 只渲染服务端结果，不做识别/一致性判定；加入行由父级（practice）走既有 addLine 路径。
+ * - 嵌在写下一行的面板里，不自带弹层。
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
-import PgSheet from '@/components/ui/PgSheet.vue'
 import type { Recognition } from '@/types/attempt'
 
 interface PhotoLine {
@@ -71,11 +71,6 @@ function finishEdit(index: number): void {
   if (line) line.editing = false
 }
 
-function bboxText(bbox?: number[]): string {
-  if (!bbox || bbox.length !== 4) return ''
-  return '位置 ' + bbox.map((value) => Math.round(value)).join(',')
-}
-
 function confidenceText(confidence?: number): string {
   if (typeof confidence !== 'number' || !Number.isFinite(confidence)) return ''
   return '置信度 ' + Math.round(confidence * 100) + '%'
@@ -111,13 +106,12 @@ function ignore(): void {
 </script>
 
 <template>
-  <PgSheet open :persistent="props.busy" :z-index="68" :width="560" class="pg-photo__sheet" mask-class="pg-photo" data-testid="photo-recognition-panel" aria-label="拍照识别逐行确认" @update:open="ignore">
+  <view class="pg-photo__sheet" data-testid="photo-recognition-panel" role="group" aria-label="拍照识别逐行确认">
       <view class="pg-photo__head">
         <view class="pg-photo__headtext">
           <text class="pg-photo__title">拍照识别 · 逐行确认</text>
           <text class="pg-photo__summary pg-small" data-testid="photo-lines-summary">{{ summary }}</text>
         </view>
-        <PgButton class="pg-photo__close" variant="ghost" size="sm" :disabled="props.busy" @tap="ignore">关闭</PgButton>
       </view>
 
       <text v-if="statusHint" class="pg-photo__hint pg-small">{{ statusHint }}</text>
@@ -128,6 +122,7 @@ function ignore(): void {
           :key="index"
           class="pg-photo__line"
           :data-testid="'photo-line-' + index"
+          :data-bbox="line.bbox ? line.bbox.map(Math.round).join(',') : undefined"
         >
           <view class="pg-photo__linehead">
             <PgButton
@@ -143,7 +138,6 @@ function ignore(): void {
               @tap="toggle(index)"
             ><PgIcon v-if="line.checked" name="check" :size="20" /></PgButton>
             <text class="pg-photo__lineno pg-small">第 {{ index + 1 }} 行</text>
-            <text v-if="bboxText(line.bbox)" class="pg-photo__meta pg-small" :data-testid="'photo-line-bbox-' + index">{{ bboxText(line.bbox) }}</text>
             <text v-if="confidenceText(line.confidence)" class="pg-photo__meta pg-small">{{ confidenceText(line.confidence) }}</text>
             <PgButton
               v-if="!line.editing"
@@ -186,7 +180,7 @@ function ignore(): void {
         <PgButton class="pg-photo__ignore" variant="secondary" data-testid="photo-ignore" :disabled="props.busy" @tap="ignore">忽略</PgButton>
         <PgButton data-testid="photo-add-selected" :disabled="props.busy || selectedCount === 0" @tap="addSelected">全部加入（{{ selectedCount }} 行）</PgButton>
       </view>
-  </PgSheet>
+  </view>
 </template>
 
 <style scoped>

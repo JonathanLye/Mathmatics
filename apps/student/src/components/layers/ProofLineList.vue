@@ -12,8 +12,10 @@
  *   后再染色（PR #90 复审第 3 条）；
  * - 颜色/间距/字号只用 styles/tokens.css 的 CSS 变量，触控目标 ≥ 44px；
  * - 提交流程不在这里：本组件只 emit 'write-next'，加行由父级（practice 页）接 api。
+ * - 做题页用轨道外观（rail / editable / animate / matchedLineIds / noteLayout，都默认关）；
+ *   教师镜像不传这些，外观、动效和批注位置都不变。
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import PgIcon from '@/components/ui/PgIcon.vue'
@@ -30,18 +32,62 @@ const props = withDefaults(
     busy?: boolean
     /** #43 镜像页：只读渲染，不显示「写下一行」等输入入口。 */
     readonly?: boolean
+    /** 轨道外观：行连成一条带节点的竖线。 */
+    rail?: boolean
+    /** 每行可以改、可以删。 */
+    editable?: boolean
+    /** 新写的一行滑入。 */
+    animate?: boolean
+    /** 写到关键步骤的行（节点染绿）。 */
+    matchedLineIds?: readonly string[]
+    /** 批注放哪：auto 按宽度（≥600px 在页边）；inline 挂在行下；margin 只留标记。 */
+    noteLayout?: 'auto' | 'inline' | 'margin'
   }>(),
-  { lines: () => [], notes: () => [], busy: false, readonly: false },
+  { lines: () => [], notes: () => [], busy: false, readonly: false, rail: false, editable: false, animate: false, matchedLineIds: () => [], noteLayout: 'auto' },
 )
 const emit = defineEmits<{
   (e: 'write-next'): void
   /** 学生手动关闭某条批注（#151）：只影响本页展示，由父级决定是否记入 dismissed 集合。 */
   (e: 'dismiss-note', noteId: string): void
+  (e: 'edit-line', line: ProofLine): void
+  (e: 'delete-line', line: ProofLine): void
 }>()
 
 const { mode } = useViewport()
-/** 平板/桌面（≥600px）：行内只留标记，正文在页边（02 §3.2）。 */
-const isWide = computed(() => mode.value !== 'mobile')
+/** 平板/桌面（≥600px）：行内只留标记，正文在页边（02 §3.2）。做题页按 noteLayout 指定。 */
+const isWide = computed(() => (props.noteLayout === 'auto' ? mode.value !== 'mobile' : props.noteLayout === 'margin'))
+const matched = computed(() => new Set(props.matchedLineIds))
+
+/** 正在确认删除的行：删除放在行内，点两下才生效，不弹对话框。 */
+const confirmingDelete = ref<string | null>(null)
+function askDelete(line: ProofLine): void {
+  confirmingDelete.value = line.lineId
+}
+function confirmDelete(line: ProofLine): void {
+  confirmingDelete.value = null
+  emit('delete-line', line)
+}
+
+/** 刚出现的行：带入场动画；首屏已有的行不动。 */
+const enteringIds = ref<ReadonlySet<string>>(new Set())
+let enterTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => props.lines.map((line) => line.lineId),
+  (now, before) => {
+    if (!props.animate || !before) return
+    const known = new Set(before)
+    const fresh = now.filter((id) => !known.has(id))
+    if (fresh.length === 0) return
+    enteringIds.value = new Set(fresh)
+    if (enterTimer) clearTimeout(enterTimer)
+    enterTimer = setTimeout(() => {
+      enteringIds.value = new Set()
+    }, 800)
+  },
+)
+onBeforeUnmount(() => {
+  if (enterTimer) clearTimeout(enterTimer)
+})
 
 /** 来源徽标（02 §3.1 证明行右侧的小标签）：手写 / 键盘 / 拍照 / 粘贴。 */
 const PROVENANCE_LABEL: Record<InputProvenance, string> = {
@@ -64,6 +110,11 @@ const tailNotes = computed(() => selectTailNotes(props.lines, props.notes))
 
 function provenanceLabel(provenance?: InputProvenance | null): string {
   return provenance ? PROVENANCE_LABEL[provenance] : ''
+}
+/** 轨道上不标键盘（大多数行都是键盘，标了只是噪音）；手写和拍照来的行还是标出来。 */
+function showBadge(provenance?: InputProvenance | null): boolean {
+  if (props.rail) return provenance === 'ink' || provenance === 'photo'
+  return Boolean(provenanceLabel(provenance))
 }
 
 function noteClass(note: Note): (string | false)[] {
@@ -95,11 +146,12 @@ function onDismissNote(note: Note): void {
 </script>
 
 <template>
-  <view class="pg-lines" data-testid="proof-line-list">
+  <view class="pg-lines" :class="{ 'pg-lines--rail': props.rail }" :data-testid="props.rail ? 'practice-rail' : undefined">
     <view
       v-for="line in props.lines"
       :key="line.lineId"
       class="pg-lines__row"
+      :class="{ 'pg-lines__row--matched': matched.has(line.lineId), 'pg-lines__row--enter': enteringIds.has(line.lineId) }"
       data-testid="proof-line"
       :data-line-id="line.lineId"
       :data-line-no="line.n"
@@ -116,10 +168,21 @@ function onDismissNote(note: Note): void {
             <MathText v-if="line.justification" class="pg-lines__justtext" :text="line.justification" />
             <text v-else class="pg-lines__justempty pg-small">（未写）</text>
           </view>
-          <view v-if="provenanceLabel(line.provenance)" class="pg-lines__badge">
+          <view v-if="showBadge(line.provenance)" class="pg-lines__badge">
             <PgIcon v-if="line.provenance && PROVENANCE_ICON[line.provenance]" :name="PROVENANCE_ICON[line.provenance]!" :size="14" />
             <text>{{ provenanceLabel(line.provenance) }}</text>
           </view>
+          <view v-if="props.editable && confirmingDelete !== line.lineId" class="pg-lines__actions">
+            <PgButton variant="ghost" size="sm" data-testid="line-edit" :aria-label="'改第 ' + line.n + ' 行'" :disabled="props.busy" @tap="emit('edit-line', line)">改</PgButton>
+            <PgButton variant="ghost" size="sm" data-testid="line-delete" :aria-label="'删第 ' + line.n + ' 行'" :disabled="props.busy" @tap="askDelete(line)">删</PgButton>
+          </view>
+        </view>
+
+        <!-- 删除放在行内，要再点一下确认 -->
+        <view v-if="props.editable && confirmingDelete === line.lineId" class="pg-lines__confirm" role="group" aria-label="确认删除这一行">
+          <text class="pg-lines__confirmtext">删掉这一行？</text>
+          <PgButton variant="danger" size="sm" data-testid="line-delete-confirm" :disabled="props.busy" @tap="confirmDelete(line)">删掉</PgButton>
+          <PgButton variant="ghost" size="sm" data-testid="line-delete-cancel" @tap="confirmingDelete = null">留着</PgButton>
         </view>
 
         <!-- 手机：行内批注全文；≥600px：只留颜色标记，正文在页边栏 -->
@@ -203,10 +266,13 @@ function onDismissNote(note: Note): void {
       还没有写证明行。每次写一行：这一行（结论）+ 依据，顺序由你决定。
     </text>
 
-    <PgButton v-if="!props.readonly" class="pg-lines__add" variant="secondary" block data-testid="write-next" sound="tap" :disabled="props.busy" @tap="onWriteNext">
-      <PgIcon name="plus" :size="20" />
-      <text>写下一行</text>
-    </PgButton>
+    <view v-if="!props.readonly" class="pg-lines__next">
+      <view v-if="props.rail" class="pg-lines__nextnode" aria-hidden="true" />
+      <PgButton class="pg-lines__add" variant="secondary" block data-testid="write-next" sound="tap" :disabled="props.busy" @tap="onWriteNext">
+        <PgIcon name="plus" :size="20" />
+        <text>写下一行</text>
+      </PgButton>
+    </view>
   </view>
 </template>
 
@@ -299,4 +365,48 @@ function onDismissNote(note: Note): void {
 .pg-lines__tailtitle { display: block; margin-bottom: var(--sp-1); color: var(--ink-2); font-weight: var(--fw-heavy); }
 .pg-lines__empty { display: block; padding: var(--sp-4) 0; color: var(--ink-2); line-height: var(--lh-body); }
 .pg-lines__add.pg-button { border-style: dashed; min-height: 56px; color: var(--ink-2); }
+.pg-lines__next { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+
+/* 轨道：行连成一条竖线，节点是行号；写到关键步骤的节点染绿。只有 rail 才生效，镜像不受影响。 */
+.pg-lines--rail { gap: 0; margin-top: var(--sp-2); }
+.pg-lines--rail .pg-lines__badge { margin-left: 0; }
+.pg-lines--rail .pg-lines__row {
+  position: relative;
+  padding: 0 0 var(--sp-4);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.pg-lines--rail .pg-lines__row::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 32px;
+  bottom: 0;
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--rule-2);
+}
+.pg-lines--rail .pg-lines__no {
+  position: relative;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border: var(--bw) solid var(--rule-2);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  transition: background-color var(--dur-base) ease-out, border-color var(--dur-base) ease-out;
+}
+.pg-lines__row--matched .pg-lines__no { border-color: var(--ok); background: var(--ok-soft); color: var(--ok-text); }
+.pg-lines--rail .pg-lines__body { padding-top: 3px; }
+.pg-lines__row--enter { animation: pg-item-in var(--dur-slow) var(--ease-out) both; }
+.pg-lines__row--enter.pg-lines__row--matched .pg-lines__no { animation: pg-pop 380ms var(--ease-spring) both; }
+.pg-lines__actions { display: flex; gap: 0; margin: calc(-1 * var(--sp-1)) calc(-1 * var(--sp-2)) calc(-1 * var(--sp-1)) auto; }
+.pg-lines__actions .pg-button { min-width: var(--touch); color: var(--ink-2); }
+.pg-lines__confirm { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-12); background: var(--paper-2); }
+.pg-lines__confirmtext { flex: 1; min-width: 0; color: var(--ink); font-size: var(--fs-13); font-weight: var(--fw-heavy); }
+/* 下一行的空节点：轨道的尽头就是「写下一行」。 */
+.pg-lines__nextnode { flex: 0 0 32px; width: 32px; height: 32px; border: var(--bw) dashed var(--rule-2); border-radius: var(--radius-pill); }
+.pg-lines--rail .pg-lines__tail { padding: 0 0 var(--sp-3); }
+.pg-lines--rail .pg-lines__empty { padding: 0 0 var(--sp-3); }
 </style>

@@ -8,13 +8,14 @@
  */
 import { computed, ref, watch } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import MathField from '@/components/practice/MathField.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import type { DefView } from '@/types/attempt'
 
 /** 单条 MathText 上限，对齐 openapi.yaml 的 `MathText.maxLength: 4000`；最终以服务端校验为准（#24）。 */
 const MAX_MATH_TEXT = 4000
 
-const props = withDefaults(defineProps<{ layer?: string; view?: DefView; busy?: boolean; initialText?: string }>(), {
+const props = withDefaults(defineProps<{ reviewing?: boolean; layer?: string; view?: DefView; busy?: boolean; initialText?: string }>(), {
   layer: 'L1',
   view: () => ({}),
   busy: false,
@@ -58,45 +59,50 @@ function submit() {
 
 <template>
   <view class="pg-layer" data-testid="layer1-form">
-    <view class="pg-layer__head">
-      <text class="pg-layer__title">第 1 层</text>
-      <text class="pg-layer__step pg-small">写出定义</text>
-    </view>
-
     <view class="pg-layer__task" data-testid="layer1-task">
       <MathText :text="props.view.task || '写出本题要用到的定义。'" serif block />
     </view>
     <text class="pg-layer__hint pg-small">
-      可以用自己的话写，也可以用量词。核对后系统只会指出缺了哪一个成分。
+      核对后只会指出缺了哪一个成分。
     </text>
 
-    <textarea
+    <MathField
       v-model="draft"
-      class="pg-input-area"
       data-testid="layer1-input"
       data-pg-target="def"
       :maxlength="MAX_MATH_TEXT"
-      :disabled="props.busy"
+      :disabled="props.busy || props.reviewing"
       placeholder="在这里写出定义……"
-    />
-    <text
-      v-if="text"
-      class="pg-layer__count pg-small"
-      :class="{ 'pg-layer__count--near': nearLimit }"
-      data-testid="layer1-count"
-    >已写 {{ draft.length }} / {{ MAX_MATH_TEXT }} 字</text>
+    >
+      <template #tools>
+        <text
+          v-if="text"
+          class="pg-layer__count pg-small"
+          :class="{ 'pg-layer__count--near': nearLimit }"
+          data-testid="layer1-count"
+        >已写 {{ draft.length }} / {{ MAX_MATH_TEXT }} 字</text>
+      </template>
+    </MathField>
 
     <view v-if="text" class="pg-layer__preview" data-testid="layer1-preview">
       <text class="pg-layer__previewlabel pg-small">公式预览</text>
       <MathText :text="text" block />
     </view>
 
-    <PgButton block size="lg" data-testid="layer1-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
-      {{ props.busy ? '核对中…' : '核对' }}
-    </PgButton>
+    <!-- 核对没通过：服务端指出缺的那一个成分。问题挂在表单下面，所有宽度都一样。 -->
+    <view v-if="props.view.feedback" class="pg-layer__feedback" data-testid="layer1-feedback" role="status">
+      <text class="pg-layer__feedbackwho pg-small">助教</text>
+      <MathText :text="props.view.feedback" block />
+    </view>
+
     <view class="pg-layer__row">
       <PgButton variant="secondary" data-testid="layer1-lesson" :disabled="props.busy" @tap="emit('lesson')">看不懂</PgButton>
-      <PgButton variant="secondary" data-testid="layer1-skip" :disabled="props.busy" @tap="emit('skip')">已掌握，跳过</PgButton>
+      <PgButton v-if="!props.reviewing" variant="secondary" data-testid="layer1-skip" :disabled="props.busy" @tap="emit('skip')">已掌握，跳过</PgButton>
+    </view>
+    <view class="pg-pin">
+      <PgButton block size="lg" data-testid="layer1-check" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
+        {{ props.busy ? '核对中…' : '核对' }}
+      </PgButton>
     </view>
   </view>
 </template>

@@ -131,7 +131,15 @@ async function runViewport(browser, base, name, contextOptions) {
 
     // 限制：拍照（手机 dock）/求助入口关闭 / 复制粘贴右键拦截
     if (contextOptions.isMobile) {
-      check(name + ' · 拍照按钮禁用', await isDisabled(page, 'dock-photo'))
+      // 拍照现在是输入器里的分段：打开输入器看分段的 aria-disabled，点了也不切过去。
+      await page.getByTestId('write-next').click()
+      await page.getByTestId('composer-tab-photo').waitFor({ state: 'visible', timeout: 5000 })
+      check(name + ' · 拍照按钮禁用', (await page.getByTestId('composer-tab-photo').getAttribute('aria-disabled')) === 'true')
+      // 分段是 aria-disabled，Playwright 默认不点；force 把点击发过去，验证点了也不切。
+      await page.getByTestId('composer-tab-photo').click({ force: true })
+      check(name + ' · 点拍照分段不会切过去', (await page.getByTestId('photo-take').count()) === 0)
+      await page.getByTestId('editor-cancel').click()
+      await page.getByTestId('editor-sheet').waitFor({ state: 'detached', timeout: 5000 })
       check(name + ' · 求助入口禁用（布置关闭提示）', await isDisabled(page, 'dock-help'))
     } else {
       check(name + ' · 求助入口禁用（桌面页边栏）', await isDisabled(page, 'exam-help-aside'))

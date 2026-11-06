@@ -7,10 +7,11 @@
  * 关闭规则（PR #91 审计）：请求在途（busy）时遮罩/关闭按钮/ Esc 都不关抽屉，避免结果落到已关闭的抽屉上。
  */
 import { computed, ref } from 'vue'
-import MathText from '@ui-math/MathText.vue'
+import TutorBubble from '@/components/practice/TutorBubble.vue'
 import PgButton from '@/components/ui/PgButton.vue'
+import PgIcon from '@/components/ui/PgIcon.vue'
+import PgMascot from '@/components/ui/PgMascot.vue'
 import PgSheet from '@/components/ui/PgSheet.vue'
-import { noteWhoLabel } from '@/copy'
 import type { AttemptMode, HelpIntent, HelpState, Note } from '@/types/attempt'
 import { SOFT_LANDING_ORDER, softLandingAvailable, softLandingLabel } from './hintPreviewCopy'
 
@@ -30,9 +31,9 @@ const emit = defineEmits<{
   (e: 'intent', i: HelpIntent): void
   (e: 'send', t: string): void
   (e: 'claim'): void
-  (e: 'feedback', noteId: string, useful: boolean): void
   (e: 'decline'): void
   (e: 'soft-landing', a: string): void
+  (e: 'feedback', noteId: string, useful: boolean): void
 }>()
 
 const ask = ref('')
@@ -65,8 +66,6 @@ function softDisabled(id: string, disabled: boolean): boolean {
 
 /** 常见问句（01 §4 线框里的两条示例；点一下填进输入框，学生再确认发送）。 */
 const COMMON_QUESTIONS = ['这一行在做什么？', '什么是充分条件？']
-
-const noteClass = computed(() => (props.note ? 'pg-help__note--' + props.note.kind : ''))
 
 /** busy 时忽略关闭：结果不会落到已关闭的抽屉上（PR #91 审计 4）。 */
 function close() {
@@ -130,13 +129,19 @@ function softLanding(action: string) {
         :disabled="!canStuck"
         @tap="pickIntent('stuck')"
       >
-        <text class="pg-help__intenttitle">我卡住了，不知道下一步</text>
-        <text class="pg-help__intentdesc">{{ stuckReason }}</text>
+        <PgIcon class="pg-help__intenticon" name="bulb" :size="32" :tone="canStuck ? 'on' : 'off'" />
+        <view class="pg-help__intenttext">
+          <text class="pg-help__intenttitle">我卡住了，不知道下一步</text>
+          <text class="pg-help__intentdesc">{{ stuckReason }}</text>
+        </view>
       </PgButton>
 
       <PgButton class="pg-help__intent pg-help__intent--concept" variant="secondary" block sound="tap" :disabled="props.busy" @tap="pickIntent('concept')">
-        <text class="pg-help__intenttitle">这个概念/符号我不懂</text>
-        <text class="pg-help__intentdesc">1–2 句概念解释，不占提示额度。</text>
+        <PgIcon class="pg-help__intenticon" name="book" :size="32" color="var(--sea-text)" />
+        <view class="pg-help__intenttext">
+          <text class="pg-help__intenttitle">这个概念/符号我不懂</text>
+          <text class="pg-help__intentdesc">1–2 句概念解释，不占提示额度。</text>
+        </view>
       </PgButton>
 
       <PgButton
@@ -148,20 +153,19 @@ function softLanding(action: string) {
         :disabled="props.busy"
         @tap="pickIntent('check_line')"
       >
-        <text class="pg-help__intenttitle">帮我看看这一行</text>
-        <text class="pg-help__intentdesc">对最新一行给一条批注，不占提示额度。</text>
+        <PgIcon class="pg-help__intenticon" name="eye" :size="32" color="var(--accent-text)" />
+        <view class="pg-help__intenttext">
+          <text class="pg-help__intenttitle">帮我看看这一行</text>
+          <text class="pg-help__intentdesc">对最新一行给一条批注，不占提示额度。</text>
+        </view>
       </PgButton>
     </view>
 
-    <view v-if="props.note" class="pg-help__note" :class="noteClass" aria-live="polite">
-      <text class="pg-help__notewho">{{ noteWhoLabel(props.note.who) }}</text>
-      <MathText :text="props.note.text" block />
-      <view v-if="props.note.aiGenerated" class="pg-help__ai">
-        <text class="pg-help__aitext">AI 生成 · 仅作学习提示</text>
-        <PgButton class="pg-help__aibtn" variant="ghost" size="sm" @tap="emit('feedback', props.note.noteId, true)">有用</PgButton>
-        <PgButton class="pg-help__aibtn" variant="ghost" size="sm" @tap="emit('feedback', props.note.noteId, false)">没用</PgButton>
-      </view>
+    <view v-if="props.busy" class="pg-help__thinking" role="status" data-testid="help-thinking">
+      <PgMascot expr="think" motion="think-tilt" :size="48" />
+      <text class="pg-help__busy" aria-live="polite">小方在想…</text>
     </view>
+    <TutorBubble v-else-if="props.note" :note="props.note" @feedback="emit('feedback', props.note!.noteId, $event)" />
 
     <view v-if="!testMode" class="pg-help__free">
       <text class="pg-help__freetitle">或者直接问一句</text>
@@ -173,8 +177,6 @@ function softLanding(action: string) {
         <PgButton v-for="q in COMMON_QUESTIONS" :key="q" class="pg-help__chip" variant="ghost" size="sm" :disabled="props.busy" @tap="fill(q)">{{ q }}</PgButton>
       </view>
     </view>
-
-    <text v-if="props.busy" class="pg-help__busy" aria-live="polite">正在准备…</text>
   </PgSheet>
 </template>
 
@@ -203,40 +205,21 @@ function softLanding(action: string) {
 .pg-help__soon { font-size: var(--fs-12); font-weight: var(--fw-bold); }
 .pg-help__intents { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-help__intent.pg-button {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-height: 64px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--sp-3);
+  min-height: 76px;
   padding: var(--sp-2) var(--sp-4);
   text-align: left;
 }
+.pg-help__intenticon { flex: none; }
+.pg-help__intenttext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .pg-help__intenttitle { font-size: var(--fs-15); font-weight: var(--fw-black); line-height: 1.4; }
 .pg-help__intentdesc { color: var(--ink-2); font-size: var(--fs-13); font-weight: var(--fw-bold); line-height: 1.4; }
 .pg-help__intent.pg-button[disabled] .pg-help__intentdesc { color: var(--ink-2); }
 .pg-help__intent.pg-button[disabled] .pg-help__intenttitle { color: var(--ink-2); }
-.pg-help__note {
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-12);
-  background: var(--paper-2);
-  color: var(--ink);
-}
-.pg-help__note--concept,
-.pg-help__note--student { background: var(--accent-soft); }
-.pg-help__note--annotation,
-.pg-help__note--refusal { background: var(--sea-soft); }
-.pg-help__note--hint { background: var(--bee-soft); }
-.pg-help__notewho { display: block; margin-bottom: 2px; color: var(--ink-2); font-size: var(--fs-13); }
-.pg-help__ai {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-top: var(--sp-1);
-}
-.pg-help__aitext {
-  color: var(--ink-2);
-  font-size: var(--fs-small);
-}
+.pg-help__thinking { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-16); background: var(--paper-2); }
 .pg-help__free { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pg-help__freetitle { color: var(--ink-2); font-size: var(--fs-13); }
 .pg-help__freerow { display: flex; gap: var(--sp-2); }
@@ -255,5 +238,5 @@ function softLanding(action: string) {
 .pg-help__send { flex: none; }
 .pg-help__chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .pg-help__chip.pg-button { border: var(--bw) dashed var(--rule-2); border-radius: var(--radius-pill); }
-.pg-help__busy { color: var(--ink-2); font-size: var(--fs-13); text-align: center; }
+.pg-help__busy { color: var(--ink-2); font-size: var(--fs-15); font-weight: var(--fw-heavy); }
 </style>

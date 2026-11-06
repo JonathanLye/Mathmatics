@@ -13,6 +13,26 @@ export const LAYER_NAMES: Readonly<Record<LayerId, string>> = {
   L6: '总结',
 }
 
+/** 层间过场：刚做完这一层时说什么。 */
+export const LAYER_DONE: Readonly<Record<LayerId, string>> = {
+  L1: '定义的成分都写到了。',
+  L2: '证明的骨架搭好了。',
+  L3: '关键步骤都写到了。',
+  L4: '自检的问题都回答了。',
+  L5: '换的这道题也做完了。',
+  L6: '总结写好了。',
+}
+
+/** 层间过场：下一层一句话说明。 */
+export const LAYER_INTRO: Readonly<Record<LayerId, string>> = {
+  L1: '先把要用的定义写出来。',
+  L2: '先搭开头和结尾，中间留空，不急着写构造。',
+  L3: '一次写一行：这一行写什么，依据是什么。顺序你自己定。',
+  L4: '用几个问题检验一下：你写的每一步都说得清吗？',
+  L5: '换一道同类题，看刚才的骨架能不能用上。',
+  L6: '用几句话把这道题讲给自己听，它会进你的证明本。',
+}
+
 export const LAYER_STATUS_TEXT: Readonly<Record<string, string>> = {
   locked: '未解锁',
   active: '进行中',

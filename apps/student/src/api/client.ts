@@ -273,7 +273,7 @@ function inputMeta(provenance: InputProvenance, draftId: string): InputMeta {
 
 /**
  * 最近一次作答写接口带回的 rewards（没有则 null）。读一次即清空：页面在每次 await 写接口之后调用一次，
- * 把结果交给 useRewards 排队提示。mock 模式永远是 null。
+ * 把结果交给反馈面板和完成页。mock 模式下由演示 reducer 给一份演示奖励。
  */
 let lastRewards: RewardsView | null = null
 export function consumeRewards(): RewardsView | null {
@@ -727,12 +727,22 @@ export async function getAttempt(attemptId: string): Promise<AttemptState> {
 }
 
 /** POST /attempts/{attemptId}/definition：第 1 层提交定义。 */
+/** mock 的第 1、2 层核对：只认有没有写到 ε（演示用，真实判定在服务端）。 */
+const MOCK_EPS = /ε|varepsilon|epsilon/
+
 export async function submitDef(state: AttemptState, text: string, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {
   await sleep()
   const next = clone(state)
   next.stateVersion += 1
-  next.def = { ...(next.def ?? {}), submissions: (next.def?.submissions ?? 0) + 1, last: text, lessonSuggested: false }
+  const submissions = (next.def?.submissions ?? 0) + 1
+  // 演示：没写到 ε 就算没通过，走和真实服务端一样的 feedback。
+  if (!MOCK_EPS.test(text)) {
+    next.def = { ...(next.def ?? {}), submissions, last: text, feedback: '缺少“对任意 $\\varepsilon>0$”。', lessonSuggested: false }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  next.def = { ...(next.def ?? {}), submissions, last: text, feedback: null, lessonSuggested: false }
   next.layers = next.layers.map((l) => (l.layer === 'L1' ? { ...l, status: 'done' as const } : l.layer === 'L2' ? { ...l, status: 'active' as const } : l))
   next.currentLayer = 'L2'
   next.serverTime = new Date().toISOString()
@@ -751,7 +761,12 @@ export async function submitFramework(state: AttemptState, text: string, options
   await sleep()
   const next = clone(state)
   next.stateVersion += 1
-  next.frame = { ...(next.frame ?? {}), last: text, templateShown: true }
+  if (!MOCK_EPS.test(text)) {
+    next.frame = { ...(next.frame ?? {}), last: text, feedback: '骨架里还缺：开头——先固定任意的 $\\varepsilon>0$。' }
+    next.serverTime = new Date().toISOString()
+    return next
+  }
+  next.frame = { ...(next.frame ?? {}), last: text, feedback: null, templateShown: true }
   next.layers = next.layers.map((l) =>
     l.layer === 'L1' ? { ...l, status: 'done' as const } :
     l.layer === 'L2' ? { ...l, status: 'done' as const } :
@@ -787,6 +802,13 @@ export async function viewFrameTemplate(state: AttemptState, options: WriteOptio
 }
 
 /** POST /attempts/{attemptId}/lines：第 3 层加入一行。 */
+/** mock 的关键步骤判定（演示用，真实判定在服务端）：写到一个演示题的关键式子，且还没写够。 */
+const MOCK_KEY_PATTERNS = [/\\frac\{5\}\{n\+2\}|5\/\(n\+2\)/, /\\frac\{5\}\{n\}|5\/n/, /N\s*=/, /\\varepsilon|ε/]
+function mockKeyGain(state: AttemptState, statement: string): number {
+  if (state.budget.keysOwn >= state.budget.keysTotal) return 0
+  return MOCK_KEY_PATTERNS.some((pattern) => pattern.test(statement)) ? 1 : 0
+}
+
 export async function addLine(state: AttemptState, draft: LineDraft, options: WriteOptions = {}): Promise<AttemptState> {
   if (USE_MOCK) {
   await sleep()
@@ -794,6 +816,7 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   const lines = next.steps?.lines ?? []
   const n = lines.length + 1
   const lineId = mockUuid()
+  const keysGained = mockKeyGain(next, draft.statement)
   lines.push({
     lineId,
     n,
@@ -805,6 +828,10 @@ export async function addLine(state: AttemptState, draft: LineDraft, options: Wr
   })
   next.steps = { lines, canFinish: lines.length >= 2 }
   next.stateVersion += 1
+  if (keysGained > 0) {
+    next.budget = { ...next.budget, keysOwn: next.budget.keysOwn + keysGained }
+    lastRewards = { xp: 10, items: [{ kind: 'key_own', amount: 10, label: '写出关键步骤' }], badges: [] }
+  }
   // 写完一行后门槛满足：下一条提示重新可预览（01 §4：自上一条提示后又提交过一行）
   next.help = { ...next.help, needAttempt: false, waitSec: 0 }
   // mock 批注：依据为空时追问；否则「衔接上了」
@@ -952,6 +979,12 @@ export async function submitSummary(state: AttemptState, answers: string[], opti
   next.layers = next.layers.map((l) => (l.layer === 'L6' ? { ...l, status: 'done' as const } : l))
   next.status = 'completed'
   next.budget = { ...next.budget, keysOwn: Math.max(next.budget.keysOwn, 3) }
+  lastRewards = {
+    xp: 45,
+    items: [{ kind: 'problem', amount: 30, label: '完成一道题' }, { kind: 'layer', amount: 15, label: '走完六层' }],
+    badges: [{ id: 'first_proof', title: '第一个证明', desc: '完成了第一道证明题' }],
+    streak: { current: 3, extended: true },
+  }
   next.completion = {
     done: true,
     independence: 0.75,
@@ -1011,7 +1044,12 @@ export async function enterLayer(state: AttemptState, layer: LayerId, options: W
   if (USE_MOCK) {
     await sleep()
     const next = clone(state)
-    if (next.layers.find((l) => l.layer === layer)?.status === 'locked') return next
+    // 和引擎同一条规则：已完成、已跳过的层，或还在做的那一层。
+    const finished = (status: string): boolean => status === 'done' || status === 'skipped' || status === 'disabled'
+    const frontier = next.layers.find((l) => l.enabled !== false && !finished(l.status))?.layer
+    const target = next.layers.find((l) => l.layer === layer)
+    if (!target || (layer !== frontier && !finished(target.status))) return next
+    next.layers = next.layers.map((l) => (finished(l.status) ? l : { ...l, status: l.layer === layer ? ('active' as const) : ('locked' as const) }))
     next.stateVersion += 1
     next.currentLayer = layer
     next.serverTime = new Date().toISOString()
@@ -1020,6 +1058,15 @@ export async function enterLayer(state: AttemptState, layer: LayerId, options: W
   return writeState(`/attempts/${state.attemptId}/layers/${layer}/enter`, undefined, {
     ifMatch: state.stateVersion,
     idempotencyKey: options.idempotencyKey ?? newUuid(),
+  })
+}
+
+/** PUT /attempts/{attemptId}/draft：草稿备份。本机 IndexedDB 才是主存储，备份失败不打断学习。 */
+export async function backupDraft(attemptId: string, target: string, content: Record<string, unknown>): Promise<void> {
+  if (USE_MOCK || !attemptId) return
+  await activeHttp.request<unknown>(`/attempts/${encodeURIComponent(attemptId)}/draft`, {
+    method: 'PUT',
+    body: { target, content },
   })
 }
 
@@ -1138,6 +1185,7 @@ export async function requestHelp(
       level: 'H0',
       cost: null,
       lessonConceptId: 'seq-limit',
+      aiGenerated: true,
       at: new Date().toISOString(),
     }
     next.notes = [...next.notes, echo, note]
@@ -1680,6 +1728,36 @@ export async function deleteTransferLine(state: AttemptState, lineId: string): P
   if (next.kind !== 'transfer' || next.status !== 'active' || !next.steps) return next
   const lines = renumberLines(next.steps.lines.filter((line) => line.lineId !== lineId))
   next.steps = { lines, canFinish: transferCanFinish(lines) }
+  next.stateVersion += 1
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/** PATCH /attempts/{attemptId}/lines/{lineId}：改写第 3 层的一行；请求形状和迁移题相同。 */
+export async function editLine(state: AttemptState, lineId: string, draft: LineDraft): Promise<AttemptState> {
+  if (!USE_MOCK || state.kind === 'transfer') return editTransferLine(state, lineId, draft)
+  await sleep()
+  const next = clone(state)
+  if (!next.steps?.lines.some((line) => line.lineId === lineId)) return next
+  next.steps.lines = next.steps.lines.map((line) =>
+    line.lineId === lineId
+      ? { ...line, statement: draft.statement.trim(), justification: (draft.justification ?? '').trim(), provenance: draft.input.provenance }
+      : line,
+  )
+  next.stateVersion += 1
+  next.serverTime = new Date().toISOString()
+  return next
+}
+
+/** DELETE /attempts/{attemptId}/lines/{lineId}：删第 3 层的一行；行号不重排（服务端软删）。 */
+export async function deleteLine(state: AttemptState, lineId: string): Promise<AttemptState> {
+  if (!USE_MOCK || state.kind === 'transfer') return deleteTransferLine(state, lineId)
+  await sleep()
+  const next = clone(state)
+  if (!next.steps) return next
+  next.steps.lines = next.steps.lines.filter((line) => line.lineId !== lineId)
+  next.steps.canFinish = next.steps.lines.length >= 2
+  next.notes = next.notes.filter((note) => note.lineId !== lineId)
   next.stateVersion += 1
   next.serverTime = new Date().toISOString()
   return next

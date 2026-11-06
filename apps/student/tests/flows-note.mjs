@@ -136,7 +136,7 @@ async function openPractice(browser, url, viewport) {
 }
 
 async function openHelpDrawer(page) {
-  await page.locator('.pg-dock__btn--help').click()
+  await page.locator('[data-testid="dock-help"]').click()
   await page.locator('.pg-help').waitFor({ state: 'visible', timeout: 5000 })
 }
 
@@ -147,6 +147,8 @@ async function addLineViaEditor(page, statement, justification) {
   await page.waitForTimeout(300)
   const sheet = page.locator('[data-testid="editor-sheet"]').first()
   if ((await sheet.count()) === 0) return { added: false, reason: 'editor-sheet missing' }
+  // 输入器默认手写（来自设置），这里要打字，先切到键盘。
+  await page.locator('[data-testid="composer-tab-keyboard"]').click()
   const fill = async (testId, value) => {
     const wrap = page.locator('[data-testid="' + testId + '"]').first()
     if ((await wrap.count()) === 0) return false
@@ -159,6 +161,12 @@ async function addLineViaEditor(page, statement, justification) {
   const filledJustification = await fill('editor-justification', justification)
   await page.locator('[data-testid="editor-submit"]').click()
   await page.waitForTimeout(900)
+  // 提交后的反馈面板盖在下面：点继续收起，才能操作轨道。
+  const panelContinue = page.locator('[data-testid="feedback-continue"]')
+  if (await panelContinue.count()) {
+    await panelContinue.click()
+    await page.locator('[data-testid="feedback-panel"]').waitFor({ state: 'detached', timeout: 5000 })
+  }
   const after = await page.locator('[data-testid="proof-line"]').count()
   return { added: after === before + 1, filledStatement, filledJustification, before, after }
 }

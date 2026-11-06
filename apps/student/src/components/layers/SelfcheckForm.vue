@@ -10,12 +10,13 @@
  */
 import { computed, reactive } from 'vue'
 import MathText from '@ui-math/MathText.vue'
+import MathField from '@/components/practice/MathField.vue'
 import PgButton from '@/components/ui/PgButton.vue'
 import { nextSelfcheck, type AdaptiveDecision } from '@/components/selfcheck/adaptive'
 import { adaptiveHint, selfcheckAdaptiveInput, selfcheckProgress } from '@/components/selfcheck/adaptView'
 import type { ProofLine, SelfcheckItem, SelfcheckView } from '@/types/attempt'
 
-const props = withDefaults(defineProps<{ view?: SelfcheckView | null; lines?: ProofLine[]; busy?: boolean }>(), {
+const props = withDefaults(defineProps<{ reviewing?: boolean; view?: SelfcheckView | null; lines?: ProofLine[]; busy?: boolean }>(), {
   view: null,
   lines: () => [],
   busy: false,
@@ -63,14 +64,13 @@ function statusText(item: SelfcheckItem): string {
 <template>
   <view class="pg-layer" data-testid="selfcheck-form">
     <view class="pg-layer__head">
-      <text class="pg-layer__title">第 4 层</text>
       <text class="pg-layer__step pg-small" data-testid="selfcheck-progress">
         已通过 {{ progress.passed }} / {{ progress.total }}
         <template v-if="exhaustedCount > 0">（{{ exhaustedCount }} 题次数用尽）</template>
       </text>
     </view>
     <text class="pg-layer__hint pg-small">
-      针对你自己写的证明回答。答错不会给讲解，只会追问一句；系统会按维度挑题，答错的题稍后再回来重试。
+      针对你自己写的证明回答。没答到点上不会给讲解，只会追问一句，稍后再回来试一次。
     </text>
 
     <view v-if="props.lines.length > 0" class="pg-check__proof pg-sheet" data-testid="selfcheck-proof">
@@ -101,17 +101,19 @@ function statusText(item: SelfcheckItem): string {
       <text v-if="decision.action === 'retry'" class="pg-check__followup pg-small" :data-testid="'selfcheck-retry-' + current.itemId">
         这题上次没通过（第 {{ decision.attemptNo }} 次作答）。再具体一点：这条依据是从哪一步、用什么运算得到的？
       </text>
-      <textarea
+      <MathField
         v-model="drafts[current.itemId]"
-        class="pg-input-area pg-input-area--md"
         :data-testid="'selfcheck-input-' + current.itemId"
         :maxlength="500"
         :disabled="props.busy"
+        :min-rows="2"
         placeholder="写一句话回答……"
       />
-      <PgButton block :data-testid="'selfcheck-submit-' + current.itemId" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
-        {{ props.busy ? '提交中…' : decision.action === 'retry' ? '再提交一次' : '提交这一题' }}
-      </PgButton>
+      <view class="pg-pin">
+        <PgButton block size="lg" :data-testid="'selfcheck-submit-' + current.itemId" sound="tap" :loading="props.busy" :disabled="!canSubmit" @tap="submit">
+          {{ props.busy ? '提交中…' : decision.action === 'retry' ? '再提交一次' : '提交这一题' }}
+        </PgButton>
+      </view>
     </view>
 
     <view v-else-if="decision.action === 'done'" class="pg-check__done pg-sheet" data-testid="selfcheck-done">
@@ -127,7 +129,7 @@ function statusText(item: SelfcheckItem): string {
       </view>
     </view>
 
-    <PgButton variant="secondary" block data-testid="selfcheck-skip" :disabled="props.busy" @tap="emit('skip')">跳过自检</PgButton>
+    <PgButton v-if="!props.reviewing" variant="secondary" block data-testid="selfcheck-skip" :disabled="props.busy" @tap="emit('skip')">跳过自检</PgButton>
   </view>
 </template>
 

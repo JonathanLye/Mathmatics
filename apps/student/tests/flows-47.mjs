@@ -159,6 +159,12 @@ async function answerSelfcheck(page, itemId, text) {
   await fillTestId(page, 'selfcheck-input-' + itemId, text)
   await waitEnabled(page, 'selfcheck-submit-' + itemId)
   await tap(page, 'selfcheck-submit-' + itemId, '提交 ' + itemId)
+  // 提交后的反馈面板盖着下面：点继续收起。最后一题直接到过场，没有面板。
+  const panelContinue = page.getByTestId('feedback-continue')
+  if (await panelContinue.waitFor({ state: 'visible', timeout: 1200 }).then(() => true, () => false)) {
+    await panelContinue.click()
+    await page.getByTestId('feedback-panel').waitFor({ state: 'detached', timeout: 5000 })
+  }
 }
 
 async function main() {
@@ -185,7 +191,8 @@ async function main() {
 
     const text = await bodyText(page)
     check('进入迁移题子作答（kind=transfer、独立作答页）', text.includes('换题试试 · 完整作答') && text.includes('函数极限'))
-    check('迁移题任务卡用 MathText 渲染', (await katexCount(page, 'transfer-attempt-task')) > 0)
+    // 题面只在顶部的题面条里出现一次（去掉了重复的「这道新题」卡）。
+    check('迁移题任务卡用 MathText 渲染', (await katexCount(page, 'practice-stem')) > 0)
     check('#47 迁移题思路对照图已接线（SVG）', (await page.getByTestId('transfer-outline').locator('svg').count()) === 1)
     check(
       '思路图文字可见（H5 SVG 标签改用 HTML 叠层）',
@@ -291,6 +298,8 @@ async function main() {
     await answerSelfcheck(page, 'SC3', '把 n>N 换成 n≥1，第 2 行会断。')
     await waitTestId(page, 'selfcheck-item-SC5')
     await answerSelfcheck(page, 'SC5', '用到了 n 是正整数（n+2>n>0）。')
+    await tap(page, 'interstitial-continue', '过场·继续')
+    await waitGoneTestId(page, 'layer-interstitial')
     await waitTestId(page, 'transfer-form')
     check('自检结束 → 第 5 层迁移题', (await bodyText(page)).includes('换题试试'))
   }

@@ -84,10 +84,20 @@ emits: {
 
 ### `<ProofLineList>`（#12；#151 补 dismiss-note）
 ```ts
-props: { lines: ProofLine[]; notes: Note[]; busy?: boolean; readonly?: boolean }
+props: {
+  lines: ProofLine[]; notes: Note[]; busy?: boolean; readonly?: boolean
+  // 做题页专用，默认都关（教师镜像复用这个组件，外观和行为不变）：
+  rail?: boolean                     // 行连成带节点的竖线
+  editable?: boolean                 // 行内改写、两步删除
+  animate?: boolean                  // 新行进场动画
+  matchedLineIds?: readonly string[] // 点亮节点的行（见 practice/proofRail.ts）
+  noteLayout?: 'auto' | 'inline' | 'margin'
+}
 emits: {
   'write-next': []
   'dismiss-note': [noteId: string]   // 学生关闭某条批注：父级用 filterDismissedNotes 只隐藏本页展示，不回写服务端
+  'edit-line': [line: ProofLine]
+  'delete-line': [line: ProofLine]
 }
 ```
 - 依据可空；红笔批注按 `note.lineId` 挂在对应行下方（找不到行则挂在列表末尾）；分组逻辑在 `layers/proofLines.ts`，有 vitest 单测（CI 生效）。
@@ -112,7 +122,8 @@ emits: {
   send: [text: string]                          // 自由提问：页面用 intent=free + text 发 /help（06 §3.4）
   claim: []                                     // 领取预览卡提示
   decline: []                                   // 先不要
-  'soft-landing': [action: string]              // 额度用尽四出路（flag_teacher 后端未实现，置灰）
+  'soft-landing': [action: string]              // 额度用尽四出路
+  feedback: [noteId: string, useful: boolean]   // 只有 note.aiGenerated 时才显示
 }
 ```
 - 只渲染 `HelpState`/`Note`，不判门槛；请求在途（busy）时遮罩/关闭按钮/Esc 都不关抽屉；有 role=dialog/aria-modal，Esc 可关（busy 除外）。
@@ -124,33 +135,26 @@ emits: { claim: []; decline: []; retry: []; 'soft-landing': [action: string] }
 ```
 - 琥珀色边框；文案「这条会用掉提示额度 0.5（你已用 0.5 / 2），剩余 1。」（剩余 = 预算上限 − 已用 − 本条；不传 budget 时只显示成本）。
 - `HintPreview` 字段全部可选（契约无 required）：blocked preview 只有 `{ allowed:false, reason, waitSec }`，此时**只渲染原因行**（无标题/成本），`fmt` 对 undefined 不崩；`revealAfter` 是领取后的累计透露量，不是秒数。
-- 不能领取时显示原因并置灰「领取」；dwell 倒计时到 0 emit `retry`（也可手动「重新获取预览」）；`softLanding` 渲染成四个出路按钮（`flag_teacher` 后端未实现，置灰并注「即将上线」）。
+- 不能领取时显示原因并置灰「领取」；dwell 倒计时到 0 emit `retry`（也可手动「重新获取预览」）；`softLanding` 渲染成四个出路按钮（都可点，见 `useHelp` 的 exits）。
 
-### `<EditorSheet>`（#12/#15 整合，层内编辑）
-```ts
-props: {
-  open: boolean
-  lineNo: number
-  initialStatement?: string
-  initialJustification?: string
-  busy?: boolean
-}
-emits: {
-  'update:open': [v: boolean]
-  submit: [{
-    statement: string
-    justification: string
-    input: InputMeta                 // { provenance, draftId, recogId?, pasteChars? }（openapi.yaml InputMeta）
-    justificationInput?: InputMeta   // 依据非空时必带：独立 provenance/draftId（03 §1）
-  }]
-  'request-recognition': []    // 交给父级接 mock 识别
-}
-```
-- 手机（<600px）：底部升起弹层；**平板/桌面（≥600px）：居中对话框卡片**，不做稿纸内联展开（2026-11-03 PR #90 复审路线 ②，已写进 02 §4.4）。
-- `draftId` 生命周期：打开编辑器时「这一行」「依据」各生成一次（两个独立 id），打开期间的重试/超时重发复用；重新打开才换新 id。不要在每次 submit 里重新生成（会破坏 #19 幂等；PR #90 复审第 2 条）。
-- 「这一行」默认手写/键盘，「依据」默认键盘（02 §4.4）；依据可空。
-- 本轮输入区是 textarea + 常用符号条；#13 的 `<MathTextEditor>`/`<ProofKeyboard>` 落地后替换输入区，提交契约不变。
-- 模态：`role="dialog"` + `aria-modal` + Esc 关闭 + 关闭后焦点归还；输入框有 aria-label（a11y 建议）。
+### `practice/Composer.vue` + `composables/practice/useComposer.ts`（写下一行的唯一入口）
+- 第 3 层只有一个入口「写下一行」。弹一个面板，手写 / 键盘 / 拍照分段切换，默认值来自 `settings.default_input`；切分段不丢内容。行内改写用同一个面板。
+- 手机（<600px）：底部弹层；平板/桌面：居中对话框。`role="dialog"` + `aria-modal` + Esc 关闭。
+- `draftId` 生命周期：打开时「这一行」「依据」各生成一次（两个独立 id），打开期间的重试/超时重发复用；重新打开才换新 id。不要在每次提交里重新生成（会破坏 #19 幂等；PR #90 复审第 2 条）。
+- 键盘：`MathField`（`MathTextEditor` + `ProofKeyboard` + 实时预览）。依据可空，有候选也能自由写。
+- 拍照识别失败或超时（`practice/recognitionFailure.ts`，上限 25 秒）：一句说明 + 一键切手写/键盘 + 再试一次；不显示原始报错，写过的内容不动，拍照分段不隐藏。
+
+### 做题页其余屏幕（`practice/`）
+- `pages/practice/index.vue` 只做编排（<400 行）；逻辑在 `composables/practice/use*.ts`。
+- `TopBar`：关闭 + 连续进度条 + 求助灯泡。`StemPeek`：题面收成一行。`BudgetBar`：关键步骤 y/n + 提示额度。
+- `PracticeFeedback` + `feedback.ts`：提交后的面板，只比较前后两份服务端 state，不读学生内容。测验模式不出现。
+- `LayerInterstitial`：层间过场。测验模式跳过。
+- `CompletionScreen`：全屏庆祝；经验/连胜/徽章来自 `rewards`，步骤来自 `completion`。
+- `ReviewSheet`：完成页的「看讲评」（`GET /attempts/{id}/review`），只在 `completion.reviewAvailable` 时有入口。
+- `LayerSheet` + `ReviewingBar`：点已完成的层走 `POST /layers/{layer}/enter` 回去看，回看时只读（没有主按钮和「跳过」），有一键回到正在做的层；`frontierLayer` 只决定显示，能不能去由服务端决定。
+- `useDrafts`：本机 IndexedDB 是主存储；`PUT /attempts/{id}/draft` 最多 15 秒备份一次，切后台和离开页面时各补一次，失败不打断。
+- `TutorBubble` + `tutorTyping.ts`：助教气泡的打字效果，切点不落在公式中间。
+- `PracticeThinking`：请求超过 300 毫秒才出现的小方。失败走 `guarded()`（`useAttemptSession`）：带「重试」的轻提示，不会空白。
 
 ## apps/student/src/components/ui（设计系统）
 

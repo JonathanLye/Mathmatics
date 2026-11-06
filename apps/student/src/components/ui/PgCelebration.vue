@@ -10,11 +10,12 @@ import { playSfx } from '@/motion/sfx'
 import { vibrate } from '@/motion/haptics'
 import type { MascotExpr } from './icons'
 
-const props = withDefaults(defineProps<{ open: boolean; title?: string; expr?: MascotExpr; confetti?: boolean; size?: number }>(), {
+const props = withDefaults(defineProps<{ open: boolean; title?: string; expr?: MascotExpr; confetti?: boolean; size?: number; quiet?: boolean }>(), {
   title: '',
   expr: 'cheer',
   confetti: true,
   size: 144,
+  quiet: false,
 })
 
 const host = ref<unknown>(null)
@@ -34,6 +35,7 @@ function mountCanvas(): HTMLCanvasElement | null {
 watch(
   () => props.open,
   (open, wasOpen) => {
+    if (open && props.quiet) return
     if (open) {
       void nextTick(() => {
         if (props.confetti) void fireConfetti(mountCanvas())
@@ -55,7 +57,7 @@ onBeforeUnmount(() => clearConfetti(canvas))
     <view v-if="open" class="pg-celebrate" role="dialog" aria-modal="true" :aria-label="title" data-testid="celebration">
       <view ref="host" class="pg-celebrate__canvas" aria-hidden="true" />
       <view class="pg-celebrate__body">
-        <PgMascot :expr="expr" motion="cheer" :size="size" />
+        <PgMascot :expr="expr" :motion="quiet ? null : 'cheer'" :size="size" />
         <text v-if="title" class="pg-celebrate__title">{{ title }}</text>
         <slot />
         <view v-if="$slots.actions" class="pg-celebrate__actions"><slot name="actions" /></view>
@@ -70,7 +72,7 @@ onBeforeUnmount(() => clearConfetti(canvas))
   inset: 0;
   z-index: 88;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: calc(var(--safe-top) + var(--sp-6)) var(--sp-6) calc(var(--safe-bottom) + var(--sp-6));
   background: var(--paper);
@@ -85,11 +87,13 @@ onBeforeUnmount(() => clearConfetti(canvas))
   gap: var(--sp-3);
   width: 100%;
   max-width: var(--form-max);
+  /* 内容比屏幕矮时居中；比屏幕高时从顶部开始滚，不会被切掉。 */
+  margin: auto 0;
   color: var(--ink);
   text-align: center;
 }
 .pg-celebrate__title { font-size: var(--fs-28); font-weight: var(--fw-black); line-height: var(--lh-tight); }
-.pg-celebrate__actions { display: flex; flex-direction: column; gap: var(--sp-3); width: 100%; margin-top: var(--sp-4); }
+.pg-celebrate__actions { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; margin-top: var(--sp-3); }
 .pg-celebrate-enter-active { transition: opacity var(--dur-base) ease-out; }
 .pg-celebrate-enter-active .pg-celebrate__body { transition: transform var(--dur-slow) var(--ease-spring); }
 .pg-celebrate-leave-active { transition: opacity var(--dur-base) ease-in; }

@@ -2059,6 +2059,7 @@ components:
         conceptId: { type: string }
         submissions: { type: integer }
         last: { $ref: '#/components/schemas/MathText' }
+        feedback: { $ref: '#/components/schemas/MathText', description: 最近一次核对没通过时缺的那一个成分（或顺序追问），一次只说一件事；通过或离开本层后不再下发 }
         lessonSuggested: { type: boolean, description: 两次未过时为 true，界面主动展开"分步讲解" }
         lessonAvailable: { type: boolean, description: 概念缺失或没有微课步骤时为 false，界面隐藏微课入口（GET lesson 对缺失概念是 404） }
     FrameView:
@@ -2067,6 +2068,7 @@ components:
         task: { $ref: '#/components/schemas/MathText' }
         lessonId: { type: string }
         last: { $ref: '#/components/schemas/MathText' }
+        feedback: { $ref: '#/components/schemas/MathText', description: 最近一次核对没通过时缺的那一部分骨架；通过或离开本层后不再下发 }
         templateShown: { type: boolean }
         template: { oneOf: [{ $ref: '#/components/schemas/MathText' }, { type: 'null' }] }
     StepsView:

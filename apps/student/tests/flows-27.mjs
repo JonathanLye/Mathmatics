@@ -267,11 +267,11 @@ async function main() {
     }
     const offlineText = await page.getByTestId('offline-bar').innerText()
     check('断网后出现离线提示条（提示已保存本机 + 重试）', offlineText.includes('网络断开') && offlineText.includes('已保存在本机'), offlineText)
-    check('离线提示条不覆盖 44px 操作区（不悬浮在 BottomDock 上）', await page.evaluate(() => {
+    check('离线提示条不覆盖 44px 操作区（不悬浮在主按钮上）', await page.evaluate(() => {
       const bar = document.querySelector('[data-testid="offline-bar"]')
-      const dock = document.querySelector('.pg-practice__dockwrap')
-      if (!bar || !dock) return true
-      return bar.getBoundingClientRect().bottom <= dock.getBoundingClientRect().top + 1
+      const action = document.querySelector('.pg-pin')
+      if (!bar || !action) return false
+      return bar.getBoundingClientRect().bottom <= action.getBoundingClientRect().top + 1
     }))
     await page.screenshot({ path: path.join(outDir, '4-offline.png'), fullPage: true })
 
@@ -298,6 +298,8 @@ async function main() {
     await page.waitForSelector('.pg-lines__add', { state: 'visible', timeout: 10000 })
     await page.locator('.pg-lines__add').click()
     await waitTestId(page, 'editor-sheet')
+    // 输入器默认手写（来自设置），这里要打字，先切到键盘。
+    await tap(page, 'composer-tab-keyboard', '键盘')
 
     const statement = '第 3 行：$|a_n-3|=\\frac{5}{n+2}$（L3 草稿测试）'
     const justification = '通分整理'
@@ -314,6 +316,7 @@ async function main() {
     check('L3 reload 后提示恢复草稿', (await bodyText(page)).includes('已恢复上次未提交的草稿'))
     await page.locator('.pg-lines__add').click()
     await waitTestId(page, 'editor-sheet')
+    await tap(page, 'composer-tab-keyboard', '键盘')
     const restoredStatement = await page.getByTestId('editor-statement').locator('textarea').inputValue()
     const restoredJustification = await page.getByTestId('editor-justification').locator('textarea').inputValue()
     check('L3 reload 后结论/依据都恢复', restoredStatement.trim() === statement.trim() && restoredJustification.trim() === justification.trim(), restoredStatement.slice(0, 30))

@@ -344,7 +344,7 @@ async function main() {
       await gotoApp(page, base, 'pages/practice/index?assignmentId=' + ASSIGNMENT_ID + '&api=real')
       await page.waitForSelector('.pg-practice', { state: 'visible', timeout: 12000 })
       await waitTestId(page, 'layer1-form')
-      check('真实模式用 ?assignmentId= 开始作答（POST /attempt 返回 L1 state）', (await bodyText(page)).includes('第 1 层'))
+      check('真实模式用 ?assignmentId= 开始作答（POST /attempt 返回 L1 state）', (await bodyText(page)).includes('回忆定义'))
       await page.getByTestId('layer1-input').locator('textarea').fill('任取 ε>0，存在 N，当 n>N 时 |a_n-A|<ε。')
       await page.waitForFunction(() => {
         const el = document.querySelector('[data-testid="layer1-check"]')
@@ -353,8 +353,10 @@ async function main() {
       await page.screenshot({ path: path.join(outDir, '6-weaknet-l1.png'), fullPage: true })
 
       await tap(page, 'layer1-check', '核对（提交定义，首次 500）')
+      await waitTestId(page, 'layer-interstitial', 15000)
+      await tap(page, 'interstitial-continue', '过场·继续')
       await waitTestId(page, 'layer2-form', 15000)
-      check('弱网写请求：首次 500 自动重试成功，页面进入第 2 层（进度不丢）', (await bodyText(page)).includes('第 2 层'))
+      check('弱网写请求：首次 500 自动重试成功，页面进入第 2 层（进度不丢）', (await bodyText(page)).includes('搭骨架'))
       check('重试幂等：2 次写请求使用同一 Idempotency-Key', definitionAttempts === 2 && Boolean(writeHeaders[0]?.['idempotency-key']) && writeHeaders[0]?.['idempotency-key'] === writeHeaders[1]?.['idempotency-key'], JSON.stringify(writeHeaders.map((h) => h['idempotency-key'])))
       check('If-Match = 当前 stateVersion（7），重试时未丢版本', writeHeaders[0]?.['if-match'] === '7' && writeHeaders[1]?.['if-match'] === '7', JSON.stringify(writeHeaders.map((h) => h['if-match'])))
       check('390 宽弱网做题页无横向溢出', await page.evaluate(() => {
@@ -367,12 +369,49 @@ async function main() {
     }
   }
 
+  const scenarioPracticeLoadError = async () => {
+    // 真实模式打开做题页：先骨架；加载失败是错误屏（重试 / 回首页），不停在演示数据上。
+    const { context, page } = await newPage()
+    let attemptRequests = 0
+    try {
+      await page.route('**/api/v1/**', (route) => {
+        const pathname = new URL(route.request().url()).pathname
+        if (pathname.endsWith('/attempts/' + L1_STATE.attemptId)) {
+          attemptRequests += 1
+          if (attemptRequests === 1) return route.fulfill(jsonResponse({ error: { code: 'NOT_FOUND', message: '找不到这次作答' } }, 404))
+          return route.fulfill(jsonResponse({ state: L1_STATE }))
+        }
+        if (pathname.endsWith('/me')) return route.fulfill(jsonResponse(ME))
+        return route.fulfill(jsonResponse({ error: { code: 'NOT_FOUND', message: 'no route' } }, 404))
+      })
+      await gotoApp(page, base, 'pages/practice/index?attemptId=' + L1_STATE.attemptId + '&api=real')
+      await waitTestId(page, 'practice-load-error')
+      const text = await bodyText(page)
+      check('加载失败显示错误屏和服务端文案', text.includes('这道题没打开') && text.includes('找不到这次作答'))
+      check('错误屏没有演示数据', !text.includes('数列极限') && (await countTestId(page, 'layer1-form')) === 0)
+      await page.screenshot({ path: path.join(outDir, '8-practice-load-error.png'), fullPage: true })
+      await tap(page, 'practice-load-retry', '再试一次')
+      await waitTestId(page, 'layer1-form')
+      check('「再试一次」用同一份参数加载成功', attemptRequests === 2 && (await countTestId(page, 'practice-load-error')) === 0)
+
+      await gotoApp(page, base, 'pages/practice/index?api=real')
+      await waitTestId(page, 'practice-load-error')
+      check('真实模式没有作答 id：错误屏，不渲染演示数据', (await bodyText(page)).includes('没有找到要做的题') && (await countTestId(page, 'layer1-form')) === 0)
+      await tap(page, 'practice-load-home', '回首页')
+      await page.waitForFunction(() => window.location.hash.includes('pages/home/index'), undefined, { timeout: 8000 })
+      check('错误屏「回首页」能回到首页', true)
+    } finally {
+      await context.close()
+    }
+  }
+
   try {
     for (const [name, scenario] of [
       ['mock 首页（三段/禁用/讲评/进入做题）', scenarioMockHome],
       ['弱网首页：自动重试', scenarioHomeAutoRetry],
       ['弱网首页：手动重试', scenarioHomeManualRetry],
       ['弱网写请求自动重试（L1 定义提交→L2，首次 500 后成功）', scenarioWeakNetWriteRetry],
+      ['打开做题页失败：错误屏、重试、回首页', scenarioPracticeLoadError],
     ]) {
       try {
         await scenario()

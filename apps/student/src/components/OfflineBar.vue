@@ -4,7 +4,7 @@
  * - 断网：顶部细条「网络断开，你写的内容已保存在本机，恢复后自动同步」；
  * - 恢复：短暂提示「网络已恢复，正在同步…」；
  * - 重试中：重试按钮变「正在重试…」（由父组件传入 retrying / @retry 触发 flush）。
- * 采用正常文档流 + sticky（不覆盖 44px 操作区/BottomDock）。
+ * 采用正常文档流 + sticky（不覆盖 44px 操作区）。
  */
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useNetwork } from '@/composables/useNetwork'
