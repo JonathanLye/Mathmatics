@@ -41,6 +41,7 @@ import { SELFCHECK_ADAPTIVE_CONFIG } from '@/components/selfcheck/adaptView'
 import { COPY, layerLabel, studentName } from '@/copy'
 import {
   mockListPractice,
+  mockPathNotebookCards,
   mockRandomPractice,
   mockReveal,
   mockReview,
@@ -1695,7 +1696,8 @@ export async function completeTransferParent(parent: AttemptState): Promise<Atte
 export async function fetchNotebook(): Promise<NotebookView> {
   if (!USE_MOCK) return activeHttp.get<NotebookView>('/student/notebook')
   await sleep()
-  return clone(mockNotebook)
+  const book = clone(mockNotebook)
+  return { ...book, cards: [...book.cards, ...clone(mockPathNotebookCards())] }
 }
 
 /** mock 错题本：与真实 GET /student/mistakes 同形。 */

@@ -33,6 +33,7 @@ function go(key: TabKey): void {
       @tap="go(item.key)"
       @keydown.enter.prevent="go(item.key)"
     >
+      <view v-if="item.anchorTestid" class="pg-tabbar__anchor" :data-testid="item.anchorTestid" aria-hidden="true" />
       <PgIcon :name="item.icon" :size="26" />
       <text class="pg-tabbar__label">{{ item.label }}</text>
     </view>
@@ -56,6 +57,7 @@ function go(key: TabKey): void {
 }
 .pg-tabbar__brand { display: none; }
 .pg-tabbar__item {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 52px;
@@ -73,6 +75,7 @@ function go(key: TabKey): void {
   transition: transform var(--dur-base) var(--ease-spring);
 }
 .pg-tabbar__item:active { transform: scale(0.95); }
+.pg-tabbar__anchor { position: absolute; inset: 0; border-radius: inherit; }
 .pg-tabbar__label { font-size: var(--fs-12); font-weight: var(--fw-black); line-height: 1; white-space: nowrap; }
 .pg-tabbar__item--on {
   border-color: var(--accent);

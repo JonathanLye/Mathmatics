@@ -80,3 +80,5 @@ export function noteWhoLabel(who: string | null | undefined): string {
 export function consentVersionLabel(version: string | null | undefined): string {
   return String(version ?? '').replace(/^p\d+-/i, '')
 }
+
+export * from './pages'

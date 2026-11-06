@@ -2,7 +2,7 @@
  * 学习路径与练习区的 mock 后端：按服务端同一套规则（单元 60% 开放下一单元、软锁、难度档、分面、游标分页、
  * 查看解答分级）从 pathBank 算出响应。只在 mock 模式用；真实模式的规则都在服务端。
  */
-import type { AssignmentCardView } from '@/types/attempt'
+import type { AssignmentCardView, NotebookCard } from '@/types/attempt'
 import type {
   NodeState,
   PathChapter,
@@ -17,6 +17,7 @@ import type {
   SolutionLevel,
   StudentPath,
 } from '@/types/path'
+import { mockNotebook } from './laterLayers'
 import { BANK, MOCK_COURSE, UNITS, bandOf, type BankProblem } from './pathBank'
 
 interface Progress {
@@ -44,7 +45,19 @@ function mockAttemptId(store: Store): string {
   return `00000000-0000-4000-9000-${String(store.counter).padStart(12, '0')}`
 }
 
-let store = freshStore()
+/**
+ * 演示构建（build:mock）里像一位学到一半的同学：前两个单元写完，第三个单元写到第三道。
+ * 单元测试不走这里（没有 VITE_ENABLE_MOCK），还是上面那份最小种子。
+ */
+function demoStore(): Store {
+  const seeded = freshStore()
+  for (const id of ['sup-1', 'sup-2', 'sup-3', 'fn-1', 'fn-2', 'fn-3']) {
+    seeded.progress.set(id, { state: 'done', attemptId: mockAttemptId(seeded), layersDone: 6 })
+  }
+  return seeded
+}
+
+let store = import.meta.env?.VITE_ENABLE_MOCK === '1' ? demoStore() : freshStore()
 
 /** 测试隔离。 */
 export function __resetPathMockForTests(): void {
@@ -261,6 +274,55 @@ export function problemForAttempt(attemptId: string): BankProblem | undefined {
   return undefined
 }
 
+/** 路径上做完的题也进证明本：回看时能打开。 */
+export function mockPathNotebookCards(): NotebookCard[] {
+  const cards: NotebookCard[] = []
+  let days = 3
+  for (const [id, progress] of store.progress) {
+    if (progress.state !== 'done') continue
+    const problem = problemOf(id)
+    if (!problem) continue
+    days += 1
+    cards.push({
+      attemptId: progress.attemptId,
+      problemId: problem.id,
+      problemVersion: 1,
+      kind: 'main',
+      title: problem.title,
+      chapter: UNITS[problem.unit]?.chapter,
+      proof: splitProof(problem.solution.referenceProof),
+      lines: splitProof(problem.solution.referenceProof).map((statement, i) => ({ n: i + 1, statement })),
+      summary: [problem.solution.approach],
+      weakPoints: problem.solution.pitfalls.slice(0, 1),
+      independence: 0.9,
+      revealUsed: 0,
+      keysTotal: problem.keyCount,
+      redoRecommended: false,
+      reviewPublished: false,
+      canRedo: true,
+      completedAt: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
+    })
+  }
+  return cards
+}
+
+/** 按句号拆行，不拆公式里的标点。 */
+function splitProof(text: string): string[] {
+  const out: string[] = []
+  let buffer = ''
+  let inMath = false
+  for (const ch of text) {
+    if (ch === '$') inMath = !inMath
+    buffer += ch
+    if (!inMath && ch === '。') {
+      out.push(buffer)
+      buffer = ''
+    }
+  }
+  if (buffer.trim()) out.push(buffer)
+  return out
+}
+
 function solutionOf(problem: BankProblem): PracticeSolution {
   const level: SolutionLevel = stateOf(problem.id) === 'done' ? 'full' : (store.reveals.get(problem.id) ?? 'none')
   const dto: PracticeSolution = {
@@ -298,6 +360,10 @@ export function mockReveal(problemId: string, level: 'approach' | 'full'): Pract
 }
 
 export function mockReview(attemptId: string): PublishedReview {
+  const seeded = mockNotebook.cards.find((card) => card.attemptId === attemptId)
+  if (seeded?.reviewPublished) {
+    return { proofs: seeded.proof ?? [], note: seeded.teacherNote }
+  }
   const problem = problemForAttempt(attemptId)
   if (!problem || stateOf(problem.id) !== 'done') {
     throw Object.assign(new Error('讲评现在还不能看'), { status: 403, code: 'FORBIDDEN' })

@@ -1,16 +1,29 @@
 <script setup lang="ts">
 /**
- * 外壳：手机底部四栏；平板图标侧栏；桌面左侧栏 + 600px 主列 + 右栏（#rail 插槽）。
- * 形态全靠 CSS，首帧就是对的，不等 JS 量宽度。
+ * 外壳：手机底部五栏；平板图标侧栏；桌面左侧栏 + 600px 主列 + 右栏。
+ * 形态全靠 CSS，首帧就是对的，不等 JS 量宽度。右栏默认是学习进度（ProgressRail），只在桌面挂载，手机不多发请求；页面也可以用 #rail 换掉。
  * 做题页不用这个外壳：它隐藏标签栏，顶部是进度条。
  */
+import { computed, onMounted, useSlots } from 'vue'
 import OfflineBar from '@/components/OfflineBar.vue'
+import ProgressRail from '@/components/ProgressRail.vue'
 import WechatHint from '@/components/WechatHint.vue'
 import PgTabBar from '@/components/ui/PgTabBar.vue'
 import type { TabKey } from '@/components/ui/uiLogic'
+import { ensureSettingsLoaded } from '@/composables/useSettingsSync'
+import { useViewport } from '@/composables/useViewport'
 import { initIntegrity } from '@/integrity/sdk'
 
 defineProps<{ active: TabKey }>()
+
+const slots = useSlots()
+const { mode } = useViewport()
+const showRail = computed(() => Boolean(slots.rail) || mode.value === 'desktop')
+
+onMounted(() => {
+  // 每次进主标签页都对一下账号里的设置（外观、手感）；同一位同学只拉一次。
+  void ensureSettingsLoaded()
+})
 
 /** 离线条的重试：事件队列立刻补发一次。 */
 async function handleOfflineRetry(): Promise<void> {
@@ -19,14 +32,14 @@ async function handleOfflineRetry(): Promise<void> {
 </script>
 
 <template>
-  <view class="pg-shell" :class="{ 'pg-shell--has-rail': $slots.rail }">
+  <view class="pg-shell" :class="{ 'pg-shell--has-rail': showRail }">
     <PgTabBar :active="active" />
     <view class="pg-shell__body">
       <OfflineBar class="pg-shell__offline" @retry="handleOfflineRetry" />
       <WechatHint />
       <view class="pg-shell__columns">
         <view class="pg-shell__main pg-enter"><slot /></view>
-        <view v-if="$slots.rail" class="pg-shell__rail"><slot name="rail" /></view>
+        <view v-if="showRail" class="pg-shell__rail"><slot name="rail"><ProgressRail /></slot></view>
       </view>
     </view>
   </view>
