@@ -3,11 +3,14 @@
  * 五个主标签。同一份结构靠媒体查询换形态：手机底部栏、平板图标侧栏、桌面左侧栏（带品牌）。
  * 只渲染一份，testid 不会重复；切换用 reLaunch，标签之间不堆页面栈。
  */
+import { useFeedbackBox } from '@/feedbackbox/store'
 import PgIcon from './PgIcon.vue'
 import PgMascot from './PgMascot.vue'
 import { TAB_ITEMS, tabTarget, type TabKey } from './uiLogic'
 
 const props = defineProps<{ active?: TabKey | null }>()
+// 信箱里有新回复时，「我的」标签上亮一个小圆点（金色，不用红；15 §7）。
+const { hasUnread } = useFeedbackBox()
 
 function go(key: TabKey): void {
   const url = tabTarget(props.active, key)
@@ -35,6 +38,7 @@ function go(key: TabKey): void {
     >
       <view v-if="item.anchorTestid" class="pg-tabbar__anchor" :data-testid="item.anchorTestid" aria-hidden="true" />
       <PgIcon :name="item.icon" :size="26" />
+      <view v-if="item.key === 'me' && hasUnread" class="pg-tabbar__dot" data-testid="tab-me-dot" aria-label="有新回复" />
       <text class="pg-tabbar__label">{{ item.label }}</text>
     </view>
   </view>
@@ -75,6 +79,7 @@ function go(key: TabKey): void {
   transition: transform var(--dur-base) var(--ease-spring);
 }
 .pg-tabbar__item:active { transform: scale(0.95); }
+.pg-tabbar__dot { position: absolute; top: 4px; left: calc(50% + 8px); width: 12px; height: 12px; border: var(--bw) solid var(--paper); border-radius: 50%; background: var(--bee); animation: pg-pop var(--dur-base) var(--ease-spring) both; }
 .pg-tabbar__anchor { position: absolute; inset: 0; border-radius: inherit; }
 .pg-tabbar__label { font-size: var(--fs-12); font-weight: var(--fw-black); line-height: 1; white-space: nowrap; }
 .pg-tabbar__item--on {

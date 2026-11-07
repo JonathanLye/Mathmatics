@@ -14,6 +14,12 @@ export type ExportJob = components['schemas']['ExportJob'];
 export type RosterEntry = components['schemas']['RosterEntry'];
 export type SelfStudyView = components['schemas']['SelfStudyView'];
 export type ProblemListItem = components['schemas']['ProblemListItem'];
+export type FeedbackInboxItem = components['schemas']['FeedbackInboxItem'];
+export type FeedbackInboxDetail = components['schemas']['FeedbackInboxDetail'];
+export type FeedbackContext = components['schemas']['FeedbackContext'];
+export type FeedbackStatus = components['schemas']['FeedbackStatus'];
+export type FeedbackCategory = components['schemas']['FeedbackCategory'];
+export type FeedbackCloseReason = components['schemas']['FeedbackCloseReason'];
 
 // 名单导入结果（openapi 里的内联响应，不是命名 schema）
 export interface RosterImportResult {

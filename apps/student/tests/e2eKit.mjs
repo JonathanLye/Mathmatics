@@ -104,7 +104,7 @@ export async function routeApi(page, handlers = {}) {
     const request = route.request()
     const pathname = new URL(request.url()).pathname
     const method = request.method()
-    calls.push({ method, pathname, url: request.url(), postData: request.postData() })
+    calls.push({ method, pathname, url: request.url(), postData: request.postData(), headers: request.headers() })
     const merged = { ...defaults, ...handlers }
     const key = Object.keys(merged).find((k) => {
       const [m, suffix] = k.split(' ')

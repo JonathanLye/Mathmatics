@@ -10,6 +10,8 @@ export const router = createRouter({
     { path: '/classes', name: 'classes', component: () => import('./pages/ClassesPage.vue') },
     { path: '/classes/:classId', name: 'class-detail', component: () => import('./pages/ClassDetailPage.vue') },
     { path: '/problems', name: 'problems', component: () => import('./pages/ProblemsPage.vue') },
+    // 反馈收件箱只给开发者（admin 角色）；普通教师没有入口，直接访问也会被送回班级页。
+    { path: '/feedback', name: 'feedback', component: () => import('./pages/FeedbackPage.vue'), meta: { adminOnly: true } },
     { path: '/settings', name: 'settings', component: () => import('./pages/SettingsPage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/classes' },
   ],
@@ -24,6 +26,9 @@ router.beforeEach(async (to) => {
   }
   if (session.me.role !== 'teacher' && session.me.role !== 'admin') {
     return { name: 'login' };
+  }
+  if (to.meta.adminOnly === true && session.me.role !== 'admin') {
+    return { name: 'classes' };
   }
   return true;
 });

@@ -2,7 +2,9 @@ import { createApp as createVueApp, createSSRApp } from 'vue'
 import App from './App.vue'
 import { hashMirrorRedirect } from './components/mirror/mirrorRoute'
 import PgToast from './components/ui/PgToast.vue'
+import { setApiObserver } from './api/http'
 import { installGlobalErrorHandler } from './errorBoundary'
+import { installProbe, recordApi } from './feedbackbox/probe'
 import 'katex/dist/katex.min.css'
 import './styles/tokens.css'
 import './styles/base.css'
@@ -32,6 +34,9 @@ redirectMirrorPathToHash()
 export function createApp() {
   const app = createSSRApp(App)
   installGlobalErrorHandler(app)
+  // 小方信箱的探针：最近的小错误、最近的操作只在内存里滚动，学生点「送出去」时才会随反馈带上（15 §4）。
+  setApiObserver(recordApi)
+  installProbe()
   mountToastHost()
   return { app }
 }

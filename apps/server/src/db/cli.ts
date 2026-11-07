@@ -51,15 +51,16 @@ async function main(): Promise<void> {
       const username = rest[0]?.trim() ?? '';
       const password = process.env.TEACHER_PASSWORD ?? '';
       if (username === '' || password === '') {
-        throw new Error('用法：TEACHER_PASSWORD=… node apps/server/src/db/cli.ts create-teacher <用户名> [--totp]');
+        throw new Error('用法：TEACHER_PASSWORD=… node apps/server/src/db/cli.ts create-teacher <用户名> [--totp] [--admin]');
       }
       const enableTotp = rest.includes('--totp');
+      const role = rest.includes('--admin') ? ('admin' as const) : ('teacher' as const);
       // 动态导入：只有 create-teacher 需要 argon2 原生模块，其它 db:* 命令不加载它。
       const { createTeacherAccount } = await import('../auth/teacher-login.ts');
       const { loadConfig } = await import('../config.ts');
       const config = loadConfig();
-      const created = await createTeacherAccount(db, { username, password, enableTotp, piiKey: config.piiKey });
-      console.log(`已创建教师账号：${username}`);
+      const created = await createTeacherAccount(db, { username, password, enableTotp, piiKey: config.piiKey, role });
+      console.log(`已创建${role === 'admin' ? '管理员（开发者）' : '教师'}账号：${username}`);
       if (created.totpSecret !== undefined) {
         // 只显示一次；不写日志/文件。录入验证器 App（Google Authenticator / 1Password 等）。
         console.log(`TOTP secret（只显示一次，请立即录入验证器）：${created.totpSecret}`);

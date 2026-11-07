@@ -49,6 +49,8 @@ import { useViewport } from '@/composables/useViewport'
 import { ageGatePassed, enforceAgeGate } from '@/auth/ageGuard'
 import { initIntegrity } from '@/integrity/sdk'
 import { setFeedbackTestMode } from '@/motion/useFeedbackPrefs'
+import FeedbackHost from '@/feedbackbox/FeedbackHost.vue'
+import { clearProbeContext, setProbeContext } from '@/feedbackbox/probe'
 import type { MockKey } from '@/mocks/attemptStates'
 
 const { mode } = useViewport()
@@ -92,7 +94,10 @@ watch(
   (attemptMode) => setFeedbackTestMode(attemptMode === 'test'),
   { immediate: true },
 )
-onUnmounted(() => setFeedbackTestMode(false))
+onUnmounted(() => {
+  setFeedbackTestMode(false)
+  clearProbeContext()
+})
 
 // #27：事件归属随作答/切层/状态更新
 const integrity = initIntegrity()
@@ -103,9 +108,17 @@ function syncIntegrityContext(): void {
     mode: state.value.mode,
     problemId: state.value.problem.problemId,
   })
+  // 小方信箱的探针也要知道「现在在哪道题、哪一层、做到第几步」（只记编号，不记内容；15 §4）。
+  setProbeContext({
+    attemptId: state.value.attemptId,
+    layer: state.value.currentLayer ?? undefined,
+    mode: state.value.mode,
+    problemId: state.value.problem.problemId,
+    stepNo: lines.value.length,
+  })
 }
 syncIntegrityContext()
-watch([() => state.value.attemptId, currentLayer, () => state.value.mode, () => state.value.status], syncIntegrityContext)
+watch([() => state.value.attemptId, currentLayer, () => state.value.mode, () => state.value.status, () => lines.value.length], syncIntegrityContext)
 
 async function handleOfflineRetry(): Promise<void> {
   offlineRetrying.value = true
@@ -340,6 +353,9 @@ function onSwitchMock(k: MockKey) {
     <MockSwitcher v-if="mockEnabled && !realMode" :model-value="mockKey" @update:model-value="onSwitchMock" />
 
     <ExamOverlays :exam="examView" :completed="isCompleted" />
+
+    <!-- 小方信箱：做题页缩成小标；考试模式整个隐藏（15 §6、11 §5.2） -->
+    <FeedbackHost :test-mode="state.mode === 'test'" />
   </view>
 </template>
 

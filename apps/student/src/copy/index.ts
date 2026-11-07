@@ -102,3 +102,4 @@ export function consentVersionLabel(version: string | null | undefined): string 
 }
 
 export * from './pages'
+export * from './feedbackbox'

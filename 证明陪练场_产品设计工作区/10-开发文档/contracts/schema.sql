@@ -700,15 +700,44 @@ CREATE TABLE app.student_badges (
   PRIMARY KEY (user_id, badge_id)
 );
 
+-- 反馈信箱（15-反馈与信箱.md）：学生提交 → 开发者分类/回复/结单 → 学生在信箱里看到。
+CREATE SEQUENCE app.student_feedback_ref_seq;
 CREATE TABLE app.student_feedback (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES app.users(id),
   kind        text NOT NULL CHECK (kind IN ('bug', 'idea', 'content', 'other')),
   body        text NOT NULL,
   page        text,
-  created_at  timestamptz NOT NULL DEFAULT now()
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  ref_no      integer NOT NULL DEFAULT nextval('app.student_feedback_ref_seq'),   -- 学生看到的编号 #0042
+  status      text NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'open', 'need_info', 'resolved', 'closed')),
+  category    text CHECK (category IS NULL OR category IN ('bug', 'display', 'content', 'suggestion', 'question', 'other')),   -- 开发者分类
+  area        text,                                                              -- 页面区域，服务端由 context.route 推导，开发者可改
+  context     jsonb NOT NULL DEFAULT '{}'::jsonb,                                -- 探针上下文（白名单键、≤16KB；不含作答正文）
+  student_unread boolean NOT NULL DEFAULT false,
+  dev_unread  boolean NOT NULL DEFAULT true,
+  student_event text CHECK (student_event IS NULL OR student_event IN ('confirmed', 'resolved')),   -- 学生下次打开时播放的庆祝，读后清空
+  last_activity_at timestamptz NOT NULL DEFAULT now(),
+  confirmed_at timestamptz,                                                      -- 开发者确认复现（发「捉虫小能手」）
+  resolved_at timestamptz,
+  closed_at   timestamptz,
+  close_reason text CHECK (close_reason IS NULL OR close_reason IN ('fixed', 'duplicate', 'wontfix', 'no_repro')),
+  resolution_note text
 );
 CREATE INDEX student_feedback_created ON app.student_feedback (created_at DESC);
+CREATE UNIQUE INDEX student_feedback_ref_no ON app.student_feedback (ref_no);
+CREATE INDEX student_feedback_user_activity ON app.student_feedback (user_id, last_activity_at DESC);
+CREATE INDEX student_feedback_status_activity ON app.student_feedback (status, last_activity_at DESC);
+
+CREATE TABLE app.feedback_messages (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  feedback_id  uuid NOT NULL REFERENCES app.student_feedback(id) ON DELETE CASCADE,
+  author_role  text NOT NULL CHECK (author_role IN ('student', 'dev')),
+  author_id    uuid NOT NULL REFERENCES app.users(id),
+  body         text NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX feedback_messages_thread ON app.feedback_messages (feedback_id, created_at);
 
 -- =====================================================================
 -- 8. 只追加事件（按月分区）

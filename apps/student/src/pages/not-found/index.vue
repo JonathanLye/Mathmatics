@@ -6,6 +6,7 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import PgEmpty from '@/components/ui/PgEmpty.vue'
+import FeedbackHost from '@/feedbackbox/FeedbackHost.vue'
 import { retryRoute } from '@/components/ui/uiLogic'
 
 const crashed = ref(false)
@@ -28,6 +29,8 @@ function go(): void {
 <template>
   <view class="pg-page pg-lost" data-testid="not-found-page">
     <PgEmpty :title="title" :body="body" expr="oops" :motion="null" :size="128" :action="action" action-testid="not-found-action" @action="go" />
+    <!-- 页面崩了的时候最该能反馈：这里也挂小方入口 -->
+    <FeedbackHost />
   </view>
 </template>
 

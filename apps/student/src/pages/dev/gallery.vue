@@ -24,6 +24,11 @@ import PgSheet from '@/components/ui/PgSheet.vue'
 import PgSkeleton from '@/components/ui/PgSkeleton.vue'
 import PgStatChip from '@/components/ui/PgStatChip.vue'
 import PgSwitch from '@/components/ui/PgSwitch.vue'
+import TagChip from '@/components/TagChip.vue'
+import PgIcon from '@/components/ui/PgIcon.vue'
+import { FBBOX_COPY, FBBOX_STATUS_LABEL } from '@/copy/feedbackbox'
+import { statusToneOf } from '@/feedbackbox/logic'
+import type { FeedbackStatus } from '@/types/feedbackbox'
 import { MASCOT_EXPRESSIONS } from '@/components/ui/icons'
 import { useToast } from '@/components/ui/useToast'
 import type { ButtonVariant, MascotMotion, SegmentState } from '@/components/ui/uiLogic'
@@ -44,6 +49,8 @@ const steps = computed<SegmentState[]>(() => SEGMENTS)
 const sheetOpen = ref(false)
 const dialogOpen = ref(false)
 const celebrating = ref(false)
+const bugCelebrating = ref(false)
+const FB_STATUSES: FeedbackStatus[] = ['new', 'open', 'need_info', 'resolved', 'closed']
 const feedback = ref<'ok' | 'sea' | 'bee' | null>(null)
 const coachOpen = ref(false)
 const coachIndex = ref(0)
@@ -161,6 +168,16 @@ function crash(): never {
     <PgSkeleton variant="block" />
     <PgEmpty title="这里还没有内容" body="写完第一道证明，这里就亮起来了。" action="去做一题" />
 
+    <text class="pg-gallery__h">小方信箱</text>
+    <view class="pg-gallery__row" data-testid="gallery-fb-status">
+      <TagChip v-for="st in FB_STATUSES" :key="st" :tone="statusToneOf(st)">{{ FBBOX_STATUS_LABEL[st] }}</TagChip>
+      <TagChip tone="fox">{{ FBBOX_COPY.confirmedTag }}</TagChip>
+    </view>
+    <PgEmpty :title="FBBOX_COPY.inboxEmptyTitle" :body="FBBOX_COPY.inboxEmptyBody" expr="think" :size="104" />
+    <view class="pg-gallery__row">
+      <PgButton variant="secondary" data-testid="gallery-bug-celebrate" @tap="bugCelebrating = true">抓到虫啦（红色奖章）</PgButton>
+    </view>
+
     <text class="pg-gallery__h">浮层</text>
     <view class="pg-gallery__row">
       <PgButton variant="secondary" data-testid="gallery-open-sheet" @tap="sheetOpen = true">弹层</PgButton>
@@ -186,6 +203,11 @@ function crash(): never {
       <text>4 步里 3 步靠自己</text>
       <template #actions><PgButton block size="lg" @tap="celebrating = false">继续</PgButton></template>
     </PgCelebration>
+    <PgCelebration :open="bugCelebrating" :title="FBBOX_COPY.celebrateConfirmedTitle">
+      <view class="pg-gallery__medal" aria-hidden="true"><PgIcon name="bug" :size="38" /></view>
+      <text>{{ FBBOX_COPY.celebrateConfirmedBody }}</text>
+      <template #actions><PgButton block size="lg" @tap="bugCelebrating = false">{{ FBBOX_COPY.celebrateAction }}</PgButton></template>
+    </PgCelebration>
     <PgFeedbackPanel :open="feedback !== null" :tone="feedback ?? 'ok'" title="答对了" action-text="继续" @action="feedback = null">
       <text>说得很清楚。</text>
     </PgFeedbackPanel>
@@ -199,5 +221,6 @@ function crash(): never {
 .pg-gallery__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .pg-gallery__stack { display: flex; flex-direction: column; gap: var(--sp-3); }
 .pg-gallery__cell { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); }
+.pg-gallery__medal { width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--danger-face); color: var(--on-danger); box-shadow: 0 var(--lip) 0 var(--danger-lip); }
 .pg-gallery__cap { color: var(--ink-2); font-size: var(--fs-12); }
 </style>

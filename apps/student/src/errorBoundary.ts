@@ -7,6 +7,11 @@
 import type { App } from 'vue'
 import { useToast } from '@/components/ui/useToast'
 import { isFatalVueError, retryRoute } from '@/components/ui/uiLogic'
+import { FBBOX_COPY } from '@/copy/feedbackbox'
+import { pageKeyOf } from '@/feedbackbox/logic'
+import { recordError } from '@/feedbackbox/probe'
+import { openFeedbackSheet } from '@/feedbackbox/store'
+import { useSession } from '@/stores/session'
 
 function currentRoute(): string | null {
   if (typeof window === 'undefined') return null
@@ -16,8 +21,16 @@ function currentRoute(): string | null {
 export function installGlobalErrorHandler(app: App): void {
   app.config.errorHandler = (error, _instance, info) => {
     console.error('[pg] 未捕获的错误', info, error)
+    recordError(error, info)
     if (!isFatalVueError(info)) {
-      useToast().show('出了点小问题，再试一次', { tone: 'warn' })
+      // 登录并签了同意书的同学，提示上多一个「告诉小方」，一点就能带着刚才的情况去反馈（15 §6）。
+      const { loggedIn, consented } = useSession()
+      const here = typeof window === 'undefined' ? '' : pageKeyOf(window.location.hash.replace(/^#/, ''))
+      const canReport = loggedIn.value && consented.value && here !== '' && here !== 'practice'
+      useToast().show('出了点小问题，再试一次', {
+        tone: 'warn',
+        ...(canReport ? { action: { label: FBBOX_COPY.toastReport, run: () => openFeedbackSheet({ kind: 'bug' }) } } : {}),
+      })
       return
     }
     const from = currentRoute()

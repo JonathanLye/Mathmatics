@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
@@ -35,6 +37,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       ? { loggerInstance: options.loggerInstance }
       : { logger: options.logger === false ? false : { level: config.logLevel, serializers: { req: requestSerializer } } }),
     trustProxy: config.env === 'production' ? trustNearestProxy : false,
+    // 反馈探针（15 §4）：客户端给每个请求带 X-Request-Id，服务端沿用并写进日志，开发者能把一条反馈和服务端日志对上。
+    // 不合格式的值一律忽略（防日志注入），改用服务端自己生成的。
+    requestIdHeader: false,
+    genReqId: (req) => {
+      const given = req.headers['x-request-id'];
+      return typeof given === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(given) ? given : randomUUID();
+    },
+  });
+  app.addHook('onSend', async (request, reply) => {
+    void reply.header('x-request-id', request.id);
   });
 
   registerErrorHandler(app);

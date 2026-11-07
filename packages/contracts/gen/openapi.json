@@ -913,13 +913,155 @@
           }
         },
         "responses": {
-          "204": {
-            "description": "已收到"
+          "201": {
+            "description": "已收到；返回编号，学生可在信箱里看进度（15 §3）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReceipt"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "我的反馈（信箱列表，按最近动静倒序，最多 50 条）",
+        "operationId": "listMyFeedback",
+        "responses": {
+          "200": {
+            "description": "列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "items",
+                    "unread"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FeedbackListItem"
+                      }
+                    },
+                    "unread": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "有新动静的条数（红点）"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/feedback/{feedbackId}": {
+      "get": {
+        "tags": [
+          "student"
+        ],
+        "summary": "一条反馈的对话；打开即标已读，并带回「确认复现/已解决」的一次性庆祝事件",
+        "operationId": "getMyFeedback",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/feedbackId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "对话",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackThread"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/student/feedback/{feedbackId}/messages": {
+      "post": {
+        "tags": [
+          "student"
+        ],
+        "summary": "追加回复（想问问你 → 回到处理中；已解决 14 天内回复会重新打开；已关闭 409）",
+        "operationId": "replyMyFeedback",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/feedbackId"
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackReply"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已追加",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "422": {
@@ -3505,6 +3647,356 @@
         }
       }
     },
+    "/teacher/feedback": {
+      "get": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "开发者收件箱：反馈列表（仅 admin 角色；15 §5）",
+        "operationId": "listFeedbackInbox",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/FeedbackStatus"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/FeedbackCategory"
+            }
+          },
+          {
+            "name": "area",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "unread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "true=只看开发者还没读的"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "description": "在反馈正文里搜"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "列表与各状态计数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "items",
+                    "total",
+                    "counts"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FeedbackInboxItem"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "counts": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "description": "按状态的条数（不受筛选影响）"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/teacher/feedback/{feedbackId}": {
+      "get": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "反馈详情（含探针上下文与对话）；打开即标开发者已读",
+        "operationId": "getFeedbackInboxItem",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/feedbackId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackInboxDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "改分类、区域或状态（已解决/已关闭必须写说明，已关闭必须选原因；说明会作为回复发给学生）",
+        "operationId": "patchFeedbackInboxItem",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/feedbackId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackInboxPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackInboxDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/teacher/feedback/{feedbackId}/messages": {
+      "post": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "开发者回复；新反馈自动变「正在看」；setStatus 可同时改成「想问问你」或「已解决」",
+        "operationId": "replyFeedbackInboxItem",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/feedbackId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackInboxReply"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "已回复；返回更新后的详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackInboxDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/teacher/feedback/{feedbackId}/confirm": {
+      "post": {
+        "tags": [
+          "teacher"
+        ],
+        "summary": "确认复现并给学生发「捉虫小能手」勋章（分类须为功能故障或显示异常；同一条只生效一次，重复调用幂等）",
+        "operationId": "confirmFeedbackBug",
+        "security": [
+          {
+            "teacherCookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/feedbackId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "description": "给学生的话；不填用默认的感谢语"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "confirmed",
+                    "badgeGranted"
+                  ],
+                  "properties": {
+                    "confirmed": {
+                      "type": "boolean"
+                    },
+                    "badgeGranted": {
+                      "type": "boolean",
+                      "description": "这次是否新发了勋章（学生已有则 false）"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/teacher/assignments": {
       "get": {
         "tags": [
@@ -4541,6 +5033,15 @@
           "format": "uuid"
         }
       },
+      "feedbackId": {
+        "name": "feedbackId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
       "assignmentId": {
         "name": "assignmentId",
         "in": "path",
@@ -4844,6 +5345,11 @@
               "type": "boolean"
             },
             "description": "功能开关：photo, lessonGenerated, mirror, testMode …"
+          },
+          "feedbackUnread": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "仅学生返回：信箱里有新动静的反馈条数（红点用，15 §6）"
           }
         }
       },
@@ -8121,6 +8627,690 @@
           "page": {
             "type": "string",
             "maxLength": 200
+          },
+          "context": {
+            "$ref": "#/components/schemas/FeedbackContext"
+          }
+        }
+      },
+      "FeedbackContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "探针上下文（15 §4）。全部可选；服务端会去掉路径里的 query、限制总大小（序列化后 ≤16KB）。**不得包含作答正文、输入框内容、答案、请求/响应体。**",
+        "properties": {
+          "route": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "页面路径（不含 query/hash），例如 /pages/practice/index"
+          },
+          "pageName": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "友好页面名，例如 做题"
+          },
+          "problemId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "layer": {
+            "type": "string",
+            "maxLength": 8
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "practice",
+              "test"
+            ]
+          },
+          "stepNo": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "targets": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "description": "学生圈到/点到的 data-fb 元素名"
+          },
+          "app": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "version": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "sha": {
+                "type": "string",
+                "maxLength": 40
+              }
+            }
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "os": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "browser": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "viewport": {
+                "type": "string",
+                "maxLength": 20
+              },
+              "dpr": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "theme": {
+                "type": "string",
+                "enum": [
+                  "light",
+                  "dark"
+                ]
+              },
+              "online": {
+                "type": "boolean"
+              },
+              "motion": {
+                "type": "boolean"
+              }
+            }
+          },
+          "errors": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "message"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "where": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "at": {
+                  "type": "integer",
+                  "description": "毫秒时间戳"
+                }
+              }
+            }
+          },
+          "breadcrumbs": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "text"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "nav",
+                    "tap",
+                    "api"
+                  ]
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 160,
+                  "description": "路径 / data-fb 名 / 「方法 路径」；不带 query"
+                },
+                "status": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 599
+                },
+                "ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "reqId": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "at": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "FeedbackReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "refNo"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "refNo": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "展示成 #0042"
+          }
+        }
+      },
+      "FeedbackStatus": {
+        "type": "string",
+        "enum": [
+          "new",
+          "open",
+          "need_info",
+          "resolved",
+          "closed"
+        ],
+        "description": "new 已收到 / open 正在看 / need_info 想问问你 / resolved 已解决 / closed 已关闭"
+      },
+      "FeedbackCategory": {
+        "type": "string",
+        "enum": [
+          "bug",
+          "display",
+          "content",
+          "suggestion",
+          "question",
+          "other"
+        ],
+        "description": "开发者分类：功能故障 / 显示异常 / 题目有误 / 建议 / 咨询 / 其他"
+      },
+      "FeedbackCloseReason": {
+        "type": "string",
+        "enum": [
+          "fixed",
+          "duplicate",
+          "wontfix",
+          "no_repro"
+        ]
+      },
+      "FeedbackMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "from",
+          "body",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "from": {
+            "type": "string",
+            "enum": [
+              "me",
+              "dev"
+            ],
+            "description": "学生端视角：me=我，dev=开发者"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FeedbackReply": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        }
+      },
+      "FeedbackListItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "refNo",
+          "kind",
+          "status",
+          "preview",
+          "confirmed",
+          "unread",
+          "createdAt",
+          "lastActivityAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "refNo": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "idea",
+              "content",
+              "other"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/FeedbackStatus"
+          },
+          "closeReason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackCloseReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "type": "string",
+            "description": "反馈正文前 60 字"
+          },
+          "lastReply": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "开发者最新回复前 60 字"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "已确认复现"
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FeedbackThread": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "refNo",
+          "kind",
+          "status",
+          "confirmed",
+          "createdAt",
+          "messages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "refNo": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "idea",
+              "content",
+              "other"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/FeedbackStatus"
+          },
+          "closeReason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackCloseReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "event": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "confirmed",
+                  "resolved"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本次打开要播放的一次性庆祝（读后清空）；confirmed 同时意味着可能新得勋章"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeedbackMessage"
+            },
+            "description": "第一条是学生原话"
+          }
+        }
+      },
+      "FeedbackInboxItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "refNo",
+          "kind",
+          "status",
+          "preview",
+          "anonCode",
+          "confirmed",
+          "devUnread",
+          "createdAt",
+          "lastActivityAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "refNo": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "idea",
+              "content",
+              "other"
+            ]
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "area": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/FeedbackStatus"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "anonCode": {
+            "type": "string",
+            "description": "匿名码（开发者看不到学生昵称）"
+          },
+          "className": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "devUnread": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FeedbackInboxDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "refNo",
+          "kind",
+          "status",
+          "anonCode",
+          "confirmed",
+          "createdAt",
+          "lastActivityAt",
+          "context",
+          "messages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "refNo": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "idea",
+              "content",
+              "other"
+            ]
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "area": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/FeedbackStatus"
+          },
+          "closeReason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackCloseReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolutionNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "anonCode": {
+            "type": "string"
+          },
+          "classNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "context": {
+            "$ref": "#/components/schemas/FeedbackContext"
+          },
+          "messages": {
+            "type": "array",
+            "description": "第一条是学生原话（from=student）",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "from",
+                "body",
+                "createdAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "from": {
+                  "type": "string",
+                  "enum": [
+                    "student",
+                    "dev"
+                  ]
+                },
+                "body": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
+      "FeedbackInboxPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/FeedbackCategory"
+          },
+          "area": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "status": {
+            "$ref": "#/components/schemas/FeedbackStatus"
+          },
+          "closeReason": {
+            "$ref": "#/components/schemas/FeedbackCloseReason"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "改成 resolved/closed 时必填，会作为开发者回复发给学生"
+          }
+        }
+      },
+      "FeedbackInboxReply": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "setStatus": {
+            "type": "string",
+            "enum": [
+              "need_info",
+              "resolved"
+            ],
+            "description": "同时把状态改成「想问问你」或「已解决」（resolved 时 body 同时作为结单说明）"
           }
         }
       },

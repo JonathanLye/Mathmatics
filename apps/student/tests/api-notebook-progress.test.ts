@@ -88,12 +88,19 @@ describe('进度、设置、反馈、rewards（真实接口）', () => {
     expect(calls[2]?.body).toEqual({ theme: 'dark' })
   })
 
-  it('反馈：POST 请求体与幂等键', async () => {
-    const { calls, fetchImpl } = captureFetch(() => new Response(null, { status: 204 }))
+  it('反馈：POST 请求体带探针上下文与幂等键，返回编号', async () => {
+    const { calls, fetchImpl } = captureFetch(() => new Response(JSON.stringify({ id: '00000000-0000-4000-8000-000000000001', refNo: 7 }), { status: 201, headers: { 'content-type': 'application/json' } }))
     configureClientForTests({ fetchImpl, mock: false })
-    await sendFeedback('bug', '键盘打不出分数线', '/pages/practice/index')
-    expect(calls[0]?.body).toEqual({ kind: 'bug', body: '键盘打不出分数线', page: '/pages/practice/index' })
+    const receipt = await sendFeedback('bug', '键盘打不出分数线', { route: '/pages/practice/index', pageName: '做题', stepNo: 2 })
+    expect(receipt).toEqual({ id: '00000000-0000-4000-8000-000000000001', refNo: 7 })
+    expect(calls[0]?.body).toEqual({
+      kind: 'bug',
+      body: '键盘打不出分数线',
+      page: '/pages/practice/index',
+      context: { route: '/pages/practice/index', pageName: '做题', stepNo: 2 },
+    })
     expect((calls[0]?.init.headers as Record<string, string>)['Idempotency-Key']).toBeTruthy()
+    expect((calls[0]?.init.headers as Record<string, string>)['X-Request-Id']).toMatch(/^[A-Za-z0-9_-]{8,64}$/)
   })
 
   it('作答写接口的 rewards 由 consumeRewards 取走一次', async () => {

@@ -377,10 +377,45 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 我的反馈（信箱列表，按最近动静倒序，最多 50 条） */
+        get: operations["listMyFeedback"];
         put?: never;
         /** 问题反馈 */
         post: operations["submitFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/feedback/{feedbackId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 一条反馈的对话；打开即标已读，并带回「确认复现/已解决」的一次性庆祝事件 */
+        get: operations["getMyFeedback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/student/feedback/{feedbackId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 追加回复（想问问你 → 回到处理中；已解决 14 天内回复会重新打开；已关闭 409） */
+        post: operations["replyMyFeedback"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1251,6 +1286,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/teacher/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 开发者收件箱：反馈列表（仅 admin 角色；15 §5） */
+        get: operations["listFeedbackInbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teacher/feedback/{feedbackId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 反馈详情（含探针上下文与对话）；打开即标开发者已读 */
+        get: operations["getFeedbackInboxItem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 改分类、区域或状态（已解决/已关闭必须写说明，已关闭必须选原因；说明会作为回复发给学生） */
+        patch: operations["patchFeedbackInboxItem"];
+        trace?: never;
+    };
+    "/teacher/feedback/{feedbackId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 开发者回复；新反馈自动变「正在看」；setStatus 可同时改成「想问问你」或「已解决」 */
+        post: operations["replyFeedbackInboxItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teacher/feedback/{feedbackId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 确认复现并给学生发「捉虫小能手」勋章（分类须为功能故障或显示异常；同一条只生效一次，重复调用幂等） */
+        post: operations["confirmFeedbackBug"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/teacher/assignments": {
         parameters: {
             query?: never;
@@ -1560,6 +1664,8 @@ export interface components {
             features?: {
                 [key: string]: boolean;
             };
+            /** @description 仅学生返回：信箱里有新动静的反馈条数（红点用，15 §6） */
+            feedbackUnread?: number;
         };
         ConsentItems: {
             /** @description 服务所需处理（必选） */
@@ -2491,6 +2597,192 @@ export interface components {
             kind: "bug" | "idea" | "content" | "other";
             body: string;
             page?: string;
+            context?: components["schemas"]["FeedbackContext"];
+        };
+        /** @description 探针上下文（15 §4）。全部可选；服务端会去掉路径里的 query、限制总大小（序列化后 ≤16KB）。**不得包含作答正文、输入框内容、答案、请求/响应体。** */
+        FeedbackContext: {
+            /** @description 页面路径（不含 query/hash），例如 /pages/practice/index */
+            route?: string;
+            /** @description 友好页面名，例如 做题 */
+            pageName?: string;
+            problemId?: string;
+            /** Format: uuid */
+            attemptId?: string;
+            layer?: string;
+            /** @enum {string} */
+            mode?: "practice" | "test";
+            stepNo?: number;
+            /** @description 学生圈到/点到的 data-fb 元素名 */
+            targets?: string[];
+            app?: {
+                version?: string;
+                sha?: string;
+            };
+            env?: {
+                os?: string;
+                browser?: string;
+                viewport?: string;
+                dpr?: number;
+                /** @enum {string} */
+                theme?: "light" | "dark";
+                online?: boolean;
+                motion?: boolean;
+            };
+            errors?: {
+                name?: string;
+                message: string;
+                where?: string;
+                /** @description 毫秒时间戳 */
+                at?: number;
+            }[];
+            breadcrumbs?: {
+                /** @enum {string} */
+                kind: "nav" | "tap" | "api";
+                /** @description 路径 / data-fb 名 / 「方法 路径」；不带 query */
+                text: string;
+                status?: number;
+                ms?: number;
+                reqId?: string;
+                at?: number;
+            }[];
+        };
+        FeedbackReceipt: {
+            /** Format: uuid */
+            id: string;
+            /** @description 展示成 #0042 */
+            refNo: number;
+        };
+        /**
+         * @description new 已收到 / open 正在看 / need_info 想问问你 / resolved 已解决 / closed 已关闭
+         * @enum {string}
+         */
+        FeedbackStatus: "new" | "open" | "need_info" | "resolved" | "closed";
+        /**
+         * @description 开发者分类：功能故障 / 显示异常 / 题目有误 / 建议 / 咨询 / 其他
+         * @enum {string}
+         */
+        FeedbackCategory: "bug" | "display" | "content" | "suggestion" | "question" | "other";
+        /** @enum {string} */
+        FeedbackCloseReason: "fixed" | "duplicate" | "wontfix" | "no_repro";
+        FeedbackMessage: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description 学生端视角：me=我，dev=开发者
+             * @enum {string}
+             */
+            from: "me" | "dev";
+            body: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        FeedbackReply: {
+            body: string;
+        };
+        FeedbackListItem: {
+            /** Format: uuid */
+            id: string;
+            refNo: number;
+            /** @enum {string} */
+            kind: "bug" | "idea" | "content" | "other";
+            status: components["schemas"]["FeedbackStatus"];
+            closeReason?: components["schemas"]["FeedbackCloseReason"] | null;
+            /** @description 反馈正文前 60 字 */
+            preview: string;
+            /** @description 开发者最新回复前 60 字 */
+            lastReply?: string | null;
+            /** @description 已确认复现 */
+            confirmed: boolean;
+            unread: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastActivityAt: string;
+        };
+        FeedbackThread: {
+            /** Format: uuid */
+            id: string;
+            refNo: number;
+            /** @enum {string} */
+            kind: "bug" | "idea" | "content" | "other";
+            status: components["schemas"]["FeedbackStatus"];
+            closeReason?: components["schemas"]["FeedbackCloseReason"] | null;
+            confirmed: boolean;
+            /** @description 本次打开要播放的一次性庆祝（读后清空）；confirmed 同时意味着可能新得勋章 */
+            event?: ("confirmed" | "resolved") | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description 第一条是学生原话 */
+            messages: components["schemas"]["FeedbackMessage"][];
+        };
+        FeedbackInboxItem: {
+            /** Format: uuid */
+            id: string;
+            refNo: number;
+            /** @enum {string} */
+            kind: "bug" | "idea" | "content" | "other";
+            category?: components["schemas"]["FeedbackCategory"] | null;
+            area?: string | null;
+            status: components["schemas"]["FeedbackStatus"];
+            preview: string;
+            /** @description 匿名码（开发者看不到学生昵称） */
+            anonCode: string;
+            className?: string | null;
+            confirmed: boolean;
+            devUnread: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastActivityAt: string;
+        };
+        FeedbackInboxDetail: {
+            /** Format: uuid */
+            id: string;
+            refNo: number;
+            /** @enum {string} */
+            kind: "bug" | "idea" | "content" | "other";
+            category?: components["schemas"]["FeedbackCategory"] | null;
+            area?: string | null;
+            status: components["schemas"]["FeedbackStatus"];
+            closeReason?: components["schemas"]["FeedbackCloseReason"] | null;
+            resolutionNote?: string | null;
+            anonCode: string;
+            classNames?: string[];
+            page?: string | null;
+            confirmed: boolean;
+            /** Format: date-time */
+            confirmedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastActivityAt: string;
+            context: components["schemas"]["FeedbackContext"];
+            /** @description 第一条是学生原话（from=student） */
+            messages: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                from: "student" | "dev";
+                body: string;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+        };
+        FeedbackInboxPatch: {
+            category?: components["schemas"]["FeedbackCategory"];
+            area?: string;
+            status?: components["schemas"]["FeedbackStatus"];
+            closeReason?: components["schemas"]["FeedbackCloseReason"];
+            /** @description 改成 resolved/closed 时必填，会作为开发者回复发给学生 */
+            note?: string;
+        };
+        FeedbackInboxReply: {
+            body: string;
+            /**
+             * @description 同时把状态改成「想问问你」或「已解决」（resolved 时 body 同时作为结单说明）
+             * @enum {string}
+             */
+            setStatus?: "need_info" | "resolved";
         };
         PublishedReview: {
             proofs: components["schemas"]["MathText"][];
@@ -5431,6 +5723,7 @@ export interface components {
         /** @description 两端共用接口（`/me`、`/auth/logout`、`/events/batch`）读哪一端的 Cookie：student 读 `pg_sid_s`，teacher 读 `pg_sid_t`；缺省按 student。其余接口按路径决定，忽略此头。 */
         pgApp: "student" | "teacher";
         attemptId: string;
+        feedbackId: string;
         assignmentId: string;
         classId: string;
         lineId: string;
@@ -5984,6 +6277,32 @@ export interface operations {
             422: components["responses"]["Error"];
         };
     };
+    listMyFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FeedbackListItem"][];
+                        /** @description 有新动静的条数（红点） */
+                        unread: number;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+        };
+    };
     submitFeedback: {
         parameters: {
             query?: never;
@@ -6000,15 +6319,77 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 已收到 */
-            204: {
+            /** @description 已收到；返回编号，学生可在信箱里看进度（15 §3） */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FeedbackReceipt"];
+                };
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    getMyFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedbackId: components["parameters"]["feedbackId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 对话 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackThread"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    replyMyFeedback: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 写接口幂等键（UUID）。24 小时内同键重放返回首次响应（带 Idempotent-Replayed: true）；同键不同请求 422；上一次仍在处理 429。 */
+                "Idempotency-Key"?: components["parameters"]["idempotencyKey"];
+            };
+            path: {
+                feedbackId: components["parameters"]["feedbackId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackReply"];
+            };
+        };
+        responses: {
+            /** @description 已追加 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackMessage"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
         };
@@ -7415,6 +7796,169 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Error"];
+        };
+    };
+    listFeedbackInbox: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["FeedbackStatus"];
+                category?: components["schemas"]["FeedbackCategory"];
+                area?: string;
+                /** @description true=只看开发者还没读的 */
+                unread?: boolean;
+                /** @description 在反馈正文里搜 */
+                q?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 列表与各状态计数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["FeedbackInboxItem"][];
+                        total: number;
+                        /** @description 按状态的条数（不受筛选影响） */
+                        counts: {
+                            [key: string]: number;
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getFeedbackInboxItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedbackId: components["parameters"]["feedbackId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackInboxDetail"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    patchFeedbackInboxItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedbackId: components["parameters"]["feedbackId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackInboxPatch"];
+            };
+        };
+        responses: {
+            /** @description 更新后的详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackInboxDetail"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    replyFeedbackInboxItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedbackId: components["parameters"]["feedbackId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackInboxReply"];
+            };
+        };
+        responses: {
+            /** @description 已回复；返回更新后的详情 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackInboxDetail"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    confirmFeedbackBug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedbackId: components["parameters"]["feedbackId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description 给学生的话；不填用默认的感谢语 */
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        confirmed: boolean;
+                        /** @description 这次是否新发了勋章（学生已有则 false） */
+                        badgeGranted: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     listAssignments: {

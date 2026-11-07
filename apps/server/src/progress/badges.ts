@@ -10,6 +10,8 @@ export const BADGES = [
   { id: 'no_hint_clear', title: '无提示通关', desc: '不用任何提示证完一道题', target: 1 },
   { id: 'redo_success', title: '重做成功', desc: '把做过的题重新独立证了一遍', target: 1 },
   { id: 'daily_goal', title: '今日目标达成', desc: '一天内写出的关键步骤达到每日目标', target: 1 },
+  // 反馈信箱（15 号文档）：开发者在后台对一条问题反馈点「确认复现」时发放，不由做题触发。
+  { id: 'bug_hunter', title: '捉虫小能手', desc: '帮小方找到并确认了一个问题', target: 1 },
 ] as const;
 
 export type BadgeId = (typeof BADGES)[number]['id'];

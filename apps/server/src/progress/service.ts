@@ -304,18 +304,3 @@ export async function patchSettings(db: Db, contract: ContractValidator, userId:
   });
   return loadSettings(db, contract, userId);
 }
-
-export async function submitFeedback(
-  db: Queryable,
-  userId: string,
-  body: { kind: 'bug' | 'idea' | 'content' | 'other'; body: string; page?: string },
-): Promise<void> {
-  const text = body.body.trim();
-  if (text.length < 1) throw new AppError('VALIDATION_FAILED', 422, '请写一点内容再提交');
-  await db.query(`insert into app.student_feedback (user_id, kind, body, page) values ($1, $2, $3, $4)`, [
-    userId,
-    body.kind,
-    text,
-    body.page ?? null,
-  ]);
-}

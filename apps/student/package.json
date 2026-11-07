@@ -16,6 +16,7 @@
     "build:mock": "uni build --mode mock",
     "e2e:flows": "node tests/flows.mjs",
     "e2e:flows:shell": "node tests/flows-shell.mjs",
+    "e2e:flows:fbbox": "node tests/flows-fbbox.mjs",
     "e2e:flows:help": "node tests/flows-help.mjs",
     "e2e:flows:note": "node tests/flows-note.mjs",
     "e2e:flows:l3": "node tests/flows-l3.mjs",

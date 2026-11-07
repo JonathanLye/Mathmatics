@@ -99,6 +99,13 @@
       }
     },
     {
+      "path": "pages/me/inbox",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "我的反馈"
+      }
+    },
+    {
       "path": "pages/me/badges",
       "style": {
         "navigationStyle": "custom",

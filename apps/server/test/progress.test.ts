@@ -178,7 +178,7 @@ describe('GET /student/progress', () => {
     expect(body).toMatchObject({ xpTotal: 0, xpToday: 0, keysToday: 0, dailyGoal: 3, daysLearned: 0 });
     expect(body.streak).toEqual({ current: 0, best: 0, freezeAvailable: true, usedFreezeDays: [] });
     expect(body.week).toHaveLength(7);
-    expect(body.badges).toHaveLength(10);
+    expect(body.badges).toHaveLength(11);
     expect(body.badges.every((b: { earnedAt: unknown }) => b.earnedAt === null)).toBe(true);
   });
 
@@ -258,9 +258,11 @@ describe('设置、昵称与反馈', () => {
     }
   });
 
-  it('反馈：204 并落库；空内容 422', async () => {
+  it('反馈：201 返回编号并落库；空内容 422', async () => {
     const cookie = await login(env);
-    expect((await post(env, cookie, '/student/feedback', { kind: 'bug', body: '键盘打不出分数线', page: '/pages/practice/index' })).statusCode).toBe(204);
+    const sent = await post(env, cookie, '/student/feedback', { kind: 'bug', body: '键盘打不出分数线', page: '/pages/practice/index' });
+    expect(sent.statusCode).toBe(201);
+    expect(sent.json()).toMatchObject({ id: expect.any(String), refNo: expect.any(Number) });
     expect((await post(env, cookie, '/student/feedback', { kind: 'bug', body: '   ' })).statusCode).toBe(422);
     const rows = await env.db.query<{ kind: string; body: string; page: string }>(`select kind, body, page from app.student_feedback`);
     expect(rows.rows).toEqual([{ kind: 'bug', body: '键盘打不出分数线', page: '/pages/practice/index' }]);

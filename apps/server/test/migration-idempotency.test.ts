@@ -144,10 +144,59 @@ describe('0003 重做迁移（attempts.kind 放宽为 main|transfer|redo）', ()
   }
 });
 
+describe('0007 反馈信箱迁移（生产路径：已有反馈行的旧表上只跑 0007）', () => {
+  it('旧形状的反馈行保留，补上新列和对话表，ref_no 各不相同，重复执行无副作用，列集合与 schema.sql 一致', async () => {
+    await applySchema(db);
+    const reference = async () =>
+      (await db.query<{ column_name: string }>(
+        `select column_name from information_schema.columns where table_schema = 'app' and table_name = 'student_feedback' order by column_name`,
+      )).rows.map((r) => r.column_name);
+    const expectedColumns = await reference();
+
+    // 还原成 0005 建出来的旧形状，并放两条老反馈。
+    await db.exec('drop table if exists public.schema_migrations');
+    await db.exec('drop table app.feedback_messages');
+    await db.exec('drop table app.student_feedback');
+    await db.exec(`
+      CREATE TABLE app.student_feedback (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES app.users(id),
+        kind text NOT NULL CHECK (kind IN ('bug', 'idea', 'content', 'other')),
+        body text NOT NULL,
+        page text,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX student_feedback_created ON app.student_feedback (created_at DESC);`);
+    const user = (await db.query<{ id: string }>(`insert into app.users (role, anon_code) values ('student', 'S-MIG007') returning id`)).rows[0]?.id as string;
+    for (const body of ['旧反馈一', '旧反馈二']) {
+      await db.query(`insert into app.student_feedback (user_id, kind, body, page) values ($1, 'bug', $2, 'me/about')`, [user, body]);
+    }
+
+    await migrate(db);
+    await migrate(db);
+
+    expect(await hasTable('app.feedback_messages')).toBe(true);
+    expect(await reference()).toEqual(expectedColumns);
+    const rows = (await db.query<{ body: string; ref_no: number; status: string; dev_unread: boolean; context: unknown; page: string }>(
+      `select body, ref_no, status, dev_unread, context, page from app.student_feedback order by body`,
+    )).rows;
+    expect(rows.map((r) => [r.body, r.status, r.dev_unread, r.page])).toEqual([
+      ['旧反馈一', 'new', true, 'me/about'],
+      ['旧反馈二', 'new', true, 'me/about'],
+    ]);
+    expect(new Set(rows.map((r) => r.ref_no)).size).toBe(2);
+    expect(rows[0]?.context).toEqual({});
+    // 新写一条拿到的编号不与旧的冲突。
+    const added = (await db.query<{ ref_no: number }>(`insert into app.student_feedback (user_id, kind, body) values ($1, 'idea', '新的') returning ref_no`, [user])).rows[0]?.ref_no as number;
+    expect(rows.map((r) => r.ref_no)).not.toContain(added);
+  });
+});
+
 describe('0005 学生进度迁移（设置/经验台账/徽章/反馈）', () => {
   it('旧库缺这四张表时迁移补上；经验台账 (user_id, source_key) 唯一', async () => {
     await applySchema(db);
     await db.exec('drop table if exists public.schema_migrations');
+    await db.exec('drop table if exists app.feedback_messages'); // 0007 才有；旧库没有
     for (const t of ['student_feedback', 'student_badges', 'xp_ledger', 'student_settings']) await db.exec(`drop table app.${t}`);
     expect(await hasTable('app.xp_ledger')).toBe(false);
 

@@ -88,6 +88,9 @@ const MAIN_OPS = [
   'GET /student/settings',
   'PATCH /student/settings',
   'POST /student/feedback',
+  'GET /student/feedback',
+  'GET /student/feedback/{feedbackId}',
+  'POST /student/feedback/{feedbackId}/messages',
 ] as const;
 
 // 迁移题子作答（kind=transfer，从第 3 层开始）走到的接口。
@@ -628,7 +631,11 @@ async function walkProblem(main: string, transfer: string): Promise<Walk> {
   await call(ctx, 'GET /student/progress', main);
   await call(ctx, 'GET /student/settings', main);
   await call(ctx, 'PATCH /student/settings', main, { payload: { nickname: '小明', theme: 'dark' } });
-  await call(ctx, 'POST /student/feedback', main, { payload: { kind: 'idea', body: '希望键盘能快一点' } });
+  const sentFeedback = await call(ctx, 'POST /student/feedback', main, { payload: { kind: 'idea', body: '希望键盘能快一点' } });
+  const feedbackParams = { feedbackId: sentFeedback.json.id as string };
+  await call(ctx, 'GET /student/feedback', main);
+  await call(ctx, 'GET /student/feedback/{feedbackId}', main, { params: feedbackParams });
+  await call(ctx, 'POST /student/feedback/{feedbackId}/messages', main, { params: feedbackParams, payload: { body: '补充一句' } });
   // 讲评：教师发布后返回参考证明——这是有意公开的内容，所以豁免本题全部 key；其余题目的片段仍然要 0 命中。
   await db.query(`update app.assignments set review_published_at = now(), review_note = '讲评：先看整体结构。' where id = $1`, [assignmentId]);
   await call(ctx, 'GET /attempts/{attemptId}/review', main, { params, extraExempt: secret.keys.map((k) => k.id) });

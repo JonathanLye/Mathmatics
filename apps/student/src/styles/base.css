@@ -335,7 +335,8 @@ html[data-motion='off'] *::after {
 .pg-input-area .uni-textarea-wrapper {
   height: 100%;
 }
-.pg-input-area textarea {
+.pg-input-area textarea,
+.pg-input-area .uni-textarea-wrapper .uni-textarea-textarea {
   width: 100%;
   height: 100%;
   box-sizing: border-box;

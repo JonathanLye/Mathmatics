@@ -10,6 +10,8 @@ import { applyTheme, saveTheme, type ThemeName } from './utils/theme.ts';
 const route = useRoute();
 const router = useRouter();
 
+// 开发者（admin 角色）才有「反馈」入口（15 §9）。
+const isAdmin = computed(() => session.me?.role === 'admin');
 const isPublic = computed(() => route.meta.public === true || session.me === null);
 // 初始主题已在 main.ts 里按“上次选择 > 系统偏好”设置到 <html> 上，这里只读它，不再另起一个来源。
 const dark = ref(document.documentElement.getAttribute('data-theme') === 'dark');
@@ -70,6 +72,7 @@ async function logout(): Promise<void> {
       <nav class="app-nav" aria-label="主导航">
         <router-link class="app-nav-item" to="/classes"><Icon name="home" :size="20" />我的班级</router-link>
         <router-link class="app-nav-item" to="/problems"><Icon name="book" :size="20" />题库</router-link>
+        <router-link v-if="isAdmin" class="app-nav-item" to="/feedback" data-testid="nav-feedback"><Icon name="bug" :size="20" />反馈</router-link>
         <router-link class="app-nav-item" to="/settings"><Icon name="me" :size="20" />设置</router-link>
       </nav>
       <div class="app-me">
@@ -92,6 +95,7 @@ async function logout(): Promise<void> {
       <nav class="app-mobilenav" aria-label="主导航（手机）">
         <router-link class="app-nav-item" to="/classes">我的班级</router-link>
         <router-link class="app-nav-item" to="/problems">题库</router-link>
+        <router-link v-if="isAdmin" class="app-nav-item" to="/feedback">反馈</router-link>
         <router-link class="app-nav-item" to="/settings">设置</router-link>
       </nav>
       <t-alert

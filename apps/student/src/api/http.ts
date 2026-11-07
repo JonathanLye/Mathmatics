@@ -35,6 +35,7 @@ export type ApiErrorCode =
   | 'LAYER_LOCKED'
   | 'STATE_STALE'
   | 'ATTEMPT_LOCKED'
+  | 'FEEDBACK_CLOSED'
   | 'ASSIGNMENT_CLOSED'
   | 'RECOG_NOT_CONFIRMED'
   | 'HINT_NOT_READY'
@@ -311,13 +312,41 @@ export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value)
 }
 
+
+/** 请求结束时的观察者：探针用它记「最近的操作」。只传方法、路径、状态、耗时、请求 ID，不传内容。 */
+export interface ApiObservation {
+  method: string
+  path: string
+  status: number
+  ms: number
+  reqId: string
+}
+let apiObserver: ((info: ApiObservation) => void) | null = null
+export function setApiObserver(fn: ((info: ApiObservation) => void) | null): void {
+  apiObserver = fn
+}
+function observe(info: ApiObservation): void {
+  try {
+    apiObserver?.(info)
+  } catch {
+    // 观察者出错不能影响请求
+  }
+}
+
+/** X-Request-Id：服务端沿用它写进日志（8–64 位字母数字、下划线、连字符），开发者据此把反馈和服务端日志对上。 */
+export function newRequestId(): string {
+  return 'r' + newIdempotencyKey().replace(/-/g, '').slice(0, 20)
+}
+
 export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
   const base = options.base ?? DEFAULT_BASE
   const fetchImpl = options.fetchImpl ?? defaultFetch
 
   async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<HttpResult<T>> {
     const method = requestOptions.method ?? 'GET'
-    const headers: Record<string, string> = { Accept: 'application/json', 'X-Pg-App': 'student', ...(requestOptions.headers ?? {}) }
+    const reqId = newRequestId()
+    const startedAt = Date.now()
+    const headers: Record<string, string> = { Accept: 'application/json', 'X-Pg-App': 'student', 'X-Request-Id': reqId, ...(requestOptions.headers ?? {}) }
     if (WRITE_METHODS.has(method)) headers['X-Requested-With'] = 'proof-gym'
     const isMultipart = typeof FormData !== 'undefined' && requestOptions.formData instanceof FormData
     if (requestOptions.body !== undefined && !isMultipart) headers['Content-Type'] = 'application/json'
@@ -348,6 +377,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
         signal: requestOptions.signal ?? controller?.signal,
       })
     } catch (cause) {
+      observe({ method, path, status: 0, ms: Date.now() - startedAt, reqId })
       const aborted = controller !== null && controller.signal.aborted
       throw new ApiError({
         status: 0,
@@ -359,6 +389,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
       if (timer !== null) clearTimeout(timer)
     }
 
+    observe({ method, path, status: response.status, ms: Date.now() - startedAt, reqId })
     const replayed = response.headers.get('idempotent-replayed') === 'true'
     const raw = await readBody(response)
     if (!response.ok) {

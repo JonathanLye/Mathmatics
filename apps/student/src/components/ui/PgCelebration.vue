@@ -8,6 +8,7 @@ import PgMascot from './PgMascot.vue'
 import { clearConfetti, fireConfetti } from '@/motion/confetti'
 import { playSfx } from '@/motion/sfx'
 import { vibrate } from '@/motion/haptics'
+import { sheetClosed, sheetOpened } from './uiLogic'
 import type { MascotExpr } from './icons'
 
 const props = withDefaults(defineProps<{ open: boolean; title?: string; expr?: MascotExpr; confetti?: boolean; size?: number; quiet?: boolean }>(), {
@@ -19,6 +20,8 @@ const props = withDefaults(defineProps<{ open: boolean; title?: string; expr?: M
 })
 
 const host = ref<unknown>(null)
+// 庆祝层打开时登记成弹层：小方反馈入口据此躲开（它不是 Sheet，但同样盖满全屏）。
+const overlayToken = {}
 let canvas: HTMLCanvasElement | null = null
 
 /** 模板里的 <canvas> 会变成 uni-canvas 组件，不是 confetti 要的原生元素，所以手动建。 */
@@ -31,6 +34,12 @@ function mountCanvas(): HTMLCanvasElement | null {
   node.appendChild(canvas)
   return canvas
 }
+
+watch(
+  () => props.open,
+  (open) => (open ? sheetOpened(overlayToken) : sheetClosed(overlayToken)),
+  { immediate: true },
+)
 
 watch(
   () => props.open,
@@ -49,7 +58,10 @@ watch(
   },
   { immediate: true },
 )
-onBeforeUnmount(() => clearConfetti(canvas))
+onBeforeUnmount(() => {
+  sheetClosed(overlayToken)
+  clearConfetti(canvas)
+})
 </script>
 
 <template>

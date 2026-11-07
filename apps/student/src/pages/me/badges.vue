@@ -59,7 +59,7 @@ const allDone = computed(() => badges.value.length > 0 && earnedCount.value === 
             v-for="badge in badges"
             :key="badge.id"
             class="pg-badge"
-            :class="{ 'pg-badge--on': badge.earnedAt }"
+            :class="{ 'pg-badge--on': badge.earnedAt, 'pg-badge--bug': badge.id === 'bug_hunter' }"
             data-testid="badge-card"
             :data-badge="badge.id"
             :data-earned="badge.earnedAt ? 'true' : 'false'"
@@ -90,6 +90,10 @@ const allDone = computed(() => badges.value.length > 0 && earnedCount.value === 
 .pg-badge__medal { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; margin-bottom: var(--sp-1); border-radius: 50%; background: var(--paper-2); color: var(--ink-3); }
 .pg-badge--on { border-color: var(--bee); }
 .pg-badge--on .pg-badge__medal { background: var(--bee); color: var(--on-bee); box-shadow: 0 var(--lip) 0 var(--bee-lip); }
+.pg-badge--bug.pg-badge--on { border-color: var(--danger-face); }
+/* 红色奖章：红只在这一处用于奖励（02 §0、15 §5）；白字压在 --danger-face 上满足对比度 */
+.pg-badge--bug.pg-badge--on .pg-badge__medal { background: var(--danger-face); color: var(--on-danger); box-shadow: 0 var(--lip) 0 var(--danger-lip); }
+.pg-badge--bug.pg-badge--on .pg-badge__date { color: var(--chili-text); }
 .pg-badge__title { color: var(--ink); font-size: var(--fs-15); font-weight: var(--fw-black); line-height: 1.3; }
 .pg-badge__desc { color: var(--ink-2); font-size: var(--fs-12); line-height: 1.45; }
 .pg-badge__date { margin-top: var(--sp-1); color: var(--bee-text); font-size: var(--fs-12); font-weight: var(--fw-black); }

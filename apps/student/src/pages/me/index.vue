@@ -26,7 +26,8 @@ import { useToast } from '@/components/ui/useToast'
 import { resetProgress, useProgress } from '@/composables/useProgress'
 import { ensureSettingsLoaded, patchSettings, resetSettingsSync, saveChoice, saveFeedbackPref, saveTheme, useSettings } from '@/composables/useSettingsSync'
 import { useTheme, type ThemeChoice } from '@/composables/useTheme'
-import { BADGE_COPY, ME_COPY, PROGRESS_COPY, studentName } from '@/copy'
+import { BADGE_COPY, FBBOX_COPY, ME_COPY, PROGRESS_COPY, studentName } from '@/copy'
+import { openFeedbackSheet, refreshUnread, useFeedbackBox } from '@/feedbackbox/store'
 import { errorMessage } from '@/api/client'
 import type { FeedbackPrefs } from '@/motion/useFeedbackPrefs'
 import { useFeedbackPrefs } from '@/motion/useFeedbackPrefs'
@@ -39,6 +40,8 @@ const { theme } = useTheme()
 const { sound, motion, haptics } = useFeedbackPrefs()
 const { settings } = useSettings()
 const { progress, loading: progressLoading, failed: progressFailed, load: loadProgress } = useProgress()
+const feedbackBox = useFeedbackBox()
+const feedbackUnread = computed(() => feedbackBox.state.unread)
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemeChoice; label: string; testid: string }> = [
   { value: 'system', label: '跟随系统', testid: 'me-theme-system' },
@@ -82,6 +85,7 @@ onShow(() => {
   if (!session.me.value) void session.refreshMe()
   void ensureSettingsLoaded()
   void loadProgress(true)
+  void refreshUnread()
 })
 
 watch(editingName, (open) => {
@@ -217,7 +221,10 @@ async function logout(): Promise<void> {
         <PgListRow :title="ME_COPY.accountRow" :sub="ME_COPY.accountSub" icon="keys" clickable data-testid="me-row-account" @tap="goPage('/pages/me/account')" />
         <PgListRow :title="ME_COPY.privacyRow" :sub="ME_COPY.privacySub" icon="lock" clickable data-testid="me-row-privacy" @tap="goPage('/pages/me/privacy')" />
         <ReplayOnboarding />
-        <PgListRow :title="ME_COPY.feedbackRow" :sub="ME_COPY.feedbackSub" icon="flag" clickable data-testid="me-row-feedback" @tap="goPage('/pages/me/about?feedback=1')" />
+        <PgListRow :title="FBBOX_COPY.inboxRow" :sub="FBBOX_COPY.inboxRowSub" icon="flag" clickable data-testid="me-row-inbox" @tap="goPage('/pages/me/inbox')">
+          <template #right><view v-if="feedbackUnread > 0" class="pg-me__dot" data-testid="me-inbox-dot"><text>{{ feedbackUnread > 9 ? '9+' : feedbackUnread }}</text></view></template>
+        </PgListRow>
+        <PgListRow :title="ME_COPY.feedbackRow" :sub="ME_COPY.feedbackSub" icon="bug" clickable data-testid="me-row-feedback" @tap="openFeedbackSheet()" />
         <PgListRow :title="ME_COPY.aboutRow" :sub="ME_COPY.aboutSub" icon="book" clickable data-testid="me-row-about" @tap="goPage('/pages/me/about')" />
       </PgCard>
 
@@ -249,6 +256,7 @@ async function logout(): Promise<void> {
 </template>
 
 <style scoped>
+.pg-me__dot { min-width: 22px; height: 22px; padding: 0 5px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-pill); background: var(--bee); color: var(--on-bee); font-size: var(--fs-12); font-weight: var(--fw-black); line-height: 1; animation: pg-pop var(--dur-base) var(--ease-spring) both; }
 .pg-me { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
 .pg-me__profile { display: flex; flex-direction: column; gap: var(--sp-3); }
 .pg-me__who { display: flex; align-items: center; gap: var(--sp-3); }

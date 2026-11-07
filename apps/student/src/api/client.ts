@@ -13,6 +13,7 @@
 
 import {
   ApiError,
+  type ApiErrorCode,
   createHttpClient,
   errorMessage,
   isApiError,
@@ -86,6 +87,9 @@ import type {
   PracticeSolution,
   StudentPath,
 } from '@/types/path'
+
+import { MockFeedbackError, mockGetFeedback, mockListFeedback, mockReplyFeedback, mockSubmitFeedback } from '@/feedbackbox/mockApi'
+import type { FeedbackContext, FeedbackList, FeedbackMessage, FeedbackReceipt, FeedbackThread } from '@/types/feedbackbox'
 
 export { ApiError, errorMessage, isApiError }
 
@@ -2089,13 +2093,47 @@ export async function updateSettings(patch: SettingsPatch): Promise<SettingsView
   return clone(mockSettings)
 }
 
-/** 问题反馈（POST /student/feedback，204）。 */
-export async function sendFeedback(kind: FeedbackKind, body: string, page?: string): Promise<void> {
+/** 问题反馈（POST /student/feedback，201 {id, refNo}）：可带探针上下文（15 §4）。 */
+export async function sendFeedback(kind: FeedbackKind, body: string, context?: FeedbackContext): Promise<FeedbackReceipt> {
   if (!USE_MOCK) {
-    await activeHttp.post('/student/feedback', { kind, body, ...(page === undefined ? {} : { page }) }, { idempotencyKey: newUuid() })
-    return
+    const payload = { kind, body, ...(context?.route ? { page: context.route } : {}), ...(context ? { context } : {}) }
+    return (await activeHttp.post<FeedbackReceipt>('/student/feedback', payload, { idempotencyKey: newUuid() })).data
   }
   await sleep()
+  return mockSubmitFeedback(kind, body, context)
+}
+
+/** 把演示数据的错误变成和真实接口一样的 ApiError。 */
+function fromMock<T>(run: () => T): T {
+  try {
+    return run()
+  } catch (e) {
+    if (e instanceof MockFeedbackError) throw new ApiError({ status: e.status, code: e.code as ApiErrorCode, message: e.message })
+    throw e
+  }
+}
+
+/** 我的反馈（GET /student/feedback）：信箱列表 + 红点数。 */
+export async function listMyFeedback(): Promise<FeedbackList> {
+  if (!USE_MOCK) return activeHttp.get<FeedbackList>('/student/feedback')
+  await sleep()
+  return clone(mockListFeedback())
+}
+
+/** 一条反馈的对话（GET /student/feedback/{id}）：打开即已读，带一次性庆祝事件。 */
+export async function getMyFeedback(id: string): Promise<FeedbackThread> {
+  if (!USE_MOCK) return activeHttp.get<FeedbackThread>(`/student/feedback/${encodeURIComponent(id)}`)
+  await sleep()
+  return fromMock(() => clone(mockGetFeedback(id)))
+}
+
+/** 追加回复（POST /student/feedback/{id}/messages）；已关闭 409 FEEDBACK_CLOSED。 */
+export async function replyMyFeedback(id: string, body: string): Promise<FeedbackMessage> {
+  if (!USE_MOCK) {
+    return (await activeHttp.post<FeedbackMessage>(`/student/feedback/${encodeURIComponent(id)}/messages`, { body }, { idempotencyKey: newUuid() })).data
+  }
+  await sleep()
+  return fromMock(() => clone(mockReplyFeedback(id, body)))
 }
 
 // ---------------------------------------------------------------------------

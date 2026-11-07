@@ -12,6 +12,7 @@ import PgTabBar from '@/components/ui/PgTabBar.vue'
 import type { TabKey } from '@/components/ui/uiLogic'
 import { ensureSettingsLoaded } from '@/composables/useSettingsSync'
 import { useViewport } from '@/composables/useViewport'
+import FeedbackHost from '@/feedbackbox/FeedbackHost.vue'
 import { initIntegrity } from '@/integrity/sdk'
 
 defineProps<{ active: TabKey }>()
@@ -42,6 +43,8 @@ async function handleOfflineRetry(): Promise<void> {
         <view v-if="showRail" class="pg-shell__rail"><slot name="rail"><ProgressRail /></slot></view>
       </view>
     </view>
+    <!-- 小方信箱：悬浮入口 + 反馈弹层（15 号文档） -->
+    <FeedbackHost />
   </view>
 </template>
 

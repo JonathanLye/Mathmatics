@@ -5,7 +5,7 @@
 export type IconName =
   | 'close' | 'back' | 'fwd' | 'check' | 'plus' | 'pen' | 'keys' | 'camera' | 'home' | 'book' | 'me'
   | 'lock' | 'clock' | 'flag' | 'eye' | 'help' | 'alert' | 'flash'
-  | 'path' | 'redo' | 'flame' | 'star' | 'logout' | 'sound' | 'motion' | 'vibrate' | 'sun' | 'moon' | 'auto' | 'chevron'
+  | 'path' | 'redo' | 'flame' | 'star' | 'logout' | 'sound' | 'motion' | 'vibrate' | 'sun' | 'moon' | 'auto' | 'chevron' | 'bug'
 
 const stroke = (d: string, w = 3, fill = 'none') => (size: number): string =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${d}</svg>`
@@ -27,6 +27,8 @@ const LINE: Record<IconName, (size: number) => string> = {
   lock: stroke(`<rect x="5" y="10.5" width="14" height="10" rx="3" fill="currentColor" fill-opacity=".2"/><path d="M8.5 10.5V8a3.5 3.5 0 017 0v2.5"/>`, 2.6),
   clock: stroke('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>', 2.6),
   flag: stroke(`<path d="M6 21V4M6 5h11l-2.2 3.6L17 12H6" ${SOFT}/>`, 2.6),
+  // 瓢虫：圆圆的壳、一条中缝、两粒斑点、两根触角和三对小脚（捉虫小能手的奖章图标）
+  bug: stroke(`<path d="M12 8.4c-3.2 0-5.6 2.5-5.6 5.8S8.8 20 12 20s5.6-2.5 5.6-5.8S15.2 8.4 12 8.4z" ${SOFT}/><path d="M12 8.4V20M9.2 6.6c.4-1.3 1.5-2.2 2.8-2.2s2.4.9 2.8 2.2M9.6 4.6L8.3 3M14.4 4.6L15.7 3M3.8 11.2l3 1.1M20.2 11.2l-3 1.1M3.8 17.6l3-1.3M20.2 17.6l-3-1.3"/><path d="M9.4 12.6h.01M14.6 12.6h.01M9.6 16.2h.01M14.4 16.2h.01" stroke-width="3.6"/>`, 2.2),
   eye: stroke('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>', 2.4),
   help: stroke(`<circle cx="12" cy="12" r="9" ${SOFT}/><path d="M9.5 9.6A2.6 2.6 0 1112.7 12c-.5.3-.7.7-.7 1.3M12 16.8h.01"/>`, 2.6),
   alert: stroke(`<path d="M12 4l9 15.5H3z" ${SOFT}/><path d="M12 10v4M12 17h.01"/>`, 2.6),

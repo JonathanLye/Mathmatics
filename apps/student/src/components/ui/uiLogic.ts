@@ -2,6 +2,7 @@
  * 组件库的纯逻辑（无 DOM，tests/ui-logic.test.ts 覆盖）。
  * 组件只管模板和样式；类名、禁用、进度分段、聚光灯几何这些规则放在这里。
  */
+import { ref } from 'vue'
 
 // ---- PgButton ----
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'hint' | 'sea'
@@ -92,13 +93,17 @@ export function canDismiss(persistent: boolean | undefined): boolean {
 
 /** 打开着的弹层，后开的在最上面。叠起来时 Esc 只关最上面一层。 */
 const openSheets: object[] = []
+/** 打开着的弹层/庆祝层数量（响应式）：小方入口据此在有弹层时躲开。 */
+export const openOverlayCount = ref(0)
 export function sheetOpened(sheet: object): void {
   sheetClosed(sheet)
   openSheets.push(sheet)
+  openOverlayCount.value = openSheets.length
 }
 export function sheetClosed(sheet: object): void {
   const at = openSheets.indexOf(sheet)
   if (at >= 0) openSheets.splice(at, 1)
+  openOverlayCount.value = openSheets.length
 }
 export function isTopSheet(sheet: object): boolean {
   return openSheets[openSheets.length - 1] === sheet

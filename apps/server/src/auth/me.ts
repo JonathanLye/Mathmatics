@@ -1,6 +1,7 @@
 import type { Queryable } from '../db/index.ts';
 
 import { getAgeBand, type AgeBand } from './age-band.ts';
+import { countStudentUnread } from '../feedback/service.ts';
 import { hasValidConsent } from './consent.ts';
 import type { AuthContext } from './session.ts';
 
@@ -17,6 +18,8 @@ export interface MeView {
   /** 仅学生返回：账号还没设密码（登录后先去 POST /auth/student/password）。 */
   needsPassword?: boolean;
   features: Record<string, boolean>;
+  /** 仅学生返回：信箱里有新动静的反馈条数（15 §6）。 */
+  feedbackUnread?: number;
 }
 
 export async function buildMe(db: Queryable, auth: AuthContext): Promise<MeView> {
@@ -52,7 +55,7 @@ export async function buildMe(db: Queryable, auth: AuthContext): Promise<MeView>
     displayName: row.display_name,
     classes: classes.rows,
     consentRequired,
-    ...(auth.role === 'student' ? { ageBand, needsPassword } : {}),
+    ...(auth.role === 'student' ? { ageBand, needsPassword, feedbackUnread: await countStudentUnread(db, auth.userId) } : {}),
     features: {},
   };
 }

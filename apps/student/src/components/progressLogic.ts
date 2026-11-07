@@ -72,7 +72,7 @@ export function badgeFraction(badge: BadgeView): number {
   return Math.min(1, Math.max(0, progress.current / progress.target))
 }
 
-export type BadgeIcon = Extract<IconName, 'pen' | 'flame' | 'flag' | 'star' | 'redo' | 'check'> | 'qed'
+export type BadgeIcon = Extract<IconName, 'pen' | 'flame' | 'flag' | 'star' | 'redo' | 'check' | 'bug'> | 'qed'
 
 const BADGE_ICONS: Readonly<Record<string, BadgeIcon>> = {
   first_step: 'pen',
@@ -85,6 +85,8 @@ const BADGE_ICONS: Readonly<Record<string, BadgeIcon>> = {
   no_hint_clear: 'star',
   redo_success: 'redo',
   daily_goal: 'check',
+  // 反馈被开发者确认复现时发（15 §5）：红色奖章，见 badges.vue 的 pg-badge--bug。
+  bug_hunter: 'bug',
 }
 
 /** 不认识的徽章（目录比前端新）给一颗星。 */

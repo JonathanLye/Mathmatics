@@ -17,6 +17,8 @@ export interface CreateTeacherInput {
   /** 开启 TOTP 二次验证（#60）；开启后返回一次性 secret，供运维录入验证器 App。 */
   enableTotp?: boolean;
   piiKey?: Buffer;
+  /** 'admin'：开发者/管理员（看得到教师端的「反馈」页，15 §3）；缺省 'teacher'。 */
+  role?: 'teacher' | 'admin';
 }
 
 export interface CreateTeacherResult {
@@ -38,8 +40,8 @@ export async function createTeacherAccount(db: Db, input: CreateTeacherInput): P
   const totpSecret = input.enableTotp === true ? generateTotpSecret() : undefined;
   const userId = await db.tx(async (tx) => {
     const user = await tx.query<{ id: string }>(
-      `insert into app.users (role, anon_code, status) values ('teacher', $1, 'active') returning id`,
-      [newAnonCode('T')],
+      `insert into app.users (role, anon_code, status) values ($2, $1, 'active') returning id`,
+      [newAnonCode('T'), input.role ?? 'teacher'],
     );
     const id = user.rows[0]?.id;
     if (!id) throw new Error('insert app.users 没有返回 id');
